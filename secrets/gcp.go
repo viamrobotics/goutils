@@ -20,12 +20,12 @@ func getProjectID(ctx context.Context) (string, error) {
 	return credentials.ProjectID, nil
 }
 
-type GCPSecrets struct {
+type GCPSource struct {
 	client *secretmanager.Client
 	id     string
 }
 
-func NewGCPSecrets(ctx context.Context) (*GCPSecrets, error) {
+func NewGCPSource(ctx context.Context) (*GCPSource, error) {
 	c, err := secretmanager.NewClient(ctx)
 	if err != nil {
 		return nil, err
@@ -36,23 +36,23 @@ func NewGCPSecrets(ctx context.Context) (*GCPSecrets, error) {
 		return nil, err
 	}
 
-	return &GCPSecrets{c, id}, nil
+	return &GCPSource{c, id}, nil
 }
 
-func (g *GCPSecrets) Get(ctx context.Context, name string) (string, error) {
+func (g *GCPSource) Get(ctx context.Context, name string) (string, error) {
 	accessRequest := &secretmanagerpb.AccessSecretVersionRequest{
 		Name: fmt.Sprintf("projects/%s/secrets/%s/versions/latest", g.id, name),
 	}
 	result, err := g.client.AccessSecretVersion(ctx, accessRequest)
 	if err != nil {
 		if status.Convert(errors.Unwrap(err)).Code() == codes.NotFound {
-			return "", ErrSecretNotFound
+			return "", ErrNotFound
 		}
 		return "", fmt.Errorf("failed to access secret version: %w", err)
 	}
 	return string(result.Payload.Data), nil
 }
 
-func (g *GCPSecrets) Type() SecretSourceType {
-	return SecretSourceTypeGCP
+func (g *GCPSource) Type() SourceType {
+	return SourceTypeGCP
 }
