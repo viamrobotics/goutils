@@ -19,3 +19,7 @@ func (src *EnvSource) Get(ctx context.Context, name string) (string, error) {
 func (src *EnvSource) Type() SourceType {
 	return SourceTypeEnv
 }
+
+func (src *EnvSource) Close() error {
+	return nil
+}

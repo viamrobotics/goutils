@@ -39,6 +39,10 @@ func NewGCPSource(ctx context.Context) (*GCPSource, error) {
 	return &GCPSource{c, id}, nil
 }
 
+func (g *GCPSource) Close() error {
+	return g.client.Close()
+}
+
 func (g *GCPSource) Get(ctx context.Context, name string) (string, error) {
 	accessRequest := &secretmanagerpb.AccessSecretVersionRequest{
 		Name: fmt.Sprintf("projects/%s/secrets/%s/versions/latest", g.id, name),
