@@ -18,6 +18,10 @@ module.exports = {
 	mode: "production",
 	entry: "./src/index.ts",
 	devtool: 'inline-source-map',
+	output: {
+		library: 'rpc',
+		libraryTarget: 'umd'
+	},
 	module: {
 		rules: [
 			{
