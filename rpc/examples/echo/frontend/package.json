@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "license": "MIT",
   "dependencies": {
-    "google-protobuf": "^3.14.0",
     "@improbable-eng/grpc-web": "^0.13.0",
-    "@viamrobotics/rpc": "^0.1.0"
+    "@viamrobotics/rpc": "^0.1.0",
+    "google-protobuf": "^3.14.0"
   },
   "devDependencies": {
     "@webpack-cli/serve": "^1.3.1",
