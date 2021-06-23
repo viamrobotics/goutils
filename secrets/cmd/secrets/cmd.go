@@ -2,39 +2,41 @@ package main
 
 import (
 	"context"
-	"errors"
-	"flag"
-	"log"
 
+	"github.com/edaniels/golog"
+
+	"go.viam.com/utils"
 	"go.viam.com/utils/secrets"
 )
 
 func main() {
-	err := realMain()
-	if err != nil {
-		log.Fatal(err)
-	}
+	utils.ContextualMain(mainWithArgs, logger)
 }
 
-func realMain() error {
-	flag.Parse()
+var logger = golog.NewDevelopmentLogger("secrets")
 
-	if flag.NArg() != 2 {
-		return errors.New("need exactly 2 arguments, provider and secret")
+// Arguments for the command.
+type Arguments struct {
+	SourceType string `flag:"0,required,usage=source type"`
+	SecretName string `flag:"1,required,usage=secret name"`
+}
+
+func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) error {
+	var argsParsed Arguments
+	if err := utils.ParseFlags(args, &argsParsed); err != nil {
+		return err
 	}
 
-	ctx := context.Background()
-
-	source, err := secrets.NewSecretSource(ctx, secrets.SecretSourceType(flag.Arg(0)))
+	source, err := secrets.NewSource(ctx, secrets.SourceType(argsParsed.SourceType))
 	if err != nil {
 		return err
 	}
 
-	value, err := source.Get(ctx, flag.Arg(1))
+	value, err := source.Get(ctx, argsParsed.SecretName)
 	if err != nil {
 		return err
 	}
 
-	log.Println(value)
+	logger.Info(value)
 	return nil
 }

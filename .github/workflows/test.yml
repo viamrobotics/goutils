@@ -1,0 +1,57 @@
+# See https://github.com/mvdan/github-actions-golang for golang nuances
+name: Go
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build_and_test:
+    name: Build and Test
+    runs-on: [self-hosted, x64]
+    container:
+      image: echolabs/robotcoretest:latest
+
+    steps:
+
+    - name: Check out code into the Go module directory
+      uses: actions/checkout@v2
+      with:
+        fetch-depth: 2
+
+    - name: Verify no uncommitted changes from build
+      run: |
+        go install google.golang.org/protobuf/cmd/protoc-gen-go \
+          google.golang.org/grpc/cmd/protoc-gen-go-grpc \
+          github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway \
+          github.com/pseudomuto/protoc-gen-doc/cmd/protoc-gen-doc
+        git init
+        git add .
+        make build goformat
+        GEN_DIFF=$(git diff)
+        if [ -n "$GEN_DIFF" ]; then
+            echo '"make build goformat" resulted in changes not in git' 1>&2
+            git status
+            exit 1
+        fi
+
+    - name: Lint
+      run: |
+        make lint
+
+    - name: Test
+      env:
+        ARTIFACT_GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.ARTIFACT_GOOGLE_APPLICATION_CREDENTIALS }}
+        TEST_MONGODB_URI: ${{ secrets.TEST_MONGODB_URI }}
+      run: |
+        echo "$ARTIFACT_GOOGLE_APPLICATION_CREDENTIALS" | base64 -d > artifact_google_creds.json
+        export ARTIFACT_GOOGLE_APPLICATION_CREDENTIALS=`pwd`/artifact_google_creds.json
+        make cover
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v1
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}

@@ -20,11 +20,14 @@ func getProjectID(ctx context.Context) (string, error) {
 	return credentials.ProjectID, nil
 }
 
+// GCPSource provides secrets via GCP secrets.
 type GCPSource struct {
 	client *secretmanager.Client
 	id     string
 }
 
+// NewGCPSource returns a new GCP secret source that derives its information from
+// the given context.
 func NewGCPSource(ctx context.Context) (*GCPSource, error) {
 	c, err := secretmanager.NewClient(ctx)
 	if err != nil {
@@ -39,10 +42,12 @@ func NewGCPSource(ctx context.Context) (*GCPSource, error) {
 	return &GCPSource{c, id}, nil
 }
 
+// Close closes the underlying GCP client.
 func (g *GCPSource) Close() error {
 	return g.client.Close()
 }
 
+// Get looks up the given name as a secret in GCP.
 func (g *GCPSource) Get(ctx context.Context, name string) (string, error) {
 	accessRequest := &secretmanagerpb.AccessSecretVersionRequest{
 		Name: fmt.Sprintf("projects/%s/secrets/%s/versions/latest", g.id, name),
@@ -57,6 +62,7 @@ func (g *GCPSource) Get(ctx context.Context, name string) (string, error) {
 	return string(result.Payload.Data), nil
 }
 
+// Type returns the type of this source (gcp).
 func (g *GCPSource) Type() SourceType {
 	return SourceTypeGCP
 }

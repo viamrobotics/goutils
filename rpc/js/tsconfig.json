@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "alwaysStrict": true,
+    "sourceMap": true,
+    "target": "es5",
+    "declaration": true,
+    "removeComments": true,
+    "noImplicitReturns": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "stripInternal": true,
+    "noFallthroughCasesInSwitch": true,
+    "noEmitOnError": true,
+    "esModuleInterop": true,
+    "lib": [
+        "es2015",
+        "es2017.object",
+        "dom"
+    ],
+    "baseUrl": "./",
+    "paths": {
+      "proto/*": ["../../../dist/js/proto/*", "../../dist/js/proto/*"]
+    }
+  }
+}

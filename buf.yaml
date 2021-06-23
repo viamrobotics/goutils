@@ -1,0 +1,25 @@
+version: v1beta1
+name: buf.build/viam/utils
+build:
+  roots:
+    - .
+  excludes:
+    - vendor
+    - rpc/examples/echo/frontend/node_modules
+    - rpc/js/node_modules
+lint:
+  use:
+    - DEFAULT
+  ignore_only:
+    RPC_RESPONSE_STANDARD_NAME:
+      - proto/rpc/webrtc/v1/signaling.proto
+    RPC_REQUEST_RESPONSE_UNIQUE:
+      - proto/rpc/webrtc/v1/signaling.proto
+    RPC_REQUEST_STANDARD_NAME:
+      - proto/rpc/webrtc/v1/signaling.proto
+breaking:
+  use:
+    - FILE
+deps:
+  - buf.build/beta/googleapis
+  

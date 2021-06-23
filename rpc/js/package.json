@@ -1,0 +1,32 @@
+{
+  "name": "@viamrobotics/rpc",
+  "version": "0.1.0",
+  "license": "MIT",
+  "dependencies": {
+    "@improbable-eng/grpc-web": "^0.13.0",
+    "google-protobuf": "^3.14.0"
+  },
+  "devDependencies": {
+    "@types/google-protobuf": "^3.7.4",
+    "ts-loader": "^8.0.14",
+    "ts-protoc-gen": "^0.14.0",
+    "typescript": "4.1.3",
+    "webpack-cli": "^4.7.2"
+  },
+  "main": "dist/main.js",
+  "types": "src/index.d.ts",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/viamrobotics/goutils.git"
+  },
+  "author": "Eric Daniels",
+  "bugs": {
+    "url": "https://github.com/viamrobotics/goutils/issues"
+  },
+  "homepage": "https://github.com/viamrobotics/goutils#readme",
+  "description": "",
+  "private": false
+}
