@@ -12,6 +12,7 @@ import (
 	"github.com/go-errors/errors"
 
 	"go.viam.com/utils"
+	"go.viam.com/utils/internal"
 	echopb "go.viam.com/utils/proto/rpc/examples/echo/v1"
 	"go.viam.com/utils/rpc/examples/echo/server"
 	rpcserver "go.viam.com/utils/rpc/server"
@@ -99,8 +100,8 @@ func runServer(
 	}
 
 	mux := goji.NewMux()
-	mux.Handle(pat.Get("/"), http.FileServer(http.Dir(utils.ResolveFile("rpc/examples/echo/frontend/static"))))
-	mux.Handle(pat.Get("/static/*"), http.StripPrefix("/static", http.FileServer(http.Dir(utils.ResolveFile("rpc/examples/echo/frontend/dist")))))
+	mux.Handle(pat.Get("/"), http.FileServer(http.Dir(internal.ResolveFile("rpc/examples/echo/frontend/static"))))
+	mux.Handle(pat.Get("/static/*"), http.StripPrefix("/static", http.FileServer(http.Dir(internal.ResolveFile("rpc/examples/echo/frontend/dist")))))
 	mux.Handle(pat.New("/api/*"), http.StripPrefix("/api", rpcServer.GatewayHandler()))
 	mux.Handle(pat.New("/*"), rpcServer.GRPCHandler())
 

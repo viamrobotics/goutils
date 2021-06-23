@@ -1,4 +1,4 @@
-package utils
+package internal
 
 import (
 	"path/filepath"
@@ -17,5 +17,5 @@ func ResolveFile(fn string) string {
 	if err != nil {
 		panic(err)
 	}
-	return filepath.Join(thisDirPath, fn)
+	return filepath.Join(thisDirPath, "..", fn)
 }
