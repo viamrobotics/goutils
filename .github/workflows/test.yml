@@ -11,7 +11,7 @@ on:
 jobs:
   build_and_test:
     name: Build and Test
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, x64]
     container:
       image: echolabs/robotcoretest:latest
 
