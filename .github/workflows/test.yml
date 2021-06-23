@@ -11,7 +11,6 @@ on:
 jobs:
   build_and_test:
     name: Build and Test
-    runs-on: [self-hosted, x64]
     container:
       image: echolabs/robotcoretest:latest
 
