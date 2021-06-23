@@ -1,4 +1,3 @@
-
 goformat:
 	go install golang.org/x/tools/cmd/goimports
 	gofmt -s -w .
@@ -38,4 +37,3 @@ cover:
 
 test:
 	go test -tags=no_skip -race ./...
-
