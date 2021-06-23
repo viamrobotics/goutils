@@ -31,7 +31,6 @@ jobs:
         git init
         git add .
         make build goformat
-        git checkout rpc/examples/echo/frontend/dist rpc/js/dist
         GEN_DIFF=$(git diff)
         if [ -n "$GEN_DIFF" ]; then
             echo '"make build goformat" resulted in changes not in git' 1>&2
