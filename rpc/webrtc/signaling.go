@@ -173,9 +173,6 @@ func (ans *SignalingAnswerer) Start() error {
 		ans.client = answerClient
 		return nil
 	}
-	if err := connect(); err != nil {
-		return err
-	}
 
 	ans.activeBackgroundWorkers.Add(1)
 	utils.ManagedGo(func() {
@@ -186,12 +183,15 @@ func (ans *SignalingAnswerer) Start() error {
 			default:
 			}
 			if err := ans.answer(); err != nil && utils.FilterOutError(err, context.Canceled) != nil {
-				_, isGRPCErr := status.FromError(err)
-				if !isGRPCErr {
+				shouldLogError := false
+				if _, isGRPCErr := status.FromError(err); !(isGRPCErr || errors.Is(err, errSignalingAnswererDisconnected)) {
+					shouldLogError = true
+				}
+				if shouldLogError {
 					ans.logger.Errorw("error answering", "error", err)
 				}
 				for {
-					if !isGRPCErr {
+					if shouldLogError {
 						ans.logger.Debugw("reconnecting answer client", "in", answererReconnectWait.String())
 					}
 					if !utils.SelectContextOrWait(ans.closeCtx, answererReconnectWait) {
@@ -201,7 +201,7 @@ func (ans *SignalingAnswerer) Start() error {
 						ans.logger.Errorw("error reconnecting answer client", "error", err, "reconnect_err", connectErr)
 						continue
 					}
-					if !isGRPCErr {
+					if shouldLogError {
 						ans.logger.Debug("reconnected answer client")
 					}
 					break
@@ -234,11 +234,16 @@ func (ans *SignalingAnswerer) Stop() {
 	ans.activeBackgroundWorkers.Wait()
 }
 
+var errSignalingAnswererDisconnected = errors.New("signaling answerer disconnected")
+
 // answer accepts a single call offer, responds with a corresponding SDP, and
 // attempts to establish a WebRTC connection with the caller via ICE. Once established,
 // the designated WebRTC data channel is passed off to the underlying Server which
 // is then used as the server end of a gRPC connection.
 func (ans *SignalingAnswerer) answer() (err error) {
+	if ans.client == nil {
+		return errSignalingAnswererDisconnected
+	}
 	resp, err := ans.client.Recv()
 	if err != nil {
 		if errors.Is(err, io.EOF) {

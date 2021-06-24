@@ -5,7 +5,6 @@ import (
 	"net"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/edaniels/golog"
 	"go.viam.com/test"
@@ -35,17 +34,10 @@ func TestClientServer(t *testing.T) {
 		serveDone <- grpcServer.Serve(grpcListener)
 	}()
 
-	answerer := rpcwebrtc.NewSignalingAnswerer("foo", "yeehaw", nil, true, logger)
-	go func() {
-		time.Sleep(time.Second)
-		answerer.Stop()
-	}()
-	test.That(t, answerer.Start(), test.ShouldEqual, context.Canceled)
-
 	webrtcServer := rpcwebrtc.NewServer(logger)
 	webrtcServer.RegisterService(&echopb.EchoService_ServiceDesc, &echoserver.Server{})
 
-	answerer = rpcwebrtc.NewSignalingAnswerer(grpcListener.Addr().String(), "yeehaw", webrtcServer, true, logger)
+	answerer := rpcwebrtc.NewSignalingAnswerer(grpcListener.Addr().String(), "yeehaw", webrtcServer, true, logger)
 	test.That(t, answerer.Start(), test.ShouldBeNil)
 
 	cc, err := rpcwebrtc.Dial(context.Background(), rpc.HostURI(grpcListener.Addr().String(), "yeehaw"), true, logger)
