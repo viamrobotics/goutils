@@ -186,17 +186,24 @@ func (ans *SignalingAnswerer) Start() error {
 			default:
 			}
 			if err := ans.answer(); err != nil && utils.FilterOutError(err, context.Canceled) != nil {
-				ans.logger.Errorw("error answering", "error", err)
+				_, isGRPCErr := status.FromError(err)
+				if !isGRPCErr {
+					ans.logger.Errorw("error answering", "error", err)
+				}
 				for {
-					ans.logger.Debugw("reconnecting answer client", "in", answererReconnectWait.String())
+					if !isGRPCErr {
+						ans.logger.Debugw("reconnecting answer client", "in", answererReconnectWait.String())
+					}
 					if !utils.SelectContextOrWait(ans.closeCtx, answererReconnectWait) {
 						return
 					}
-					if err := connect(); err != nil {
-						ans.logger.Errorw("error reconnecting answer client", "error", err)
+					if connectErr := connect(); connectErr != nil {
+						ans.logger.Errorw("error reconnecting answer client", "error", err, "reconnect_err", connectErr)
 						continue
 					}
-					ans.logger.Debug("reconnected answer client")
+					if !isGRPCErr {
+						ans.logger.Debug("reconnected answer client")
+					}
 					break
 				}
 			}
