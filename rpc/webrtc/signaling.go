@@ -219,6 +219,9 @@ func (ans *SignalingAnswerer) Start() error {
 			}
 		}()
 		defer func() {
+			if ans.client == nil {
+				return
+			}
 			if err := ans.client.CloseSend(); err != nil {
 				ans.logger.Errorw("error closing send side of answering client", "error", err)
 			}
