@@ -214,6 +214,9 @@ func (ans *SignalingAnswerer) Start() error {
 			connMu.Lock()
 			conn := connInUse
 			connMu.Unlock()
+			if conn == nil {
+				return
+			}
 			if err := conn.Close(); err != nil {
 				ans.logger.Errorw("error closing signaling connection", "error", err)
 			}
