@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
-	"os"
 	"reflect"
 	"strconv"
 	"strings"
@@ -26,11 +25,9 @@ func ParseFlags(args []string, into interface{}) error {
 	}
 	if err := cmdLine.Parse(args[1:]); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
-			cmdLine.SetOutput(os.Stderr)
-			cmdLine.PrintDefaults()
-			return err
+			return errors.New(buf.String())
 		}
-		return fmt.Errorf("error parsing flags: %w", err)
+		return errors.Errorf("%s\n%w", buf.String(), err)
 	}
 
 	if err := UnmarshalFlags(cmdLine, into); err != nil {
