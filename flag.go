@@ -21,10 +21,13 @@ func ParseFlags(args []string, into interface{}) error {
 	cmdLine.SetOutput(&buf)
 
 	if err := extractFlags(cmdLine, into); err != nil {
-		return err
+		return fmt.Errorf("error extracing flags: %w", err)
 	}
 	if err := cmdLine.Parse(args[1:]); err != nil {
-		return err
+		if errors.Is(err, flag.ErrHelp) {
+			return errors.New(buf.String())
+		}
+		return errors.Errorf("%s\n%w", buf.String(), err)
 	}
 
 	if err := UnmarshalFlags(cmdLine, into); err != nil {
