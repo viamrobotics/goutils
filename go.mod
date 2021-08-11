@@ -14,6 +14,7 @@ require (
 	github.com/fullstorydev/grpcurl v1.8.0
 	github.com/go-errors/errors v1.4.0
 	github.com/golangci/golangci-lint v1.39.0
+	github.com/grpc-ecosystem/go-grpc-middleware v1.2.2
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.5.0
 	github.com/improbable-eng/grpc-web v0.14.0
 	github.com/miekg/dns v1.1.35

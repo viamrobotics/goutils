@@ -18,6 +18,8 @@ import (
 	"go.viam.com/utils/rpc"
 	rpcwebrtc "go.viam.com/utils/rpc/webrtc"
 
+	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
+	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/improbable-eng/grpc-web/go/grpcweb"
 	"go.uber.org/multierr"
@@ -136,13 +138,25 @@ func NewWithListener(
 			MinTime: rpc.KeepAliveTime,
 		}),
 	}
+	var unaryInterceptors []grpc.UnaryServerInterceptor
 	if opts.UnaryInterceptor != nil {
+		unaryInterceptors = append(unaryInterceptors, opts.UnaryInterceptor)
 		serverOpts = append(serverOpts, grpc.UnaryInterceptor(opts.UnaryInterceptor))
 	}
+	unaryInterceptors = append(unaryInterceptors, grpc_zap.UnaryServerInterceptor(logger.Desugar()))
+	serverOpts = append(serverOpts, grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(unaryInterceptors...)))
+
+	var streamInterceptors []grpc.StreamServerInterceptor
 	if opts.StreamInterceptor != nil {
+		streamInterceptors = append(streamInterceptors, opts.StreamInterceptor)
 		serverOpts = append(serverOpts, grpc.StreamInterceptor(opts.StreamInterceptor))
 	}
-	grpcServer := grpc.NewServer(serverOpts...)
+	streamInterceptors = append(streamInterceptors, grpc_zap.StreamServerInterceptor(logger.Desugar()))
+	serverOpts = append(serverOpts, grpc.StreamInterceptor(grpc_middleware.ChainStreamServer(streamInterceptors...)))
+
+	grpcServer := grpc.NewServer(
+		serverOpts...,
+	)
 	reflection.Register(grpcServer)
 	grpcWebServer := grpcweb.WrapServer(grpcServer, grpcweb.WithOriginFunc(func(origin string) bool {
 		return true
