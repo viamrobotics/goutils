@@ -20,6 +20,7 @@ import (
 
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
+	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/recovery"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/improbable-eng/grpc-web/go/grpcweb"
 	"go.uber.org/multierr"
@@ -143,7 +144,10 @@ func NewWithListener(
 		unaryInterceptors = append(unaryInterceptors, opts.UnaryInterceptor)
 		serverOpts = append(serverOpts, grpc.UnaryInterceptor(opts.UnaryInterceptor))
 	}
-	unaryInterceptors = append(unaryInterceptors, grpc_zap.UnaryServerInterceptor(logger.Desugar()))
+	unaryInterceptors = append(unaryInterceptors,
+		grpc_zap.UnaryServerInterceptor(logger.Desugar()),
+		grpc_recovery.UnaryServerInterceptor(),
+	)
 	serverOpts = append(serverOpts, grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(unaryInterceptors...)))
 
 	var streamInterceptors []grpc.StreamServerInterceptor
@@ -151,7 +155,9 @@ func NewWithListener(
 		streamInterceptors = append(streamInterceptors, opts.StreamInterceptor)
 		serverOpts = append(serverOpts, grpc.StreamInterceptor(opts.StreamInterceptor))
 	}
-	streamInterceptors = append(streamInterceptors, grpc_zap.StreamServerInterceptor(logger.Desugar()))
+	streamInterceptors = append(streamInterceptors,
+		grpc_zap.StreamServerInterceptor(logger.Desugar()),
+		grpc_recovery.StreamServerInterceptor())
 	serverOpts = append(serverOpts, grpc.StreamInterceptor(grpc_middleware.ChainStreamServer(streamInterceptors...)))
 
 	grpcServer := grpc.NewServer(
