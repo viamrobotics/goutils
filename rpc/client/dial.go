@@ -67,13 +67,16 @@ func Dial(ctx context.Context, address string, opts DialOptions, logger golog.Lo
 		}
 	}
 
-	signalingServer := opts.SignalingServer
-	signalingInsecure := opts.Insecure
-	// TODO(https://github.com/viamrobotics/core/issues/100): Use SRV records to get signaling server and
-	// remove app.viam.com hardcoding.
-	if signalingServer == "" && strings.HasSuffix(address, "viam.cloud") && !strings.HasPrefix(address, "local.") {
-		signalingServer = "app.viam.com:443"
-		signalingInsecure = false
+	var signalingServer string
+	var signalingInsecure bool
+	if target, port, err := lookupSRV(ctx, host); err == nil {
+		signalingServer = fmt.Sprintf("%s:%d", target, port)
+		signalingInsecure = port != 443
+	} else if ctx.Err() != nil {
+		return nil, ctx.Err()
+	} else {
+		signalingServer = opts.SignalingServer
+		signalingInsecure = opts.Insecure
 	}
 
 	if signalingServer != "" {
@@ -103,4 +106,21 @@ func lookupHost(ctx context.Context, host string) (addrs []string, err error) {
 		return ctxResolver.LookupHost(ctx, host)
 	}
 	return net.DefaultResolver.LookupHost(ctx, host)
+}
+
+func lookupSRV(ctx context.Context, host string) (string, uint16, error) {
+	var records []*net.SRV
+	var err error
+	if ctxResolver := dialer.ContextResolver(ctx); ctxResolver != nil {
+		_, records, err = ctxResolver.LookupSRV(ctx, "webrtc", "tcp", host)
+	} else {
+		_, records, err = net.DefaultResolver.LookupSRV(ctx, "webrtc", "tcp", host)
+	}
+	if err != nil {
+		return "", 0, err
+	}
+	if len(records) == 0 {
+		return "", 0, errors.New("expected at least one SRV record")
+	}
+	return records[0].Target, records[0].Port, nil
 }

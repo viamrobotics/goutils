@@ -106,7 +106,8 @@ func TestDial(t *testing.T) {
 	httpIP := httpListener.Addr().(*net.TCPAddr).IP
 	httpPort := httpListener.Addr().(*net.TCPAddr).Port
 
-	mux.HandleFunc("local.something.", func(rw dns.ResponseWriter, r *dns.Msg) {
+	var noAnswer bool
+	mux.HandleFunc("yeehaw", func(rw dns.ResponseWriter, r *dns.Msg) {
 		m := &dns.Msg{Compress: false}
 		m.SetReply(r)
 
@@ -131,6 +132,33 @@ func TestDial(t *testing.T) {
 
 		utils.UncheckedError(rw.WriteMsg(m))
 	})
+	mux.HandleFunc("local.something.", func(rw dns.ResponseWriter, r *dns.Msg) {
+		m := &dns.Msg{Compress: false}
+		m.SetReply(r)
+
+		if !noAnswer {
+			switch r.Opcode {
+			case dns.OpcodeQuery:
+				for _, q := range m.Question {
+					switch q.Qtype {
+					case dns.TypeA:
+						rr := &dns.A{
+							Hdr: dns.RR_Header{
+								Name:   q.Name,
+								Rrtype: dns.TypeA,
+								Class:  dns.ClassINET,
+								Ttl:    60,
+							},
+							A: httpIP,
+						}
+						m.Answer = append(m.Answer, rr)
+					}
+				}
+			}
+		}
+
+		utils.UncheckedError(rw.WriteMsg(m))
+	})
 	dnsServer := &dns.Server{
 		Addr:    fmt.Sprintf(":%d", port),
 		Net:     "udp",
@@ -147,6 +175,41 @@ func TestDial(t *testing.T) {
 	ctx := dialer.ContextWithResolver(context.Background(), resolver)
 	ctx = dialer.ContextWithDialer(ctx, &staticDialer{httpListener.Addr().String()})
 	conn, err = client.Dial(ctx, fmt.Sprintf("something:%d", httpPort), client.DialOptions{Insecure: true}, logger)
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, conn.Close(), test.ShouldBeNil)
+
+	conn, err = client.Dial(ctx, fmt.Sprintf("something:%d", httpPort), client.DialOptions{Insecure: true}, logger)
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, conn.Close(), test.ShouldBeNil)
+
+	noAnswer = true
+	mux.HandleFunc("_webrtc._tcp.yeehaw.", func(rw dns.ResponseWriter, r *dns.Msg) {
+		m := &dns.Msg{Compress: false}
+		m.SetReply(r)
+
+		switch r.Opcode {
+		case dns.OpcodeQuery:
+			for _, q := range m.Question {
+				switch q.Qtype {
+				case dns.TypeSRV:
+					rr := &dns.SRV{
+						Hdr: dns.RR_Header{
+							Name:   q.Name,
+							Rrtype: dns.TypeSRV,
+							Class:  dns.ClassINET,
+							Ttl:    60,
+						},
+						Target: "localhost.",
+						Port:   uint16(httpPort),
+					}
+					m.Answer = append(m.Answer, rr)
+				}
+			}
+		}
+
+		utils.UncheckedError(rw.WriteMsg(m))
+	})
+	conn, err = client.Dial(ctx, "yeehaw", client.DialOptions{Insecure: true}, logger)
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, conn.Close(), test.ShouldBeNil)
 
