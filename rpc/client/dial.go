@@ -122,5 +122,5 @@ func lookupSRV(ctx context.Context, host string) (string, uint16, error) {
 	if len(records) == 0 {
 		return "", 0, errors.New("expected at least one SRV record")
 	}
-	return records[0].Target, records[0].Port, nil
+	return strings.TrimSuffix(records[0].Target, "."), records[0].Port, nil
 }
