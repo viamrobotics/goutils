@@ -40,7 +40,7 @@ func TestClientServer(t *testing.T) {
 	answerer := rpcwebrtc.NewSignalingAnswerer(grpcListener.Addr().String(), "yeehaw", webrtcServer, true, logger)
 	test.That(t, answerer.Start(), test.ShouldBeNil)
 
-	cc, err := rpcwebrtc.Dial(context.Background(), rpc.HostURI(grpcListener.Addr().String(), "yeehaw"), true, logger)
+	cc, err := rpcwebrtc.Dial(context.Background(), rpc.HostURI(grpcListener.Addr().String(), "yeehaw"), rpcwebrtc.Options{Insecure: true}, logger)
 	test.That(t, err, test.ShouldBeNil)
 	defer func() {
 		test.That(t, cc.Close(), test.ShouldBeNil)

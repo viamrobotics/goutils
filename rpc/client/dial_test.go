@@ -18,6 +18,7 @@ import (
 	"go.viam.com/utils/rpc/dialer"
 	echoserver "go.viam.com/utils/rpc/examples/echo/server"
 	"go.viam.com/utils/rpc/server"
+	rpcwebrtc "go.viam.com/utils/rpc/webrtc"
 	"go.viam.com/utils/testutils"
 )
 
@@ -94,8 +95,10 @@ func TestDial(t *testing.T) {
 	test.That(t, conn.Close(), test.ShouldBeNil)
 
 	conn, err = client.Dial(context.Background(), "yeehaw", client.DialOptions{
-		SignalingServer: httpListener.Addr().String(),
-		Insecure:        true,
+		Insecure: true,
+		WebRTC: rpcwebrtc.Options{
+			SignalingServer: httpListener.Addr().String(),
+		},
 	}, logger)
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, conn.Close(), test.ShouldBeNil)

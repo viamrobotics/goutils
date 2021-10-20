@@ -109,11 +109,15 @@ func TestServer(t *testing.T) {
 	es.SetFail(false)
 
 	// WebRTC
-	_, err = rpcwebrtc.Dial(context.Background(), httpListener.Addr().String(), true, logger)
+	_, err = rpcwebrtc.Dial(context.Background(), httpListener.Addr().String(), rpcwebrtc.Options{
+		Insecure: true,
+	}, logger)
 	test.That(t, err, test.ShouldNotBeNil)
 	test.That(t, err.Error(), test.ShouldContainSubstring, "non-empty rpc-host")
 
-	rtcConn, err := rpcwebrtc.Dial(context.Background(), rpc.HostURI(httpListener.Addr().String(), "yeehaw"), true, logger)
+	rtcConn, err := rpcwebrtc.Dial(context.Background(), rpc.HostURI(httpListener.Addr().String(), "yeehaw"), rpcwebrtc.Options{
+		Insecure: true,
+	}, logger)
 	test.That(t, err, test.ShouldBeNil)
 	defer func() {
 		test.That(t, rtcConn.Close(), test.ShouldBeNil)

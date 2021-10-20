@@ -21,9 +21,8 @@ type DialOptions struct {
 	// Insecure determines if the RPC connection is TLS based.
 	Insecure bool
 
-	// Signaling server specifies the signaling server to
-	// contact on behalf of this client for WebRTC communications.
-	SignalingServer string
+	// WebRTC control how WebRTC is utilized in a dial attempt.
+	WebRTC rpcwebrtc.Options
 }
 
 // Dial attempts to make the most convenient connection to the given address. It first tries a direct
@@ -67,21 +66,17 @@ func Dial(ctx context.Context, address string, opts DialOptions, logger golog.Lo
 		}
 	}
 
-	var signalingServer string
-	var signalingInsecure bool
+	opts.WebRTC.Insecure = opts.Insecure
 	if target, port, err := lookupSRV(ctx, host); err == nil {
-		signalingServer = fmt.Sprintf("%s:%d", target, port)
-		signalingInsecure = port != 443
+		opts.WebRTC.Insecure = port != 443
+		opts.WebRTC.SignalingServer = fmt.Sprintf("%s:%d", target, port)
 	} else if ctx.Err() != nil {
 		return nil, ctx.Err()
-	} else {
-		signalingServer = opts.SignalingServer
-		signalingInsecure = opts.Insecure
 	}
 
-	if signalingServer != "" {
-		webrtcAddress := rpc.HostURI(signalingServer, address)
-		conn, err := rpcwebrtc.Dial(ctx, webrtcAddress, signalingInsecure, logger)
+	if opts.WebRTC.SignalingServer != "" {
+		webrtcAddress := rpc.HostURI(opts.WebRTC.SignalingServer, address)
+		conn, err := rpcwebrtc.Dial(ctx, webrtcAddress, opts.WebRTC, logger)
 		if err != nil && !errors.Is(err, rpcwebrtc.ErrNoSignaler) {
 			return nil, err
 		}

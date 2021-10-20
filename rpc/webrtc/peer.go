@@ -18,7 +18,7 @@ var DefaultWebRTCConfiguration = webrtc.Configuration{
 	ICEServers: gostream.DefaultICEServers,
 }
 
-func newPeerConnectionForClient(ctx context.Context, logger golog.Logger) (pc *webrtc.PeerConnection, dc *webrtc.DataChannel, err error) {
+func newPeerConnectionForClient(ctx context.Context, config webrtc.Configuration, logger golog.Logger) (pc *webrtc.PeerConnection, dc *webrtc.DataChannel, err error) {
 	pc, err = webrtc.NewPeerConnection(DefaultWebRTCConfiguration)
 	if err != nil {
 		return nil, nil, err

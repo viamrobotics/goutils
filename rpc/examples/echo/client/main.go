@@ -12,6 +12,7 @@ import (
 	"go.viam.com/utils"
 	echopb "go.viam.com/utils/proto/rpc/examples/echo/v1"
 	rpcclient "go.viam.com/utils/rpc/client"
+	rpcwebrtc "go.viam.com/utils/rpc/webrtc"
 )
 
 func main() {
@@ -34,8 +35,10 @@ func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) (err 
 	}
 
 	cc, err := rpcclient.Dial(ctx, argsParsed.Host, rpcclient.DialOptions{
-		SignalingServer: argsParsed.SignalingServer,
-		Insecure:        argsParsed.Insecure,
+		Insecure: argsParsed.Insecure,
+		WebRTC: rpcwebrtc.Options{
+			SignalingServer: argsParsed.SignalingServer,
+		},
 	}, logger)
 	if err != nil {
 		return err

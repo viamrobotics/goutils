@@ -18,7 +18,7 @@ import (
 func setupPeers(t *testing.T) (client, server *webrtc.PeerConnection, clientDc, serverDc *webrtc.DataChannel) {
 	logger := golog.NewTestLogger(t)
 
-	pc1, dc1, err := newPeerConnectionForClient(context.Background(), logger)
+	pc1, dc1, err := newPeerConnectionForClient(context.Background(), webrtc.Configuration{}, logger)
 	test.That(t, err, test.ShouldBeNil)
 
 	encodedSDP, err := gwebrtc.EncodeSDP(pc1.LocalDescription())

@@ -62,7 +62,7 @@ func TestSignaling(t *testing.T) {
 	test.That(t, err, test.ShouldNotBeNil)
 	test.That(t, err.Error(), test.ShouldContainSubstring, "illegal")
 
-	ch, err := rpcwebrtc.Dial(context.Background(), rpc.HostURI(grpcListener.Addr().String(), "yeehaw"), true, logger)
+	ch, err := rpcwebrtc.Dial(context.Background(), rpc.HostURI(grpcListener.Addr().String(), "yeehaw"), rpcwebrtc.Options{Insecure: true}, logger)
 	test.That(t, err, test.ShouldBeNil)
 	defer func() {
 		test.That(t, ch.Close(), test.ShouldBeNil)

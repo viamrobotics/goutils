@@ -24,9 +24,22 @@ import (
 // signaling for WebRTC.
 var ErrNoSignaler = errors.New("no signaler present")
 
+// Options control how WebRTC is utilized in a dial attempt.
+type Options struct {
+	// Insecure determines if the WebRTC connection is DTLS based.
+	Insecure bool
+
+	// Signaling server specifies the signaling server to
+	// contact on behalf of this client for WebRTC communications.
+	SignalingServer string
+
+	// Config is the WebRTC specific configuration (i.e. ICE settings)
+	Config *webrtc.Configuration
+}
+
 // Dial connects to the signaling service at the given address and attempts to establish
 // a WebRTC connection with the corresponding peer reflected in the address.
-func Dial(ctx context.Context, address string, insecure bool, logger golog.Logger) (ch *ClientChannel, err error) {
+func Dial(ctx context.Context, address string, opts Options, logger golog.Logger) (ch *ClientChannel, err error) {
 	var host string
 	if u, err := url.Parse(address); err == nil {
 		address = u.Host
@@ -37,7 +50,7 @@ func Dial(ctx context.Context, address string, insecure bool, logger golog.Logge
 
 	logger.Debugw("connecting to signaling server", "address", address)
 
-	conn, err := dialer.DialDirectGRPC(dialCtx, address, insecure)
+	conn, err := dialer.DialDirectGRPC(dialCtx, address, opts.Insecure)
 	if err != nil {
 		return nil, err
 	}
@@ -49,7 +62,11 @@ func Dial(ctx context.Context, address string, insecure bool, logger golog.Logge
 
 	signalingClient := webrtcpb.NewSignalingServiceClient(conn)
 
-	pc, dc, err := newPeerConnectionForClient(ctx, logger)
+	config := DefaultWebRTCConfiguration
+	if opts.Config != nil {
+		config = *opts.Config
+	}
+	pc, dc, err := newPeerConnectionForClient(ctx, config, logger)
 	if err != nil {
 		return nil, err
 	}
