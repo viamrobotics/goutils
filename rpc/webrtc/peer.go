@@ -19,7 +19,7 @@ var DefaultWebRTCConfiguration = webrtc.Configuration{
 }
 
 func newPeerConnectionForClient(ctx context.Context, config webrtc.Configuration, logger golog.Logger) (pc *webrtc.PeerConnection, dc *webrtc.DataChannel, err error) {
-	pc, err = webrtc.NewPeerConnection(DefaultWebRTCConfiguration)
+	pc, err = webrtc.NewPeerConnection(config)
 	if err != nil {
 		return nil, nil, err
 	}
