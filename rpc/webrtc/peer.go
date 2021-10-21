@@ -71,8 +71,8 @@ func newPeerConnectionForClient(ctx context.Context, config webrtc.Configuration
 	return pc, dataChannel, nil
 }
 
-func newPeerConnectionForServer(ctx context.Context, sdp string, logger golog.Logger) (pc *webrtc.PeerConnection, dc *webrtc.DataChannel, err error) {
-	pc, err = webrtc.NewPeerConnection(DefaultWebRTCConfiguration)
+func newPeerConnectionForServer(ctx context.Context, sdp string, config webrtc.Configuration, logger golog.Logger) (pc *webrtc.PeerConnection, dc *webrtc.DataChannel, err error) {
+	pc, err = webrtc.NewPeerConnection(config)
 	if err != nil {
 		return nil, nil, err
 	}

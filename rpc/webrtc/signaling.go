@@ -10,6 +10,7 @@ import (
 
 	"github.com/edaniels/golog"
 	gwebrtc "github.com/edaniels/gostream/webrtc"
+	"github.com/pion/webrtc/v3"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -114,6 +115,7 @@ type SignalingAnswerer struct {
 	client                  webrtcpb.SignalingService_AnswerClient
 	server                  *Server
 	insecure                bool
+	webrtcConfig            webrtc.Configuration
 	activeBackgroundWorkers sync.WaitGroup
 	cancelBackgroundWorkers func()
 	closeCtx                context.Context
@@ -124,13 +126,14 @@ type SignalingAnswerer struct {
 // address. Note that using this assumes that the connection at the given address is secure and
 // assumed that all calls are authenticated. Random ports will be opened on this host to establish
 // connections as a means to service ICE (https://webrtcforthecurious.com/docs/03-connecting/#how-does-it-work).
-func NewSignalingAnswerer(address, host string, server *Server, insecure bool, logger golog.Logger) *SignalingAnswerer {
+func NewSignalingAnswerer(address, host string, server *Server, insecure bool, webrtcConfig webrtc.Configuration, logger golog.Logger) *SignalingAnswerer {
 	closeCtx, cancel := context.WithCancel(context.Background())
 	return &SignalingAnswerer{
 		address:                 address,
 		host:                    host,
 		server:                  server,
 		insecure:                insecure,
+		webrtcConfig:            webrtcConfig,
 		cancelBackgroundWorkers: cancel,
 		closeCtx:                closeCtx,
 		logger:                  logger,
@@ -258,7 +261,7 @@ func (ans *SignalingAnswerer) answer() (err error) {
 		return err
 	}
 
-	pc, dc, err := newPeerConnectionForServer(ans.closeCtx, resp.Sdp, ans.logger)
+	pc, dc, err := newPeerConnectionForServer(ans.closeCtx, resp.Sdp, ans.webrtcConfig, ans.logger)
 	if err != nil {
 		return ans.client.Send(&webrtcpb.AnswerResponse{
 			Status: ErrorToStatus(err).Proto(),

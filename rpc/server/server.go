@@ -12,6 +12,7 @@ import (
 
 	"github.com/edaniels/golog"
 	"github.com/go-errors/errors"
+	"github.com/pion/webrtc/v3"
 
 	"go.viam.com/utils"
 	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
@@ -125,6 +126,9 @@ type WebRTCOptions struct {
 
 	// SignalingHost specifies what host is being listened for.
 	SignalingHost string
+
+	// Config is the WebRTC specific configuration (i.e. ICE settings)
+	Config *webrtc.Configuration
 }
 
 // NewWithListener returns a new server ready to be started that
@@ -213,11 +217,18 @@ func NewWithListener(
 		}
 		server.signalingHost = signalingHost
 		logger.Infow("will run signaling answerer", "address", address, "host", signalingHost)
+
+		config := rpcwebrtc.DefaultWebRTCConfiguration
+		if opts.WebRTC.Config != nil {
+			config = *opts.WebRTC.Config
+		}
+
 		server.webrtcAnswerer = rpcwebrtc.NewSignalingAnswerer(
 			address,
 			signalingHost,
 			server.webrtcServer,
 			opts.WebRTC.Insecure,
+			config,
 			logger,
 		)
 	}

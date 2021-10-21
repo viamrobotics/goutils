@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/edaniels/golog"
+	"github.com/pion/webrtc/v3"
 	"go.viam.com/test"
 	"google.golang.org/grpc"
 
@@ -37,7 +38,7 @@ func TestClientServer(t *testing.T) {
 	webrtcServer := rpcwebrtc.NewServer(logger)
 	webrtcServer.RegisterService(&echopb.EchoService_ServiceDesc, &echoserver.Server{})
 
-	answerer := rpcwebrtc.NewSignalingAnswerer(grpcListener.Addr().String(), "yeehaw", webrtcServer, true, logger)
+	answerer := rpcwebrtc.NewSignalingAnswerer(grpcListener.Addr().String(), "yeehaw", webrtcServer, true, webrtc.Configuration{}, logger)
 	test.That(t, answerer.Start(), test.ShouldBeNil)
 
 	cc, err := rpcwebrtc.Dial(context.Background(), rpc.HostURI(grpcListener.Addr().String(), "yeehaw"), rpcwebrtc.Options{Insecure: true}, logger)

@@ -24,7 +24,7 @@ func setupPeers(t *testing.T) (client, server *webrtc.PeerConnection, clientDc, 
 	encodedSDP, err := gwebrtc.EncodeSDP(pc1.LocalDescription())
 	test.That(t, err, test.ShouldBeNil)
 
-	pc2, dc2, err := newPeerConnectionForServer(context.Background(), encodedSDP, logger)
+	pc2, dc2, err := newPeerConnectionForServer(context.Background(), encodedSDP, webrtc.Configuration{}, logger)
 	test.That(t, err, test.ShouldBeNil)
 
 	test.That(t, pc1.SetRemoteDescription(*pc2.LocalDescription()), test.ShouldBeNil)
