@@ -226,8 +226,12 @@ type staticDialer struct {
 	address string
 }
 
-func (sd *staticDialer) Dial(ctx context.Context, target string, opts ...grpc.DialOption) (dialer.ClientConn, error) {
+func (sd *staticDialer) DialDirect(ctx context.Context, target string, opts ...grpc.DialOption) (dialer.ClientConn, error) {
 	return grpc.DialContext(ctx, sd.address, opts...)
+}
+
+func (sd *staticDialer) DialFunc(proto string, target string, f func() (dialer.ClientConn, error)) (dialer.ClientConn, error) {
+	return f()
 }
 
 func (sd *staticDialer) Close() error {

@@ -76,7 +76,11 @@ func Dial(ctx context.Context, address string, opts DialOptions, logger golog.Lo
 
 	if opts.WebRTC.SignalingServer != "" {
 		webrtcAddress := rpc.HostURI(opts.WebRTC.SignalingServer, address)
-		conn, err := rpcwebrtc.Dial(ctx, webrtcAddress, opts.WebRTC, logger)
+
+		conn, err := dialer.DialFunc(ctx, "webrtc", webrtcAddress, func() (dialer.ClientConn, error) {
+			return rpcwebrtc.Dial(ctx, webrtcAddress, opts.WebRTC, logger)
+		})
+
 		if err != nil && !errors.Is(err, rpcwebrtc.ErrNoSignaler) {
 			return nil, err
 		}

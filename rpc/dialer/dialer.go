@@ -4,6 +4,7 @@ package dialer
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"net"
 	"sync"
 	"time"
@@ -21,8 +22,11 @@ import (
 
 // A Dialer is responsible for making connections to gRPC endpoints.
 type Dialer interface {
-	// Dial makes a connection to the given target with the supplied options.
-	Dial(ctx context.Context, target string, opts ...grpc.DialOption) (ClientConn, error)
+	// DialDirect makes a connection to the given target over standard gRPC with the supplied options.
+	DialDirect(ctx context.Context, target string, opts ...grpc.DialOption) (ClientConn, error)
+
+	// DialFunc makes a connection to the given target for the given proto using the given dial function.
+	DialFunc(proto string, target string, f func() (ClientConn, error)) (ClientConn, error)
 
 	// Close ensures all connections made are cleanly closed.
 	Close() error
@@ -82,36 +86,43 @@ func NewCachedDialer() Dialer {
 	return &cachedDialer{conns: map[string]*RefCountedConnWrapper{}}
 }
 
-func (cd *cachedDialer) Dial(ctx context.Context, target string, opts ...grpc.DialOption) (ClientConn, error) {
+func (cd *cachedDialer) DialDirect(ctx context.Context, target string, opts ...grpc.DialOption) (ClientConn, error) {
+	return cd.DialFunc("grpc", target, func() (ClientConn, error) {
+		return grpc.DialContext(ctx, target, opts...)
+	})
+}
+
+func (cd *cachedDialer) DialFunc(proto string, target string, f func() (ClientConn, error)) (ClientConn, error) {
+	key := fmt.Sprintf("%s:%s", proto, target)
 	cd.mu.Lock()
-	c, ok := cd.conns[target]
+	c, ok := cd.conns[key]
 	cd.mu.Unlock()
 	if ok {
 		return c.Ref(), nil
 	}
 
 	// assume any difference in opts does not matter
-	conn, err := grpc.DialContext(ctx, target, opts...)
+	conn, err := f()
 	if err != nil {
 		return nil, err
 	}
 	refConn := NewRefCountedConnWrapper(conn, func() {
 		cd.mu.Lock()
-		delete(cd.conns, target)
+		delete(cd.conns, key)
 		cd.mu.Unlock()
 	})
 	cd.mu.Lock()
 	defer cd.mu.Unlock()
 
 	// someone else might have already connected
-	c, ok = cd.conns[target]
+	c, ok = cd.conns[key]
 	if ok {
 		if err := conn.Close(); err != nil {
 			return nil, err
 		}
 		return c.Ref(), nil
 	}
-	cd.conns[target] = refConn
+	cd.conns[key] = refConn
 	return refConn.Ref(), nil
 }
 
@@ -184,7 +195,15 @@ func DialDirectGRPC(ctx context.Context, address string, insecure bool) (ClientC
 		dialOpts = append(dialOpts, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{})))
 	}
 	if ctxDialer := ContextDialer(ctx); ctxDialer != nil {
-		return ctxDialer.Dial(ctx, address, dialOpts...)
+		return ctxDialer.DialDirect(ctx, address, dialOpts...)
 	}
 	return grpc.DialContext(ctx, address, dialOpts...)
+}
+
+// DialFunc dials an address for a particular protocol and dial function.
+func DialFunc(ctx context.Context, proto string, target string, f func() (ClientConn, error)) (ClientConn, error) {
+	if ctxDialer := ContextDialer(ctx); ctxDialer != nil {
+		return ctxDialer.DialFunc(proto, target, f)
+	}
+	return f()
 }
