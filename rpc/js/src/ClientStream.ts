@@ -49,10 +49,11 @@ export class ClientStream extends BaseStream implements grpc.Transport {
 	private writeMessage(eos: boolean, msgBytes?: Uint8Array) {
 		try {
 			if (!msgBytes || msgBytes.length == 0) {
+				const packet = new PacketMessage();
+				packet.setEom(true);
 				const requestMessage = new RequestMessage();
 				requestMessage.setHasMessage(!!msgBytes);
-				const packetMessage = new PacketMessage();
-				packetMessage.setEom(true);
+				requestMessage.setPacketMessage(packet);
 				requestMessage.setEos(eos);
 				this.channel.writeMessage(this.stream, requestMessage);
 				return;

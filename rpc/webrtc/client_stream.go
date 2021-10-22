@@ -152,7 +152,7 @@ func (s *ClientStream) writeMessage(m interface{}, eos bool) (err error) {
 
 	if len(data) == 0 {
 		return s.ch.writeMessage(s.stream, &webrtcpb.RequestMessage{
-			HasMessage: m != nil,
+			HasMessage: m != nil, // maybe no data but a non-nil message
 			PacketMessage: &webrtcpb.PacketMessage{
 				Eom: true,
 			},
@@ -173,7 +173,7 @@ func (s *ClientStream) writeMessage(m interface{}, eos bool) (err error) {
 			packet.Eom = true
 		}
 		if err := s.ch.writeMessage(s.stream, &webrtcpb.RequestMessage{
-			HasMessage:    m != nil,
+			HasMessage:    m != nil, // maybe no data but a non-nil message
 			PacketMessage: packet,
 			Eos:           eos,
 		}); err != nil {
