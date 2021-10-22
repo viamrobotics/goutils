@@ -247,6 +247,10 @@ func (s *ServerStream) processMessage(msg *webrtcpb.RequestMessage) {
 		return
 	}
 	if msg.HasMessage {
+		if msg.PacketMessage == nil {
+			s.logger.Error("expected RequestMessage.PacketMessgae to not be nil but it was")
+			return
+		}
 		data, eop := s.baseStream.processMessage(msg.PacketMessage)
 		if !eop {
 			return
