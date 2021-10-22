@@ -7,6 +7,7 @@ import (
 	"github.com/edaniels/golog"
 	"github.com/edaniels/gostream"
 	gwebrtc "github.com/edaniels/gostream/webrtc"
+	"github.com/pion/interceptor"
 	"github.com/pion/webrtc/v3"
 	"go.uber.org/multierr"
 
@@ -18,8 +19,32 @@ var DefaultWebRTCConfiguration = webrtc.Configuration{
 	ICEServers: gostream.DefaultICEServers,
 }
 
+func newWebRTCAPI(logger golog.Logger) (*webrtc.API, error) {
+	m := webrtc.MediaEngine{}
+	if err := m.RegisterDefaultCodecs(); err != nil {
+		return nil, err
+	}
+	i := interceptor.Registry{}
+	if err := webrtc.RegisterDefaultInterceptors(&m, &i); err != nil {
+		return nil, err
+	}
+
+	options := []func(a *webrtc.API){webrtc.WithMediaEngine(&m), webrtc.WithInterceptorRegistry(&i)}
+	if utils.Debug {
+		options = append(options, webrtc.WithSettingEngine(webrtc.SettingEngine{
+			LoggerFactory: gwebrtc.LoggerFactory{logger},
+		}))
+	}
+	return webrtc.NewAPI(options...), nil
+}
+
 func newPeerConnectionForClient(ctx context.Context, config webrtc.Configuration, logger golog.Logger) (pc *webrtc.PeerConnection, dc *webrtc.DataChannel, err error) {
-	pc, err = webrtc.NewPeerConnection(config)
+	webAPI, err := newWebRTCAPI(logger)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	pc, err = webAPI.NewPeerConnection(config)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -72,7 +97,12 @@ func newPeerConnectionForClient(ctx context.Context, config webrtc.Configuration
 }
 
 func newPeerConnectionForServer(ctx context.Context, sdp string, config webrtc.Configuration, logger golog.Logger) (pc *webrtc.PeerConnection, dc *webrtc.DataChannel, err error) {
-	pc, err = webrtc.NewPeerConnection(config)
+	webAPI, err := newWebRTCAPI(logger)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	pc, err = webAPI.NewPeerConnection(config)
 	if err != nil {
 		return nil, nil, err
 	}
