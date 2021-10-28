@@ -27,7 +27,7 @@ proto.proto.rpc.examples.echo.v1 = require('./echo_pb.js');
 /**
  * @param {string} hostname
  * @param {?Object} credentials
- * @param {?Object} options
+ * @param {?grpc.web.ClientOptions} options
  * @constructor
  * @struct
  * @final
@@ -35,7 +35,7 @@ proto.proto.rpc.examples.echo.v1 = require('./echo_pb.js');
 proto.proto.rpc.examples.echo.v1.EchoServiceClient =
     function(hostname, credentials, options) {
   if (!options) options = {};
-  options['format'] = 'text';
+  options.format = 'text';
 
   /**
    * @private @const {!grpc.web.GrpcWebClientBase} The client
@@ -53,7 +53,7 @@ proto.proto.rpc.examples.echo.v1.EchoServiceClient =
 /**
  * @param {string} hostname
  * @param {?Object} credentials
- * @param {?Object} options
+ * @param {?grpc.web.ClientOptions} options
  * @constructor
  * @struct
  * @final
@@ -61,7 +61,7 @@ proto.proto.rpc.examples.echo.v1.EchoServiceClient =
 proto.proto.rpc.examples.echo.v1.EchoServicePromiseClient =
     function(hostname, credentials, options) {
   if (!options) options = {};
-  options['format'] = 'text';
+  options.format = 'text';
 
   /**
    * @private @const {!grpc.web.GrpcWebClientBase} The client
@@ -99,30 +99,11 @@ const methodDescriptor_EchoService_Echo = new grpc.web.MethodDescriptor(
 
 
 /**
- * @const
- * @type {!grpc.web.AbstractClientBase.MethodInfo<
- *   !proto.proto.rpc.examples.echo.v1.EchoRequest,
- *   !proto.proto.rpc.examples.echo.v1.EchoResponse>}
- */
-const methodInfo_EchoService_Echo = new grpc.web.AbstractClientBase.MethodInfo(
-  proto.proto.rpc.examples.echo.v1.EchoResponse,
-  /**
-   * @param {!proto.proto.rpc.examples.echo.v1.EchoRequest} request
-   * @return {!Uint8Array}
-   */
-  function(request) {
-    return request.serializeBinary();
-  },
-  proto.proto.rpc.examples.echo.v1.EchoResponse.deserializeBinary
-);
-
-
-/**
  * @param {!proto.proto.rpc.examples.echo.v1.EchoRequest} request The
  *     request proto
  * @param {?Object<string, string>} metadata User defined
  *     call metadata
- * @param {function(?grpc.web.Error, ?proto.proto.rpc.examples.echo.v1.EchoResponse)}
+ * @param {function(?grpc.web.RpcError, ?proto.proto.rpc.examples.echo.v1.EchoResponse)}
  *     callback The callback function(error, response)
  * @return {!grpc.web.ClientReadableStream<!proto.proto.rpc.examples.echo.v1.EchoResponse>|undefined}
  *     The XHR Node Readable Stream
@@ -141,7 +122,7 @@ proto.proto.rpc.examples.echo.v1.EchoServiceClient.prototype.echo =
 /**
  * @param {!proto.proto.rpc.examples.echo.v1.EchoRequest} request The
  *     request proto
- * @param {?Object<string, string>} metadata User defined
+ * @param {?Object<string, string>=} metadata User defined
  *     call metadata
  * @return {!Promise<!proto.proto.rpc.examples.echo.v1.EchoResponse>}
  *     Promise that resolves to the response
@@ -179,27 +160,8 @@ const methodDescriptor_EchoService_EchoMultiple = new grpc.web.MethodDescriptor(
 
 
 /**
- * @const
- * @type {!grpc.web.AbstractClientBase.MethodInfo<
- *   !proto.proto.rpc.examples.echo.v1.EchoMultipleRequest,
- *   !proto.proto.rpc.examples.echo.v1.EchoMultipleResponse>}
- */
-const methodInfo_EchoService_EchoMultiple = new grpc.web.AbstractClientBase.MethodInfo(
-  proto.proto.rpc.examples.echo.v1.EchoMultipleResponse,
-  /**
-   * @param {!proto.proto.rpc.examples.echo.v1.EchoMultipleRequest} request
-   * @return {!Uint8Array}
-   */
-  function(request) {
-    return request.serializeBinary();
-  },
-  proto.proto.rpc.examples.echo.v1.EchoMultipleResponse.deserializeBinary
-);
-
-
-/**
  * @param {!proto.proto.rpc.examples.echo.v1.EchoMultipleRequest} request The request proto
- * @param {?Object<string, string>} metadata User defined
+ * @param {?Object<string, string>=} metadata User defined
  *     call metadata
  * @return {!grpc.web.ClientReadableStream<!proto.proto.rpc.examples.echo.v1.EchoMultipleResponse>}
  *     The XHR Node Readable Stream
@@ -216,7 +178,7 @@ proto.proto.rpc.examples.echo.v1.EchoServiceClient.prototype.echoMultiple =
 
 /**
  * @param {!proto.proto.rpc.examples.echo.v1.EchoMultipleRequest} request The request proto
- * @param {?Object<string, string>} metadata User defined
+ * @param {?Object<string, string>=} metadata User defined
  *     call metadata
  * @return {!grpc.web.ClientReadableStream<!proto.proto.rpc.examples.echo.v1.EchoMultipleResponse>}
  *     The XHR Node Readable Stream

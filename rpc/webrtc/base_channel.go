@@ -9,8 +9,9 @@ import (
 
 	"github.com/edaniels/golog"
 	"github.com/pion/webrtc/v3"
-	"go.viam.com/utils"
 	"google.golang.org/protobuf/proto"
+
+	"go.viam.com/utils"
 )
 
 // MaxMessageSize is the maximum size a gRPC message can be.
