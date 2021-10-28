@@ -17,7 +17,7 @@ build-web:
 buf:
 	buf lint
 	buf generate
-	buf generate --template ./etc/buf.web.gen.yaml buf.build/beta/googleapis
+	buf generate --template ./etc/buf.web.gen.yaml buf.build/googleapis/googleapis
 
 lint: goformat
 	go install google.golang.org/protobuf/cmd/protoc-gen-go \
