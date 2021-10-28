@@ -9,6 +9,7 @@ import (
 
 	"github.com/edaniels/golog"
 	"github.com/pion/webrtc/v3"
+	"go.viam.com/utils"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -16,15 +17,16 @@ import (
 var MaxMessageSize = 1 << 24
 
 type baseChannel struct {
-	mu           sync.Mutex
-	peerConn     *webrtc.PeerConnection
-	dataChannel  *webrtc.DataChannel
-	ctx          context.Context
-	cancel       func()
-	ready        chan struct{}
-	closed       bool
-	closedReason error
-	logger       golog.Logger
+	mu                      sync.Mutex
+	peerConn                *webrtc.PeerConnection
+	dataChannel             *webrtc.DataChannel
+	ctx                     context.Context
+	cancel                  func()
+	ready                   chan struct{}
+	closed                  bool
+	closedReason            error
+	activeBackgroundWorkers sync.WaitGroup
+	logger                  golog.Logger
 }
 
 func newBaseChannel(
@@ -76,13 +78,17 @@ func newBaseChannel(
 				onPeerDone()
 			}
 		default:
-			connInfo := getPeerConnectionStats(peerConn)
-			connID = connInfo.ID
-			logger.Debugw("connection state changed",
-				"conn_id", connID,
-				"conn_state", connectionState.String(),
-				"conn_remote_candidates", connInfo.RemoteCandidates,
-			)
+			ch.activeBackgroundWorkers.Add(1)
+			utils.PanicCapturingGo(func() {
+				defer ch.activeBackgroundWorkers.Done()
+				connInfo := getPeerConnectionStats(peerConn)
+				connID = connInfo.ID
+				logger.Debugw("connection state changed",
+					"conn_id", connID,
+					"conn_state", connectionState.String(),
+					"conn_remote_candidates", connInfo.RemoteCandidates,
+				)
+			})
 		}
 	})
 
@@ -102,6 +108,7 @@ func (ch *baseChannel) closeWithReason(err error) error {
 }
 
 func (ch *baseChannel) Close() error {
+	defer ch.activeBackgroundWorkers.Wait()
 	return ch.closeWithReason(nil)
 }
 

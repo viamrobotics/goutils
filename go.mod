@@ -5,10 +5,9 @@ go 1.16
 require (
 	cloud.google.com/go v0.82.0
 	cloud.google.com/go/storage v1.10.0
-	github.com/desertbit/timer v0.0.0-20180107155436-c41aec40b27f // indirect
 	github.com/edaniels/golinters v0.0.5-0.20210512224240-495d3b8eed19
 	github.com/edaniels/golog v0.0.0-20210326173913-16d408aa7a5e
-	github.com/edaniels/gostream v0.0.0-20211028002140-c8ce95acf924
+	github.com/edaniels/gostream v0.0.0-20211028013936-a24d86b4208f
 	github.com/fatih/color v1.10.0
 	github.com/fsnotify/fsnotify v1.4.9
 	github.com/fullstorydev/grpcurl v1.8.0
@@ -37,7 +36,6 @@ require (
 	google.golang.org/grpc v1.38.0
 	google.golang.org/grpc/cmd/protoc-gen-go-grpc v1.1.0
 	google.golang.org/protobuf v1.26.0
-	nhooyr.io/websocket v1.8.7 // indirect
 )
 
 replace github.com/pion/mediadevices => github.com/edaniels/mediadevices v0.0.0-20211022001911-e8e6d6110b1b
