@@ -8,7 +8,7 @@ export async function newPeerConnectionForClient(rtcConfig?: RTCConfiguration): 
 		rtcConfig = {
 			iceServers: [
 				{
-					urls: 'stun:stun.viam.cloud'
+					urls: "stun:global.stun.twilio.com:3478?transport=udp"
 				},
 			]
 		};
