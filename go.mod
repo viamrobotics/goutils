@@ -7,7 +7,7 @@ require (
 	cloud.google.com/go/storage v1.10.0
 	github.com/edaniels/golinters v0.0.5-0.20210512224240-495d3b8eed19
 	github.com/edaniels/golog v0.0.0-20210326173913-16d408aa7a5e
-	github.com/edaniels/gostream v0.0.0-20211028013936-a24d86b4208f
+	github.com/edaniels/gostream v0.0.0-20211101155142-5bfb2de65732
 	github.com/fatih/color v1.10.0
 	github.com/fsnotify/fsnotify v1.4.9
 	github.com/fullstorydev/grpcurl v1.8.0
@@ -27,9 +27,8 @@ require (
 	go.uber.org/zap v1.19.1
 	go.viam.com/test v1.1.0
 	goji.io v2.0.2+incompatible
-	golang.org/x/net v0.0.0-20211020060615-d418f374d309
+	golang.org/x/net v0.0.0-20211029224645-99673261e6eb
 	golang.org/x/oauth2 v0.0.0-20210615190721-d04028783cf1
-	golang.org/x/text v0.3.7 // indirect
 	golang.org/x/tools v0.1.7
 	google.golang.org/api v0.46.0
 	google.golang.org/genproto v0.0.0-20210617175327-b9e0b3197ced
@@ -37,5 +36,3 @@ require (
 	google.golang.org/grpc/cmd/protoc-gen-go-grpc v1.1.0
 	google.golang.org/protobuf v1.26.0
 )
-
-replace github.com/pion/mediadevices => github.com/edaniels/mediadevices v0.0.0-20211022001911-e8e6d6110b1b
