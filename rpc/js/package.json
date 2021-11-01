@@ -7,6 +7,7 @@
     "google-protobuf": "^3.14.0"
   },
   "devDependencies": {
+    "set-value": ">=4.0.1",
     "@types/google-protobuf": "^3.7.4",
     "ts-loader": "^8.0.14",
     "ts-protoc-gen": "^0.14.0",
