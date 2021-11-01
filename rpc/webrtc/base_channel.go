@@ -51,6 +51,7 @@ func newBaseChannel(
 	dataChannel.OnError(ch.onChannelError)
 
 	var connID string
+	var connIDMu sync.Mutex
 	var peerDoneOnce bool
 	peerConn.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
 		ch.mu.Lock()
@@ -67,11 +68,14 @@ func newBaseChannel(
 		case webrtc.ICEConnectionStateDisconnected,
 			webrtc.ICEConnectionStateFailed,
 			webrtc.ICEConnectionStateClosed:
-			if connID == "" { // make sure we've gathered information before
+			connIDMu.Lock()
+			currConnID := connID
+			connIDMu.Unlock()
+			if currConnID == "" { // make sure we've gathered information before
 				return
 			}
 			logger.Debugw("connection state changed",
-				"conn_id", connID,
+				"conn_id", currConnID,
 				"conn_state", connectionState.String(),
 			)
 			if !peerDoneOnce && onPeerDone != nil {
@@ -83,7 +87,9 @@ func newBaseChannel(
 			utils.PanicCapturingGo(func() {
 				defer ch.activeBackgroundWorkers.Done()
 				connInfo := getPeerConnectionStats(peerConn)
+				connIDMu.Lock()
 				connID = connInfo.ID
+				connIDMu.Unlock()
 				logger.Debugw("connection state changed",
 					"conn_id", connID,
 					"conn_state", connectionState.String(),
