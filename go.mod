@@ -212,3 +212,6 @@ require (
 	mvdan.cc/unparam v0.0.0-20210104141923-aac4ce9116a7 // indirect
 	nhooyr.io/websocket v1.8.7 // indirect
 )
+
+// vulns
+require github.com/gin-gonic/gin v1.7.0 // indirect
