@@ -1,7 +1,7 @@
 goformat:
 	go install golang.org/x/tools/cmd/goimports
 	gofmt -s -w .
-	goimports -w -local=go.viam.com/utils `go list -f '{{.Dir}}' ./... | grep -Ev "proto"`
+	`go env GOPATH`/bin/goimports -w -local=go.viam.com/utils `go list -f '{{.Dir}}' ./... | grep -Ev "proto"`
 
 format: goformat
 
