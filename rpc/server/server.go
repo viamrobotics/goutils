@@ -102,6 +102,10 @@ type Options struct {
 	WebRTC            WebRTCOptions
 	UnaryInterceptor  grpc.UnaryServerInterceptor
 	StreamInterceptor grpc.StreamServerInterceptor
+
+	// Debug is helpful to turn on when the library isn't working quite right.
+	// It will output much more logs.
+	Debug bool
 }
 
 // WebRTCOptions control how WebRTC is utilized in a server.
@@ -148,10 +152,10 @@ func NewWithListener(
 		unaryInterceptors = append(unaryInterceptors, opts.UnaryInterceptor)
 		serverOpts = append(serverOpts, grpc.UnaryInterceptor(opts.UnaryInterceptor))
 	}
-	unaryInterceptors = append(unaryInterceptors,
-		grpc_zap.UnaryServerInterceptor(logger.Desugar()),
-		grpc_recovery.UnaryServerInterceptor(),
-	)
+	unaryInterceptors = append(unaryInterceptors, grpc_recovery.UnaryServerInterceptor())
+	if opts.Debug || utils.Debug {
+		unaryInterceptors = append(unaryInterceptors, grpc_zap.UnaryServerInterceptor(logger.Desugar()))
+	}
 	serverOpts = append(serverOpts, grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(unaryInterceptors...)))
 
 	var streamInterceptors []grpc.StreamServerInterceptor
@@ -159,9 +163,10 @@ func NewWithListener(
 		streamInterceptors = append(streamInterceptors, opts.StreamInterceptor)
 		serverOpts = append(serverOpts, grpc.StreamInterceptor(opts.StreamInterceptor))
 	}
-	streamInterceptors = append(streamInterceptors,
-		grpc_zap.StreamServerInterceptor(logger.Desugar()),
-		grpc_recovery.StreamServerInterceptor())
+	streamInterceptors = append(streamInterceptors, grpc_recovery.StreamServerInterceptor())
+	if opts.Debug || utils.Debug {
+		streamInterceptors = append(streamInterceptors, grpc_zap.StreamServerInterceptor(logger.Desugar()))
+	}
 	serverOpts = append(serverOpts, grpc.StreamInterceptor(grpc_middleware.ChainStreamServer(streamInterceptors...)))
 
 	grpcServer := grpc.NewServer(
