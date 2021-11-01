@@ -28,12 +28,11 @@ jobs:
         git add .
         chown -R testbot .
         sudo -u testbot bash -lc 'make build goformat'
-        git checkout rpc/examples/echo/frontend/dist rpc/js/dist
+        git checkout rpc/examples/echo/frontend/dist rpc/js/dist dist/js
         GEN_DIFF=$(git diff)
         if [ -n "$GEN_DIFF" ]; then
             echo '"make build goformat" resulted in changes not in git' 1>&2
             git status
-            echo $GEN_DIFF
             exit 1
         fi
 
