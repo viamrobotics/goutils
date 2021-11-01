@@ -5,8 +5,6 @@ import (
 	"io"
 
 	"github.com/edaniels/golog"
-	"github.com/edaniels/gostream"
-	gwebrtc "github.com/edaniels/gostream/webrtc"
 	"github.com/pion/interceptor"
 	"github.com/pion/webrtc/v3"
 	"go.uber.org/multierr"
@@ -14,9 +12,20 @@ import (
 	"go.viam.com/utils"
 )
 
+var (
+	// DefaultICEServers is the default set of ICE servers to use for WebRTC session negotiation.
+	// There is no guarantee that the defaults here will remain usable.
+	DefaultICEServers = []webrtc.ICEServer{
+		// feel free to use your own ICE servers
+		{
+			URLs: []string{"stun:global.stun.twilio.com:3478?transport=udp"},
+		},
+	}
+)
+
 // DefaultWebRTCConfiguration is the standard configuration used for WebRTC peers.
 var DefaultWebRTCConfiguration = webrtc.Configuration{
-	ICEServers: gostream.DefaultICEServers,
+	ICEServers: DefaultICEServers,
 }
 
 func newWebRTCAPI(logger golog.Logger) (*webrtc.API, error) {
@@ -32,7 +41,7 @@ func newWebRTCAPI(logger golog.Logger) (*webrtc.API, error) {
 	options := []func(a *webrtc.API){webrtc.WithMediaEngine(&m), webrtc.WithInterceptorRegistry(&i)}
 	if utils.Debug {
 		options = append(options, webrtc.WithSettingEngine(webrtc.SettingEngine{
-			LoggerFactory: gwebrtc.LoggerFactory{logger},
+			LoggerFactory: LoggerFactory{logger},
 		}))
 	}
 	return webrtc.NewAPI(options...), nil
@@ -127,7 +136,7 @@ func newPeerConnectionForServer(ctx context.Context, sdp string, config webrtc.C
 	dataChannel.OnError(initialDataChannelOnError(pc, logger))
 
 	offer := webrtc.SessionDescription{}
-	if err := gwebrtc.DecodeSDP(sdp, &offer); err != nil {
+	if err := DecodeSDP(sdp, &offer); err != nil {
 		return pc, dataChannel, err
 	}
 

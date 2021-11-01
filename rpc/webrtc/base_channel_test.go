@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/edaniels/golog"
-	gwebrtc "github.com/edaniels/gostream/webrtc"
 	"github.com/pion/webrtc/v3"
 	"go.viam.com/test"
 	"google.golang.org/grpc/status"
@@ -21,7 +20,7 @@ func setupPeers(t *testing.T) (client, server *webrtc.PeerConnection, clientDc, 
 	pc1, dc1, err := newPeerConnectionForClient(context.Background(), webrtc.Configuration{}, logger)
 	test.That(t, err, test.ShouldBeNil)
 
-	encodedSDP, err := gwebrtc.EncodeSDP(pc1.LocalDescription())
+	encodedSDP, err := EncodeSDP(pc1.LocalDescription())
 	test.That(t, err, test.ShouldBeNil)
 
 	pc2, dc2, err := newPeerConnectionForServer(context.Background(), encodedSDP, webrtc.Configuration{}, logger)

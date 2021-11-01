@@ -2,6 +2,8 @@ package rpcwebrtc
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -9,7 +11,6 @@ import (
 	"time"
 
 	"github.com/edaniels/golog"
-	gwebrtc "github.com/edaniels/gostream/webrtc"
 	"github.com/pion/webrtc/v3"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc/codes"
@@ -274,7 +275,7 @@ func (ans *SignalingAnswerer) answer() (err error) {
 		}
 	}()
 
-	encodedSDP, err := gwebrtc.EncodeSDP(pc.LocalDescription())
+	encodedSDP, err := EncodeSDP(pc.LocalDescription())
 	if err != nil {
 		return ans.client.Send(&webrtcpb.AnswerResponse{
 			Status: ErrorToStatus(err).Proto(),
@@ -288,4 +289,26 @@ func (ans *SignalingAnswerer) answer() (err error) {
 		Status: ErrorToStatus(nil).Proto(),
 		Sdp:    encodedSDP,
 	})
+}
+
+// Adapted from https://github.com/pion/webrtc/blob/master/examples/internal/signal/signal.go
+
+// EncodeSDP encodes the given SDP in base64.
+func EncodeSDP(sdp *webrtc.SessionDescription) (string, error) {
+	b, err := json.Marshal(sdp)
+	if err != nil {
+		return "", err
+	}
+
+	return base64.StdEncoding.EncodeToString(b), nil
+}
+
+// DecodeSDP decodes the input from base64 into the given SDP.
+func DecodeSDP(in string, sdp *webrtc.SessionDescription) error {
+	b, err := base64.StdEncoding.DecodeString(in)
+	if err != nil {
+		return err
+	}
+
+	return json.Unmarshal(b, sdp)
 }

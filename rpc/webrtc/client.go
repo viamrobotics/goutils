@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/edaniels/golog"
-	gwebrtc "github.com/edaniels/gostream/webrtc"
 	"github.com/pion/webrtc/v3"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc/codes"
@@ -77,7 +76,7 @@ func Dial(ctx context.Context, address string, opts Options, logger golog.Logger
 		}
 	}()
 
-	encodedSDP, err := gwebrtc.EncodeSDP(pc.LocalDescription())
+	encodedSDP, err := EncodeSDP(pc.LocalDescription())
 	if err != nil {
 		return nil, err
 	}
@@ -93,7 +92,7 @@ func Dial(ctx context.Context, address string, opts Options, logger golog.Logger
 	}
 
 	answer := webrtc.SessionDescription{}
-	if err := gwebrtc.DecodeSDP(answerResp.Sdp, &answer); err != nil {
+	if err := DecodeSDP(answerResp.Sdp, &answer); err != nil {
 		return nil, err
 	}
 
