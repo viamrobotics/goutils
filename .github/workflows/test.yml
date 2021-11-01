@@ -24,13 +24,10 @@ jobs:
 
     - name: Verify no uncommitted changes from build
       run: |
-        go install google.golang.org/protobuf/cmd/protoc-gen-go \
-          google.golang.org/grpc/cmd/protoc-gen-go-grpc \
-          github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway \
-          github.com/pseudomuto/protoc-gen-doc/cmd/protoc-gen-doc
         git init
         git add .
-        make build goformat
+        chown -R testbot .
+        sudo -u testbot bash -lc 'make build goformat'
         git checkout rpc/examples/echo/frontend/dist rpc/js/dist
         GEN_DIFF=$(git diff)
         if [ -n "$GEN_DIFF" ]; then
@@ -41,7 +38,7 @@ jobs:
 
     - name: Lint
       run: |
-        make lint
+        sudo -u testbot bash -lc 'make lint'
 
     - name: Test
       env:
@@ -50,7 +47,7 @@ jobs:
       run: |
         echo "$ARTIFACT_GOOGLE_APPLICATION_CREDENTIALS" | base64 -d > artifact_google_creds.json
         export ARTIFACT_GOOGLE_APPLICATION_CREDENTIALS=`pwd`/artifact_google_creds.json
-        make cover
+        sudo -u testbot bash -lc 'make cover'
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v1
