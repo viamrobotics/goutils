@@ -91,7 +91,7 @@ func newBaseChannel(
 				connID = connInfo.ID
 				connIDMu.Unlock()
 				logger.Debugw("connection state changed",
-					"conn_id", connID,
+					"conn_id", connInfo.ID,
 					"conn_state", connectionState.String(),
 					"conn_remote_candidates", connInfo.RemoteCandidates,
 				)
