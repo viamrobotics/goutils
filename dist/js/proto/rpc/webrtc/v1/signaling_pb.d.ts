@@ -45,9 +45,44 @@ export namespace CallResponse {
   }
 }
 
+export class ICEServer extends jspb.Message {
+  clearUrlsList(): void;
+  getUrlsList(): Array<string>;
+  setUrlsList(value: Array<string>): void;
+  addUrls(value: string, index?: number): string;
+
+  getUsername(): string;
+  setUsername(value: string): void;
+
+  getCredential(): string;
+  setCredential(value: string): void;
+
+  serializeBinary(): Uint8Array;
+  toObject(includeInstance?: boolean): ICEServer.AsObject;
+  static toObject(includeInstance: boolean, msg: ICEServer): ICEServer.AsObject;
+  static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+  static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+  static serializeBinaryToWriter(message: ICEServer, writer: jspb.BinaryWriter): void;
+  static deserializeBinary(bytes: Uint8Array): ICEServer;
+  static deserializeBinaryFromReader(message: ICEServer, reader: jspb.BinaryReader): ICEServer;
+}
+
+export namespace ICEServer {
+  export type AsObject = {
+    urlsList: Array<string>,
+    username: string,
+    credential: string,
+  }
+}
+
 export class AnswerRequest extends jspb.Message {
   getSdp(): string;
   setSdp(value: string): void;
+
+  clearAdditionalIceServersList(): void;
+  getAdditionalIceServersList(): Array<ICEServer>;
+  setAdditionalIceServersList(value: Array<ICEServer>): void;
+  addAdditionalIceServers(value?: ICEServer, index?: number): ICEServer;
 
   serializeBinary(): Uint8Array;
   toObject(includeInstance?: boolean): AnswerRequest.AsObject;
@@ -62,6 +97,7 @@ export class AnswerRequest extends jspb.Message {
 export namespace AnswerRequest {
   export type AsObject = {
     sdp: string,
+    additionalIceServersList: Array<ICEServer.AsObject>,
   }
 }
 

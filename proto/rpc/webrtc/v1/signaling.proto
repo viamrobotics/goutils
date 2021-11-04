@@ -34,10 +34,18 @@ message CallResponse {
 	string sdp = 1;
 }
 
+// ICEServer describes an ICE server.
+message ICEServer {
+	repeated string urls = 1;
+	string username = 2;
+	string credential = 3;
+}
+
 // AnswerRequest is the SDP offer that the controlling side is making via the answering
 // stream.
 message AnswerRequest {
 	string sdp = 1;
+	repeated ICEServer additional_ice_servers = 2;
 }
 
 // AnswerResponse is the SDP answer that an answerer responds with.

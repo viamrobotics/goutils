@@ -262,7 +262,21 @@ func (ans *SignalingAnswerer) answer() (err error) {
 		return err
 	}
 
-	pc, dc, err := newPeerConnectionForServer(ans.closeCtx, resp.Sdp, ans.webrtcConfig, ans.logger)
+	configCopy := ans.webrtcConfig
+	if len(resp.AdditionalIceServers) > 0 {
+		iceServers := make([]webrtc.ICEServer, len(ans.webrtcConfig.ICEServers)+len(resp.AdditionalIceServers))
+		copy(iceServers, ans.webrtcConfig.ICEServers)
+		for _, server := range resp.AdditionalIceServers {
+			iceServers = append(iceServers, webrtc.ICEServer{
+				URLs:       server.Urls,
+				Username:   server.Username,
+				Credential: server.Credential,
+			})
+		}
+		configCopy.ICEServers = iceServers
+	}
+
+	pc, dc, err := newPeerConnectionForServer(ans.closeCtx, resp.Sdp, configCopy, ans.logger)
 	if err != nil {
 		return ans.client.Send(&webrtcpb.AnswerResponse{
 			Status: ErrorToStatus(err).Proto(),

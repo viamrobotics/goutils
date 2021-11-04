@@ -292,6 +292,10 @@
                   <a href="#proto.rpc.webrtc.v1.CallResponse"><span class="badge">M</span>CallResponse</a>
                 </li>
               
+                <li>
+                  <a href="#proto.rpc.webrtc.v1.ICEServer"><span class="badge">M</span>ICEServer</a>
+                </li>
+              
               
               
               
@@ -936,6 +940,13 @@
                   <td><p> </p></td>
                 </tr>
               
+                <tr>
+                  <td>additional_ice_servers</td>
+                  <td><a href="#proto.rpc.webrtc.v1.ICEServer">ICEServer</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -1010,6 +1021,44 @@
               
                 <tr>
                   <td>sdp</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="proto.rpc.webrtc.v1.ICEServer">ICEServer</h3>
+        <p>ICEServer describes an ICE server.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>urls</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>username</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>credential</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p> </p></td>
