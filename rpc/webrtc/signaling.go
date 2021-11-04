@@ -79,6 +79,7 @@ type hostICEServers struct {
 	Expires time.Time
 }
 
+// TODO(erd): implement pruning
 func (srv *SignalingServer) additionalICEServers(ctx context.Context, host string) ([]*webrtcpb.ICEServer, error) {
 	if srv.webrtcConfigProvider == nil {
 		return nil, nil
@@ -117,6 +118,9 @@ func (srv *SignalingServer) Answer(server webrtcpb.SignalingService_AnswerServer
 			return err
 		}
 		iceServers, err := srv.additionalICEServers(ctx, host)
+		if err != nil {
+			return err
+		}
 		if err := server.Send(&webrtcpb.AnswerRequest{Sdp: offer.SDP(), AdditionalIceServers: iceServers}); err != nil {
 			return err
 		}
