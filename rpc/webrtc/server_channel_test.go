@@ -32,7 +32,7 @@ func TestServerChannel(t *testing.T) {
 	server := NewServer(logger)
 	// use signaling server just as some random service to test against.
 	// It helps that it is in our package.
-	signalServer := NewSignalingServer(NewMemoryCallQueue())
+	signalServer := NewSignalingServer(NewMemoryCallQueue(), nil)
 	server.RegisterService(
 		&webrtcpb.SignalingService_ServiceDesc,
 		signalServer,

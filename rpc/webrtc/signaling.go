@@ -30,16 +30,20 @@ import (
 // the two parties.
 type SignalingServer struct {
 	webrtcpb.UnimplementedSignalingServiceServer
-	callQueue CallQueue
+	mu                   sync.RWMutex
+	callQueue            CallQueue
+	hostICEServers       map[string]hostICEServers
+	webrtcConfigProvider ConfigProvider
 }
 
 // NewSignalingServer makes a new signaling server that uses an in memory
 // call queue and looks routes based on a given robot host.
-// TODO(https://github.com/viamrobotics/core/issues/79): abstraction to be able to use
-// MongoDB as a distributed call queue. This will enable many signaling services to
-// run acting as effectively operators on as switchboard.
-func NewSignalingServer(callQueue CallQueue) *SignalingServer {
-	return &SignalingServer{callQueue: callQueue}
+func NewSignalingServer(callQueue CallQueue, webrtcConfigProvider ConfigProvider) *SignalingServer {
+	return &SignalingServer{
+		callQueue:            callQueue,
+		hostICEServers:       map[string]hostICEServers{},
+		webrtcConfigProvider: webrtcConfigProvider,
+	}
 }
 
 // RPCHostMetadataField is the identifier of a host.
@@ -70,6 +74,34 @@ func (srv *SignalingServer) Call(ctx context.Context, req *webrtcpb.CallRequest)
 	return &webrtcpb.CallResponse{Sdp: respSDP}, nil
 }
 
+type hostICEServers struct {
+	Servers []*webrtcpb.ICEServer
+	Expires time.Time
+}
+
+func (srv *SignalingServer) additionalICEServers(ctx context.Context, host string) ([]*webrtcpb.ICEServer, error) {
+	if srv.webrtcConfigProvider == nil {
+		return nil, nil
+	}
+	srv.mu.RLock()
+	hostServers := srv.hostICEServers[host]
+	srv.mu.RUnlock()
+	if time.Now().Before(hostServers.Expires) {
+		return hostServers.Servers, nil
+	}
+	config, err := srv.webrtcConfigProvider.Config(ctx)
+	if err != nil {
+		return nil, err
+	}
+	srv.mu.Lock()
+	srv.hostICEServers[host] = hostICEServers{
+		Servers: config.ICEServers,
+		Expires: config.Expires,
+	}
+	srv.mu.Unlock()
+	return config.ICEServers, nil
+}
+
 // Answer listens on call/offer queue forever responding with SDPs to agreed to calls.
 // TODO(https://github.com/viamrobotics/core/issues/104): This should be authorized for robots only.
 func (srv *SignalingServer) Answer(server webrtcpb.SignalingService_AnswerServer) error {
@@ -84,25 +116,23 @@ func (srv *SignalingServer) Answer(server webrtcpb.SignalingService_AnswerServer
 		if err != nil {
 			return err
 		}
-		ans, cont := func() (CallAnswer, bool) {
-			if err := server.Send(&webrtcpb.AnswerRequest{Sdp: offer.SDP()}); err != nil {
-				return CallAnswer{Err: err}, false
-			}
-			answer, err := server.Recv()
-			if err != nil {
-				return CallAnswer{Err: err}, false
-			}
-			respStatus := status.FromProto(answer.Status)
-			if respStatus.Code() != codes.OK {
-				return CallAnswer{Err: respStatus.Err()}, true
-			}
-			return CallAnswer{SDP: answer.Sdp}, true
-		}()
-		if err := offer.Respond(ctx, ans); err != nil {
+		iceServers, err := srv.additionalICEServers(ctx, host)
+		if err := server.Send(&webrtcpb.AnswerRequest{Sdp: offer.SDP(), AdditionalIceServers: iceServers}); err != nil {
 			return err
 		}
-		if !cont {
-			return ans.Err
+		answer, err := server.Recv()
+		if err != nil {
+			return err
+		}
+		respStatus := status.FromProto(answer.Status)
+		var ans CallAnswer
+		if respStatus.Code() == codes.OK {
+			ans = CallAnswer{SDP: answer.Sdp}
+		} else {
+			ans = CallAnswer{Err: respStatus.Err()}
+		}
+		if err := offer.Respond(ctx, ans); err != nil {
+			return err
 		}
 	}
 }

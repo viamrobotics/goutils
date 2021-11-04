@@ -23,7 +23,7 @@ func TestSignaling(t *testing.T) {
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
 
-	signalingServer := rpcwebrtc.NewSignalingServer(rpcwebrtc.NewMemoryCallQueue())
+	signalingServer := rpcwebrtc.NewSignalingServer(rpcwebrtc.NewMemoryCallQueue(), nil)
 
 	grpcListener, err := net.Listen("tcp", "localhost:0")
 	test.That(t, err, test.ShouldBeNil)
