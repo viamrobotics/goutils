@@ -18,7 +18,7 @@ require (
 	github.com/miekg/dns v1.1.35
 	github.com/pion/interceptor v0.1.0
 	github.com/pion/logging v0.2.2
-	github.com/pion/webrtc/v3 v3.1.8-0.20211105174927-7fa0f0abddf1
+	github.com/pion/webrtc/v3 v3.1.7
 	github.com/polyfloyd/go-errorlint v0.0.0-20201127212506-19bd8db6546f
 	github.com/pseudomuto/protoc-gen-doc v1.3.2
 	go.mongodb.org/mongo-driver v1.5.3
