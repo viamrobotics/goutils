@@ -103,8 +103,8 @@ func (queue *MongoDBCallQueue) SendOffer(ctx context.Context, host, sdp string) 
 
 	// need to watch before insertion to avoid a race
 	csNext, csNextCancel := mongoutils.ChangeStreamNextBackground(ctx, cs)
-	defer csNextCancel()
 	defer func() { <-csNext }()
+	defer csNextCancel()
 
 	call.StartedAt = time.Now()
 	if _, err := queue.coll.InsertOne(ctx, call); err != nil {
@@ -147,8 +147,8 @@ func (queue *MongoDBCallQueue) RecvOffer(ctx context.Context, host string) (Call
 	}()
 
 	csNext, csNextCancel := mongoutils.ChangeStreamNextBackground(ctx, cs)
-	defer csNextCancel()
 	defer func() { <-csNext }()
+	defer csNextCancel()
 
 	// but also check first if there is anything for us.
 	// It is okay if we find something that someone else is working on answering
