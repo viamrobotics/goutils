@@ -25,6 +25,8 @@ import (
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/improbable-eng/grpc-web/go/grpcweb"
 	"go.uber.org/multierr"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"golang.org/x/net/http2/h2c"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/keepalive"
@@ -147,27 +149,28 @@ func NewWithListener(
 			MinTime: rpc.KeepAliveTime,
 		}),
 	}
+
+	grpcLogger := logger.Desugar()
+	if !(opts.Debug || utils.Debug) {
+		grpcLogger = grpcLogger.WithOptions(zap.IncreaseLevel(zap.LevelEnablerFunc(zapcore.ErrorLevel.Enabled)))
+	}
 	var unaryInterceptors []grpc.UnaryServerInterceptor
 	if opts.UnaryInterceptor != nil {
 		unaryInterceptors = append(unaryInterceptors, opts.UnaryInterceptor)
-		serverOpts = append(serverOpts, grpc.UnaryInterceptor(opts.UnaryInterceptor))
 	}
 	unaryInterceptors = append(unaryInterceptors, grpc_recovery.UnaryServerInterceptor())
-	if opts.Debug || utils.Debug {
-		unaryInterceptors = append(unaryInterceptors, grpc_zap.UnaryServerInterceptor(logger.Desugar()))
-	}
-	serverOpts = append(serverOpts, grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(unaryInterceptors...)))
+	unaryInterceptors = append(unaryInterceptors, grpc_zap.UnaryServerInterceptor(grpcLogger))
+	unaryInterceptor := grpc_middleware.ChainUnaryServer(unaryInterceptors...)
+	serverOpts = append(serverOpts, grpc.UnaryInterceptor(unaryInterceptor))
 
 	var streamInterceptors []grpc.StreamServerInterceptor
 	if opts.StreamInterceptor != nil {
 		streamInterceptors = append(streamInterceptors, opts.StreamInterceptor)
-		serverOpts = append(serverOpts, grpc.StreamInterceptor(opts.StreamInterceptor))
 	}
 	streamInterceptors = append(streamInterceptors, grpc_recovery.StreamServerInterceptor())
-	if opts.Debug || utils.Debug {
-		streamInterceptors = append(streamInterceptors, grpc_zap.StreamServerInterceptor(logger.Desugar()))
-	}
-	serverOpts = append(serverOpts, grpc.StreamInterceptor(grpc_middleware.ChainStreamServer(streamInterceptors...)))
+	streamInterceptors = append(streamInterceptors, grpc_zap.StreamServerInterceptor(grpcLogger))
+	streamInterceptor := grpc_middleware.ChainStreamServer(streamInterceptors...)
+	serverOpts = append(serverOpts, grpc.StreamInterceptor(streamInterceptor))
 
 	grpcServer := grpc.NewServer(
 		serverOpts...,
@@ -208,8 +211,8 @@ func NewWithListener(
 	if opts.WebRTC.Enable {
 		server.webrtcServer = rpcwebrtc.NewServerWithInterceptors(
 			logger,
-			opts.UnaryInterceptor,
-			opts.StreamInterceptor,
+			unaryInterceptor,
+			streamInterceptor,
 		)
 		address := opts.WebRTC.SignalingAddress
 		if address == "" {
