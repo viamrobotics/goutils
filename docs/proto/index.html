@@ -214,6 +214,29 @@
         
           
           <li>
+            <a href="#proto%2frpc%2fexamples%2ffileupload%2fv1%2ffileupload.proto">proto/rpc/examples/fileupload/v1/fileupload.proto</a>
+            <ul>
+              
+                <li>
+                  <a href="#proto.rpc.examples.fileupload.v1.UploadFileRequest"><span class="badge">M</span>UploadFileRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#proto.rpc.examples.fileupload.v1.UploadFileResponse"><span class="badge">M</span>UploadFileResponse</a>
+                </li>
+              
+              
+              
+              
+                <li>
+                  <a href="#proto.rpc.examples.fileupload.v1.FileUploadService"><span class="badge">S</span>FileUploadService</a>
+                </li>
+              
+            </ul>
+          </li>
+        
+          
+          <li>
             <a href="#proto%2frpc%2fwebrtc%2fv1%2fgrpc.proto">proto/rpc/webrtc/v1/grpc.proto</a>
             <ul>
               
@@ -528,6 +551,102 @@
             </tbody>
           </table>
           
+        
+    
+      
+      <div class="file-heading">
+        <h2 id="proto/rpc/examples/fileupload/v1/fileupload.proto">proto/rpc/examples/fileupload/v1/fileupload.proto</h2><a href="#title">Top</a>
+      </div>
+      <p></p>
+
+      
+        <h3 id="proto.rpc.examples.fileupload.v1.UploadFileRequest">UploadFileRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>chunk_data</td>
+                  <td><a href="#bytes">bytes</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="proto.rpc.examples.fileupload.v1.UploadFileResponse">UploadFileResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>size</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+
+      
+
+      
+
+      
+        <h3 id="proto.rpc.examples.fileupload.v1.FileUploadService">FileUploadService</h3>
+        <p></p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Method Name</td><td>Request Type</td><td>Response Type</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>UploadFile</td>
+                <td><a href="#proto.rpc.examples.fileupload.v1.UploadFileRequest">UploadFileRequest</a> stream</td>
+                <td><a href="#proto.rpc.examples.fileupload.v1.UploadFileResponse">UploadFileResponse</a> stream</td>
+                <td><p>Due to an issue described by https://github.com/improbable-eng/ts-protoc-gen/pull/264
+we use a streaming response but only expect one response.</p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+
         
     
       

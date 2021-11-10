@@ -8,7 +8,7 @@ This example server demonstrates how to run gRPC accessible via `grpc`, `grpc-we
 
 ## Run
 
-`go run main.go`
+`make run`
 
 ## Using
 

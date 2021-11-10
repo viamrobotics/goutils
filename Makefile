@@ -13,6 +13,7 @@ build-go:
 build-web:
 	cd rpc/js && npm install && npx webpack
 	cd rpc/examples/echo/frontend && npm install && npx webpack
+	cd rpc/examples/fileupload/frontend && npm install && npx webpack
 
 buf:
 	buf lint
