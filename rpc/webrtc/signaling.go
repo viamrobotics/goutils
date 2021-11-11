@@ -36,7 +36,7 @@ type SignalingServer struct {
 	webrtcConfigProvider ConfigProvider
 }
 
-// NewSignalingServer makes a new signaling server that uses an in memory
+// NewSignalingServer makes a new signaling server that uses the given
 // call queue and looks routes based on a given robot host.
 func NewSignalingServer(callQueue CallQueue, webrtcConfigProvider ConfigProvider) *SignalingServer {
 	return &SignalingServer{
@@ -103,14 +103,24 @@ func (srv *SignalingServer) additionalICEServers(ctx context.Context, host strin
 	return config.ICEServers, nil
 }
 
+// Note: We expect but do not enforce one host for one answer. If this is not true, a race
+// can happen where we may double fetch additional ICE servers.
+func (srv *SignalingServer) clearAdditionalICEServers(host string) {
+	srv.mu.Lock()
+	delete(srv.hostICEServers, host)
+	srv.mu.Unlock()
+}
+
 // Answer listens on call/offer queue forever responding with SDPs to agreed to calls.
 // TODO(https://github.com/viamrobotics/core/issues/104): This should be authorized for robots only.
+// Note: We expect but do not enforce one host for one answer.
 func (srv *SignalingServer) Answer(server webrtcpb.SignalingService_AnswerServer) error {
 	ctx := server.Context()
 	host, err := hostFromCtx(ctx)
 	if err != nil {
 		return err
 	}
+	defer srv.clearAdditionalICEServers(host)
 
 	for {
 		offer, err := srv.callQueue.RecvOffer(ctx, host)
