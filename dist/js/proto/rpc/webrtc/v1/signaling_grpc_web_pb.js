@@ -138,5 +138,66 @@ proto.proto.rpc.webrtc.v1.SignalingServicePromiseClient.prototype.call =
 };
 
 
+/**
+ * @const
+ * @type {!grpc.web.MethodDescriptor<
+ *   !proto.proto.rpc.webrtc.v1.OptionalWebRTCConfigRequest,
+ *   !proto.proto.rpc.webrtc.v1.OptionalWebRTCConfigResponse>}
+ */
+const methodDescriptor_SignalingService_OptionalWebRTCConfig = new grpc.web.MethodDescriptor(
+  '/proto.rpc.webrtc.v1.SignalingService/OptionalWebRTCConfig',
+  grpc.web.MethodType.UNARY,
+  proto.proto.rpc.webrtc.v1.OptionalWebRTCConfigRequest,
+  proto.proto.rpc.webrtc.v1.OptionalWebRTCConfigResponse,
+  /**
+   * @param {!proto.proto.rpc.webrtc.v1.OptionalWebRTCConfigRequest} request
+   * @return {!Uint8Array}
+   */
+  function(request) {
+    return request.serializeBinary();
+  },
+  proto.proto.rpc.webrtc.v1.OptionalWebRTCConfigResponse.deserializeBinary
+);
+
+
+/**
+ * @param {!proto.proto.rpc.webrtc.v1.OptionalWebRTCConfigRequest} request The
+ *     request proto
+ * @param {?Object<string, string>} metadata User defined
+ *     call metadata
+ * @param {function(?grpc.web.RpcError, ?proto.proto.rpc.webrtc.v1.OptionalWebRTCConfigResponse)}
+ *     callback The callback function(error, response)
+ * @return {!grpc.web.ClientReadableStream<!proto.proto.rpc.webrtc.v1.OptionalWebRTCConfigResponse>|undefined}
+ *     The XHR Node Readable Stream
+ */
+proto.proto.rpc.webrtc.v1.SignalingServiceClient.prototype.optionalWebRTCConfig =
+    function(request, metadata, callback) {
+  return this.client_.rpcCall(this.hostname_ +
+      '/proto.rpc.webrtc.v1.SignalingService/OptionalWebRTCConfig',
+      request,
+      metadata || {},
+      methodDescriptor_SignalingService_OptionalWebRTCConfig,
+      callback);
+};
+
+
+/**
+ * @param {!proto.proto.rpc.webrtc.v1.OptionalWebRTCConfigRequest} request The
+ *     request proto
+ * @param {?Object<string, string>=} metadata User defined
+ *     call metadata
+ * @return {!Promise<!proto.proto.rpc.webrtc.v1.OptionalWebRTCConfigResponse>}
+ *     Promise that resolves to the response
+ */
+proto.proto.rpc.webrtc.v1.SignalingServicePromiseClient.prototype.optionalWebRTCConfig =
+    function(request, metadata) {
+  return this.client_.unaryCall(this.hostname_ +
+      '/proto.rpc.webrtc.v1.SignalingService/OptionalWebRTCConfig',
+      request,
+      metadata || {},
+      methodDescriptor_SignalingService_OptionalWebRTCConfig);
+};
+
+
 module.exports = proto.proto.rpc.webrtc.v1;
 

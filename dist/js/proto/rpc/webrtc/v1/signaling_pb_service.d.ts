@@ -22,10 +22,20 @@ type SignalingServiceAnswer = {
   readonly responseType: typeof proto_rpc_webrtc_v1_signaling_pb.AnswerRequest;
 };
 
+type SignalingServiceOptionalWebRTCConfig = {
+  readonly methodName: string;
+  readonly service: typeof SignalingService;
+  readonly requestStream: false;
+  readonly responseStream: false;
+  readonly requestType: typeof proto_rpc_webrtc_v1_signaling_pb.OptionalWebRTCConfigRequest;
+  readonly responseType: typeof proto_rpc_webrtc_v1_signaling_pb.OptionalWebRTCConfigResponse;
+};
+
 export class SignalingService {
   static readonly serviceName: string;
   static readonly Call: SignalingServiceCall;
   static readonly Answer: SignalingServiceAnswer;
+  static readonly OptionalWebRTCConfig: SignalingServiceOptionalWebRTCConfig;
 }
 
 export type ServiceError = { message: string, code: number; metadata: grpc.Metadata }
@@ -70,5 +80,14 @@ export class SignalingServiceClient {
     callback: (error: ServiceError|null, responseMessage: proto_rpc_webrtc_v1_signaling_pb.CallResponse|null) => void
   ): UnaryResponse;
   answer(metadata?: grpc.Metadata): BidirectionalStream<proto_rpc_webrtc_v1_signaling_pb.AnswerResponse, proto_rpc_webrtc_v1_signaling_pb.AnswerRequest>;
+  optionalWebRTCConfig(
+    requestMessage: proto_rpc_webrtc_v1_signaling_pb.OptionalWebRTCConfigRequest,
+    metadata: grpc.Metadata,
+    callback: (error: ServiceError|null, responseMessage: proto_rpc_webrtc_v1_signaling_pb.OptionalWebRTCConfigResponse|null) => void
+  ): UnaryResponse;
+  optionalWebRTCConfig(
+    requestMessage: proto_rpc_webrtc_v1_signaling_pb.OptionalWebRTCConfigRequest,
+    callback: (error: ServiceError|null, responseMessage: proto_rpc_webrtc_v1_signaling_pb.OptionalWebRTCConfigResponse|null) => void
+  ): UnaryResponse;
 }
 

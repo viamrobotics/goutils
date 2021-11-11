@@ -27,6 +27,8 @@ type SignalingServiceClient interface {
 	// Answer sets up an answering service where the caller answers call offers
 	// and responds with answers.
 	Answer(ctx context.Context, opts ...grpc.CallOption) (SignalingService_AnswerClient, error)
+	// OptionalWebRTCConfig returns any WebRTC configuration the caller may want to use.
+	OptionalWebRTCConfig(ctx context.Context, in *OptionalWebRTCConfigRequest, opts ...grpc.CallOption) (*OptionalWebRTCConfigResponse, error)
 }
 
 type signalingServiceClient struct {
@@ -77,6 +79,15 @@ func (x *signalingServiceAnswerClient) Recv() (*AnswerRequest, error) {
 	return m, nil
 }
 
+func (c *signalingServiceClient) OptionalWebRTCConfig(ctx context.Context, in *OptionalWebRTCConfigRequest, opts ...grpc.CallOption) (*OptionalWebRTCConfigResponse, error) {
+	out := new(OptionalWebRTCConfigResponse)
+	err := c.cc.Invoke(ctx, "/proto.rpc.webrtc.v1.SignalingService/OptionalWebRTCConfig", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // SignalingServiceServer is the server API for SignalingService service.
 // All implementations must embed UnimplementedSignalingServiceServer
 // for forward compatibility
@@ -89,6 +100,8 @@ type SignalingServiceServer interface {
 	// Answer sets up an answering service where the caller answers call offers
 	// and responds with answers.
 	Answer(SignalingService_AnswerServer) error
+	// OptionalWebRTCConfig returns any WebRTC configuration the caller may want to use.
+	OptionalWebRTCConfig(context.Context, *OptionalWebRTCConfigRequest) (*OptionalWebRTCConfigResponse, error)
 	mustEmbedUnimplementedSignalingServiceServer()
 }
 
@@ -101,6 +114,9 @@ func (UnimplementedSignalingServiceServer) Call(context.Context, *CallRequest) (
 }
 func (UnimplementedSignalingServiceServer) Answer(SignalingService_AnswerServer) error {
 	return status.Errorf(codes.Unimplemented, "method Answer not implemented")
+}
+func (UnimplementedSignalingServiceServer) OptionalWebRTCConfig(context.Context, *OptionalWebRTCConfigRequest) (*OptionalWebRTCConfigResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method OptionalWebRTCConfig not implemented")
 }
 func (UnimplementedSignalingServiceServer) mustEmbedUnimplementedSignalingServiceServer() {}
 
@@ -159,6 +175,24 @@ func (x *signalingServiceAnswerServer) Recv() (*AnswerResponse, error) {
 	return m, nil
 }
 
+func _SignalingService_OptionalWebRTCConfig_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(OptionalWebRTCConfigRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SignalingServiceServer).OptionalWebRTCConfig(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/proto.rpc.webrtc.v1.SignalingService/OptionalWebRTCConfig",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SignalingServiceServer).OptionalWebRTCConfig(ctx, req.(*OptionalWebRTCConfigRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // SignalingService_ServiceDesc is the grpc.ServiceDesc for SignalingService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -169,6 +203,10 @@ var SignalingService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Call",
 			Handler:    _SignalingService_Call_Handler,
+		},
+		{
+			MethodName: "OptionalWebRTCConfig",
+			Handler:    _SignalingService_OptionalWebRTCConfig_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

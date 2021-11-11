@@ -22,6 +22,13 @@ service SignalingService {
 	// Answer sets up an answering service where the caller answers call offers
 	// and responds with answers.
 	rpc Answer(stream AnswerResponse) returns (stream AnswerRequest);
+
+	// OptionalWebRTCConfig returns any WebRTC configuration the caller may want to use.
+	rpc OptionalWebRTCConfig(OptionalWebRTCConfigRequest) returns (OptionalWebRTCConfigResponse)  {
+		option (google.api.http) = {
+			get: "/rpc/webrtc/v1/optional_webrtc_config"
+		};
+	}
 }
 
 // CallRequest is the SDP offer that the controlling side is making.
@@ -41,11 +48,16 @@ message ICEServer {
 	string credential = 3;
 }
 
+// WebRTCConfig represents parts of a WebRTC config.
+message WebRTCConfig {
+	repeated ICEServer additional_ice_servers = 1;
+}
+
 // AnswerRequest is the SDP offer that the controlling side is making via the answering
 // stream.
 message AnswerRequest {
 	string sdp = 1;
-	repeated ICEServer additional_ice_servers = 2;
+	WebRTCConfig optional_config = 2;
 }
 
 // AnswerResponse is the SDP answer that an answerer responds with.
@@ -53,4 +65,16 @@ message AnswerResponse {
 	google.rpc.Status status = 1;	
 	string sdp = 2;
 }
+
+// OptionalWebRTCConfigRequest is the request for getting an optional WebRTC config
+// to use for the peer connection.
+message OptionalWebRTCConfigRequest {
+}
+
+// OptionalWebRTCConfigResponse contains the optional WebRTC config
+// to use for the peer connection.
+message OptionalWebRTCConfigResponse {
+	WebRTCConfig config = 1;
+}
+
 

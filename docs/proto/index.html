@@ -319,6 +319,18 @@
                   <a href="#proto.rpc.webrtc.v1.ICEServer"><span class="badge">M</span>ICEServer</a>
                 </li>
               
+                <li>
+                  <a href="#proto.rpc.webrtc.v1.OptionalWebRTCConfigRequest"><span class="badge">M</span>OptionalWebRTCConfigRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#proto.rpc.webrtc.v1.OptionalWebRTCConfigResponse"><span class="badge">M</span>OptionalWebRTCConfigResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#proto.rpc.webrtc.v1.WebRTCConfig"><span class="badge">M</span>WebRTCConfig</a>
+                </li>
+              
               
               
               
@@ -1060,9 +1072,9 @@ we use a streaming response but only expect one response.</p></td>
                 </tr>
               
                 <tr>
-                  <td>additional_ice_servers</td>
-                  <td><a href="#proto.rpc.webrtc.v1.ICEServer">ICEServer</a></td>
-                  <td>repeated</td>
+                  <td>optional_config</td>
+                  <td><a href="#proto.rpc.webrtc.v1.WebRTCConfig">WebRTCConfig</a></td>
+                  <td></td>
                   <td><p> </p></td>
                 </tr>
               
@@ -1190,6 +1202,61 @@ we use a streaming response but only expect one response.</p></td>
 
         
       
+        <h3 id="proto.rpc.webrtc.v1.OptionalWebRTCConfigRequest">OptionalWebRTCConfigRequest</h3>
+        <p>OptionalWebRTCConfigRequest is the request for getting an optional WebRTC config</p><p>to use for the peer connection.</p>
+
+        
+
+        
+      
+        <h3 id="proto.rpc.webrtc.v1.OptionalWebRTCConfigResponse">OptionalWebRTCConfigResponse</h3>
+        <p>OptionalWebRTCConfigResponse contains the optional WebRTC config</p><p>to use for the peer connection.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>config</td>
+                  <td><a href="#proto.rpc.webrtc.v1.WebRTCConfig">WebRTCConfig</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="proto.rpc.webrtc.v1.WebRTCConfig">WebRTCConfig</h3>
+        <p>WebRTCConfig represents parts of a WebRTC config.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>additional_ice_servers</td>
+                  <td><a href="#proto.rpc.webrtc.v1.ICEServer">ICEServer</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
 
       
 
@@ -1222,6 +1289,13 @@ and in the case of TLS being used, SNI.</p></td>
 and responds with answers.</p></td>
               </tr>
             
+              <tr>
+                <td>OptionalWebRTCConfig</td>
+                <td><a href="#proto.rpc.webrtc.v1.OptionalWebRTCConfigRequest">OptionalWebRTCConfigRequest</a></td>
+                <td><a href="#proto.rpc.webrtc.v1.OptionalWebRTCConfigResponse">OptionalWebRTCConfigResponse</a></td>
+                <td><p>OptionalWebRTCConfig returns any WebRTC configuration the caller may want to use.</p></td>
+              </tr>
+            
           </tbody>
         </table>
 
@@ -1246,6 +1320,16 @@ and responds with answers.</p></td>
                 <td>Call</td>
                 <td>POST</td>
                 <td>/rpc/webrtc/v1/call</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>OptionalWebRTCConfig</td>
+                <td>GET</td>
+                <td>/rpc/webrtc/v1/optional_webrtc_config</td>
                 <td></td>
               </tr>
               

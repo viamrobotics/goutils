@@ -59,13 +59,21 @@ func Dial(ctx context.Context, address string, opts Options, logger golog.Logger
 
 	logger.Debug("connected")
 
+	md := metadata.New(map[string]string{RPCHostMetadataField: host})
+	singalCtx := metadata.NewOutgoingContext(ctx, md)
+
 	signalingClient := webrtcpb.NewSignalingServiceClient(conn)
+	configResp, err := signalingClient.OptionalWebRTCConfig(singalCtx, &webrtcpb.OptionalWebRTCConfigRequest{})
+	if err != nil {
+		return nil, err
+	}
 
 	config := DefaultWebRTCConfiguration
 	if opts.Config != nil {
 		config = *opts.Config
 	}
-	pc, dc, err := newPeerConnectionForClient(ctx, config, logger)
+	extendedConfig := extendWebRTCConfig(&config, configResp.Config)
+	pc, dc, err := newPeerConnectionForClient(ctx, extendedConfig, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -81,9 +89,7 @@ func Dial(ctx context.Context, address string, opts Options, logger golog.Logger
 		return nil, err
 	}
 
-	md := metadata.New(map[string]string{RPCHostMetadataField: host})
-	callCtx := metadata.NewOutgoingContext(ctx, md)
-	answerResp, err := signalingClient.Call(callCtx, &webrtcpb.CallRequest{Sdp: encodedSDP})
+	answerResp, err := signalingClient.Call(singalCtx, &webrtcpb.CallRequest{Sdp: encodedSDP})
 	if err != nil {
 		if s, ok := status.FromError(err); ok && s.Code() == codes.Unimplemented {
 			return nil, ErrNoSignaler

@@ -28,6 +28,15 @@ SignalingService.Answer = {
   responseType: proto_rpc_webrtc_v1_signaling_pb.AnswerRequest
 };
 
+SignalingService.OptionalWebRTCConfig = {
+  methodName: "OptionalWebRTCConfig",
+  service: SignalingService,
+  requestStream: false,
+  responseStream: false,
+  requestType: proto_rpc_webrtc_v1_signaling_pb.OptionalWebRTCConfigRequest,
+  responseType: proto_rpc_webrtc_v1_signaling_pb.OptionalWebRTCConfigResponse
+};
+
 exports.SignalingService = SignalingService;
 
 function SignalingServiceClient(serviceHost, options) {
@@ -106,6 +115,37 @@ SignalingServiceClient.prototype.answer = function answer(metadata) {
     },
     cancel: function () {
       listeners = null;
+      client.close();
+    }
+  };
+};
+
+SignalingServiceClient.prototype.optionalWebRTCConfig = function optionalWebRTCConfig(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(SignalingService.OptionalWebRTCConfig, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
+        }
+      }
+    }
+  });
+  return {
+    cancel: function () {
+      callback = null;
       client.close();
     }
   };

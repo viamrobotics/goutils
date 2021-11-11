@@ -79,8 +79,7 @@ type hostICEServers struct {
 	Expires time.Time
 }
 
-// TODO(erd): implement pruning
-func (srv *SignalingServer) additionalICEServers(ctx context.Context, host string) ([]*webrtcpb.ICEServer, error) {
+func (srv *SignalingServer) additionalICEServers(ctx context.Context, host string, cache bool) ([]*webrtcpb.ICEServer, error) {
 	if srv.webrtcConfigProvider == nil {
 		return nil, nil
 	}
@@ -94,12 +93,14 @@ func (srv *SignalingServer) additionalICEServers(ctx context.Context, host strin
 	if err != nil {
 		return nil, err
 	}
-	srv.mu.Lock()
-	srv.hostICEServers[host] = hostICEServers{
-		Servers: config.ICEServers,
-		Expires: config.Expires,
+	if cache {
+		srv.mu.Lock()
+		srv.hostICEServers[host] = hostICEServers{
+			Servers: config.ICEServers,
+			Expires: config.Expires,
+		}
+		srv.mu.Unlock()
 	}
-	srv.mu.Unlock()
 	return config.ICEServers, nil
 }
 
@@ -127,11 +128,16 @@ func (srv *SignalingServer) Answer(server webrtcpb.SignalingService_AnswerServer
 		if err != nil {
 			return err
 		}
-		iceServers, err := srv.additionalICEServers(ctx, host)
+		iceServers, err := srv.additionalICEServers(ctx, host, true)
 		if err != nil {
 			return err
 		}
-		if err := server.Send(&webrtcpb.AnswerRequest{Sdp: offer.SDP(), AdditionalIceServers: iceServers}); err != nil {
+		if err := server.Send(&webrtcpb.AnswerRequest{
+			Sdp: offer.SDP(),
+			OptionalConfig: &webrtcpb.WebRTCConfig{
+				AdditionalIceServers: iceServers,
+			},
+		}); err != nil {
 			return err
 		}
 		answer, err := server.Recv()
@@ -149,6 +155,21 @@ func (srv *SignalingServer) Answer(server webrtcpb.SignalingService_AnswerServer
 			return err
 		}
 	}
+}
+
+// OptionalWebRTCConfig returns any WebRTC configuration the caller may want to use.
+func (srv *SignalingServer) OptionalWebRTCConfig(ctx context.Context, req *webrtcpb.OptionalWebRTCConfigRequest) (*webrtcpb.OptionalWebRTCConfigResponse, error) {
+	host, err := hostFromCtx(ctx)
+	if err != nil {
+		return nil, err
+	}
+	iceServers, err := srv.additionalICEServers(ctx, host, false)
+	if err != nil {
+		return nil, err
+	}
+	return &webrtcpb.OptionalWebRTCConfigResponse{Config: &webrtcpb.WebRTCConfig{
+		AdditionalIceServers: iceServers,
+	}}, nil
 }
 
 // A SignalingAnswerer listens for and answers calls with a given signaling service. It is
@@ -306,21 +327,8 @@ func (ans *SignalingAnswerer) answer() (err error) {
 		return err
 	}
 
-	configCopy := ans.webrtcConfig
-	if len(resp.AdditionalIceServers) > 0 {
-		iceServers := make([]webrtc.ICEServer, len(ans.webrtcConfig.ICEServers)+len(resp.AdditionalIceServers))
-		copy(iceServers, ans.webrtcConfig.ICEServers)
-		for _, server := range resp.AdditionalIceServers {
-			iceServers = append(iceServers, webrtc.ICEServer{
-				URLs:       server.Urls,
-				Username:   server.Username,
-				Credential: server.Credential,
-			})
-		}
-		configCopy.ICEServers = iceServers
-	}
-
-	pc, dc, err := newPeerConnectionForServer(ans.closeCtx, resp.Sdp, configCopy, ans.logger)
+	extendedConfig := extendWebRTCConfig(&ans.webrtcConfig, resp.OptionalConfig)
+	pc, dc, err := newPeerConnectionForServer(ans.closeCtx, resp.Sdp, extendedConfig, ans.logger)
 	if err != nil {
 		return ans.client.Send(&webrtcpb.AnswerResponse{
 			Status: ErrorToStatus(err).Proto(),
@@ -369,4 +377,21 @@ func DecodeSDP(in string, sdp *webrtc.SessionDescription) error {
 	}
 
 	return json.Unmarshal(b, sdp)
+}
+
+func extendWebRTCConfig(original *webrtc.Configuration, optional *webrtcpb.WebRTCConfig) webrtc.Configuration {
+	configCopy := *original
+	if len(optional.AdditionalIceServers) > 0 {
+		iceServers := make([]webrtc.ICEServer, len(original.ICEServers)+len(optional.AdditionalIceServers))
+		copy(iceServers, original.ICEServers)
+		for _, server := range optional.AdditionalIceServers {
+			iceServers = append(iceServers, webrtc.ICEServer{
+				URLs:       server.Urls,
+				Username:   server.Username,
+				Credential: server.Credential,
+			})
+		}
+		configCopy.ICEServers = iceServers
+	}
+	return configCopy
 }

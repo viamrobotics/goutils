@@ -75,14 +75,36 @@ export namespace ICEServer {
   }
 }
 
-export class AnswerRequest extends jspb.Message {
-  getSdp(): string;
-  setSdp(value: string): void;
-
+export class WebRTCConfig extends jspb.Message {
   clearAdditionalIceServersList(): void;
   getAdditionalIceServersList(): Array<ICEServer>;
   setAdditionalIceServersList(value: Array<ICEServer>): void;
   addAdditionalIceServers(value?: ICEServer, index?: number): ICEServer;
+
+  serializeBinary(): Uint8Array;
+  toObject(includeInstance?: boolean): WebRTCConfig.AsObject;
+  static toObject(includeInstance: boolean, msg: WebRTCConfig): WebRTCConfig.AsObject;
+  static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+  static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+  static serializeBinaryToWriter(message: WebRTCConfig, writer: jspb.BinaryWriter): void;
+  static deserializeBinary(bytes: Uint8Array): WebRTCConfig;
+  static deserializeBinaryFromReader(message: WebRTCConfig, reader: jspb.BinaryReader): WebRTCConfig;
+}
+
+export namespace WebRTCConfig {
+  export type AsObject = {
+    additionalIceServersList: Array<ICEServer.AsObject>,
+  }
+}
+
+export class AnswerRequest extends jspb.Message {
+  getSdp(): string;
+  setSdp(value: string): void;
+
+  hasOptionalConfig(): boolean;
+  clearOptionalConfig(): void;
+  getOptionalConfig(): WebRTCConfig | undefined;
+  setOptionalConfig(value?: WebRTCConfig): void;
 
   serializeBinary(): Uint8Array;
   toObject(includeInstance?: boolean): AnswerRequest.AsObject;
@@ -97,7 +119,7 @@ export class AnswerRequest extends jspb.Message {
 export namespace AnswerRequest {
   export type AsObject = {
     sdp: string,
-    additionalIceServersList: Array<ICEServer.AsObject>,
+    optionalConfig?: WebRTCConfig.AsObject,
   }
 }
 
@@ -124,6 +146,44 @@ export namespace AnswerResponse {
   export type AsObject = {
     status?: google_rpc_status_pb.Status.AsObject,
     sdp: string,
+  }
+}
+
+export class OptionalWebRTCConfigRequest extends jspb.Message {
+  serializeBinary(): Uint8Array;
+  toObject(includeInstance?: boolean): OptionalWebRTCConfigRequest.AsObject;
+  static toObject(includeInstance: boolean, msg: OptionalWebRTCConfigRequest): OptionalWebRTCConfigRequest.AsObject;
+  static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+  static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+  static serializeBinaryToWriter(message: OptionalWebRTCConfigRequest, writer: jspb.BinaryWriter): void;
+  static deserializeBinary(bytes: Uint8Array): OptionalWebRTCConfigRequest;
+  static deserializeBinaryFromReader(message: OptionalWebRTCConfigRequest, reader: jspb.BinaryReader): OptionalWebRTCConfigRequest;
+}
+
+export namespace OptionalWebRTCConfigRequest {
+  export type AsObject = {
+  }
+}
+
+export class OptionalWebRTCConfigResponse extends jspb.Message {
+  hasConfig(): boolean;
+  clearConfig(): void;
+  getConfig(): WebRTCConfig | undefined;
+  setConfig(value?: WebRTCConfig): void;
+
+  serializeBinary(): Uint8Array;
+  toObject(includeInstance?: boolean): OptionalWebRTCConfigResponse.AsObject;
+  static toObject(includeInstance: boolean, msg: OptionalWebRTCConfigResponse): OptionalWebRTCConfigResponse.AsObject;
+  static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+  static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+  static serializeBinaryToWriter(message: OptionalWebRTCConfigResponse, writer: jspb.BinaryWriter): void;
+  static deserializeBinary(bytes: Uint8Array): OptionalWebRTCConfigResponse;
+  static deserializeBinaryFromReader(message: OptionalWebRTCConfigResponse, reader: jspb.BinaryReader): OptionalWebRTCConfigResponse;
+}
+
+export namespace OptionalWebRTCConfigResponse {
+  export type AsObject = {
+    config?: WebRTCConfig.AsObject,
   }
 }
 
