@@ -30,6 +30,7 @@ vendor/
 # gRPC
 dist/js/google/*
 !dist/js/google/api
+!dist/js/google/rpc
 dist/js/gapic/
 dist/js/grafeas/
 dist/js/storage/

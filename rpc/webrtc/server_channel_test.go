@@ -32,7 +32,7 @@ func TestServerChannel(t *testing.T) {
 	server := NewServer(logger)
 	// use signaling server just as some random service to test against.
 	// It helps that it is in our package.
-	signalServer := NewSignalingServer(NewMemoryCallQueue(), nil)
+	signalServer := NewSignalingServer(NewMemoryCallQueueTest(), nil)
 	server.RegisterService(
 		&webrtcpb.SignalingService_ServiceDesc,
 		signalServer,
@@ -129,56 +129,26 @@ func TestServerChannel(t *testing.T) {
 
 	<-messagesRead
 
-	expectedMessagesMu.Lock()
-	expectedMessages = []*webrtcpb.Response{
-		{
-			Stream: &webrtcpb.Stream{Id: 3},
-			Type: &webrtcpb.Response_Headers{
-				Headers: &webrtcpb.ResponseHeaders{},
+	respMd, err := proto.Marshal(&webrtcpb.CallResponse{
+		Uuid: "insecure-uuid-1",
+		Stage: &webrtcpb.CallResponse_Init{
+			Init: &webrtcpb.CallResponseInitStage{
+				Sdp: "world",
 			},
 		},
-		{
-			Stream: &webrtcpb.Stream{Id: 3},
-			Type: &webrtcpb.Response_Trailers{
-				Trailers: &webrtcpb.ResponseTrailers{
-					Status: status.New(codes.Unknown, "EOF").Proto(),
-				},
-			},
-		},
-	}
-	messagesRead = make(chan struct{})
-	expectedMessagesMu.Unlock()
-
-	test.That(t, clientCh.writeHeaders(&webrtcpb.Stream{
-		Id: 3,
-	}, &webrtcpb.RequestHeaders{
-		Method: "/proto.rpc.webrtc.v1.SignalingService/Call",
-		Metadata: metadataToProto(metadata.MD{
-			"rpc-host": []string{"yeehaw"},
-		}),
-	}), test.ShouldBeNil)
-
-	test.That(t, clientCh.writeMessage(&webrtcpb.Stream{
-		Id: 3,
-	}, &webrtcpb.RequestMessage{
-		Eos: true,
-	}), test.ShouldBeNil)
-
-	<-messagesRead
-
-	respMd, err := proto.Marshal(&webrtcpb.CallResponse{Sdp: "world"})
+	})
 	test.That(t, err, test.ShouldBeNil)
 
 	expectedMessagesMu.Lock()
 	expectedMessages = []*webrtcpb.Response{
 		{
-			Stream: &webrtcpb.Stream{Id: 4},
+			Stream: &webrtcpb.Stream{Id: 3},
 			Type: &webrtcpb.Response_Headers{
 				Headers: &webrtcpb.ResponseHeaders{},
 			},
 		},
 		{
-			Stream: &webrtcpb.Stream{Id: 4},
+			Stream: &webrtcpb.Stream{Id: 3},
 			Type: &webrtcpb.Response_Message{
 				Message: &webrtcpb.ResponseMessage{
 					PacketMessage: &webrtcpb.PacketMessage{
@@ -189,7 +159,7 @@ func TestServerChannel(t *testing.T) {
 			},
 		},
 		{
-			Stream: &webrtcpb.Stream{Id: 4},
+			Stream: &webrtcpb.Stream{Id: 3},
 			Type: &webrtcpb.Response_Trailers{
 				Trailers: &webrtcpb.ResponseTrailers{
 					Status: ErrorToStatus(nil).Proto(),
@@ -201,7 +171,7 @@ func TestServerChannel(t *testing.T) {
 	expectedMessagesMu.Unlock()
 
 	test.That(t, clientCh.writeHeaders(&webrtcpb.Stream{
-		Id: 4,
+		Id: 3,
 	}, &webrtcpb.RequestHeaders{
 		Method: "/proto.rpc.webrtc.v1.SignalingService/Call",
 		Metadata: metadataToProto(metadata.MD{
@@ -213,7 +183,7 @@ func TestServerChannel(t *testing.T) {
 	test.That(t, err, test.ShouldBeNil)
 
 	test.That(t, clientCh.writeMessage(&webrtcpb.Stream{
-		Id: 4,
+		Id: 3,
 	}, &webrtcpb.RequestMessage{
 		HasMessage: true,
 		PacketMessage: &webrtcpb.PacketMessage{
@@ -225,20 +195,22 @@ func TestServerChannel(t *testing.T) {
 
 	offer, err := signalServer.callQueue.RecvOffer(context.Background(), "yeehaw")
 	test.That(t, err, test.ShouldBeNil)
-	test.That(t, offer.Respond(context.Background(), CallAnswer{SDP: "world"}), test.ShouldBeNil)
+	answererSDP := "world"
+	test.That(t, offer.AnswererRespond(context.Background(), CallAnswer{InitialSDP: &answererSDP}), test.ShouldBeNil)
+	test.That(t, offer.AnswererDone(context.Background()), test.ShouldBeNil)
 
 	<-messagesRead
 
 	expectedMessagesMu.Lock()
 	expectedMessages = []*webrtcpb.Response{
 		{
-			Stream: &webrtcpb.Stream{Id: 5},
+			Stream: &webrtcpb.Stream{Id: 4},
 			Type: &webrtcpb.Response_Headers{
 				Headers: &webrtcpb.ResponseHeaders{},
 			},
 		},
 		{
-			Stream: &webrtcpb.Stream{Id: 5},
+			Stream: &webrtcpb.Stream{Id: 4},
 			Type: &webrtcpb.Response_Trailers{
 				Trailers: &webrtcpb.ResponseTrailers{
 					Status: ErrorToStatus(errors.New("ohno")).Proto(),
@@ -250,7 +222,7 @@ func TestServerChannel(t *testing.T) {
 	expectedMessagesMu.Unlock()
 
 	test.That(t, clientCh.writeHeaders(&webrtcpb.Stream{
-		Id: 5,
+		Id: 4,
 	}, &webrtcpb.RequestHeaders{
 		Method: "/proto.rpc.webrtc.v1.SignalingService/Call",
 		Metadata: metadataToProto(metadata.MD{
@@ -259,7 +231,7 @@ func TestServerChannel(t *testing.T) {
 	}), test.ShouldBeNil)
 
 	test.That(t, clientCh.writeMessage(&webrtcpb.Stream{
-		Id: 5,
+		Id: 4,
 	}, &webrtcpb.RequestMessage{
 		HasMessage: true,
 		PacketMessage: &webrtcpb.PacketMessage{
@@ -271,7 +243,7 @@ func TestServerChannel(t *testing.T) {
 
 	offer, err = signalServer.callQueue.RecvOffer(context.Background(), "yeehaw")
 	test.That(t, err, test.ShouldBeNil)
-	test.That(t, offer.Respond(context.Background(), CallAnswer{Err: errors.New("ohno")}), test.ShouldBeNil)
+	test.That(t, offer.AnswererRespond(context.Background(), CallAnswer{Err: errors.New("ohno")}), test.ShouldBeNil)
 
 	<-messagesRead
 }

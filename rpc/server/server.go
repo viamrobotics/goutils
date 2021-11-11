@@ -94,6 +94,7 @@ type simpleServer struct {
 	signalingHost        string
 	serviceServerCancels []func()
 	serviceServers       []interface{}
+	signalingCallQueue   rpcwebrtc.CallQueue
 	secure               bool
 	stopped              bool
 	logger               golog.Logger
@@ -198,10 +199,12 @@ func NewWithListener(
 
 	if opts.WebRTC.EnableSignaling || (opts.WebRTC.Enable && opts.WebRTC.SignalingAddress == "") {
 		logger.Info("will run local signaling service")
+		signalingCallQueue := rpcwebrtc.NewMemoryCallQueue()
+		server.signalingCallQueue = signalingCallQueue
 		if err := server.RegisterServiceServer(
 			context.Background(),
 			&webrtcpb.SignalingService_ServiceDesc,
-			rpcwebrtc.NewSignalingServer(rpcwebrtc.NewMemoryCallQueue(), nil),
+			rpcwebrtc.NewSignalingServer(signalingCallQueue, nil),
 			webrtcpb.RegisterSignalingServiceHandlerFromEndpoint,
 		); err != nil {
 			return nil, err
@@ -403,6 +406,9 @@ func (ss *simpleServer) Stop() (err error) {
 	}
 	ss.stopped = true
 	ss.mu.Unlock()
+	if ss.signalingCallQueue != nil {
+		err = multierr.Combine(err, ss.signalingCallQueue.Close())
+	}
 	ss.logger.Info("stopping server")
 	defer ss.grpcServer.Stop()
 	ss.logger.Info("canceling service servers for gateway")

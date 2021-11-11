@@ -12,6 +12,7 @@ if ("proto" in aliases) {
 	throw new Error("proto is already in aliases");
 }
 aliases["proto"] = path.resolve(__dirname, '../../../../dist/js/proto');
+aliases["google-rpc"] = path.resolve(__dirname, '../../../../dist/js/google/rpc');
 aliases["rpc"] = path.resolve(__dirname, '../../../js/src');
 
 module.exports = {
@@ -22,7 +23,7 @@ module.exports = {
 		rules: [
 			{
 				test: /\.ts$/,
-				include: /src|proto/,
+				include: /src|proto|google-rpc/,
 				exclude: /node_modules/,
 				loader: "ts-loader"
 			}

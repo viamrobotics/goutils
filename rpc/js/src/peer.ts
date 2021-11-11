@@ -3,7 +3,7 @@ interface ReadyPeer {
 	dc: RTCDataChannel; 
 }
 
-export async function newPeerConnectionForClient(rtcConfig?: RTCConfiguration): Promise<ReadyPeer> {
+export async function newPeerConnectionForClient(disableTrickle: boolean, rtcConfig?: RTCConfiguration): Promise<ReadyPeer> {
 	if (!rtcConfig) {
 		rtcConfig = {
 			iceServers: [
@@ -26,6 +26,17 @@ export async function newPeerConnectionForClient(rtcConfig?: RTCConfiguration): 
 	});
 	dataChannel.binaryType = "arraybuffer";
 
+	if (!disableTrickle) {
+		return Promise.resolve({ pc: peerConnection, dc: dataChannel })
+	}
+	// set up offer
+	const offerDesc = await peerConnection.createOffer();
+	try {
+		await peerConnection.setLocalDescription(offerDesc)
+	} catch (e) {
+		return Promise.reject(e);
+	}
+
 	peerConnection.onicecandidate = async event => {
 		if (event.candidate !== null) {
 			return;
@@ -33,12 +44,5 @@ export async function newPeerConnectionForClient(rtcConfig?: RTCConfiguration): 
 		pResolve({ pc: peerConnection, dc: dataChannel });
 	}
 
-	// set up offer
-	const offerDesc = await peerConnection.createOffer();
-	try {
-		peerConnection.setLocalDescription(offerDesc)
-	} catch (e) {
-		console.error(e);
-	}
 	return result;
 }

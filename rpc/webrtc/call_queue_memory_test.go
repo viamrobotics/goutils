@@ -1,7 +1,13 @@
 package rpcwebrtc
 
-import "testing"
+import (
+	"testing"
+
+	"go.viam.com/test"
+)
 
 func TestMemoryCallQueue(t *testing.T) {
-	testCallQueue(t, NewMemoryCallQueue())
+	callQueue := NewMemoryCallQueue()
+	testCallQueue(t, callQueue)
+	test.That(t, callQueue.Close(), test.ShouldBeNil)
 }

@@ -3,6 +3,7 @@ package rpcwebrtc
 import (
 	"context"
 	"io"
+	"time"
 
 	"github.com/edaniels/golog"
 	"github.com/pion/interceptor"
@@ -10,7 +11,10 @@ import (
 	"go.uber.org/multierr"
 
 	"go.viam.com/utils"
+	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
 )
+
+const connectionTimeout = 20 * time.Second
 
 var (
 	// DefaultICEServers is the default set of ICE servers to use for WebRTC session negotiation.
@@ -47,7 +51,7 @@ func newWebRTCAPI(logger golog.Logger) (*webrtc.API, error) {
 	return webrtc.NewAPI(options...), nil
 }
 
-func newPeerConnectionForClient(ctx context.Context, config webrtc.Configuration, logger golog.Logger) (pc *webrtc.PeerConnection, dc *webrtc.DataChannel, err error) {
+func newPeerConnectionForClient(ctx context.Context, config webrtc.Configuration, disableTrickle bool, logger golog.Logger) (pc *webrtc.PeerConnection, dc *webrtc.DataChannel, err error) {
 	webAPI, err := newWebRTCAPI(logger)
 	if err != nil {
 		return nil, nil, err
@@ -77,26 +81,28 @@ func newPeerConnectionForClient(ctx context.Context, config webrtc.Configuration
 	}
 	dataChannel.OnError(initialDataChannelOnError(pc, logger))
 
-	offer, err := pc.CreateOffer(nil)
-	if err != nil {
-		return pc, nil, err
-	}
+	if disableTrickle {
+		offer, err := pc.CreateOffer(nil)
+		if err != nil {
+			return pc, nil, err
+		}
 
-	// Create channel that is blocked until ICE Gathering is complete
-	gatherComplete := webrtc.GatheringCompletePromise(pc)
+		// Sets the LocalDescription, and starts our UDP listeners
+		err = pc.SetLocalDescription(offer)
+		if err != nil {
+			return pc, nil, err
+		}
 
-	// Sets the LocalDescription, and starts our UDP listeners
-	err = pc.SetLocalDescription(offer)
-	if err != nil {
-		return pc, nil, err
-	}
+		// Create channel that is blocked until ICE Gathering is complete
+		gatherComplete := webrtc.GatheringCompletePromise(pc)
 
-	// Block until ICE Gathering is complete since we signal back one complete SDP
-	// and do not want to wait on trickle ICE.
-	select {
-	case <-ctx.Done():
-		return pc, nil, ctx.Err()
-	case <-gatherComplete:
+		// Block until ICE Gathering is complete since we signal back one complete SDP
+		// and do not want to wait on trickle ICE.
+		select {
+		case <-ctx.Done():
+			return pc, nil, ctx.Err()
+		case <-gatherComplete:
+		}
 	}
 
 	// Will not wait for connection to establish. If you want this in the future,
@@ -105,7 +111,7 @@ func newPeerConnectionForClient(ctx context.Context, config webrtc.Configuration
 	return pc, dataChannel, nil
 }
 
-func newPeerConnectionForServer(ctx context.Context, sdp string, config webrtc.Configuration, logger golog.Logger) (pc *webrtc.PeerConnection, dc *webrtc.DataChannel, err error) {
+func newPeerConnectionForServer(ctx context.Context, sdp string, config webrtc.Configuration, disableTrickle bool, logger golog.Logger) (pc *webrtc.PeerConnection, dc *webrtc.DataChannel, err error) {
 	webAPI, err := newWebRTCAPI(logger)
 	if err != nil {
 		return nil, nil, err
@@ -145,24 +151,27 @@ func newPeerConnectionForServer(ctx context.Context, sdp string, config webrtc.C
 		return pc, dataChannel, err
 	}
 
-	answer, err := pc.CreateAnswer(nil)
-	if err != nil {
-		return pc, dataChannel, err
-	}
+	if disableTrickle {
+		answer, err := pc.CreateAnswer(nil)
+		if err != nil {
+			return pc, dataChannel, err
+		}
 
-	gatherComplete := webrtc.GatheringCompletePromise(pc)
+		err = pc.SetLocalDescription(answer)
+		if err != nil {
+			return pc, dataChannel, err
+		}
 
-	err = pc.SetLocalDescription(answer)
-	if err != nil {
-		return pc, dataChannel, err
-	}
+		// Create channel that is blocked until ICE Gathering is complete
+		gatherComplete := webrtc.GatheringCompletePromise(pc)
 
-	// Block until ICE Gathering is complete since we signal back one complete SDP
-	// and do not want to wait on trickle ICE.
-	select {
-	case <-ctx.Done():
-		return pc, dataChannel, ctx.Err()
-	case <-gatherComplete:
+		// Block until ICE Gathering is complete since we signal back one complete SDP
+		// and do not want to wait on trickle ICE.
+		select {
+		case <-ctx.Done():
+			return pc, nil, ctx.Err()
+		case <-gatherComplete:
+		}
 	}
 
 	successful = true
@@ -211,4 +220,46 @@ func initialDataChannelOnError(pc io.Closer, logger golog.Logger) func(err error
 		logger.Errorw("premature data channel error before WebRTC channel association", "error", err)
 		utils.UncheckedError(pc.Close())
 	}
+}
+
+func iceCandidateToProto(i *webrtc.ICECandidate) *webrtcpb.ICECandidate {
+	return iceCandidateInitToProto(i.ToJSON())
+}
+
+func iceCandidateInitToProto(ij webrtc.ICECandidateInit) *webrtcpb.ICECandidate {
+	candidate := webrtcpb.ICECandidate{
+		Candidate: ij.Candidate,
+	}
+	if ij.SDPMid != nil {
+		val := *ij.SDPMid
+		candidate.SdpMid = &val
+	}
+	if ij.SDPMLineIndex != nil {
+		val := uint32(*ij.SDPMLineIndex)
+		candidate.SdpmLineIndex = &val
+	}
+	if ij.UsernameFragment != nil {
+		val := *ij.UsernameFragment
+		candidate.UsernameFragment = &val
+	}
+	return &candidate
+}
+
+func iceCandidateFromProto(i *webrtcpb.ICECandidate) webrtc.ICECandidateInit {
+	candidate := webrtc.ICECandidateInit{
+		Candidate: i.Candidate,
+	}
+	if i.SdpMid != nil {
+		val := *i.SdpMid
+		candidate.SDPMid = &val
+	}
+	if i.SdpmLineIndex != nil {
+		val := uint16(*i.SdpmLineIndex)
+		candidate.SDPMLineIndex = &val
+	}
+	if i.UsernameFragment != nil {
+		val := *i.UsernameFragment
+		candidate.UsernameFragment = &val
+	}
+	return candidate
 }

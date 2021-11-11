@@ -304,7 +304,39 @@
                 </li>
               
                 <li>
+                  <a href="#proto.rpc.webrtc.v1.AnswerRequestDoneStage"><span class="badge">M</span>AnswerRequestDoneStage</a>
+                </li>
+              
+                <li>
+                  <a href="#proto.rpc.webrtc.v1.AnswerRequestErrorStage"><span class="badge">M</span>AnswerRequestErrorStage</a>
+                </li>
+              
+                <li>
+                  <a href="#proto.rpc.webrtc.v1.AnswerRequestInitStage"><span class="badge">M</span>AnswerRequestInitStage</a>
+                </li>
+              
+                <li>
+                  <a href="#proto.rpc.webrtc.v1.AnswerRequestUpdateStage"><span class="badge">M</span>AnswerRequestUpdateStage</a>
+                </li>
+              
+                <li>
                   <a href="#proto.rpc.webrtc.v1.AnswerResponse"><span class="badge">M</span>AnswerResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#proto.rpc.webrtc.v1.AnswerResponseDoneStage"><span class="badge">M</span>AnswerResponseDoneStage</a>
+                </li>
+              
+                <li>
+                  <a href="#proto.rpc.webrtc.v1.AnswerResponseErrorStage"><span class="badge">M</span>AnswerResponseErrorStage</a>
+                </li>
+              
+                <li>
+                  <a href="#proto.rpc.webrtc.v1.AnswerResponseInitStage"><span class="badge">M</span>AnswerResponseInitStage</a>
+                </li>
+              
+                <li>
+                  <a href="#proto.rpc.webrtc.v1.AnswerResponseUpdateStage"><span class="badge">M</span>AnswerResponseUpdateStage</a>
                 </li>
               
                 <li>
@@ -313,6 +345,26 @@
               
                 <li>
                   <a href="#proto.rpc.webrtc.v1.CallResponse"><span class="badge">M</span>CallResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#proto.rpc.webrtc.v1.CallResponseInitStage"><span class="badge">M</span>CallResponseInitStage</a>
+                </li>
+              
+                <li>
+                  <a href="#proto.rpc.webrtc.v1.CallResponseUpdateStage"><span class="badge">M</span>CallResponseUpdateStage</a>
+                </li>
+              
+                <li>
+                  <a href="#proto.rpc.webrtc.v1.CallUpdateRequest"><span class="badge">M</span>CallUpdateRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#proto.rpc.webrtc.v1.CallUpdateResponse"><span class="badge">M</span>CallUpdateResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#proto.rpc.webrtc.v1.ICECandidate"><span class="badge">M</span>ICECandidate</a>
                 </li>
               
                 <li>
@@ -1065,6 +1117,89 @@ we use a streaming response but only expect one response.</p></td>
             <tbody>
               
                 <tr>
+                  <td>uuid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>init</td>
+                  <td><a href="#proto.rpc.webrtc.v1.AnswerRequestInitStage">AnswerRequestInitStage</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>update</td>
+                  <td><a href="#proto.rpc.webrtc.v1.AnswerRequestUpdateStage">AnswerRequestUpdateStage</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>done</td>
+                  <td><a href="#proto.rpc.webrtc.v1.AnswerRequestDoneStage">AnswerRequestDoneStage</a></td>
+                  <td></td>
+                  <td><p>done is sent when the requester is done sending information </p></td>
+                </tr>
+              
+                <tr>
+                  <td>error</td>
+                  <td><a href="#proto.rpc.webrtc.v1.AnswerRequestErrorStage">AnswerRequestErrorStage</a></td>
+                  <td></td>
+                  <td><p>error is sent any time before done </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="proto.rpc.webrtc.v1.AnswerRequestDoneStage">AnswerRequestDoneStage</h3>
+        <p>AnswerRequestDoneStage indicates the controller is done responding with candidates.</p>
+
+        
+
+        
+      
+        <h3 id="proto.rpc.webrtc.v1.AnswerRequestErrorStage">AnswerRequestErrorStage</h3>
+        <p>AnswerRequestErrorStage indicates the exchange has failed with an error.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>status</td>
+                  <td><a href="#google.rpc.Status">google.rpc.Status</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="proto.rpc.webrtc.v1.AnswerRequestInitStage">AnswerRequestInitStage</h3>
+        <p>AnswerRequestInitStage is the first and a one time stage that represents the</p><p>callers initial SDP request to the controlled (answerer) side.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
                   <td>sdp</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
@@ -1074,6 +1209,30 @@ we use a streaming response but only expect one response.</p></td>
                 <tr>
                   <td>optional_config</td>
                   <td><a href="#proto.rpc.webrtc.v1.WebRTCConfig">WebRTCConfig</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="proto.rpc.webrtc.v1.AnswerRequestUpdateStage">AnswerRequestUpdateStage</h3>
+        <p>AnswerRequestUpdateStage is multiply used to trickle in ICE candidates to</p><p>the controlled (answerer) side.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>candidate</td>
+                  <td><a href="#proto.rpc.webrtc.v1.ICECandidate">ICECandidate</a></td>
                   <td></td>
                   <td><p> </p></td>
                 </tr>
@@ -1096,15 +1255,115 @@ we use a streaming response but only expect one response.</p></td>
             <tbody>
               
                 <tr>
+                  <td>uuid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>init</td>
+                  <td><a href="#proto.rpc.webrtc.v1.AnswerResponseInitStage">AnswerResponseInitStage</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>update</td>
+                  <td><a href="#proto.rpc.webrtc.v1.AnswerResponseUpdateStage">AnswerResponseUpdateStage</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>done</td>
+                  <td><a href="#proto.rpc.webrtc.v1.AnswerResponseDoneStage">AnswerResponseDoneStage</a></td>
+                  <td></td>
+                  <td><p>done is sent when the answerer is done sending information </p></td>
+                </tr>
+              
+                <tr>
+                  <td>error</td>
+                  <td><a href="#proto.rpc.webrtc.v1.AnswerResponseErrorStage">AnswerResponseErrorStage</a></td>
+                  <td></td>
+                  <td><p>error is sent any time before done </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="proto.rpc.webrtc.v1.AnswerResponseDoneStage">AnswerResponseDoneStage</h3>
+        <p>AnswerResponseDoneStage indicates the answerer is done responding with candidates.</p>
+
+        
+
+        
+      
+        <h3 id="proto.rpc.webrtc.v1.AnswerResponseErrorStage">AnswerResponseErrorStage</h3>
+        <p>AnswerResponseErrorStage indicates the exchange has failed with an error.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
                   <td>status</td>
                   <td><a href="#google.rpc.Status">google.rpc.Status</a></td>
                   <td></td>
                   <td><p> </p></td>
                 </tr>
               
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="proto.rpc.webrtc.v1.AnswerResponseInitStage">AnswerResponseInitStage</h3>
+        <p>AnswerResponseInitStage is the first and a one time stage that represents the</p><p>answerers initial SDP response to the controlling side.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
                 <tr>
                   <td>sdp</td>
                   <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="proto.rpc.webrtc.v1.AnswerResponseUpdateStage">AnswerResponseUpdateStage</h3>
+        <p>AnswerResponseUpdateStage is multiply used to trickle in ICE candidates to</p><p>the controlling side.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>candidate</td>
+                  <td><a href="#proto.rpc.webrtc.v1.ICECandidate">ICECandidate</a></td>
                   <td></td>
                   <td><p> </p></td>
                 </tr>
@@ -1133,6 +1392,15 @@ we use a streaming response but only expect one response.</p></td>
                   <td><p> </p></td>
                 </tr>
               
+                <tr>
+                  <td>disable_trickle</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>when disable_trickle is true, the init stage will be the only stage
+to be received in the response and the caller can expect the SDP
+to contain all ICE candidates. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -1151,9 +1419,168 @@ we use a streaming response but only expect one response.</p></td>
             <tbody>
               
                 <tr>
+                  <td>uuid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>init</td>
+                  <td><a href="#proto.rpc.webrtc.v1.CallResponseInitStage">CallResponseInitStage</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>update</td>
+                  <td><a href="#proto.rpc.webrtc.v1.CallResponseUpdateStage">CallResponseUpdateStage</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="proto.rpc.webrtc.v1.CallResponseInitStage">CallResponseInitStage</h3>
+        <p>CallResponseInitStage is the first and a one time stage that represents</p><p>the initial response to starting a call.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
                   <td>sdp</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="proto.rpc.webrtc.v1.CallResponseUpdateStage">CallResponseUpdateStage</h3>
+        <p>CallResponseUpdateStage is multiply used to trickle in ICE candidates from</p><p>the controlled (answering) side.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>candidate</td>
+                  <td><a href="#proto.rpc.webrtc.v1.ICECandidate">ICECandidate</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="proto.rpc.webrtc.v1.CallUpdateRequest">CallUpdateRequest</h3>
+        <p>CallUpdateRequest updates the call with additional info to the controlled side.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>uuid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>candidate</td>
+                  <td><a href="#proto.rpc.webrtc.v1.ICECandidate">ICECandidate</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>done</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>error</td>
+                  <td><a href="#google.rpc.Status">google.rpc.Status</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="proto.rpc.webrtc.v1.CallUpdateResponse">CallUpdateResponse</h3>
+        <p>CallUpdateResponse contains nothing in response to a call update.</p>
+
+        
+
+        
+      
+        <h3 id="proto.rpc.webrtc.v1.ICECandidate">ICECandidate</h3>
+        <p>ICECandidate represents an ICE candidate.</p><p>From https://github.com/pion/webrtc/blob/5f6baf73255598a7b4a7c9400bb0381acc9aa3dc/icecandidateinit.go</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>candidate</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>sdp_mid</td>
+                  <td><a href="#string">string</a></td>
+                  <td>optional</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>sdpm_line_index</td>
+                  <td><a href="#uint32">uint32</a></td>
+                  <td>optional</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>username_fragment</td>
+                  <td><a href="#string">string</a></td>
+                  <td>optional</td>
                   <td><p> </p></td>
                 </tr>
               
@@ -1250,6 +1677,14 @@ we use a streaming response but only expect one response.</p></td>
                   <td><p> </p></td>
                 </tr>
               
+                <tr>
+                  <td>disable_trickle</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>disable_trickle indicates if Trickle ICE should be used. Currently, both
+sides must both respect this setting. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -1274,11 +1709,20 @@ we use a streaming response but only expect one response.</p></td>
               <tr>
                 <td>Call</td>
                 <td><a href="#proto.rpc.webrtc.v1.CallRequest">CallRequest</a></td>
-                <td><a href="#proto.rpc.webrtc.v1.CallResponse">CallResponse</a></td>
+                <td><a href="#proto.rpc.webrtc.v1.CallResponse">CallResponse</a> stream</td>
                 <td><p>Call makes an offer to a client that it expects an answer to. It is
 assumed that the service is hosted solely for a specific client. That is,
 every client has its own signaling service identified by its hostname
 and in the case of TLS being used, SNI.</p></td>
+              </tr>
+            
+              <tr>
+                <td>CallUpdate</td>
+                <td><a href="#proto.rpc.webrtc.v1.CallUpdateRequest">CallUpdateRequest</a></td>
+                <td><a href="#proto.rpc.webrtc.v1.CallUpdateResponse">CallUpdateResponse</a></td>
+                <td><p>CallUpdate is used to send additional info in relation to a Call.
+In a world where https://github.com/grpc/grpc-web/issues/24 is fixed,
+this should be removed in favor of a bidirectional stream on Call.</p></td>
               </tr>
             
               <tr>
@@ -1320,6 +1764,16 @@ and responds with answers.</p></td>
                 <td>Call</td>
                 <td>POST</td>
                 <td>/rpc/webrtc/v1/call</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>CallUpdate</td>
+                <td>PUT</td>
+                <td>/rpc/webrtc/v1/call_update</td>
                 <td></td>
               </tr>
               

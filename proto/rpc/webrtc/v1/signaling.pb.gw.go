@@ -35,7 +35,7 @@ var (
 	filter_SignalingService_Call_0 = &utilities.DoubleArray{Encoding: map[string]int{}, Base: []int(nil), Check: []int(nil)}
 )
 
-func request_SignalingService_Call_0(ctx context.Context, marshaler runtime.Marshaler, client SignalingServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+func request_SignalingService_Call_0(ctx context.Context, marshaler runtime.Marshaler, client SignalingServiceClient, req *http.Request, pathParams map[string]string) (SignalingService_CallClient, runtime.ServerMetadata, error) {
 	var protoReq CallRequest
 	var metadata runtime.ServerMetadata
 
@@ -46,23 +46,51 @@ func request_SignalingService_Call_0(ctx context.Context, marshaler runtime.Mars
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
 
-	msg, err := client.Call(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	stream, err := client.Call(ctx, &protoReq)
+	if err != nil {
+		return nil, metadata, err
+	}
+	header, err := stream.Header()
+	if err != nil {
+		return nil, metadata, err
+	}
+	metadata.HeaderMD = header
+	return stream, metadata, nil
+
+}
+
+var (
+	filter_SignalingService_CallUpdate_0 = &utilities.DoubleArray{Encoding: map[string]int{}, Base: []int(nil), Check: []int(nil)}
+)
+
+func request_SignalingService_CallUpdate_0(ctx context.Context, marshaler runtime.Marshaler, client SignalingServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq CallUpdateRequest
+	var metadata runtime.ServerMetadata
+
+	if err := req.ParseForm(); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_SignalingService_CallUpdate_0); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+
+	msg, err := client.CallUpdate(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
 
 }
 
-func local_request_SignalingService_Call_0(ctx context.Context, marshaler runtime.Marshaler, server SignalingServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var protoReq CallRequest
+func local_request_SignalingService_CallUpdate_0(ctx context.Context, marshaler runtime.Marshaler, server SignalingServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq CallUpdateRequest
 	var metadata runtime.ServerMetadata
 
 	if err := req.ParseForm(); err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
-	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_SignalingService_Call_0); err != nil {
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_SignalingService_CallUpdate_0); err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
 
-	msg, err := server.Call(ctx, &protoReq)
+	msg, err := server.CallUpdate(ctx, &protoReq)
 	return msg, metadata, err
 
 }
@@ -135,17 +163,24 @@ func local_request_SignalingService_OptionalWebRTCConfig_0(ctx context.Context, 
 func RegisterSignalingServiceHandlerServer(ctx context.Context, mux *runtime.ServeMux, server SignalingServiceServer) error {
 
 	mux.Handle("POST", pattern_SignalingService_Call_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		err := status.Error(codes.Unimplemented, "streaming calls are not yet supported in the in-process transport")
+		_, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+		return
+	})
+
+	mux.Handle("PUT", pattern_SignalingService_CallUpdate_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		rctx, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/proto.rpc.webrtc.v1.SignalingService/Call", runtime.WithHTTPPathPattern("/rpc/webrtc/v1/call"))
+		rctx, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/proto.rpc.webrtc.v1.SignalingService/CallUpdate", runtime.WithHTTPPathPattern("/rpc/webrtc/v1/call_update"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := local_request_SignalingService_Call_0(rctx, inboundMarshaler, server, req, pathParams)
+		resp, md, err := local_request_SignalingService_CallUpdate_0(rctx, inboundMarshaler, server, req, pathParams)
 		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
 		ctx = runtime.NewServerMetadataContext(ctx, md)
 		if err != nil {
@@ -153,7 +188,7 @@ func RegisterSignalingServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 			return
 		}
 
-		forward_SignalingService_Call_0(ctx, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_SignalingService_CallUpdate_0(ctx, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 
 	})
 
@@ -244,7 +279,27 @@ func RegisterSignalingServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 			return
 		}
 
-		forward_SignalingService_Call_0(ctx, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_SignalingService_Call_0(ctx, mux, outboundMarshaler, w, req, func() (proto.Message, error) { return resp.Recv() }, mux.GetForwardResponseOptions()...)
+
+	})
+
+	mux.Handle("PUT", pattern_SignalingService_CallUpdate_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		rctx, err := runtime.AnnotateContext(ctx, mux, req, "/proto.rpc.webrtc.v1.SignalingService/CallUpdate", runtime.WithHTTPPathPattern("/rpc/webrtc/v1/call_update"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := request_SignalingService_CallUpdate_0(rctx, inboundMarshaler, client, req, pathParams)
+		ctx = runtime.NewServerMetadataContext(ctx, md)
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+
+		forward_SignalingService_CallUpdate_0(ctx, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 
 	})
 
@@ -294,13 +349,17 @@ func RegisterSignalingServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 var (
 	pattern_SignalingService_Call_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3}, []string{"rpc", "webrtc", "v1", "call"}, ""))
 
+	pattern_SignalingService_CallUpdate_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3}, []string{"rpc", "webrtc", "v1", "call_update"}, ""))
+
 	pattern_SignalingService_Answer_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"proto.rpc.webrtc.v1.SignalingService", "Answer"}, ""))
 
 	pattern_SignalingService_OptionalWebRTCConfig_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3}, []string{"rpc", "webrtc", "v1", "optional_webrtc_config"}, ""))
 )
 
 var (
-	forward_SignalingService_Call_0 = runtime.ForwardResponseMessage
+	forward_SignalingService_Call_0 = runtime.ForwardResponseStream
+
+	forward_SignalingService_CallUpdate_0 = runtime.ForwardResponseMessage
 
 	forward_SignalingService_Answer_0 = runtime.ForwardResponseStream
 

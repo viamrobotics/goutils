@@ -64,35 +64,77 @@ type ChangeEventResult struct {
 	Error error
 }
 
-// ChangeStreamNextBackground calls Next in the background and returns once at least one attempt has
+// changeStreamBackground calls Next in the background and returns once at least one attempt has
 // been made. It returns a result that can be received after the call is done.
-func ChangeStreamNextBackground(ctx context.Context, cs *mongo.ChangeStream) (<-chan ChangeEventResult, func()) {
-	result := make(chan ChangeEventResult, 1)
-	nextCtx, cancel := context.WithCancel(ctx)
+func changeStreamBackground(ctx context.Context, cs *mongo.ChangeStream, once bool) <-chan ChangeEventResult {
+	results := make(chan ChangeEventResult, 1)
 	csStarted := make(chan struct{}, 1)
+	sendResult := func(result ChangeEventResult) {
+		select {
+		case <-ctx.Done():
+			// try once more
+			select {
+			case results <- result:
+			default:
+			}
+		case results <- result:
+		}
+	}
 	utils.PanicCapturingGo(func() {
-		defer close(result)
-		var ce ChangeEvent
-		if cs.TryNext(nextCtx) {
-			close(csStarted)
-			if err := cs.Decode(&ce); err != nil {
-				result <- ChangeEventResult{Error: err}
+		defer close(results)
+
+		csStartedOnce := false
+		atLeastOnce := false
+		for !(once && atLeastOnce) {
+			if ctx.Err() != nil {
 				return
 			}
-			result <- ChangeEventResult{Event: &ce}
-			return
-		}
-		close(csStarted)
-		if cs.Next(nextCtx) {
-			if err := cs.Decode(&ce); err != nil {
-				result <- ChangeEventResult{Error: err}
-				return
+
+			var ce ChangeEvent
+			if cs.TryNext(ctx) {
+				if !csStartedOnce {
+					csStartedOnce = true
+					close(csStarted)
+				}
+				if err := cs.Decode(&ce); err != nil {
+					sendResult(ChangeEventResult{Error: err})
+					return
+				}
+				sendResult(ChangeEventResult{Event: &ce})
+				atLeastOnce = true
+				continue
 			}
-			result <- ChangeEventResult{Event: &ce}
+			if !csStartedOnce {
+				csStartedOnce = true
+				close(csStarted)
+			}
+			if cs.Next(ctx) {
+				if err := cs.Decode(&ce); err != nil {
+					sendResult(ChangeEventResult{Error: err})
+					return
+				}
+				sendResult(ChangeEventResult{Event: &ce})
+				atLeastOnce = true
+				continue
+			}
+			sendResult(ChangeEventResult{Error: cs.Err()})
 			return
 		}
-		result <- ChangeEventResult{Error: cs.Err()}
 	})
 	<-csStarted
-	return result, cancel
+	return results
+}
+
+// ChangeStreamBackground calls Next in the background and returns once at least one attempt has
+// been made. It returns a series of result that can be received after the call is done. It will run
+// until the given context is done.
+func ChangeStreamBackground(ctx context.Context, cs *mongo.ChangeStream) <-chan ChangeEventResult {
+	return changeStreamBackground(ctx, cs, false)
+}
+
+// ChangeStreamNextBackground calls Next in the background and returns once at least one attempt has
+// been made. It returns a result that can be received after the call is done. It will run
+// until the given context is done.
+func ChangeStreamNextBackground(ctx context.Context, cs *mongo.ChangeStream) <-chan ChangeEventResult {
+	return changeStreamBackground(ctx, cs, true)
 }

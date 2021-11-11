@@ -132,12 +132,14 @@ export class ClientStream extends BaseStream implements grpc.Transport {
 		this.trailersReceived = true;
 		const headers = toGRPCMetadata(trailers.getMetadata());
 		let statusCode, statusMessage;
-		if (trailers.getStatus()) {
-			statusCode = trailers.getStatus().getCode();
-			statusMessage = trailers.getStatus().getMessage();
-			headers.set("grpc-status", trailers.getStatus().getCode());
-			// this okay?
-			headers.set("grpc-message", trailers.getStatus().getMessage());	
+		const status = trailers.getStatus();
+		if (status) {
+			statusCode = status.getCode();
+			statusMessage = status.getMessage();
+			headers.set("grpc-status", `${status.getCode()}`);
+			if (statusMessage !== undefined) {
+				headers.set("grpc-message", status.getMessage());
+			}
 		} else {
 			statusCode = 0;
 			headers.set("grpc-status", "0");

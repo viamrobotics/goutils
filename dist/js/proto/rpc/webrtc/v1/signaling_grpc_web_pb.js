@@ -85,7 +85,7 @@ proto.proto.rpc.webrtc.v1.SignalingServicePromiseClient =
  */
 const methodDescriptor_SignalingService_Call = new grpc.web.MethodDescriptor(
   '/proto.rpc.webrtc.v1.SignalingService/Call',
-  grpc.web.MethodType.UNARY,
+  grpc.web.MethodType.SERVER_STREAMING,
   proto.proto.rpc.webrtc.v1.CallRequest,
   proto.proto.rpc.webrtc.v1.CallResponse,
   /**
@@ -100,41 +100,97 @@ const methodDescriptor_SignalingService_Call = new grpc.web.MethodDescriptor(
 
 
 /**
- * @param {!proto.proto.rpc.webrtc.v1.CallRequest} request The
- *     request proto
- * @param {?Object<string, string>} metadata User defined
+ * @param {!proto.proto.rpc.webrtc.v1.CallRequest} request The request proto
+ * @param {?Object<string, string>=} metadata User defined
  *     call metadata
- * @param {function(?grpc.web.RpcError, ?proto.proto.rpc.webrtc.v1.CallResponse)}
- *     callback The callback function(error, response)
- * @return {!grpc.web.ClientReadableStream<!proto.proto.rpc.webrtc.v1.CallResponse>|undefined}
+ * @return {!grpc.web.ClientReadableStream<!proto.proto.rpc.webrtc.v1.CallResponse>}
  *     The XHR Node Readable Stream
  */
 proto.proto.rpc.webrtc.v1.SignalingServiceClient.prototype.call =
-    function(request, metadata, callback) {
-  return this.client_.rpcCall(this.hostname_ +
+    function(request, metadata) {
+  return this.client_.serverStreaming(this.hostname_ +
       '/proto.rpc.webrtc.v1.SignalingService/Call',
       request,
       metadata || {},
-      methodDescriptor_SignalingService_Call,
+      methodDescriptor_SignalingService_Call);
+};
+
+
+/**
+ * @param {!proto.proto.rpc.webrtc.v1.CallRequest} request The request proto
+ * @param {?Object<string, string>=} metadata User defined
+ *     call metadata
+ * @return {!grpc.web.ClientReadableStream<!proto.proto.rpc.webrtc.v1.CallResponse>}
+ *     The XHR Node Readable Stream
+ */
+proto.proto.rpc.webrtc.v1.SignalingServicePromiseClient.prototype.call =
+    function(request, metadata) {
+  return this.client_.serverStreaming(this.hostname_ +
+      '/proto.rpc.webrtc.v1.SignalingService/Call',
+      request,
+      metadata || {},
+      methodDescriptor_SignalingService_Call);
+};
+
+
+/**
+ * @const
+ * @type {!grpc.web.MethodDescriptor<
+ *   !proto.proto.rpc.webrtc.v1.CallUpdateRequest,
+ *   !proto.proto.rpc.webrtc.v1.CallUpdateResponse>}
+ */
+const methodDescriptor_SignalingService_CallUpdate = new grpc.web.MethodDescriptor(
+  '/proto.rpc.webrtc.v1.SignalingService/CallUpdate',
+  grpc.web.MethodType.UNARY,
+  proto.proto.rpc.webrtc.v1.CallUpdateRequest,
+  proto.proto.rpc.webrtc.v1.CallUpdateResponse,
+  /**
+   * @param {!proto.proto.rpc.webrtc.v1.CallUpdateRequest} request
+   * @return {!Uint8Array}
+   */
+  function(request) {
+    return request.serializeBinary();
+  },
+  proto.proto.rpc.webrtc.v1.CallUpdateResponse.deserializeBinary
+);
+
+
+/**
+ * @param {!proto.proto.rpc.webrtc.v1.CallUpdateRequest} request The
+ *     request proto
+ * @param {?Object<string, string>} metadata User defined
+ *     call metadata
+ * @param {function(?grpc.web.RpcError, ?proto.proto.rpc.webrtc.v1.CallUpdateResponse)}
+ *     callback The callback function(error, response)
+ * @return {!grpc.web.ClientReadableStream<!proto.proto.rpc.webrtc.v1.CallUpdateResponse>|undefined}
+ *     The XHR Node Readable Stream
+ */
+proto.proto.rpc.webrtc.v1.SignalingServiceClient.prototype.callUpdate =
+    function(request, metadata, callback) {
+  return this.client_.rpcCall(this.hostname_ +
+      '/proto.rpc.webrtc.v1.SignalingService/CallUpdate',
+      request,
+      metadata || {},
+      methodDescriptor_SignalingService_CallUpdate,
       callback);
 };
 
 
 /**
- * @param {!proto.proto.rpc.webrtc.v1.CallRequest} request The
+ * @param {!proto.proto.rpc.webrtc.v1.CallUpdateRequest} request The
  *     request proto
  * @param {?Object<string, string>=} metadata User defined
  *     call metadata
- * @return {!Promise<!proto.proto.rpc.webrtc.v1.CallResponse>}
+ * @return {!Promise<!proto.proto.rpc.webrtc.v1.CallUpdateResponse>}
  *     Promise that resolves to the response
  */
-proto.proto.rpc.webrtc.v1.SignalingServicePromiseClient.prototype.call =
+proto.proto.rpc.webrtc.v1.SignalingServicePromiseClient.prototype.callUpdate =
     function(request, metadata) {
   return this.client_.unaryCall(this.hostname_ +
-      '/proto.rpc.webrtc.v1.SignalingService/Call',
+      '/proto.rpc.webrtc.v1.SignalingService/CallUpdate',
       request,
       metadata || {},
-      methodDescriptor_SignalingService_Call);
+      methodDescriptor_SignalingService_CallUpdate);
 };
 
 

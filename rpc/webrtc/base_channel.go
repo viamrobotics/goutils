@@ -53,7 +53,7 @@ func newBaseChannel(
 	var connID string
 	var connIDMu sync.Mutex
 	var peerDoneOnce bool
-	peerConn.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
+	connStateChanged := func(connectionState webrtc.ICEConnectionState) {
 		ch.mu.Lock()
 		defer ch.mu.Unlock()
 		if ch.closed {
@@ -97,7 +97,11 @@ func newBaseChannel(
 				)
 			})
 		}
-	})
+	}
+	peerConn.OnICEConnectionStateChange(connStateChanged)
+
+	// fire once
+	connStateChanged(peerConn.ICEConnectionState())
 
 	return ch
 }

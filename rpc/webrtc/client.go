@@ -4,17 +4,20 @@ package rpcwebrtc
 
 import (
 	"context"
-	"errors"
+	"fmt"
+	"io"
 	"net/url"
-	"time"
+	"sync"
 
 	"github.com/edaniels/golog"
 	"github.com/pion/webrtc/v3"
+	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
+	"go.viam.com/utils"
 	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
 	"go.viam.com/utils/rpc/dialer"
 )
@@ -32,6 +35,10 @@ type Options struct {
 	// contact on behalf of this client for WebRTC communications.
 	SignalingServer string
 
+	// DisableTrickleICE controls whether to disable Trickle ICE or not.
+	// Disabling Trickle ICE can slow down connection establishment.
+	DisableTrickleICE bool
+
 	// Config is the WebRTC specific configuration (i.e. ICE settings)
 	Config *webrtc.Configuration
 }
@@ -44,7 +51,7 @@ func Dial(ctx context.Context, address string, opts Options, logger golog.Logger
 		address = u.Host
 		host = u.Query().Get("host")
 	}
-	dialCtx, timeoutCancel := context.WithTimeout(ctx, 20*time.Second)
+	dialCtx, timeoutCancel := context.WithTimeout(ctx, connectionTimeout)
 	defer timeoutCancel()
 
 	logger.Debugw("connecting to signaling server", "address", address)
@@ -60,10 +67,10 @@ func Dial(ctx context.Context, address string, opts Options, logger golog.Logger
 	logger.Debug("connected")
 
 	md := metadata.New(map[string]string{RPCHostMetadataField: host})
-	singalCtx := metadata.NewOutgoingContext(ctx, md)
+	signalCtx := metadata.NewOutgoingContext(ctx, md)
 
 	signalingClient := webrtcpb.NewSignalingServiceClient(conn)
-	configResp, err := signalingClient.OptionalWebRTCConfig(singalCtx, &webrtcpb.OptionalWebRTCConfigRequest{})
+	configResp, err := signalingClient.OptionalWebRTCConfig(signalCtx, &webrtcpb.OptionalWebRTCConfigRequest{})
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +80,7 @@ func Dial(ctx context.Context, address string, opts Options, logger golog.Logger
 		config = *opts.Config
 	}
 	extendedConfig := extendWebRTCConfig(&config, configResp.Config)
-	pc, dc, err := newPeerConnectionForClient(ctx, extendedConfig, logger)
+	pc, dc, err := newPeerConnectionForClient(ctx, extendedConfig, opts.DisableTrickleICE, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -84,12 +91,77 @@ func Dial(ctx context.Context, address string, opts Options, logger golog.Logger
 		}
 	}()
 
+	exchangeCtx, exchangeCancel := context.WithCancel(signalCtx)
+	defer exchangeCancel()
+
+	errCh := make(chan error)
+	sendErr := func(err error) {
+		select {
+		case <-exchangeCtx.Done():
+		case errCh <- err:
+		}
+	}
+	var uuid string
+	// only send once since exchange may end or ICE may end
+	var sendDoneErrorOnce sync.Once
+	sendDone := func() error {
+		var err error
+		sendDoneErrorOnce.Do(func() {
+			_, err = signalingClient.CallUpdate(exchangeCtx, &webrtcpb.CallUpdateRequest{
+				Uuid: uuid,
+				Update: &webrtcpb.CallUpdateRequest_Done{
+					Done: true,
+				},
+			})
+		})
+		return err
+	}
+
+	remoteDescSet := make(chan struct{})
+	if !opts.DisableTrickleICE {
+		offer, err := pc.CreateOffer(nil)
+		if err != nil {
+			return nil, err
+		}
+
+		pc.OnICECandidate(func(i *webrtc.ICECandidate) {
+			if exchangeCtx.Err() != nil {
+				return
+			}
+			select {
+			case <-remoteDescSet:
+			case <-exchangeCtx.Done():
+				return
+			}
+			if i == nil {
+				if err := sendDone(); err != nil {
+					sendErr(err)
+				}
+				return
+			}
+			iProto := iceCandidateToProto(i)
+			if _, err := signalingClient.CallUpdate(exchangeCtx, &webrtcpb.CallUpdateRequest{
+				Uuid: uuid,
+				Update: &webrtcpb.CallUpdateRequest_Candidate{
+					Candidate: iProto,
+				},
+			}); err != nil {
+				sendErr(err)
+			}
+		})
+
+		err = pc.SetLocalDescription(offer)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	encodedSDP, err := EncodeSDP(pc.LocalDescription())
 	if err != nil {
 		return nil, err
 	}
 
-	answerResp, err := signalingClient.Call(singalCtx, &webrtcpb.CallRequest{Sdp: encodedSDP})
+	callClient, err := signalingClient.Call(signalCtx, &webrtcpb.CallRequest{Sdp: encodedSDP})
 	if err != nil {
 		if s, ok := status.FromError(err); ok && s.Code() == codes.Unimplemented {
 			return nil, ErrNoSignaler
@@ -97,22 +169,96 @@ func Dial(ctx context.Context, address string, opts Options, logger golog.Logger
 		return nil, err
 	}
 
-	answer := webrtc.SessionDescription{}
-	if err := DecodeSDP(answerResp.Sdp, &answer); err != nil {
-		return nil, err
-	}
-
-	err = pc.SetRemoteDescription(answer)
-	if err != nil {
-		return nil, err
-	}
-
 	clientCh := NewClientChannel(pc, dc, logger)
 
-	select {
-	case <-ctx.Done():
-		return nil, multierr.Combine(ctx.Err(), clientCh.Close())
-	case <-clientCh.Ready():
+	exchangeCandidates := func() error {
+		haveInit := false
+		for {
+			if err := exchangeCtx.Err(); err != nil {
+				if errors.Is(err, context.Canceled) {
+					return nil
+				}
+				return err
+			}
+
+			callResp, err := callClient.Recv()
+			if err != nil {
+				if !errors.Is(err, io.EOF) {
+					return err
+				}
+				return nil
+			}
+			switch s := callResp.Stage.(type) {
+			case *webrtcpb.CallResponse_Init:
+				if haveInit {
+					return errors.New("got init stage more than once")
+				}
+				haveInit = true
+				uuid = callResp.Uuid
+				answer := webrtc.SessionDescription{}
+				if err := DecodeSDP(s.Init.Sdp, &answer); err != nil {
+					return err
+				}
+
+				err = pc.SetRemoteDescription(answer)
+				if err != nil {
+					return err
+				}
+				close(remoteDescSet)
+
+				if opts.DisableTrickleICE {
+					return sendDone()
+				}
+			case *webrtcpb.CallResponse_Update:
+				if !haveInit {
+					return errors.New("got update stage before init stage")
+				}
+				if callResp.Uuid != uuid {
+					return errors.Errorf("uuid mismatch; have=%q want=%q", callResp.Uuid, uuid)
+				}
+				cand := iceCandidateFromProto(s.Update.Candidate)
+				if err := pc.AddICECandidate(cand); err != nil {
+					return err
+				}
+			default:
+				return errors.Errorf("unexpected stage %T", s)
+			}
+		}
+	}
+
+	utils.PanicCapturingGoWithCallback(func() {
+		if err := exchangeCandidates(); err != nil {
+			sendErr(err)
+		}
+	}, func(err interface{}) {
+		sendErr(fmt.Errorf("%w", err))
+	})
+
+	doCall := func() error {
+		select {
+		case <-ctx.Done():
+			return multierr.Combine(ctx.Err(), clientCh.Close())
+		case <-clientCh.Ready():
+			return nil
+		case err := <-errCh:
+			return multierr.Combine(err, clientCh.Close())
+		}
+	}
+
+	if callErr := doCall(); callErr != nil {
+		var err error
+		sendDoneErrorOnce.Do(func() {
+			_, err = signalingClient.CallUpdate(exchangeCtx, &webrtcpb.CallUpdateRequest{
+				Uuid: uuid,
+				Update: &webrtcpb.CallUpdateRequest_Error{
+					Error: ErrorToStatus(callErr).Proto(),
+				},
+			})
+		})
+		return nil, err
+	}
+	if err := sendDone(); err != nil {
+		return nil, err
 	}
 	successful = true
 	return clientCh, nil

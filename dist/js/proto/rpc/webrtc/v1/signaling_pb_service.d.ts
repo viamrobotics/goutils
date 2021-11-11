@@ -8,9 +8,18 @@ type SignalingServiceCall = {
   readonly methodName: string;
   readonly service: typeof SignalingService;
   readonly requestStream: false;
-  readonly responseStream: false;
+  readonly responseStream: true;
   readonly requestType: typeof proto_rpc_webrtc_v1_signaling_pb.CallRequest;
   readonly responseType: typeof proto_rpc_webrtc_v1_signaling_pb.CallResponse;
+};
+
+type SignalingServiceCallUpdate = {
+  readonly methodName: string;
+  readonly service: typeof SignalingService;
+  readonly requestStream: false;
+  readonly responseStream: false;
+  readonly requestType: typeof proto_rpc_webrtc_v1_signaling_pb.CallUpdateRequest;
+  readonly responseType: typeof proto_rpc_webrtc_v1_signaling_pb.CallUpdateResponse;
 };
 
 type SignalingServiceAnswer = {
@@ -34,6 +43,7 @@ type SignalingServiceOptionalWebRTCConfig = {
 export class SignalingService {
   static readonly serviceName: string;
   static readonly Call: SignalingServiceCall;
+  static readonly CallUpdate: SignalingServiceCallUpdate;
   static readonly Answer: SignalingServiceAnswer;
   static readonly OptionalWebRTCConfig: SignalingServiceOptionalWebRTCConfig;
 }
@@ -70,14 +80,15 @@ export class SignalingServiceClient {
   readonly serviceHost: string;
 
   constructor(serviceHost: string, options?: grpc.RpcOptions);
-  call(
-    requestMessage: proto_rpc_webrtc_v1_signaling_pb.CallRequest,
+  call(requestMessage: proto_rpc_webrtc_v1_signaling_pb.CallRequest, metadata?: grpc.Metadata): ResponseStream<proto_rpc_webrtc_v1_signaling_pb.CallResponse>;
+  callUpdate(
+    requestMessage: proto_rpc_webrtc_v1_signaling_pb.CallUpdateRequest,
     metadata: grpc.Metadata,
-    callback: (error: ServiceError|null, responseMessage: proto_rpc_webrtc_v1_signaling_pb.CallResponse|null) => void
+    callback: (error: ServiceError|null, responseMessage: proto_rpc_webrtc_v1_signaling_pb.CallUpdateResponse|null) => void
   ): UnaryResponse;
-  call(
-    requestMessage: proto_rpc_webrtc_v1_signaling_pb.CallRequest,
-    callback: (error: ServiceError|null, responseMessage: proto_rpc_webrtc_v1_signaling_pb.CallResponse|null) => void
+  callUpdate(
+    requestMessage: proto_rpc_webrtc_v1_signaling_pb.CallUpdateRequest,
+    callback: (error: ServiceError|null, responseMessage: proto_rpc_webrtc_v1_signaling_pb.CallUpdateResponse|null) => void
   ): UnaryResponse;
   answer(metadata?: grpc.Metadata): BidirectionalStream<proto_rpc_webrtc_v1_signaling_pb.AnswerResponse, proto_rpc_webrtc_v1_signaling_pb.AnswerRequest>;
   optionalWebRTCConfig(

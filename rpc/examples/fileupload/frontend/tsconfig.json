@@ -18,7 +18,8 @@
     ],
     "baseUrl": "./",
     "paths": {
-      "proto/*": ["../../../../dist/js/proto/*"]
+      "proto/*": ["../../../../dist/js/proto/*"],
+      "google-rpc/*": ["../../../../dist/js/google/rpc/*"]
     }
   }
 }

@@ -2,6 +2,7 @@ package rpcwebrtc_test
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"testing"
 
@@ -48,31 +49,49 @@ func TestSignaling(t *testing.T) {
 	}()
 	signalClient := webrtcpb.NewSignalingServiceClient(cc)
 
-	_, err = signalClient.Call(context.Background(), &webrtcpb.CallRequest{})
+	callClient, err := signalClient.Call(context.Background(), &webrtcpb.CallRequest{})
+	test.That(t, err, test.ShouldBeNil)
+	_, err = callClient.Recv()
 	test.That(t, err, test.ShouldNotBeNil)
 	test.That(t, err.Error(), test.ShouldContainSubstring, "expected rpc-host")
 
 	md := metadata.New(map[string]string{"rpc-host": "yeehaw"})
 	callCtx := metadata.NewOutgoingContext(context.Background(), md)
 
-	_, err = signalClient.Call(callCtx, &webrtcpb.CallRequest{})
+	callClient, err = signalClient.Call(callCtx, &webrtcpb.CallRequest{})
+	test.That(t, err, test.ShouldBeNil)
+	_, err = callClient.Recv()
 	test.That(t, err, test.ShouldNotBeNil)
 	test.That(t, err.Error(), test.ShouldContainSubstring, "unexpected")
 
-	_, err = signalClient.Call(callCtx, &webrtcpb.CallRequest{Sdp: "thing"})
+	callClient, err = signalClient.Call(callCtx, &webrtcpb.CallRequest{Sdp: "thing"})
+	test.That(t, err, test.ShouldBeNil)
+	_, err = callClient.Recv()
 	test.That(t, err, test.ShouldNotBeNil)
 	test.That(t, err.Error(), test.ShouldContainSubstring, "illegal")
 
-	ch, err := rpcwebrtc.Dial(context.Background(), rpc.HostURI(grpcListener.Addr().String(), "yeehaw"), rpcwebrtc.Options{Insecure: true}, logger)
-	test.That(t, err, test.ShouldBeNil)
-	defer func() {
-		test.That(t, ch.Close(), test.ShouldBeNil)
-	}()
+	for _, tc := range []bool{true, false} {
+		t.Run(fmt.Sprintf("with trickle disabled %t", tc), func(t *testing.T) {
+			ch, err := rpcwebrtc.Dial(
+				context.Background(),
+				rpc.HostURI(grpcListener.Addr().String(), "yeehaw"),
+				rpcwebrtc.Options{
+					Insecure:          true,
+					DisableTrickleICE: tc,
+				},
+				logger,
+			)
+			test.That(t, err, test.ShouldBeNil)
+			defer func() {
+				test.That(t, ch.Close(), test.ShouldBeNil)
+			}()
 
-	echoClient := echopb.NewEchoServiceClient(ch)
-	resp, err := echoClient.Echo(context.Background(), &echopb.EchoRequest{Message: "hello"})
-	test.That(t, err, test.ShouldBeNil)
-	test.That(t, resp.Message, test.ShouldEqual, "hello")
+			echoClient := echopb.NewEchoServiceClient(ch)
+			resp, err := echoClient.Echo(context.Background(), &echopb.EchoRequest{Message: "hello"})
+			test.That(t, err, test.ShouldBeNil)
+			test.That(t, resp.Message, test.ShouldEqual, "hello")
+		})
+	}
 
 	webrtcServer.Stop()
 	answerer.Stop()

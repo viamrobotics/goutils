@@ -14,4 +14,5 @@ func TestMongoDBCallQueue(t *testing.T) {
 	test.That(t, err, test.ShouldBeNil)
 
 	testCallQueue(t, callQueue)
+	test.That(t, callQueue.Close(), test.ShouldBeNil)
 }

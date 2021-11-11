@@ -2,6 +2,7 @@ package rpcwebrtc_test
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"strings"
 	"testing"
@@ -41,22 +42,34 @@ func TestClientServer(t *testing.T) {
 	answerer := rpcwebrtc.NewSignalingAnswerer(grpcListener.Addr().String(), "yeehaw", webrtcServer, true, webrtc.Configuration{}, logger)
 	test.That(t, answerer.Start(), test.ShouldBeNil)
 
-	cc, err := rpcwebrtc.Dial(context.Background(), rpc.HostURI(grpcListener.Addr().String(), "yeehaw"), rpcwebrtc.Options{Insecure: true}, logger)
-	test.That(t, err, test.ShouldBeNil)
-	defer func() {
-		test.That(t, cc.Close(), test.ShouldBeNil)
-	}()
+	for _, tc := range []bool{true, false} {
+		t.Run(fmt.Sprintf("with trickle disabled %t", tc), func(t *testing.T) {
+			cc, err := rpcwebrtc.Dial(
+				context.Background(),
+				rpc.HostURI(grpcListener.Addr().String(), "yeehaw"),
+				rpcwebrtc.Options{
+					Insecure:          true,
+					DisableTrickleICE: tc,
+				},
+				logger,
+			)
+			test.That(t, err, test.ShouldBeNil)
+			defer func() {
+				test.That(t, cc.Close(), test.ShouldBeNil)
+			}()
 
-	echoClient := echopb.NewEchoServiceClient(cc)
-	resp, err := echoClient.Echo(context.Background(), &echopb.EchoRequest{Message: "hello"})
-	test.That(t, err, test.ShouldBeNil)
-	test.That(t, resp.Message, test.ShouldEqual, "hello")
+			echoClient := echopb.NewEchoServiceClient(cc)
+			resp, err := echoClient.Echo(context.Background(), &echopb.EchoRequest{Message: "hello"})
+			test.That(t, err, test.ShouldBeNil)
+			test.That(t, resp.Message, test.ShouldEqual, "hello")
 
-	// big message
-	bigZ := strings.Repeat("z", 1<<18)
-	resp, err = echoClient.Echo(context.Background(), &echopb.EchoRequest{Message: bigZ})
-	test.That(t, err, test.ShouldBeNil)
-	test.That(t, resp.Message, test.ShouldEqual, bigZ)
+			// big message
+			bigZ := strings.Repeat("z", 1<<18)
+			resp, err = echoClient.Echo(context.Background(), &echopb.EchoRequest{Message: bigZ})
+			test.That(t, err, test.ShouldBeNil)
+			test.That(t, resp.Message, test.ShouldEqual, bigZ)
+		})
+	}
 
 	webrtcServer.Stop()
 	answerer.Stop()

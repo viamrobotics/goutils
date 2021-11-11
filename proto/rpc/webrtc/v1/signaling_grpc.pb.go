@@ -23,7 +23,11 @@ type SignalingServiceClient interface {
 	// assumed that the service is hosted solely for a specific client. That is,
 	// every client has its own signaling service identified by its hostname
 	// and in the case of TLS being used, SNI.
-	Call(ctx context.Context, in *CallRequest, opts ...grpc.CallOption) (*CallResponse, error)
+	Call(ctx context.Context, in *CallRequest, opts ...grpc.CallOption) (SignalingService_CallClient, error)
+	// CallUpdate is used to send additional info in relation to a Call.
+	// In a world where https://github.com/grpc/grpc-web/issues/24 is fixed,
+	// this should be removed in favor of a bidirectional stream on Call.
+	CallUpdate(ctx context.Context, in *CallUpdateRequest, opts ...grpc.CallOption) (*CallUpdateResponse, error)
 	// Answer sets up an answering service where the caller answers call offers
 	// and responds with answers.
 	Answer(ctx context.Context, opts ...grpc.CallOption) (SignalingService_AnswerClient, error)
@@ -39,9 +43,41 @@ func NewSignalingServiceClient(cc grpc.ClientConnInterface) SignalingServiceClie
 	return &signalingServiceClient{cc}
 }
 
-func (c *signalingServiceClient) Call(ctx context.Context, in *CallRequest, opts ...grpc.CallOption) (*CallResponse, error) {
-	out := new(CallResponse)
-	err := c.cc.Invoke(ctx, "/proto.rpc.webrtc.v1.SignalingService/Call", in, out, opts...)
+func (c *signalingServiceClient) Call(ctx context.Context, in *CallRequest, opts ...grpc.CallOption) (SignalingService_CallClient, error) {
+	stream, err := c.cc.NewStream(ctx, &SignalingService_ServiceDesc.Streams[0], "/proto.rpc.webrtc.v1.SignalingService/Call", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &signalingServiceCallClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type SignalingService_CallClient interface {
+	Recv() (*CallResponse, error)
+	grpc.ClientStream
+}
+
+type signalingServiceCallClient struct {
+	grpc.ClientStream
+}
+
+func (x *signalingServiceCallClient) Recv() (*CallResponse, error) {
+	m := new(CallResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func (c *signalingServiceClient) CallUpdate(ctx context.Context, in *CallUpdateRequest, opts ...grpc.CallOption) (*CallUpdateResponse, error) {
+	out := new(CallUpdateResponse)
+	err := c.cc.Invoke(ctx, "/proto.rpc.webrtc.v1.SignalingService/CallUpdate", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -49,7 +85,7 @@ func (c *signalingServiceClient) Call(ctx context.Context, in *CallRequest, opts
 }
 
 func (c *signalingServiceClient) Answer(ctx context.Context, opts ...grpc.CallOption) (SignalingService_AnswerClient, error) {
-	stream, err := c.cc.NewStream(ctx, &SignalingService_ServiceDesc.Streams[0], "/proto.rpc.webrtc.v1.SignalingService/Answer", opts...)
+	stream, err := c.cc.NewStream(ctx, &SignalingService_ServiceDesc.Streams[1], "/proto.rpc.webrtc.v1.SignalingService/Answer", opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +132,11 @@ type SignalingServiceServer interface {
 	// assumed that the service is hosted solely for a specific client. That is,
 	// every client has its own signaling service identified by its hostname
 	// and in the case of TLS being used, SNI.
-	Call(context.Context, *CallRequest) (*CallResponse, error)
+	Call(*CallRequest, SignalingService_CallServer) error
+	// CallUpdate is used to send additional info in relation to a Call.
+	// In a world where https://github.com/grpc/grpc-web/issues/24 is fixed,
+	// this should be removed in favor of a bidirectional stream on Call.
+	CallUpdate(context.Context, *CallUpdateRequest) (*CallUpdateResponse, error)
 	// Answer sets up an answering service where the caller answers call offers
 	// and responds with answers.
 	Answer(SignalingService_AnswerServer) error
@@ -109,8 +149,11 @@ type SignalingServiceServer interface {
 type UnimplementedSignalingServiceServer struct {
 }
 
-func (UnimplementedSignalingServiceServer) Call(context.Context, *CallRequest) (*CallResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Call not implemented")
+func (UnimplementedSignalingServiceServer) Call(*CallRequest, SignalingService_CallServer) error {
+	return status.Errorf(codes.Unimplemented, "method Call not implemented")
+}
+func (UnimplementedSignalingServiceServer) CallUpdate(context.Context, *CallUpdateRequest) (*CallUpdateResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CallUpdate not implemented")
 }
 func (UnimplementedSignalingServiceServer) Answer(SignalingService_AnswerServer) error {
 	return status.Errorf(codes.Unimplemented, "method Answer not implemented")
@@ -131,20 +174,41 @@ func RegisterSignalingServiceServer(s grpc.ServiceRegistrar, srv SignalingServic
 	s.RegisterService(&SignalingService_ServiceDesc, srv)
 }
 
-func _SignalingService_Call_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(CallRequest)
+func _SignalingService_Call_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(CallRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(SignalingServiceServer).Call(m, &signalingServiceCallServer{stream})
+}
+
+type SignalingService_CallServer interface {
+	Send(*CallResponse) error
+	grpc.ServerStream
+}
+
+type signalingServiceCallServer struct {
+	grpc.ServerStream
+}
+
+func (x *signalingServiceCallServer) Send(m *CallResponse) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func _SignalingService_CallUpdate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CallUpdateRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SignalingServiceServer).Call(ctx, in)
+		return srv.(SignalingServiceServer).CallUpdate(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/proto.rpc.webrtc.v1.SignalingService/Call",
+		FullMethod: "/proto.rpc.webrtc.v1.SignalingService/CallUpdate",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SignalingServiceServer).Call(ctx, req.(*CallRequest))
+		return srv.(SignalingServiceServer).CallUpdate(ctx, req.(*CallUpdateRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -201,8 +265,8 @@ var SignalingService_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*SignalingServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "Call",
-			Handler:    _SignalingService_Call_Handler,
+			MethodName: "CallUpdate",
+			Handler:    _SignalingService_CallUpdate_Handler,
 		},
 		{
 			MethodName: "OptionalWebRTCConfig",
@@ -210,6 +274,11 @@ var SignalingService_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "Call",
+			Handler:       _SignalingService_Call_Handler,
+			ServerStreams: true,
+		},
 		{
 			StreamName:    "Answer",
 			Handler:       _SignalingService_Answer_Handler,
