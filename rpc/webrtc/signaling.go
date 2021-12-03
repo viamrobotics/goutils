@@ -37,6 +37,9 @@ func DecodeSDP(in string, sdp *webrtc.SessionDescription) error {
 
 func extendWebRTCConfig(original *webrtc.Configuration, optional *webrtcpb.WebRTCConfig) webrtc.Configuration {
 	configCopy := *original
+	if optional == nil {
+		return configCopy
+	}
 	if len(optional.AdditionalIceServers) > 0 {
 		iceServers := make([]webrtc.ICEServer, len(original.ICEServers)+len(optional.AdditionalIceServers))
 		copy(iceServers, original.ICEServers)
