@@ -24,7 +24,9 @@ func TestClientServer(t *testing.T) {
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
 
-	signalingServer := rpcwebrtc.NewSignalingServer(rpcwebrtc.NewMemoryCallQueue(), nil)
+	queue := rpcwebrtc.NewMemoryCallQueue()
+	defer queue.Close()
+	signalingServer := rpcwebrtc.NewSignalingServer(queue, nil)
 
 	grpcListener, err := net.Listen("tcp", "localhost:0")
 	test.That(t, err, test.ShouldBeNil)
