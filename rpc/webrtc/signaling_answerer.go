@@ -204,12 +204,16 @@ func (ans *SignalingAnswerer) answer() (err error) {
 	}
 	init := initStage.Init
 
+	disableTrickle := false
+	if init.OptionalConfig != nil {
+		disableTrickle = init.OptionalConfig.DisableTrickle
+	}
 	extendedConfig := extendWebRTCConfig(&ans.webrtcConfig, init.OptionalConfig)
 	pc, dc, err := newPeerConnectionForServer(
 		ans.closeCtx,
 		init.Sdp,
 		extendedConfig,
-		init.OptionalConfig.DisableTrickle,
+		disableTrickle,
 		ans.logger,
 	)
 	if err != nil {
