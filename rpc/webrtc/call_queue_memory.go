@@ -202,7 +202,7 @@ func (queue *MemoryCallQueue) SendOfferError(ctx context.Context, host, uuid str
 func (queue *MemoryCallQueue) RecvOffer(ctx context.Context, host string) (CallOfferExchange, error) {
 	hostQueue := queue.getOrMakeHostQueue(host)
 
-	recvCtx, recvCtxCancel := context.WithTimeout(queue.cancelCtx, getDefaultOfferDeadline())
+	recvCtx, recvCtxCancel := context.WithCancel(queue.cancelCtx)
 	defer recvCtxCancel()
 
 	select {

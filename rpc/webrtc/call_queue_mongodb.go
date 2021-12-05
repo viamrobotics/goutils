@@ -295,7 +295,7 @@ func (queue *MongoDBCallQueue) RecvOffer(ctx context.Context, host string) (Call
 		return nil, err
 	}
 
-	recvOfferCtx, recvOfferCtxCancel := context.WithTimeout(queue.cancelCtx, getDefaultOfferDeadline())
+	recvOfferCtx, recvOfferCtxCancel := context.WithCancel(queue.cancelCtx)
 	csOfferNext := mongoutils.ChangeStreamBackground(recvOfferCtx, cs)
 
 	cleanup := func() {
@@ -332,15 +332,19 @@ func (queue *MongoDBCallQueue) RecvOffer(ctx context.Context, host string) (Call
 			return nil
 		}
 
-		next, ok := <-csOfferNext
-		if !ok {
-			return errors.New("no next result")
-		}
-		if next.Error != nil {
-			return next.Error
-		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case next, ok := <-csOfferNext:
+			if !ok {
+				return errors.New("no next result")
+			}
+			if next.Error != nil {
+				return next.Error
+			}
 
-		return next.Event.FullDocument.Unmarshal(&callReq)
+			return next.Event.FullDocument.Unmarshal(&callReq)
+		}
 	}
 	if err := getFirstResult(); err != nil {
 		return nil, err

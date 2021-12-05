@@ -311,18 +311,13 @@ func (srv *SignalingServer) Answer(server webrtcpb.SignalingService_AnswerServer
 				if answer.Uuid != uuid {
 					return errors.Errorf("uuid mismatch; have=%q want=%q", answer.Uuid, uuid)
 				}
-				return offer.AnswererDone(server.Context())
+				return nil
 			case *webrtcpb.AnswerResponse_Error:
 				respStatus := status.FromProto(s.Error.Status)
 				ans := CallAnswer{Err: respStatus.Err()}
 				answererStoppedExchange = true
 				offerCtxCancel() // and stop exchange
-				return func() (err error) {
-					defer func() {
-						err = multierr.Combine(err, offer.AnswererDone(server.Context()))
-					}()
-					return offer.AnswererRespond(server.Context(), ans)
-				}()
+				return offer.AnswererRespond(server.Context(), ans)
 			default:
 				return errors.Errorf("unexpected stage %T", s)
 			}
@@ -340,12 +335,17 @@ func (srv *SignalingServer) Answer(server webrtcpb.SignalingService_AnswerServer
 	// ensure we wait on the error channel
 	return func() (err error) {
 		defer func() {
+			err = multierr.Combine(err, <-callerErrCh)
+			err = utils.FilterOutError(err, context.Canceled)
+		}()
+		defer func() {
+			err = multierr.Combine(err, offer.AnswererDone(server.Context()))
+		}()
+		defer func() {
 			if err != nil {
 				// one side failed, cancel the other
 				offerCtxCancel()
 			}
-			err = multierr.Combine(err, <-callerErrCh, offer.AnswererDone(server.Context()))
-			err = utils.FilterOutError(err, context.Canceled)
 		}()
 		return answererLoop()
 	}()

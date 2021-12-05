@@ -28,15 +28,6 @@ func testCallQueue(t *testing.T, callQueue CallQueue) {
 		<-ansCtx
 	})
 
-	t.Run("receiving an offer for too long should fail", func(t *testing.T) {
-		undo := setDefaultOfferDeadline(time.Second)
-		defer undo()
-
-		_, err := callQueue.RecvOffer(context.Background(), primitive.NewObjectID().Hex())
-		test.That(t, err, test.ShouldNotBeNil)
-		test.That(t, err, test.ShouldWrap, context.DeadlineExceeded)
-	})
-
 	t.Run("recv can get caller updates and done", func(t *testing.T) {
 		host := primitive.NewObjectID().Hex()
 		recvErrCh := make(chan error)
