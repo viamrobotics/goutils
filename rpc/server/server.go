@@ -185,7 +185,7 @@ func NewWithListener(
 	httpServer := &http.Server{
 		ReadTimeout:    10 * time.Second,
 		WriteTimeout:   10 * time.Second,
-		MaxHeaderBytes: 1 << 24,
+		MaxHeaderBytes: rpc.MaxMessageSize,
 	}
 
 	server := &simpleServer{
@@ -458,7 +458,7 @@ func (ss *simpleServer) RegisterServiceServer(
 	}
 	if len(svcHandlers) != 0 {
 		addr := ss.grpcListener.Addr().String()
-		opts := []grpc.DialOption{grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(1 << 24))}
+		opts := []grpc.DialOption{grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(rpc.MaxMessageSize))}
 		if !ss.secure {
 			opts = append(opts, grpc.WithInsecure())
 		}

@@ -14,9 +14,6 @@ import (
 	"go.viam.com/utils"
 )
 
-// MaxMessageSize is the maximum size a gRPC message can be.
-var MaxMessageSize = 1 << 24
-
 type baseChannel struct {
 	mu                      sync.Mutex
 	peerConn                *webrtc.PeerConnection

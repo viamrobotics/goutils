@@ -184,7 +184,7 @@ func (rc *ReffedConn) Close() error {
 func DialDirectGRPC(ctx context.Context, address string, insecure bool) (ClientConn, error) {
 	dialOpts := []grpc.DialOption{
 		grpc.WithBlock(),
-		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(1 << 24)),
+		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(rpc.MaxMessageSize)),
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{
 			Time: rpc.KeepAliveTime + 5*time.Second, // add a little buffer so as to not annoy the server ping strike system
 		}),

@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
+	"go.viam.com/utils/rpc"
 
 	"github.com/edaniels/golog"
 	"google.golang.org/grpc/metadata"
@@ -142,9 +143,9 @@ func (s *baseStream) processMessage(msg *webrtcpb.PacketMessage) ([]byte, bool) 
 	if len(msg.Data) == 0 && msg.Eom {
 		return nil, true
 	}
-	if len(msg.Data)+s.packetBuf.Len() > MaxMessageSize {
+	if len(msg.Data)+s.packetBuf.Len() > rpc.MaxMessageSize {
 		s.packetBuf.Reset()
-		s.logger.Errorf("message size larger than max %d; discarding", MaxMessageSize)
+		s.logger.Errorf("message size larger than max %d; discarding", rpc.MaxMessageSize)
 		return nil, false
 	}
 	s.packetBuf.Write(msg.Data)
