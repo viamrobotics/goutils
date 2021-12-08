@@ -1,0 +1,41 @@
+syntax = "proto3";
+option go_package = "go.viam.com/utils/proto/rpc/v1";
+
+package proto.rpc.v1;
+
+import "google/api/annotations.proto";
+
+// An AuthService is intended to be used as a means to perform application level
+// authentication. Its sole Authenticate method should be used prior to any
+// other services that a gRPC server has to offer.
+service AuthService {
+	// Authenticate attempts to authenticate the caller. The resulting
+	// response contains an access token that should be used for future
+	// requests.
+	rpc Authenticate(AuthenticateRequest) returns (AuthenticateResponse) {
+		option (google.api.http) = {
+			post: "/rpc/v1/authenticate"
+		};
+	}
+}
+
+message Credentials {
+	// type is the type of credentials being used.
+	string type = 1;
+	// payload is an opaque string used that are of the given type above.
+	string payload = 2;
+}
+
+// An AuthenticateRequest contains the credentials used to authenticate.
+message AuthenticateRequest {
+	string entity = 1;
+	Credentials credentials = 2;
+}
+
+// An AuthenticateResponse is returned after successful authentication.
+message AuthenticateResponse {
+	// access_token is a JWT where only the expiration should be deemed
+	// important.
+	string access_token = 1;
+	// Future(erd): maybe a refresh_token
+}

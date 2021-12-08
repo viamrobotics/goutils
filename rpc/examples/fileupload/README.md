@@ -10,7 +10,13 @@ Note: For the web, `grpc-web` (Direct) will not work until https://github.com/gr
 
 ## Run
 
-`make run`
+`make run_server`
+`make run_client`
+
+### With auth
+
+`make run_server_auth`
+`make run_client_auth`
 
 ## Using
 

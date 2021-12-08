@@ -6,13 +6,13 @@ type ctxKey int
 
 const ctxKeyHost = ctxKey(iota)
 
-// ContextWithHost attaches a host name to the given context.
-func ContextWithHost(ctx context.Context, host string) context.Context {
+// contextWithHost attaches a host name to the given context.
+func contextWithHost(ctx context.Context, host string) context.Context {
 	return context.WithValue(ctx, ctxKeyHost, host)
 }
 
-// ContextHost returns a host name. It may be nil if the value was never set.
-func ContextHost(ctx context.Context) string {
+// contextHost returns a host name. It may be nil if the value was never set.
+func contextHost(ctx context.Context) string {
 	host := ctx.Value(ctxKeyHost)
 	if host == nil {
 		return ""

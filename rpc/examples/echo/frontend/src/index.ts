@@ -1,20 +1,33 @@
 import { grpc } from "@improbable-eng/grpc-web";
 import { EchoBiDiRequest, EchoMultipleRequest, EchoMultipleResponse, EchoRequest, EchoResponse } from "proto/rpc/examples/echo/v1/echo_pb";
 import { EchoServiceClient, ServiceError } from "proto/rpc/examples/echo/v1/echo_pb_service";
-import { dial } from "rpc";
+import { dialDirect, dialWebRTC, Credentials } from "rpc";
 
 const signalingAddress = `${window.location.protocol}//${window.location.host}`;
 const host = "local";
 
-dial(signalingAddress, host).then(async cc => {
+declare global {
+	interface Window {
+		creds?: Credentials;
+		externalAuthAddr?: string;
+	}
+}
+
+async function getClients() {
+	const opts = { credentials: window.creds, externalAuthAddress: window.externalAuthAddr };
 	console.log("WebRTC")
-	const webrtcClient = new EchoServiceClient(host, { transport: cc.transportFactory() });
+	const webRTCTransport = await dialWebRTC(signalingAddress, host, opts);
+	const webrtcClient = new EchoServiceClient(host, { transport: webRTCTransport });
 	await doEchos(webrtcClient);
 
 	console.log("Direct") // bi-di may not work
-	const directClient = new EchoServiceClient(signalingAddress);
+	const directTransport = await dialDirect(signalingAddress, opts);
+	const directClient = new EchoServiceClient(signalingAddress, { transport: directTransport });
 	await doEchos(directClient);
-}).catch((e: any) => console.error(e));
+}
+getClients().catch(e => {
+	console.error("error getting clients", e);
+});
 
 async function doEchos(client: EchoServiceClient) {
 	const echoRequest = new EchoRequest();

@@ -1,5 +1,7 @@
-import { dial } from "./dial";
+import { dialDirect, dialWebRTC, Credentials } from "./dial";
 
 export {
-	dial
+	dialDirect,
+	dialWebRTC,
+	Credentials,
 };

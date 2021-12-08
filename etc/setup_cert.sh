@@ -1,8 +1,11 @@
 #!/bin/bash
 
-mkdir -p $HOME/.minica
-cd $HOME/.minica
+mkdir -p test_keys
+cd test_keys
+if [[ -f "localhost/cert.pem" && -f "localhost/key.pem" ]]; then
+	exit 0;
+fi
 go install github.com/jsha/minica@latest
 minica --domains localhost
-#TODO(erd): support linux
+#TODO(https://github.com/viamrobotics/goutils/issues/9): support linux
 sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain minica.pem 

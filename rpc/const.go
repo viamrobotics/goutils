@@ -3,9 +3,9 @@ package rpc
 import "time"
 
 const (
-	// KeepAliveTime is how often to establish Keepalive pings/expectations.
-	KeepAliveTime = 10 * time.Second
+	// keepAliveTime is how often to establish Keepalive pings/expectations.
+	keepAliveTime = 10 * time.Second
 )
 
-// MaxMessageSize is the maximum size a gRPC message can be.
-var MaxMessageSize = 1 << 25
+// maxMessageSize is the maximum size a gRPC message can be.
+var maxMessageSize = 1 << 25

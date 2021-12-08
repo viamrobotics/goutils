@@ -1,7 +1,17 @@
-import { ClientChannel } from "./ClientChannel";
-interface DialOptions {
+import { grpc } from "@improbable-eng/grpc-web";
+export interface DialOptions {
+    authEntity?: string;
+    credentials?: Credentials;
+    webrtcOptions?: DialWebRTCOptions;
+    externalAuthAddress?: string;
+}
+export interface DialWebRTCOptions {
     disableTrickleICE: boolean;
     rtcConfig?: RTCConfiguration;
 }
-export declare function dial(signalingAddress: string, host: string, opts?: DialOptions): Promise<ClientChannel>;
-export {};
+export interface Credentials {
+    type: string;
+    payload: string;
+}
+export declare function dialDirect(address: string, opts?: DialOptions): Promise<grpc.TransportFactory>;
+export declare function dialWebRTC(signalingAddress: string, host: string, opts?: DialOptions): Promise<grpc.TransportFactory>;

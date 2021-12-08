@@ -8,7 +8,13 @@ This example server demonstrates how to run gRPC accessible via `grpc`, `grpc-we
 
 ## Run
 
-`make run`
+`make run_server`
+`make run_client`
+
+### With auth
+
+`make run_server_auth`
+`make run_client_auth`
 
 ## Using
 

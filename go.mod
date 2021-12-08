@@ -13,6 +13,7 @@ require (
 	github.com/fsnotify/fsnotify v1.4.9
 	github.com/fullstorydev/grpcurl v1.8.0
 	github.com/go-errors/errors v1.4.1
+	github.com/golang-jwt/jwt/v4 v4.2.0
 	github.com/golangci/golangci-lint v1.39.0
 	github.com/google/uuid v1.3.0
 	github.com/grpc-ecosystem/go-grpc-middleware v1.2.2

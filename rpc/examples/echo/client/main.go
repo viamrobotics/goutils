@@ -11,8 +11,7 @@ import (
 
 	"go.viam.com/utils"
 	echopb "go.viam.com/utils/proto/rpc/examples/echo/v1"
-	rpcclient "go.viam.com/utils/rpc/client"
-	rpcwebrtc "go.viam.com/utils/rpc/webrtc"
+	"go.viam.com/utils/rpc"
 )
 
 func main() {
@@ -26,6 +25,7 @@ type Arguments struct {
 	Host            string `flag:"host,default=local"`
 	SignalingServer string `flag:"signaling_server,default=localhost:8080"`
 	Insecure        bool   `flag:"insecure"`
+	APIKey          string `flag:"api_key"`
 }
 
 func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) (err error) {
@@ -34,12 +34,20 @@ func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) (err 
 		return err
 	}
 
-	cc, err := rpcclient.Dial(ctx, argsParsed.Host, rpcclient.DialOptions{
-		Insecure: argsParsed.Insecure,
-		WebRTC: rpcwebrtc.Options{
-			SignalingServer: argsParsed.SignalingServer,
-		},
-	}, logger)
+	var dialOpts []rpc.DialOption
+	if argsParsed.Insecure {
+		dialOpts = append(dialOpts, rpc.WithInsecure())
+	}
+	dialOpts = append(dialOpts, rpc.WithWebRTCOptions(rpc.DialWebRTCOptions{
+		SignalingServer: argsParsed.SignalingServer,
+	}))
+	if argsParsed.APIKey != "" {
+		dialOpts = append(dialOpts, rpc.WithCredentials(rpc.Credentials{
+			Type:    rpc.CredentialsTypeAPIKey,
+			Payload: argsParsed.APIKey,
+		}))
+	}
+	cc, err := rpc.Dial(ctx, argsParsed.Host, logger, dialOpts...)
 	if err != nil {
 		return err
 	}

@@ -1,5 +1,8 @@
 setup-cert:
-	bash ./etc/setup_cert.sh
+	cd etc && bash ./setup_cert.sh
+
+setup-priv-key:
+	cd etc && bash ./setup_priv_key.sh
 
 goformat:
 	go install golang.org/x/tools/cmd/goimports

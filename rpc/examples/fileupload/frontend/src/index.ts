@@ -1,10 +1,17 @@
 import { grpc } from "@improbable-eng/grpc-web";
 import { UploadFileRequest, UploadFileResponse } from "proto/rpc/examples/fileupload/v1/fileupload_pb";
 import { FileUploadServiceClient, ServiceError } from "proto/rpc/examples/fileupload/v1/fileupload_pb_service";
-import { dial } from "rpc";
+import { dialWebRTC, Credentials } from "rpc";
 
 const signalingAddress = `${window.location.protocol}//${window.location.host}`;
 const host = "local";
+
+declare global {
+	interface Window {
+		creds?: Credentials;
+		externalAuthAddr?: string;
+	}
+}
 
 let clientResolve: (value: FileUploadServiceClient) => void;
 let clientReject: (reason?: any) => void;
@@ -13,9 +20,10 @@ let clientProm = new Promise<FileUploadServiceClient>((resolve, reject) => {
 	clientReject = reject;
 });
 
-dial(signalingAddress, host).then(async cc => {
+const opts = { credentials: window.creds, externalAuthAddress: window.externalAuthAddr };
+dialWebRTC(signalingAddress, host, opts).then(async (transport: grpc.TransportFactory) => {
 	console.log("WebRTC connection established")
-	const webrtcClient = new FileUploadServiceClient(host, { transport: cc.transportFactory() });
+	const webrtcClient = new FileUploadServiceClient(host, { transport });
 	clientResolve(webrtcClient);
 }).catch((e: any) => clientReject(e));
 
