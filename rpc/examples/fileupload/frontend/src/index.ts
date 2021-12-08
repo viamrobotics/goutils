@@ -3,7 +3,7 @@ import { UploadFileRequest, UploadFileResponse } from "proto/rpc/examples/fileup
 import { FileUploadServiceClient, ServiceError } from "proto/rpc/examples/fileupload/v1/fileupload_pb_service";
 import { dial } from "rpc";
 
-const signalingAddress = `http://${window.location.host}`;
+const signalingAddress = `${window.location.protocol}//${window.location.host}`;
 const host = "local";
 
 let clientResolve: (value: FileUploadServiceClient) => void;
@@ -62,9 +62,9 @@ async function doUpload(client: FileUploadServiceClient, name: string, data: Uin
 		}
 	});
 
-	for (let i = 0; i < data.byteLength; i+=1024) {
+	for (let i = 0; i < data.byteLength; i += 1024) {
 		uploadFileRequest = new UploadFileRequest();
-		uploadFileRequest.setChunkData(data.slice(i, i+1024));
+		uploadFileRequest.setChunkData(data.slice(i, i + 1024));
 		uploadStream.write(uploadFileRequest);
 	}
 

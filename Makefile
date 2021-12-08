@@ -1,3 +1,6 @@
+setup-cert:
+	bash ./etc/setup_cert.sh
+
 goformat:
 	go install golang.org/x/tools/cmd/goimports
 	gofmt -s -w .

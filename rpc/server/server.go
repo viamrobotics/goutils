@@ -138,9 +138,9 @@ type WebRTCOptions struct {
 	Config *webrtc.Configuration
 }
 
-// NewWithListener returns a new server ready to be started that
+// newWithListener returns a new server ready to be started that
 // will listen on the given listener.
-func NewWithListener(
+func newWithListener(
 	grpcListener net.Listener,
 	opts Options,
 	logger golog.Logger,
@@ -218,7 +218,9 @@ func NewWithListener(
 			streamInterceptor,
 		)
 		address := opts.WebRTC.SignalingAddress
+		insecure := opts.WebRTC.Insecure
 		if address == "" {
+			insecure = true // ignore setting because we will connect locally
 			address = grpcListener.Addr().String()
 		}
 		server.signalingAddr = address
@@ -227,7 +229,7 @@ func NewWithListener(
 			signalingHost = "local"
 		}
 		server.signalingHost = signalingHost
-		logger.Infow("will run signaling answerer", "address", address, "host", signalingHost)
+		logger.Infow("will run signaling answerer", "signaling_address", address, "for_host", signalingHost)
 
 		config := rpcwebrtc.DefaultWebRTCConfiguration
 		if opts.WebRTC.Config != nil {
@@ -238,7 +240,7 @@ func NewWithListener(
 			address,
 			signalingHost,
 			server.webrtcServer,
-			opts.WebRTC.Insecure,
+			insecure,
 			config,
 			logger,
 		)
@@ -255,7 +257,7 @@ func NewWithOptions(opts Options, logger golog.Logger) (Server, error) {
 		return nil, err
 	}
 
-	return NewWithListener(grpcListener, opts, logger)
+	return newWithListener(grpcListener, opts, logger)
 }
 
 // New returns a new server ready to be started that

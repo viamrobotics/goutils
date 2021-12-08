@@ -1,9 +1,11 @@
 package utils
 
 import (
+	"crypto/tls"
 	"fmt"
 	"net"
 
+	"github.com/go-errors/errors"
 	"go.uber.org/multierr"
 )
 
@@ -68,4 +70,34 @@ func GetAllLocalIPv4s() ([]string, error) {
 	}
 
 	return all, nil
+}
+
+// ErrInsufficientX509KeyPair is returned when an incomplete X509 key pair is used.
+var ErrInsufficientX509KeyPair = errors.New("must provide both cert and key of an X509 key pair, not just one part")
+
+// NewPossiblySecureTCPListenerFromFile returns a TCP listener at the given port that is
+// either insecure or TLS based listener depending on presence of the tlsCertFile and tlsKeyFile
+// which are expected to be an X509 key pair.
+func NewPossiblySecureTCPListenerFromFile(port int, tlsCertFile, tlsKeyFile string) (net.Listener, bool, error) {
+	if (tlsCertFile == "") != (tlsKeyFile == "") {
+		return nil, false, ErrInsufficientX509KeyPair
+	}
+	if tlsCertFile == "" || tlsKeyFile == "" {
+		insecureListener, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
+		if err != nil {
+			return nil, false, err
+		}
+		return insecureListener, false, nil
+	}
+	cert, err := tls.LoadX509KeyPair(tlsCertFile, tlsKeyFile)
+	if err != nil {
+		return nil, false, err
+	}
+	secureListener, err := tls.Listen("tcp", fmt.Sprintf("localhost:%d", port), &tls.Config{
+		Certificates: []tls.Certificate{cert},
+	})
+	if err != nil {
+		return nil, false, err
+	}
+	return secureListener, true, nil
 }

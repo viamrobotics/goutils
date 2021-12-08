@@ -6,7 +6,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"net"
 	"net/http"
 
 	"github.com/go-errors/errors"
@@ -37,7 +36,8 @@ type Arguments struct {
 	Port             utils.NetPortFlag `flag:"0"`
 	SignalingAddress string            `flag:"signaling_address,default="`
 	SignalingHost    string            `flag:"signaling_host,default=local"`
-	Insecure         bool              `flag:"insecure"`
+	TLSCertFile      string            `flag:"tls_cert"`
+	TLSKeyFile       string            `flag:"tls_key"`
 }
 
 func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) error {
@@ -48,15 +48,17 @@ func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) error
 	if argsParsed.Port == 0 {
 		argsParsed.Port = utils.NetPortFlag(defaultPort)
 	}
-	if argsParsed.SignalingAddress == "" {
-		argsParsed.Insecure = true
+	if (argsParsed.TLSCertFile == "") != (argsParsed.TLSKeyFile == "") {
+		return errors.New("must provide both tls_cert and tls_key")
 	}
 
 	return runServer(
 		ctx,
 		int(argsParsed.Port),
-		argsParsed.SignalingAddress, argsParsed.SignalingHost,
-		argsParsed.Insecure,
+		argsParsed.SignalingAddress,
+		argsParsed.SignalingHost,
+		argsParsed.TLSCertFile,
+		argsParsed.TLSKeyFile,
 		logger,
 	)
 }
@@ -64,11 +66,13 @@ func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) error
 func runServer(
 	ctx context.Context,
 	port int,
-	signalingAddress, signalingHost string,
-	insecure bool,
+	signalingAddress string,
+	signalingHost string,
+	tlsCertFile string,
+	tlsKeyFile string,
 	logger golog.Logger,
 ) (err error) {
-	listener, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
+	listener, secure, err := utils.NewPossiblySecureTCPListenerFromFile(port, tlsCertFile, tlsKeyFile)
 	if err != nil {
 		return err
 	}
@@ -77,7 +81,7 @@ func runServer(
 		rpcserver.Options{WebRTC: rpcserver.WebRTCOptions{
 			Enable:           true,
 			EnableSignaling:  true,
-			Insecure:         insecure,
+			Insecure:         !secure,
 			SignalingAddress: signalingAddress,
 			SignalingHost:    signalingHost,
 		}},
@@ -129,7 +133,13 @@ func runServer(
 	})
 	utils.ContextMainReadyFunc(ctx)()
 
-	logger.Infow("serving", "url", fmt.Sprintf("http://%s", listener.Addr().String()))
+	var scheme string
+	if secure {
+		scheme = "https"
+	} else {
+		scheme = "http"
+	}
+	logger.Infow("serving", "url", fmt.Sprintf("%s://%s", scheme, listener.Addr().String()))
 	if err := httpServer.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}

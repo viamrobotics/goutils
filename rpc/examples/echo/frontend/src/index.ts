@@ -3,7 +3,7 @@ import { EchoBiDiRequest, EchoMultipleRequest, EchoMultipleResponse, EchoRequest
 import { EchoServiceClient, ServiceError } from "proto/rpc/examples/echo/v1/echo_pb_service";
 import { dial } from "rpc";
 
-const signalingAddress = `http://${window.location.host}`;
+const signalingAddress = `${window.location.protocol}//${window.location.host}`;
 const host = "local";
 
 dial(signalingAddress, host).then(async cc => {
