@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"time"
 
@@ -30,7 +29,7 @@ func handleAPIError(w http.ResponseWriter, err error, extra interface{}) bool {
 		return false
 	}
 
-	log.Printf("api error: %s %s\n", err, extra)
+	utils.Logger.Debugw("api issue", "error", err, "extra", extra)
 
 	data := map[string]interface{}{"err": err.Error()}
 	if extra != nil {
