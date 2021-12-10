@@ -39,9 +39,6 @@ export class BaseStream {
 
 	protected processPacketMessage(msg: PacketMessage): Uint8Array | undefined {
 		const data = msg.getData_asU8();
-		if (data.length === 0 && msg.getEom()) {
-			return undefined;
-		}
 		if (data.length + this.packetBufSize > MaxMessageSize) {
 			this.packetBuf.length = 0;
 			this.packetBufSize = 0;
