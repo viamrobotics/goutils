@@ -15,10 +15,11 @@ import (
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"go.opencensus.io/trace"
-	"go.viam.com/utils"
 	"goji.io"
 	"goji.io/pat"
 	"golang.org/x/oauth2"
+
+	"go.viam.com/utils"
 )
 
 // Auth0Config config for auth0
