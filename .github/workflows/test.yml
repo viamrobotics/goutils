@@ -5,13 +5,15 @@ on:
   workflow_dispatch:
   push:
     branches: [ main ]
-  pull_request:
+  pull_request_target:
     branches: [ main ]
+    types: [labeled]
 
 jobs:
   build_and_test:
     name: Build and Test
     runs-on: [self-hosted, x64]
+    if: github.event == 'workflow_dispatch' || github.event == 'push'
     container:
       image: ghcr.io/viamrobotics/test:latest
 
@@ -20,6 +22,60 @@ jobs:
     - name: Check out code into the Go module directory
       uses: actions/checkout@v2
       with:
+        fetch-depth: 2
+
+    - name: Configure git for private modules
+      env:
+        TOKEN: ${{ secrets.GIT_ACCESS_TOKEN }}
+      run: |
+        sudo -u testbot bash -lc "git config --global --unset-all url.ssh://git@github.com/.insteadOf"
+        sudo -u testbot bash -lc "git config --global url.\"https://${TOKEN}@github.com\".insteadOf \"https://github.com\""
+
+    - name: Verify no uncommitted changes from build
+      run: |
+        git init
+        git add .
+        chown -R testbot .
+        sudo -u testbot bash -lc 'make build goformat'
+        git checkout rpc/examples/echo/frontend/dist rpc/examples/fileupload/frontend/dist rpc/js/dist dist/js
+        GEN_DIFF=$(git diff)
+        if [ -n "$GEN_DIFF" ]; then
+            echo '"make build goformat" resulted in changes not in git' 1>&2
+            git status
+            exit 1
+        fi
+
+    - name: Lint
+      run: |
+        sudo -u testbot bash -lc 'make lint'
+
+    - name: Test
+      env:
+        ARTIFACT_GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.ARTIFACT_GOOGLE_APPLICATION_CREDENTIALS }}
+        TEST_MONGODB_URI: ${{ secrets.TEST_MONGODB_URI }}
+      run: |
+        echo "$ARTIFACT_GOOGLE_APPLICATION_CREDENTIALS" | base64 -d > artifact_google_creds.json
+        export ARTIFACT_GOOGLE_APPLICATION_CREDENTIALS=`pwd`/artifact_google_creds.json
+        sudo -u testbot --preserve-env=ARTIFACT_GOOGLE_APPLICATION_CREDENTIALS,TEST_MONGODB_URI bash -lc 'make cover'
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v1
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+
+  build_and_test_from_pr: # TODO(erd): reuse above
+    name: Build and Test
+    runs-on: [self-hosted, x64]
+    if: contains(github.event.pull_request.labels.*.name, 'safe to test')
+    container:
+      image: ghcr.io/viamrobotics/test:latest
+
+    steps:
+
+    - name: Check out code into the Go module directory
+      uses: actions/checkout@v2
+      with:
+        ref: ${{ github.event.pull_request.head.sha }}
         fetch-depth: 2
 
     - name: Configure git for private modules
