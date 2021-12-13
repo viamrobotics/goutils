@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -17,14 +18,17 @@ import (
 	"goji.io"
 	"goji.io/pat"
 	"golang.org/x/oauth2"
+
+	"go.viam.com/utils"
 )
 
 // Auth0Config config for auth0
 type Auth0Config struct {
-	Domain   string
-	ClientID string
-	Secret   string
-	WebRoot  string
+	Domain     string
+	ClientID   string
+	Secret     string
+	WebRoot    string
+	EnableTest bool
 }
 
 type auth0State struct {
@@ -95,6 +99,10 @@ func InstallAuth0(ctx context.Context, mux *goji.Mux, sessions *SessionManager, 
 	mux.Handle(pat.New("/login"), &loginHandler{state})
 	mux.Handle(pat.New("/logout"), &logoutHandler{state})
 
+	if state.config.EnableTest {
+		mux.Handle(pat.New("/token-callback"), &tokenCallbackHandler{state})
+	}
+
 	return state, nil
 }
 
@@ -126,33 +134,10 @@ func (h *callbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rawIDToken, ok := token.Extra("id_token").(string)
-	if !ok {
-		http.Error(w, "No id_token field in oauth2 token.", http.StatusInternalServerError)
-		return
-	}
-
-	p, err := h.state.newAuthProvider(ctx)
+	session, err = verifyAndSaveToken(ctx, h.state, session, token)
 	if HandleError(w, err) {
 		return
 	}
-
-	idToken, err := p.Verifier(h.state.authOIConfig).Verify(ctx, rawIDToken)
-	if err != nil {
-		http.Error(w, "Failed to verify ID Token: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// Getting now the userInfo
-	var profile map[string]interface{}
-	if err := idToken.Claims(&profile); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	session.Data["id_token"] = rawIDToken
-	session.Data["access_token"] = token.AccessToken
-	session.Data["profile"] = profile
 
 	backto, _ := session.Data["backto"].(string)
 	if len(backto) == 0 {
@@ -168,6 +153,104 @@ func (h *callbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	http.Redirect(w, r, backto, http.StatusSeeOther)
 
+}
+
+// Handle programmatically generated access + id tokens
+// Currently used only in testing
+type tokenCallbackHandler struct {
+	state *auth0State
+}
+
+func (h *tokenCallbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	ctx, span := trace.StartSpan(ctx, r.URL.Path)
+	defer span.End()
+
+	session, err := h.state.sessions.Get(r, true)
+	if HandleError(w, err, "getting session") {
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		http.Error(w, errors.New("method not allowed").Error(), http.StatusMethodNotAllowed)
+		return
+	}
+
+	defer utils.UncheckedErrorFunc(r.Body.Close)
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, errors.New("unable to read message body").Error(), http.StatusBadRequest)
+		return
+	}
+
+	jsonToken := map[string]interface{}{}
+	if err := json.Unmarshal(bodyBytes, &jsonToken); HandleError(w, err, "reading token") {
+		return
+	}
+
+	token := &oauth2.Token{}
+	if err := json.Unmarshal(bodyBytes, &token); HandleError(w, err, "reading token") {
+		return
+	}
+
+	if e, ok := jsonToken["expires_in"].(float64); !ok {
+		HandleError(w, errors.New("could not determine token expiry"), "reading token")
+		return
+	} else if e != 0 {
+		token.Expiry = time.Now().Add(time.Duration(e) * time.Second)
+	}
+
+	token = token.WithExtra(jsonToken)
+
+	session, err = verifyAndSaveToken(ctx, h.state, session, token)
+	if HandleError(w, err) {
+		return
+	}
+
+	backto, _ := session.Data["backto"].(string)
+	if len(backto) == 0 {
+		backto = "/"
+	}
+
+	session.Data["backto"] = ""
+	err = session.Save(ctx, r, w)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, backto, http.StatusSeeOther)
+}
+
+func verifyAndSaveToken(ctx context.Context, state *auth0State, session *Session, token *oauth2.Token) (*Session, error) {
+	rawIDToken, ok := token.Extra("id_token").(string)
+	if !ok {
+		return nil, errors.New("no id_token field in oauth2 token")
+	}
+
+	p, err := state.newAuthProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	idToken, err := p.Verifier(state.authOIConfig).Verify(ctx, rawIDToken)
+	if err != nil {
+		return nil, errors.New("failed to verify ID Token: " + err.Error())
+	}
+
+	// Getting now the userInfo
+	var profile map[string]interface{}
+	if err := idToken.Claims(&profile); err != nil {
+		return nil, err
+	}
+
+	session.Data["id_token"] = rawIDToken
+	session.Data["access_token"] = token.AccessToken
+	session.Data["profile"] = profile
+
+	return session, nil
 }
 
 // --------------------------------
