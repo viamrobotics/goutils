@@ -134,33 +134,10 @@ func (h *callbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rawIDToken, ok := token.Extra("id_token").(string)
-	if !ok {
-		http.Error(w, "No id_token field in oauth2 token.", http.StatusInternalServerError)
-		return
-	}
-
-	p, err := h.state.newAuthProvider(ctx)
+	session, err = verifyAndSaveToken(ctx, h.state, session, token)
 	if HandleError(w, err) {
 		return
 	}
-
-	idToken, err := p.Verifier(h.state.authOIConfig).Verify(ctx, rawIDToken)
-	if err != nil {
-		http.Error(w, "Failed to verify ID Token: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// Getting now the userInfo
-	var profile map[string]interface{}
-	if err := idToken.Claims(&profile); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	session.Data["id_token"] = rawIDToken
-	session.Data["access_token"] = token.AccessToken
-	session.Data["profile"] = profile
 
 	backto, _ := session.Data["backto"].(string)
 	if len(backto) == 0 {
@@ -227,33 +204,10 @@ func (h *tokenCallbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request)
 
 	token = token.WithExtra(jsonToken)
 
-	rawIDToken, ok := token.Extra("id_token").(string)
-	if !ok {
-		http.Error(w, "No id_token field in oauth2 token.", http.StatusInternalServerError)
-		return
-	}
-
-	p, err := h.state.newAuthProvider(ctx)
+	session, err = verifyAndSaveToken(ctx, h.state, session, token)
 	if HandleError(w, err) {
 		return
 	}
-
-	idToken, err := p.Verifier(h.state.authOIConfig).Verify(ctx, rawIDToken)
-	if err != nil {
-		http.Error(w, "Failed to verify ID Token: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// Getting now the userInfo
-	var profile map[string]interface{}
-	if err := idToken.Claims(&profile); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	session.Data["id_token"] = rawIDToken
-	session.Data["access_token"] = token.AccessToken
-	session.Data["profile"] = profile
 
 	backto, _ := session.Data["backto"].(string)
 	if len(backto) == 0 {
@@ -268,7 +222,35 @@ func (h *tokenCallbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request)
 	}
 
 	http.Redirect(w, r, backto, http.StatusSeeOther)
+}
 
+func verifyAndSaveToken(ctx context.Context, state *auth0State, session *Session, token *oauth2.Token) (*Session, error) {
+	rawIDToken, ok := token.Extra("id_token").(string)
+	if !ok {
+		return nil, errors.New("no id_token field in oauth2 token")
+	}
+
+	p, err := state.newAuthProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	idToken, err := p.Verifier(state.authOIConfig).Verify(ctx, rawIDToken)
+	if err != nil {
+		return nil, errors.New("failed to verify ID Token: " + err.Error())
+	}
+
+	// Getting now the userInfo
+	var profile map[string]interface{}
+	if err := idToken.Claims(&profile); err != nil {
+		return nil, err
+	}
+
+	session.Data["id_token"] = rawIDToken
+	session.Data["access_token"] = token.AccessToken
+	session.Data["profile"] = profile
+
+	return session, nil
 }
 
 // --------------------------------
