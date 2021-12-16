@@ -210,7 +210,6 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts *dialOptions) (Cl
 			dialOptsCopy := *dOpts
 			dialOptsCopy.externalAuthAddr = ""
 			dialOptsCopy.creds = Credentials{}
-			// TODO(erd): how to close this
 			externalConn, err := dialDirectGRPC(ctx, dOpts.externalAuthAddr, &dialOptsCopy)
 			if err != nil {
 				return nil, err
