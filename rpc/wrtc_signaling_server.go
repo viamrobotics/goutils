@@ -16,13 +16,13 @@ import (
 	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
 )
 
-// A webrtcSignalingServer implements a signaling service for WebRTC by exchanging
+// A WebRTCSignalingServer implements a signaling service for WebRTC by exchanging
 // SDPs (https://webrtcforthecurious.com/docs/02-signaling/#what-is-the-session-description-protocol-sdp)
 // via gRPC. The service consists of a many-to-many interaction where there are many callers
 // and many answerers. The callers provide an SDP to the service which asks a corresponding
 // waiting answerer to provide an SDP in exchange in order to establish a P2P connection between
 // the two parties.
-type webrtcSignalingServer struct {
+type WebRTCSignalingServer struct {
 	webrtcpb.UnimplementedSignalingServiceServer
 	mu                   sync.RWMutex
 	callQueue            WebRTCCallQueue
@@ -30,10 +30,10 @@ type webrtcSignalingServer struct {
 	webrtcConfigProvider WebRTCConfigProvider
 }
 
-// newWebRTCSignalingServer makes a new signaling server that uses the given
+// NewWebRTCSignalingServer makes a new signaling server that uses the given
 // call queue and looks routes based on a given robot host.
-func newWebRTCSignalingServer(callQueue WebRTCCallQueue, webrtcConfigProvider WebRTCConfigProvider) *webrtcSignalingServer {
-	return &webrtcSignalingServer{
+func NewWebRTCSignalingServer(callQueue WebRTCCallQueue, webrtcConfigProvider WebRTCConfigProvider) *WebRTCSignalingServer {
+	return &WebRTCSignalingServer{
 		callQueue:            callQueue,
 		hostICEServers:       map[string]hostICEServers{},
 		webrtcConfigProvider: webrtcConfigProvider,
@@ -56,7 +56,7 @@ func hostFromCtx(ctx context.Context) (string, error) {
 }
 
 // Call is a request/offer to start a caller with the connected answerer.
-func (srv *webrtcSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcpb.SignalingService_CallServer) error {
+func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcpb.SignalingService_CallServer) error {
 	host, err := hostFromCtx(server.Context())
 	if err != nil {
 		return err
@@ -123,7 +123,7 @@ func (srv *webrtcSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 // CallUpdate is used to send additional info in relation to a Call.
 // In a world where https://github.com/grpc/grpc-web/issues/24 is fixed,
 // this should be removed in favor of a bidirectional stream on Call.
-func (srv *webrtcSignalingServer) CallUpdate(ctx context.Context, req *webrtcpb.CallUpdateRequest) (*webrtcpb.CallUpdateResponse, error) {
+func (srv *WebRTCSignalingServer) CallUpdate(ctx context.Context, req *webrtcpb.CallUpdateRequest) (*webrtcpb.CallUpdateResponse, error) {
 	host, err := hostFromCtx(ctx)
 	if err != nil {
 		return nil, err
@@ -149,7 +149,7 @@ type hostICEServers struct {
 	Expires time.Time
 }
 
-func (srv *webrtcSignalingServer) additionalICEServers(ctx context.Context, host string, cache bool) ([]*webrtcpb.ICEServer, error) {
+func (srv *WebRTCSignalingServer) additionalICEServers(ctx context.Context, host string, cache bool) ([]*webrtcpb.ICEServer, error) {
 	if srv.webrtcConfigProvider == nil {
 		return nil, nil
 	}
@@ -176,7 +176,7 @@ func (srv *webrtcSignalingServer) additionalICEServers(ctx context.Context, host
 
 // Note: We expect but do not enforce one host for one answer. If this is not true, a race
 // can happen where we may double fetch additional ICE servers.
-func (srv *webrtcSignalingServer) clearAdditionalICEServers(host string) {
+func (srv *WebRTCSignalingServer) clearAdditionalICEServers(host string) {
 	srv.mu.Lock()
 	delete(srv.hostICEServers, host)
 	srv.mu.Unlock()
@@ -185,7 +185,7 @@ func (srv *webrtcSignalingServer) clearAdditionalICEServers(host string) {
 // Answer listens on call/offer queue forever responding with SDPs to agreed to calls.
 // TODO(https://github.com/viamrobotics/core/issues/104): This should be authorized for robots only.
 // Note: See SinalingAnswer.answer for the complementary side of this process.
-func (srv *webrtcSignalingServer) Answer(server webrtcpb.SignalingService_AnswerServer) error {
+func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_AnswerServer) error {
 	ctx := server.Context()
 	host, err := hostFromCtx(ctx)
 	if err != nil {
@@ -352,7 +352,7 @@ func (srv *webrtcSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 }
 
 // OptionalWebRTCConfig returns any WebRTC configuration the caller may want to use.
-func (srv *webrtcSignalingServer) OptionalWebRTCConfig(ctx context.Context, req *webrtcpb.OptionalWebRTCConfigRequest) (*webrtcpb.OptionalWebRTCConfigResponse, error) {
+func (srv *WebRTCSignalingServer) OptionalWebRTCConfig(ctx context.Context, req *webrtcpb.OptionalWebRTCConfigRequest) (*webrtcpb.OptionalWebRTCConfigResponse, error) {
 	host, err := hostFromCtx(ctx)
 	if err != nil {
 		return nil, err

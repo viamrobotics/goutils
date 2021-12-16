@@ -34,7 +34,7 @@ func TestWebRTCServerChannel(t *testing.T) {
 	// It helps that it is in our package.
 	queue := newMemoryWebRTCCallQueueTest()
 	defer queue.Close()
-	signalServer := newWebRTCSignalingServer(queue, nil)
+	signalServer := NewWebRTCSignalingServer(queue, nil)
 	server.RegisterService(
 		&webrtcpb.SignalingService_ServiceDesc,
 		signalServer,

@@ -24,7 +24,7 @@ func TestWebRTCClientServer(t *testing.T) {
 
 	queue := NewMemoryWebRTCCallQueue()
 	defer queue.Close()
-	signalingServer := newWebRTCSignalingServer(queue, nil)
+	signalingServer := NewWebRTCSignalingServer(queue, nil)
 
 	grpcListener, err := net.Listen("tcp", "localhost:0")
 	test.That(t, err, test.ShouldBeNil)
