@@ -6,8 +6,8 @@ import (
 	"go.uber.org/zap"
 )
 
-// webrtcLoggerFactory wraps a golog.Logger for use with pion's webrtc logging system.
-type webrtcLoggerFactory struct {
+// WebRTCLoggerFactory wraps a golog.Logger for use with pion's webrtc logging system.
+type WebRTCLoggerFactory struct {
 	Logger golog.Logger
 }
 
@@ -60,6 +60,6 @@ func (l webrtcLogger) Errorf(format string, args ...interface{}) {
 }
 
 // NewLogger returns a new webrtc logger under the given scope.
-func (lf webrtcLoggerFactory) NewLogger(scope string) logging.LeveledLogger {
+func (lf WebRTCLoggerFactory) NewLogger(scope string) logging.LeveledLogger {
 	return webrtcLogger{lf.Logger.Named(scope)}
 }

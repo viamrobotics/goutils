@@ -45,7 +45,7 @@ func newWebRTCAPI(logger golog.Logger) (*webrtc.API, error) {
 	options := []func(a *webrtc.API){webrtc.WithMediaEngine(&m), webrtc.WithInterceptorRegistry(&i)}
 	if utils.Debug {
 		options = append(options, webrtc.WithSettingEngine(webrtc.SettingEngine{
-			LoggerFactory: webrtcLoggerFactory{logger},
+			LoggerFactory: WebRTCLoggerFactory{logger},
 		}))
 	}
 	return webrtc.NewAPI(options...), nil
