@@ -39,7 +39,6 @@ func TestServerAuth(t *testing.T) {
 		logger,
 		WithWebRTCServerOptions(WebRTCServerOptions{
 			Enable:        true,
-			Insecure:      true,
 			SignalingHost: "yeehaw",
 		}),
 		WithAuthHandler("fake", MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) error {
@@ -288,7 +287,6 @@ func TestServerAuthJWTExpiration(t *testing.T) {
 		logger,
 		WithWebRTCServerOptions(WebRTCServerOptions{
 			Enable:        true,
-			Insecure:      true,
 			SignalingHost: "yeehaw",
 		}),
 		WithAuthHandler("fake", MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) error {
@@ -363,7 +361,6 @@ func TestServerAuthJWTAudience(t *testing.T) {
 		logger,
 		WithWebRTCServerOptions(WebRTCServerOptions{
 			Enable:        true,
-			Insecure:      true,
 			SignalingHost: "yeehaw",
 		}),
 		WithAuthHandler("fake", MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) error {
@@ -458,7 +455,6 @@ func TestServerAuthKeyFunc(t *testing.T) {
 		logger,
 		WithWebRTCServerOptions(WebRTCServerOptions{
 			Enable:        true,
-			Insecure:      true,
 			SignalingHost: "yeehaw",
 		}),
 		WithAuthHandler("fake", WithTokenVerificationKeyProvider(

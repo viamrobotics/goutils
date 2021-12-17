@@ -30,7 +30,6 @@ func TestServer(t *testing.T) {
 			serverOpts := []ServerOption{
 				WithWebRTCServerOptions(WebRTCServerOptions{
 					Enable:        true,
-					Insecure:      true,
 					SignalingHost: "yeehaw",
 				}),
 			}

@@ -67,7 +67,6 @@ func TestDial(t *testing.T) {
 		logger,
 		WithWebRTCServerOptions(WebRTCServerOptions{
 			Enable:        true,
-			Insecure:      true,
 			SignalingHost: "yeehaw",
 		}),
 		WithAuthHandler("fake", MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) error {
@@ -253,7 +252,6 @@ func TestDialExternalAuth(t *testing.T) {
 		logger,
 		WithWebRTCServerOptions(WebRTCServerOptions{
 			Enable:        true,
-			Insecure:      true,
 			SignalingHost: "yeehaw",
 		}),
 		WithAuthHandler("fake", MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) error {
@@ -279,7 +277,6 @@ func TestDialExternalAuth(t *testing.T) {
 		logger,
 		WithWebRTCServerOptions(WebRTCServerOptions{
 			Enable:        true,
-			Insecure:      true,
 			SignalingHost: "yeehaw",
 		}),
 		WithAuthHandler("fake", MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) error {

@@ -35,18 +35,14 @@ type WebRTCServerOptions struct {
 	// ports on the host which may not be expected.
 	Enable bool
 
-	// Insecure determines if communications are expected to be insecure or not.
-	Insecure bool
+	// ExternalSignalingDialOpts are the options used to dial the external signaler.
+	ExternalSignalingDialOpts []DialOption
 
-	// EnableSignaling controls if this server will provide SDP signaling
-	// assistance.
-	EnableSignaling bool
-
-	// SignalingAddress specifies where the WebRTC signaling
+	// ExternalSignalingAddress specifies where the WebRTC signaling
 	// answerer should connect to and "listen" from. If it is empty,
 	// it will connect to the server's internal address acting as
 	// an answerer for itself.
-	SignalingAddress string
+	ExternalSignalingAddress string
 
 	// SignalingHost specifies what host is being listened for.
 	SignalingHost string

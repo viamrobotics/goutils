@@ -121,12 +121,15 @@ func runServer(
 	if err != nil {
 		return err
 	}
+	var signalingOpts []rpc.DialOption
+	if signalingAddress == "" && !secure {
+		signalingOpts = append(signalingOpts, rpc.WithInsecure())
+	}
 	serverOpts = append(serverOpts, rpc.WithWebRTCServerOptions(rpc.WebRTCServerOptions{
-		Enable:           true,
-		EnableSignaling:  true,
-		SignalingAddress: signalingAddress,
-		SignalingHost:    signalingHost,
-		Insecure:         !secure,
+		Enable:                    true,
+		ExternalSignalingDialOpts: signalingOpts,
+		ExternalSignalingAddress:  signalingAddress,
+		SignalingHost:             signalingHost,
 	}))
 	humanAddress := fmt.Sprintf("localhost:%d", port)
 

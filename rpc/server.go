@@ -210,8 +210,8 @@ func newWithListener(
 	server.grpcServer = grpcServer
 	server.grpcWebServer = grpcWebServer
 
-	if sOpts.webrtcOpts.EnableSignaling || (sOpts.webrtcOpts.Enable && sOpts.webrtcOpts.SignalingAddress == "") {
-		logger.Info("will run local signaling service")
+	if sOpts.webrtcOpts.Enable && sOpts.webrtcOpts.ExternalSignalingAddress == "" {
+		logger.Info("will run internal signaling service")
 		signalingCallQueue := NewMemoryWebRTCCallQueue()
 		server.signalingCallQueue = signalingCallQueue
 		if err := server.RegisterServiceServer(
@@ -265,18 +265,15 @@ func newWithListener(
 			unaryInterceptor,
 			streamInterceptor,
 		)
-		address := sOpts.webrtcOpts.SignalingAddress
-		var answererDialOpts []DialOption
-		insecure := sOpts.webrtcOpts.Insecure
+		address := sOpts.webrtcOpts.ExternalSignalingAddress
+		answererDialOptsCopy := make([]DialOption, len(sOpts.webrtcOpts.ExternalSignalingDialOpts))
+		copy(answererDialOptsCopy, sOpts.webrtcOpts.ExternalSignalingDialOpts)
 		if address == "" {
-			insecure = true // ignore setting because we will connect locally
+			answererDialOptsCopy = append(answererDialOptsCopy, WithInsecure())
 			address = grpcListener.Addr().String()
 			if !sOpts.unauthenticated {
-				answererDialOpts = append(answererDialOpts, WithEntityCredentials(server.internalUUID, server.internalCreds))
+				answererDialOptsCopy = append(answererDialOptsCopy, WithEntityCredentials(server.internalUUID, server.internalCreds))
 			}
-		}
-		if insecure {
-			answererDialOpts = append(answererDialOpts, WithInsecure())
 		}
 		server.signalingAddr = address
 		signalingHost := sOpts.webrtcOpts.SignalingHost
@@ -295,7 +292,7 @@ func newWithListener(
 			address,
 			signalingHost,
 			server.webrtcServer,
-			answererDialOpts,
+			answererDialOptsCopy,
 			config,
 			logger,
 		)
