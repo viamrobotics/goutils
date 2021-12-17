@@ -22,10 +22,11 @@ var logger = golog.Global.Named("client")
 
 // Arguments for the command.
 type Arguments struct {
-	Host            string `flag:"host,default=local"`
-	SignalingServer string `flag:"signaling_server,default=localhost:8080"`
-	Insecure        bool   `flag:"insecure"`
-	APIKey          string `flag:"api_key"`
+	Host                string `flag:"host,default=local"`
+	SignalingServer     string `flag:"signaling_server,default=localhost:8080"`
+	Insecure            bool   `flag:"insecure"`
+	APIKey              string `flag:"api_key"`
+	ExternalAuthAddress string `flag:"external_auth_addr"`
 }
 
 func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) (err error) {
@@ -46,6 +47,9 @@ func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) (err 
 			Type:    rpc.CredentialsTypeAPIKey,
 			Payload: argsParsed.APIKey,
 		}))
+	}
+	if argsParsed.ExternalAuthAddress != "" {
+		dialOpts = append(dialOpts, rpc.WithExternalAuth(argsParsed.ExternalAuthAddress))
 	}
 	cc, err := rpc.Dial(ctx, argsParsed.Host, logger, dialOpts...)
 	if err != nil {

@@ -18,6 +18,11 @@ Note: For the web, `grpc-web` (Direct) will not work until https://github.com/gr
 `make run_server_auth`
 `make run_client_auth`
 
+### With an external auth source
+
+`make run_server_auth_internal` # Use the UI on this one
+`make run_server_auth_external`
+
 ## Using
 
 1. Go to [http://localhost:8080](http://localhost:8080), upload a file, and check the terminal output.
