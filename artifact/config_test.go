@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/go-errors/errors"
+	"github.com/pkg/errors"
 	"go.viam.com/test"
 
 	"go.viam.com/utils"

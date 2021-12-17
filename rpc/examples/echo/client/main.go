@@ -6,7 +6,7 @@ import (
 	"io"
 
 	"github.com/edaniels/golog"
-	"github.com/go-errors/errors"
+	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 
 	"go.viam.com/utils"
@@ -69,19 +69,19 @@ func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) (err 
 	echoClient := echopb.NewEchoServiceClient(cc)
 	resp, err := echoClient.Echo(ctx, &echopb.EchoRequest{Message: "hello?"})
 	if err != nil {
-		return errors.Wrap(err, 0)
+		return errors.WithStack(err)
 	}
 	logger.Infow("echo", "resp", resp.Message)
 
 	multiClient, err := echoClient.EchoMultiple(ctx, &echopb.EchoMultipleRequest{Message: "hello?"})
 	if err != nil {
-		return errors.Wrap(err, 0)
+		return errors.WithStack(err)
 	}
 	for {
 		resp, err := multiClient.Recv()
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
-				return errors.Wrap(err, 0)
+				return errors.WithStack(err)
 			}
 			break
 		}
@@ -90,16 +90,16 @@ func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) (err 
 
 	biDiClient, err := echoClient.EchoBiDi(ctx)
 	if err != nil {
-		return errors.Wrap(err, 0)
+		return errors.WithStack(err)
 	}
 	if err := biDiClient.Send(&echopb.EchoBiDiRequest{Message: "one"}); err != nil {
-		return errors.Wrap(err, 0)
+		return errors.WithStack(err)
 	}
 	for i := 0; i < 3; i++ {
 		resp, err := biDiClient.Recv()
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
-				return errors.Wrap(err, 0)
+				return errors.WithStack(err)
 			}
 			break
 		}
@@ -107,13 +107,13 @@ func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) (err 
 	}
 
 	if err := biDiClient.Send(&echopb.EchoBiDiRequest{Message: "two"}); err != nil {
-		return errors.Wrap(err, 0)
+		return errors.WithStack(err)
 	}
 	for i := 0; i < 3; i++ {
 		resp, err := biDiClient.Recv()
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
-				return errors.Wrap(err, 0)
+				return errors.WithStack(err)
 			}
 			break
 		}
@@ -121,7 +121,7 @@ func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) (err 
 	}
 
 	if err := biDiClient.CloseSend(); err != nil {
-		return errors.Wrap(err, 0)
+		return errors.WithStack(err)
 	}
 
 	// Ending right here can cause server to send on a closed pipe which it

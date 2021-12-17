@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/go-errors/errors"
+	"github.com/pkg/errors"
 
 	"go.viam.com/utils"
 
@@ -202,7 +202,7 @@ func TestMain(t *testing.T, mainWithArgs func(ctx context.Context, args []string
 					if err == nil {
 						tError(t, errCompletedBeforeExpected)
 					} else {
-						tError(t, errors.Errorf("%s with error: %w", completedBeforeExpected, doneErr))
+						tError(t, errors.Wrapf(doneErr, "%s with error", completedBeforeExpected))
 					}
 				}
 				waitMu.Unlock()
@@ -219,7 +219,7 @@ func TestMain(t *testing.T, mainWithArgs func(ctx context.Context, args []string
 					if err == nil {
 						fatal(t, errCompletedBeforeExpected)
 					} else {
-						fatal(t, errors.Errorf("%s with error: %w", completedBeforeExpected, doneErr))
+						fatal(t, errors.Wrapf(doneErr, "%s with error", completedBeforeExpected))
 					}
 					return
 				}

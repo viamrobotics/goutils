@@ -11,7 +11,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/go-errors/errors"
+	"github.com/pkg/errors"
 
 	"go.viam.com/utils"
 )
@@ -261,11 +261,11 @@ func (s *cachedStore) ensureNode(node *TreeNode, dstPath string, ignoreLimit boo
 
 	if err := s.cache.Contains(nodeHash); err == nil {
 		if err := emplaceFile(s.cache, nodeHash, dstPath); err != nil {
-			return "", errors.Errorf("error emplacing into file system cache: %w", err)
+			return "", errors.Wrap(err, "error emplacing into file system cache")
 		}
 		return dstPath, nil
 	} else if !IsErrArtifactNotFound(err) {
-		return "", errors.Errorf("error checking if hash is in file system cache: %w", err)
+		return "", errors.Wrap(err, "error checking if hash is in file system cache")
 	}
 
 	if !ignoreLimit && s.config.SourcePullSizeLimit != 0 && node.external.Size > s.config.SourcePullSizeLimit {
@@ -276,14 +276,14 @@ func (s *cachedStore) ensureNode(node *TreeNode, dstPath string, ignoreLimit boo
 	Logger.Debugw("loading from source", "path", dstPath, "hash", nodeHash)
 	rc, err := s.source.Load(nodeHash)
 	if err != nil {
-		return "", errors.Errorf("error loading from source cache: %w", err)
+		return "", errors.Wrap(err, "error loading from source cache")
 	}
 	defer utils.UncheckedErrorFunc(rc.Close)
 	if err := s.cache.Store(nodeHash, rc); err != nil {
-		return "", errors.Errorf("error storing into file system cache: %w", err)
+		return "", errors.Wrap(err, "error storing into file system cache")
 	}
 	if err := emplaceFile(s.cache, nodeHash, dstPath); err != nil {
-		return "", errors.Errorf("error emplacing into file system cache: %w", err)
+		return "", errors.Wrap(err, "error emplacing into file system cache")
 	}
 	return dstPath, nil
 }
@@ -363,7 +363,7 @@ func (s *cachedStore) walkUserTreeUncached(
 		existingNode, hasExistingNode := tree[name]
 		f, err := os.Open(newLocalPath)
 		if err != nil {
-			return errors.Errorf("error opening file to write through cache: %w", err)
+			return errors.Wrap(err, "error opening file to write through cache")
 		}
 		if err := func() error {
 			defer utils.UncheckedErrorFunc(f.Close)

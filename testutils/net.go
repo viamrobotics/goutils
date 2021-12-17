@@ -5,7 +5,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/go-errors/errors"
+	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 )
 
@@ -27,6 +27,6 @@ func WaitSuccessfulDial(address string) error {
 		if lastErr == nil {
 			return conn.Close()
 		}
-		lastErr = errors.Wrap(lastErr, 0)
+		lastErr = errors.WithStack(lastErr)
 	}
 }

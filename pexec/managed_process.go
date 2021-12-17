@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/go-errors/errors"
+	"github.com/pkg/errors"
 
 	"github.com/edaniels/golog"
 
@@ -112,7 +112,7 @@ func (p *managedProcess) Start(ctx context.Context) error {
 		if runErr == nil {
 			return nil
 		}
-		return errors.Errorf("error running process %q: %w", p.name, runErr)
+		return errors.Wrapf(runErr, "error running process %q", p.name)
 	}
 
 	// This is fully managed so we will control when to kill the process and not
@@ -279,7 +279,7 @@ func (p *managedProcess) Stop() error {
 	p.logger.Info("stopping")
 	// First let's try to interrupt the process.
 	if err := p.cmd.Process.Signal(os.Interrupt); err != nil && !errors.Is(err, os.ErrProcessDone) {
-		return errors.Errorf("error interrupting process: %w", err)
+		return errors.Wrap(err, "error interrupting process")
 	}
 
 	// If after a while the process still isn't stopping, let's kill it.
@@ -288,7 +288,7 @@ func (p *managedProcess) Stop() error {
 	select {
 	case <-timer.C:
 		if err := p.cmd.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
-			return errors.Errorf("error killing process: %w", err)
+			return errors.Wrap(err, "error killing process")
 		}
 	case <-p.managingCh:
 	}

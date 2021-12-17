@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/go-errors/errors"
+	"github.com/pkg/errors"
 
 	"github.com/edaniels/golog"
 	"go.uber.org/multierr"

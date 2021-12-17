@@ -11,7 +11,7 @@ import (
 
 	"cloud.google.com/go/iam"
 	"cloud.google.com/go/storage"
-	"github.com/go-errors/errors"
+	"github.com/pkg/errors"
 	"go.viam.com/test"
 	"golang.org/x/oauth2"
 	"google.golang.org/api/iterator"

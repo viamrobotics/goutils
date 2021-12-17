@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/go-errors/errors"
+	"github.com/pkg/errors"
 )
 
 // ParseFlags parses arguments derived from and into the given into struct.
@@ -27,13 +27,13 @@ func ParseFlags(args []string, into interface{}) error {
 		if errors.Is(err, flag.ErrHelp) {
 			return errors.New(buf.String())
 		}
-		return errors.Errorf("%s\n%w", buf.String(), err)
+		return errors.Errorf("%s\n%s", buf.String(), err)
 	}
 
 	if err := UnmarshalFlags(cmdLine, into); err != nil {
 		if errors.Is(err, errRequiredFlagUnspecified) {
 			cmdLine.Usage()
-			return errors.Errorf("%w\n%s", err, buf.String())
+			return errors.Errorf("%s\n%s", err, buf.String())
 		}
 		return err
 	}
@@ -101,13 +101,13 @@ func UnmarshalFlags(flagSet *flag.FlagSet, into interface{}) error {
 					case reflect.Int:
 						conv, err := strconv.ParseInt(strVal, 10, 64)
 						if err != nil {
-							return errors.Errorf("error parsing positional argument %d: %w", info.Position, err)
+							return errors.Wrapf(err, "error parsing positional argument %d", info.Position)
 						}
 						val = int(conv)
 					case reflect.Bool:
 						conv, err := strconv.ParseBool(strVal)
 						if err != nil {
-							return errors.Errorf("error parsing positional argument %d: %w", info.Position, err)
+							return errors.Wrapf(err, "error parsing positional argument %d", info.Position)
 						}
 						val = conv
 					default:
@@ -122,7 +122,7 @@ func UnmarshalFlags(flagSet *flag.FlagSet, into interface{}) error {
 			flagVal := flagSet.Lookup(info.Name)
 			if flagVal == nil {
 				if info.Required {
-					return errors.Errorf("error parsing flag %q: %w", info.Name, errRequiredFlagUnspecified)
+					return errors.Wrapf(errRequiredFlagUnspecified, "error parsing flag %q", info.Name)
 				}
 				if info.IsFlagVal {
 					val = info.Default
@@ -148,7 +148,7 @@ func UnmarshalFlags(flagSet *flag.FlagSet, into interface{}) error {
 			}
 		}
 		if info.Required && (val == nil || reflect.ValueOf(val).IsZero()) {
-			return errors.Errorf("error parsing flag %q: %w", info.Name, errRequiredFlagUnspecified)
+			return errors.Wrapf(errRequiredFlagUnspecified, "error parsing flag %q", info.Name)
 		}
 
 		valV := reflect.ValueOf(val)
@@ -164,7 +164,7 @@ func UnmarshalFlags(flagSet *flag.FlagSet, into interface{}) error {
 				fieldV = fieldV.Addr()
 			}
 			if err := fieldV.Interface().(flag.Value).Set(val.(string)); err != nil { // will always be string
-				return errors.Errorf("error parsing flag %q: %w", info.Name, err)
+				return errors.Wrapf(err, "error parsing flag %q", info.Name)
 			}
 			continue
 		}
@@ -251,7 +251,7 @@ func parseFlagInfo(field reflect.StructField, val string) (flagInfo, error) {
 			case reflect.Bool:
 				conv, err := strconv.ParseBool(info.Default)
 				if err != nil {
-					return flagInfo{}, errors.Errorf("error parsing flag info default for %q: %w", fieldName, err)
+					return flagInfo{}, errors.Wrapf(err, "error parsing flag info default for %q", fieldName)
 				}
 				info.DefaultIfc = conv
 			case reflect.String:
@@ -259,7 +259,7 @@ func parseFlagInfo(field reflect.StructField, val string) (flagInfo, error) {
 			case reflect.Int:
 				conv, err := strconv.ParseInt(info.Default, 10, 64)
 				if err != nil {
-					return flagInfo{}, errors.Errorf("error parsing flag info default for %q: %w", fieldName, err)
+					return flagInfo{}, errors.Wrapf(err, "error parsing flag info default for %q", fieldName)
 				}
 				info.DefaultIfc = int(conv)
 			default:
@@ -378,7 +378,7 @@ func extractFlags(flagSet *flag.FlagSet, from interface{}) error {
 				ctor = func(val string) (interface{}, error) {
 					newSliceElem := reflect.New(sliceElem)
 					if err := newSliceElem.Interface().(flag.Value).(flag.Value).Set(val); err != nil {
-						return nil, errors.Errorf("error setting flag for %q: %w", info.Name, err)
+						return nil, errors.Wrapf(err, "error setting flag for %q", info.Name)
 					}
 					return newSliceElem.Elem().Interface(), nil
 				}

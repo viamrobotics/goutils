@@ -6,8 +6,8 @@ import (
 	"crypto/rsa"
 	"testing"
 
-	"github.com/go-errors/errors"
 	"github.com/golang-jwt/jwt/v4"
+	"github.com/pkg/errors"
 	"go.viam.com/test"
 )
 

@@ -7,7 +7,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/go-errors/errors"
+	"github.com/pkg/errors"
 
 	"github.com/edaniels/golog"
 	"github.com/fsnotify/fsnotify"

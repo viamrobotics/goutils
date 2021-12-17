@@ -8,7 +8,7 @@ import (
 	"sync"
 
 	"cloud.google.com/go/storage"
-	"github.com/go-errors/errors"
+	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 	"golang.org/x/oauth2"
 	"google.golang.org/api/option"
@@ -72,7 +72,7 @@ func newGoogleStorageStore(config *GoogleStorageStoreConfig) (*googleStorageStor
 	if err != nil {
 		httpTransport.CloseIdleConnections()
 		if noAuth {
-			return nil, errors.Wrap(err, 0)
+			return nil, errors.WithStack(err)
 		}
 		httpClient.Transport, err = gcphttp.NewTransport(ctx, &httpTransport, option.WithoutAuthentication())
 		if err != nil {
@@ -82,7 +82,7 @@ func newGoogleStorageStore(config *GoogleStorageStoreConfig) (*googleStorageStor
 		client, err = storage.NewClient(context.Background(), clientOpt)
 		if err != nil {
 			httpTransport.CloseIdleConnections()
-			return nil, errors.Wrap(err, 0)
+			return nil, errors.WithStack(err)
 		}
 	}
 

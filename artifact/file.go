@@ -15,7 +15,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/go-errors/errors"
+	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 )
 
@@ -28,7 +28,7 @@ func Path(to string) (string, error) {
 	}
 	actualPath, err := cache.Ensure(to, true)
 	if err != nil {
-		return "", errors.Errorf("error ensuring %q: %w", to, err)
+		return "", errors.Wrapf(err, "error ensuring %q", to)
 	}
 	return actualPath, nil
 }

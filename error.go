@@ -3,7 +3,7 @@ package utils
 import (
 	"strings"
 
-	"github.com/go-errors/errors"
+	"github.com/pkg/errors"
 
 	"github.com/edaniels/golog"
 	"go.uber.org/multierr"
@@ -44,7 +44,7 @@ func FilterOutError(err, target error) error {
 // NewConfigValidationError returns a config validation error
 // occurring at a given path.
 func NewConfigValidationError(path string, err error) error {
-	return errors.Errorf("error validating %q: %w", path, err)
+	return errors.Wrapf(err, "error validating %q", path)
 }
 
 // NewConfigValidationFieldRequiredError returns a config validation
@@ -61,7 +61,6 @@ func UncheckedError(err error) {
 	if err == nil {
 		return
 	}
-	PrintStackErr(err)
 	loggerWithSkipUtils.Debugw("unchecked error", "error", err)
 }
 
@@ -69,12 +68,4 @@ func UncheckedError(err error) {
 // want to at least report it. Never use this for closing writers.
 func UncheckedErrorFunc(f func() error) {
 	UncheckedError(f())
-}
-
-// PrintStackErr prints stack trace information from an error if it's available.
-func PrintStackErr(err error) {
-	var stackErr *errors.Error
-	if errors.As(err, &stackErr) {
-		loggerWithSkipUtils.Error(stackErr.ErrorStack())
-	}
 }

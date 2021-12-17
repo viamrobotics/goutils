@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/edaniels/golog"
-	"github.com/go-errors/errors"
 	"github.com/miekg/dns"
+	"github.com/pkg/errors"
 	"go.viam.com/test"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"

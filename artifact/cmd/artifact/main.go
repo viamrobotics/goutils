@@ -9,7 +9,7 @@ import (
 
 	"github.com/edaniels/golog"
 	"github.com/fatih/color"
-	"github.com/go-errors/errors"
+	"github.com/pkg/errors"
 
 	"go.viam.com/utils"
 	"go.viam.com/utils/artifact/tools"
@@ -81,7 +81,6 @@ func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) (err 
 	case commandNameStatus:
 		status, err := tools.Status()
 		if err != nil {
-			utils.PrintStackErr(err)
 			logger.Fatal(err)
 		}
 		var buf bytes.Buffer

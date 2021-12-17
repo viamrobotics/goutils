@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"unsafe"
 
-	"github.com/go-errors/errors"
+	"github.com/pkg/errors"
 )
 
 // RawBytesFromSlice returns a view of the given slice value. It is valid

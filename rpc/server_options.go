@@ -3,8 +3,8 @@ package rpc
 import (
 	"crypto/rsa"
 
-	"github.com/go-errors/errors"
 	"github.com/pion/webrtc/v3"
+	"github.com/pkg/errors"
 
 	"google.golang.org/grpc"
 )

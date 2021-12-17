@@ -5,7 +5,7 @@ import (
 	"io"
 	"sync"
 
-	"github.com/go-errors/errors"
+	"github.com/pkg/errors"
 
 	echopb "go.viam.com/utils/proto/rpc/examples/echo/v1"
 )

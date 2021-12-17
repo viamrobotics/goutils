@@ -11,7 +11,7 @@ import (
 	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
 
 	"github.com/edaniels/golog"
-	"github.com/go-errors/errors"
+	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -65,7 +65,7 @@ func newWebRTCServerStream(
 //  - An RPC status is sent out (error or success).
 func (s *webrtcServerStream) SetHeader(header metadata.MD) error {
 	if s.headersWritten {
-		return errors.Wrap(ErrIllegalHeaderWrite, 0)
+		return errors.WithStack(ErrIllegalHeaderWrite)
 	}
 	if s.header == nil {
 		s.header = header
@@ -275,7 +275,7 @@ func (s *webrtcServerStream) closeWithSendError(err error) error {
 		if err == nil {
 			return errors.New("close called multiple times")
 		}
-		return errors.Wrap(fmt.Errorf("close called multiple times with error: %w", err), 0)
+		return errors.Wrap(err, "close called multiple times with error")
 	}
 	if err := s.writeHeaders(); err != nil {
 		return err

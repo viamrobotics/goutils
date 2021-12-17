@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/edaniels/golog"
-	"github.com/go-errors/errors"
 	"github.com/google/uuid"
+	"github.com/pkg/errors"
 
 	"go.viam.com/utils"
 	rpcpb "go.viam.com/utils/proto/rpc/v1"
