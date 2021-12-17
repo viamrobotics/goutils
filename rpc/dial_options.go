@@ -17,6 +17,10 @@ type dialOptions struct {
 	webrtcOpts DialWebRTCOptions
 
 	externalAuthAddr string
+
+	// debug is helpful to turn on when the library isn't working quite right.
+	// It will output much more logs.
+	debug bool
 }
 
 // DialOption configures how we set up the connection.
@@ -88,5 +92,13 @@ func WithExternalAuth(addr string) DialOption {
 func WithWebRTCOptions(webrtcOpts DialWebRTCOptions) DialOption {
 	return newFuncDialOption(func(o *dialOptions) {
 		o.webrtcOpts = webrtcOpts
+	})
+}
+
+// WithDialDebug returns a DialOption which informs the client to be in a
+// debug mode as much as possible.
+func WithDialDebug() DialOption {
+	return newFuncDialOption(func(o *dialOptions) {
+		o.debug = true
 	})
 }

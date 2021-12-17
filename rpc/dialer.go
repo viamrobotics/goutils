@@ -9,7 +9,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/edaniels/golog"
+	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
+	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
 	"go.uber.org/multierr"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -23,10 +28,10 @@ import (
 // A Dialer is responsible for making connections to gRPC endpoints.
 type Dialer interface {
 	// DialDirect makes a connection to the given target over standard gRPC with the supplied options.
-	DialDirect(ctx context.Context, target string, onClose func() error, opts ...grpc.DialOption) (ClientConn, error)
+	DialDirect(ctx context.Context, target string, onClose func() error, opts ...grpc.DialOption) (conn ClientConn, cached bool, err error)
 
 	// DialFunc makes a connection to the given target for the given proto using the given dial function.
-	DialFunc(proto string, target string, f func() (ClientConn, func() error, error)) (ClientConn, error)
+	DialFunc(proto string, target string, f func() (ClientConn, func() error, error)) (conn ClientConn, cached bool, err error)
 
 	// Close ensures all connections made are cleanly closed.
 	Close() error
@@ -86,7 +91,7 @@ func NewCachedDialer() Dialer {
 	return &cachedDialer{conns: map[string]*refCountedConnWrapper{}}
 }
 
-func (cd *cachedDialer) DialDirect(ctx context.Context, target string, onClose func() error, opts ...grpc.DialOption) (ClientConn, error) {
+func (cd *cachedDialer) DialDirect(ctx context.Context, target string, onClose func() error, opts ...grpc.DialOption) (ClientConn, bool, error) {
 	return cd.DialFunc("grpc", target, func() (ClientConn, func() error, error) {
 		conn, err := grpc.DialContext(ctx, target, opts...)
 		if err != nil {
@@ -96,19 +101,19 @@ func (cd *cachedDialer) DialDirect(ctx context.Context, target string, onClose f
 	})
 }
 
-func (cd *cachedDialer) DialFunc(proto string, target string, f func() (ClientConn, func() error, error)) (ClientConn, error) {
+func (cd *cachedDialer) DialFunc(proto string, target string, f func() (ClientConn, func() error, error)) (ClientConn, bool, error) {
 	key := fmt.Sprintf("%s:%s", proto, target)
 	cd.mu.Lock()
 	c, ok := cd.conns[key]
 	cd.mu.Unlock()
 	if ok {
-		return c.Ref(), nil
+		return c.Ref(), true, nil
 	}
 
 	// assume any difference in opts does not matter
 	conn, onClose, err := f()
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	conn = wrapClientConnWithCloseFunc(conn, onClose)
 	refConn := newRefCountedConnWrapper(conn, func() {
@@ -123,12 +128,12 @@ func (cd *cachedDialer) DialFunc(proto string, target string, f func() (ClientCo
 	c, ok = cd.conns[key]
 	if ok {
 		if err := conn.Close(); err != nil {
-			return nil, err
+			return nil, false, err
 		}
-		return c.Ref(), nil
+		return c.Ref(), true, nil
 	}
 	cd.conns[key] = refConn
-	return refConn.Ref(), nil
+	return refConn.Ref(), false, nil
 }
 
 func (cd *cachedDialer) Close() error {
@@ -186,7 +191,7 @@ func (rc *reffedConn) Close() error {
 }
 
 // dialDirectGRPC dials a gRPC server directly.
-func dialDirectGRPC(ctx context.Context, address string, dOpts *dialOptions) (ClientConn, error) {
+func dialDirectGRPC(ctx context.Context, address string, dOpts *dialOptions, logger golog.Logger) (ClientConn, bool, error) {
 	dialOpts := []grpc.DialOption{
 		grpc.WithBlock(),
 		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(maxMessageSize)),
@@ -199,6 +204,21 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts *dialOptions) (Cl
 	} else {
 		dialOpts = append(dialOpts, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{})))
 	}
+
+	grpcLogger := logger.Desugar()
+	if !(dOpts.debug || utils.Debug) {
+		grpcLogger = grpcLogger.WithOptions(zap.IncreaseLevel(zap.LevelEnablerFunc(zapcore.ErrorLevel.Enabled)))
+	}
+	var unaryInterceptors []grpc.UnaryClientInterceptor
+	unaryInterceptors = append(unaryInterceptors, grpc_zap.UnaryClientInterceptor(grpcLogger))
+	unaryInterceptor := grpc_middleware.ChainUnaryClient(unaryInterceptors...)
+	dialOpts = append(dialOpts, grpc.WithUnaryInterceptor(unaryInterceptor))
+
+	var streamInterceptors []grpc.StreamClientInterceptor
+	streamInterceptors = append(streamInterceptors, grpc_zap.StreamClientInterceptor(grpcLogger))
+	streamInterceptor := grpc_middleware.ChainStreamClient(streamInterceptors...)
+	dialOpts = append(dialOpts, grpc.WithStreamInterceptor(streamInterceptor))
+
 	var connPtr *ClientConn
 	var closeCredsFunc func() error
 	if dOpts.creds.Type != "" {
@@ -210,9 +230,9 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts *dialOptions) (Cl
 			dialOptsCopy := *dOpts
 			dialOptsCopy.externalAuthAddr = ""
 			dialOptsCopy.creds = Credentials{}
-			externalConn, err := dialDirectGRPC(ctx, dOpts.externalAuthAddr, &dialOptsCopy)
+			externalConn, _, err := dialDirectGRPC(ctx, dOpts.externalAuthAddr, &dialOptsCopy, logger)
 			if err != nil {
-				return nil, err
+				return nil, false, err
 			}
 			closeCredsFunc = externalConn.Close
 			rpcCreds.conn = externalConn
@@ -222,9 +242,10 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts *dialOptions) (Cl
 		dialOpts = append(dialOpts, grpc.WithPerRPCCredentials(rpcCreds))
 	}
 	var conn ClientConn
+	var cached bool
 	var err error
 	if ctxDialer := contextDialer(ctx); ctxDialer != nil {
-		conn, err = ctxDialer.DialDirect(ctx, address, closeCredsFunc, dialOpts...)
+		conn, cached, err = ctxDialer.DialDirect(ctx, address, closeCredsFunc, dialOpts...)
 	} else {
 		conn, err = grpc.DialContext(ctx, address, dialOpts...)
 		if err == nil && closeCredsFunc != nil {
@@ -235,12 +256,12 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts *dialOptions) (Cl
 		if closeCredsFunc != nil {
 			err = multierr.Combine(err, closeCredsFunc())
 		}
-		return nil, err
+		return nil, false, err
 	}
 	if connPtr != nil {
 		*connPtr = conn
 	}
-	return conn, err
+	return conn, cached, err
 }
 
 func wrapClientConnWithCloseFunc(conn ClientConn, closeFunc func() error) ClientConn {
@@ -263,14 +284,15 @@ func (cc *clientConnWithCloseFunc) Close() (err error) {
 }
 
 // dialFunc dials an address for a particular protocol and dial function.
-func dialFunc(ctx context.Context, proto string, target string, f func() (ClientConn, error)) (ClientConn, error) {
+func dialFunc(ctx context.Context, proto string, target string, f func() (ClientConn, error)) (ClientConn, bool, error) {
 	if ctxDialer := contextDialer(ctx); ctxDialer != nil {
 		return ctxDialer.DialFunc(proto, target, func() (ClientConn, func() error, error) {
 			conn, err := f()
 			return conn, nil, err
 		})
 	}
-	return f()
+	conn, err := f()
+	return conn, false, err
 }
 
 type perRPCJWTCredentials struct {

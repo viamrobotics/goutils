@@ -3,12 +3,18 @@ package rpc
 import (
 	"context"
 	"errors"
+	"path"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/edaniels/golog"
+	grpc_logging "github.com/grpc-ecosystem/go-grpc-middleware/logging"
+	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
+	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
 	"github.com/pion/webrtc/v3"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/proto"
@@ -74,6 +80,15 @@ func (ch *webrtcClientChannel) Close() error {
 //
 // All errors returned by Invoke are compatible with the status package.
 func (ch *webrtcClientChannel) Invoke(ctx context.Context, method string, args interface{}, reply interface{}, opts ...grpc.CallOption) error {
+	fields := newClientLoggerFields(ctx, method)
+	startTime := time.Now()
+	err := ch.invoke(ctx, method, args, reply)
+	newCtx := ctxzap.ToContext(ctx, ch.webrtcBaseChannel.logger.Desugar().With(fields...))
+	logFinalClientLine(newCtx, startTime, err, "finished client unary call")
+	return err
+}
+
+func (ch *webrtcClientChannel) invoke(ctx context.Context, method string, args interface{}, reply interface{}) error {
 	clientStream, err := ch.newStream(ctx, ch.nextStreamID())
 	if err != nil {
 		return err
@@ -107,6 +122,15 @@ func (ch *webrtcClientChannel) Invoke(ctx context.Context, method string, args i
 // If none of the above happen, a goroutine and a context will be leaked, and grpc
 // will not call the optionally-configured stats handler with a stats.End message.
 func (ch *webrtcClientChannel) NewStream(ctx context.Context, desc *grpc.StreamDesc, method string, opts ...grpc.CallOption) (grpc.ClientStream, error) {
+	fields := newClientLoggerFields(ctx, method)
+	startTime := time.Now()
+	clientStream, err := ch.newClientStream(ctx, desc, method)
+	newCtx := ctxzap.ToContext(ctx, ch.webrtcBaseChannel.logger.Desugar().With(fields...))
+	logFinalClientLine(newCtx, startTime, err, "finished client streaming call")
+	return clientStream, err
+}
+
+func (ch *webrtcClientChannel) newClientStream(ctx context.Context, desc *grpc.StreamDesc, method string) (grpc.ClientStream, error) {
 	clientStream, err := ch.newStream(ctx, ch.nextStreamID())
 	if err != nil {
 		return nil, err
@@ -217,4 +241,29 @@ func (ch *webrtcClientChannel) writeMessage(stream *webrtcpb.Stream, msg *webrtc
 			Message: msg,
 		},
 	})
+}
+
+// taken from https://github.com/grpc-ecosystem/go-grpc-middleware/blob/560829fc74fcf9a69b7ab01d484f8b8961dc734b/logging/zap/client_interceptors.go#L17
+
+func logFinalClientLine(ctx context.Context, startTime time.Time, err error, msg string) {
+	code := grpc_logging.DefaultErrorToCode(err)
+	level := grpc_zap.DefaultCodeToLevel(code)
+	duration := grpc_zap.DefaultDurationToField(time.Since(startTime))
+	grpc_zap.DefaultMessageProducer(ctx, msg, level, code, err, duration)
+}
+
+var (
+	clientField = zap.String("span.kind", "client")
+	systemField = zap.String("system", "grpc")
+)
+
+func newClientLoggerFields(ctx context.Context, fullMethodString string) []zapcore.Field {
+	service := path.Dir(fullMethodString)[1:]
+	method := path.Base(fullMethodString)
+	return []zapcore.Field{
+		systemField,
+		clientField,
+		zap.String("grpc.service", service),
+		zap.String("grpc.method", method),
+	}
 }

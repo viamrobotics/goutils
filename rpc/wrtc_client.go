@@ -67,8 +67,10 @@ func dialWebRTC(ctx context.Context, address string, dOpts *dialOptions, logger 
 	dOptsCopy := *dOpts
 	if dOpts.webrtcOpts.Insecure {
 		dOptsCopy.insecure = true
+	} else {
+		dOptsCopy.insecure = false
 	}
-	conn, err := dialDirectGRPC(dialCtx, address, &dOptsCopy)
+	conn, _, err := dialDirectGRPC(dialCtx, address, &dOptsCopy, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -268,7 +270,7 @@ func dialWebRTC(ctx context.Context, address string, dOpts *dialOptions, logger 
 				},
 			})
 		})
-		return nil, err
+		return nil, multierr.Combine(callErr, err)
 	}
 	if err := sendDone(); err != nil {
 		return nil, err

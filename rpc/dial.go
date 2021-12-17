@@ -49,8 +49,10 @@ func Dial(ctx context.Context, address string, logger golog.Logger, opts ...Dial
 			// deputy.
 			localCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 			defer cancel()
-			if conn, err := dialDirectGRPC(localCtx, localAddress, &dOpts); err == nil {
-				logger.Debugw("connected directly via local host", "address", localAddress)
+			if conn, cached, err := dialDirectGRPC(localCtx, localAddress, &dOpts, logger); err == nil {
+				if !cached {
+					logger.Debugw("connected directly via local host", "address", localAddress)
+				}
 				return conn, nil
 			} else if ctx.Err() != nil { // do not care about local timeout
 				return nil, ctx.Err()
@@ -71,25 +73,30 @@ func Dial(ctx context.Context, address string, logger golog.Logger, opts ...Dial
 	if dOpts.webrtcOpts.SignalingServer != "" {
 		webrtcAddress := HostURI(dOpts.webrtcOpts.SignalingServer, address)
 
-		conn, err := dialFunc(ctx, "webrtc", webrtcAddress, func() (ClientConn, error) {
+		conn, cached, err := dialFunc(ctx, "webrtc", webrtcAddress, func() (ClientConn, error) {
 			return dialWebRTC(ctx, webrtcAddress, &dOpts, logger)
 		})
-
+		if err == nil {
+			if !cached {
+				logger.Debug("connected via WebRTC")
+			}
+			return conn, nil
+		}
 		if err != nil && !errors.Is(err, ErrNoWebRTCSignaler) {
 			return nil, err
 		}
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		logger.Debug("connected via WebRTC")
-		return conn, nil
 	}
 
-	conn, err := dialDirectGRPC(ctx, address, &dOpts)
+	conn, cached, err := dialDirectGRPC(ctx, address, &dOpts, logger)
 	if err != nil {
 		return nil, err
 	}
-	logger.Debugw("connected directly", "address", address)
+	if !cached {
+		logger.Debugw("connected directly", "address", address)
+	}
 	return conn, nil
 }
 

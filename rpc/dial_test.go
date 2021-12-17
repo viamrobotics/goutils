@@ -380,13 +380,14 @@ type staticDialer struct {
 	address string
 }
 
-func (sd *staticDialer) DialDirect(ctx context.Context, target string, onClose func() error, opts ...grpc.DialOption) (ClientConn, error) {
-	return grpc.DialContext(ctx, sd.address, opts...)
+func (sd *staticDialer) DialDirect(ctx context.Context, target string, onClose func() error, opts ...grpc.DialOption) (ClientConn, bool, error) {
+	conn, err := grpc.DialContext(ctx, sd.address, opts...)
+	return conn, false, err
 }
 
-func (sd *staticDialer) DialFunc(proto string, target string, f func() (ClientConn, func() error, error)) (ClientConn, error) {
+func (sd *staticDialer) DialFunc(proto string, target string, f func() (ClientConn, func() error, error)) (ClientConn, bool, error) {
 	conn, _, err := f()
-	return conn, err
+	return conn, false, err
 }
 
 func (sd *staticDialer) Close() error {
