@@ -16,8 +16,8 @@ declare global {
 async function getClients() {
 	const opts = { credentials: window.creds, externalAuthAddress: window.externalAuthAddr };
 	console.log("WebRTC")
-	const webRTCTransport = await dialWebRTC(signalingAddress, host, opts);
-	const webrtcClient = new EchoServiceClient(host, { transport: webRTCTransport });
+	const webRTCConn = await dialWebRTC(signalingAddress, host, opts);
+	const webrtcClient = new EchoServiceClient(host, { transport: webRTCConn.transportFactory });
 	await doEchos(webrtcClient);
 
 	console.log("Direct") // bi-di may not work

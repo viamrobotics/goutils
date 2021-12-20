@@ -137,13 +137,3 @@ func (crc *closeReffedConn) Close() error {
 	crc.closeCalled++
 	return nil
 }
-
-func TestContextDialer(t *testing.T) {
-	ctx := context.Background()
-	cachedDialer := NewCachedDialer()
-	ctx = ContextWithDialer(ctx, cachedDialer)
-	cachedDialer2 := contextDialer(context.Background())
-	test.That(t, cachedDialer2, test.ShouldBeNil)
-	cachedDialer2 = contextDialer(ctx)
-	test.That(t, cachedDialer2, test.ShouldEqual, cachedDialer)
-}

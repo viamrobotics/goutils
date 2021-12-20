@@ -117,6 +117,7 @@ func (ch *webrtcServerChannel) onChannelMessage(msg webrtc.DataChannelMessage) {
 		} else {
 			handlerCtx, cancelCtx = context.WithTimeout(handlerCtx, timeout)
 		}
+		handlerCtx = contextWithPeerConnection(handlerCtx, ch.peerConn)
 
 		serverStream = newWebRTCServerStream(handlerCtx, cancelCtx, ch, stream, ch.removeStreamByID, logger)
 		ch.streams[id] = serverStream

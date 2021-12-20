@@ -21,9 +21,9 @@ let clientProm = new Promise<FileUploadServiceClient>((resolve, reject) => {
 });
 
 const opts = { credentials: window.creds, externalAuthAddress: window.externalAuthAddr };
-dialWebRTC(signalingAddress, host, opts).then(async (transport: grpc.TransportFactory) => {
+dialWebRTC(signalingAddress, host, opts).then(async ({ transportFactory }) => {
 	console.log("WebRTC connection established")
-	const webrtcClient = new FileUploadServiceClient(host, { transport });
+	const webrtcClient = new FileUploadServiceClient(host, { transport: transportFactory });
 	clientResolve(webrtcClient);
 }).catch((e: any) => clientReject(e));
 

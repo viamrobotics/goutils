@@ -14,4 +14,9 @@ export interface Credentials {
     payload: string;
 }
 export declare function dialDirect(address: string, opts?: DialOptions): Promise<grpc.TransportFactory>;
-export declare function dialWebRTC(signalingAddress: string, host: string, opts?: DialOptions): Promise<grpc.TransportFactory>;
+interface WebRTCConnection {
+    transportFactory: grpc.TransportFactory;
+    peerConnection: RTCPeerConnection;
+}
+export declare function dialWebRTC(signalingAddress: string, host: string, opts?: DialOptions): Promise<WebRTCConnection>;
+export {};

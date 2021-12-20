@@ -3,6 +3,7 @@ package rpc
 import (
 	"context"
 	"io"
+	"sync"
 	"time"
 
 	"github.com/edaniels/golog"
@@ -128,6 +129,36 @@ func newPeerConnectionForServer(ctx context.Context, sdp string, config webrtc.C
 		}
 	}()
 
+	var negOpen bool
+	var negMu sync.Mutex
+	var negotiationChannel *webrtc.DataChannel
+	pc.OnNegotiationNeeded(func() {
+		negMu.Lock()
+		if !negOpen {
+			negMu.Unlock()
+			return
+		}
+		negMu.Unlock()
+		offer, err := pc.CreateOffer(nil)
+		if err != nil {
+			logger.Errorw("renegotiation: error creating offer", "error", err)
+			return
+		}
+		if err := pc.SetLocalDescription(offer); err != nil {
+			logger.Errorw("renegotiation: error setting local description", "error", err)
+			return
+		}
+		encodedSDP, err := EncodeSDP(pc.LocalDescription())
+		if err != nil {
+			logger.Errorw("renegotiation: error encoding SDP", "error", err)
+			return
+		}
+		if err := negotiationChannel.SendText(encodedSDP); err != nil {
+			logger.Errorw("renegotiation: error sending SDP", "error", err)
+			return
+		}
+	})
+
 	negotiated := true
 	ordered := true
 	dataChannelID := uint16(0)
@@ -140,6 +171,34 @@ func newPeerConnectionForServer(ctx context.Context, sdp string, config webrtc.C
 		return pc, dataChannel, err
 	}
 	dataChannel.OnError(initialDataChannelOnError(pc, logger))
+
+	negotiationChannelID := uint16(1)
+	negotiationChannel, err = pc.CreateDataChannel("negotiation", &webrtc.DataChannelInit{
+		ID:         &negotiationChannelID,
+		Negotiated: &negotiated,
+		Ordered:    &ordered,
+	})
+	if err != nil {
+		return pc, dataChannel, err
+	}
+	negotiationChannel.OnError(initialDataChannelOnError(pc, logger))
+
+	negotiationChannel.OnOpen(func() {
+		negMu.Lock()
+		negOpen = true
+		negMu.Unlock()
+	})
+	negotiationChannel.OnMessage(func(msg webrtc.DataChannelMessage) {
+		answer := webrtc.SessionDescription{}
+		if err := DecodeSDP(string(msg.Data), &answer); err != nil {
+			logger.Errorw("renegotiation: error decoding SDP", "error", err)
+			return
+		}
+		if err := pc.SetRemoteDescription(answer); err != nil {
+			logger.Errorw("renegotiation: error setting remote description", "error", err)
+			return
+		}
+	})
 
 	offer := webrtc.SessionDescription{}
 	if err := DecodeSDP(sdp, &offer); err != nil {

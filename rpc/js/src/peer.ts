@@ -26,6 +26,24 @@ export async function newPeerConnectionForClient(disableTrickle: boolean, rtcCon
 	});
 	dataChannel.binaryType = "arraybuffer";
 
+	const negotiationChannel = peerConnection.createDataChannel("negotiation", {
+		id: 1,
+		negotiated: true,
+		ordered: true
+	});
+	negotiationChannel.binaryType = "arraybuffer";
+	negotiationChannel.onmessage = async (event: MessageEvent<any>) => {
+		try {
+			const remoteSDP = new RTCSessionDescription(JSON.parse(atob(event.data)));
+			await peerConnection.setRemoteDescription(remoteSDP);
+			const answerDesc = await peerConnection.createAnswer();
+			await peerConnection.setLocalDescription(answerDesc);
+			negotiationChannel.send(btoa(JSON.stringify(peerConnection.localDescription)));
+		} catch (e) {
+			console.error(e);
+		}
+	}
+
 	if (!disableTrickle) {
 		return Promise.resolve({ pc: peerConnection, dc: dataChannel })
 	}

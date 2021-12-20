@@ -113,8 +113,17 @@ class authenticatedTransport implements grpc.Transport {
 	}
 }
 
+interface WebRTCConnection {
+	transportFactory: grpc.TransportFactory;
+	peerConnection: RTCPeerConnection;
+}
+
+// dialWebRTC makes a connection to given host by signaling with the address provided. A Promise is returned
+// upon successful connection that contains a transport factory to use with gRPC client as well as the WebRTC
+// PeerConnection itself. Care should be taken with the PeerConnection and is currently returned for experimental
+// use.
 // TODO(https://github.com/viamrobotics/core/issues/111): figure out decent way to handle reconnect on connection termination
-export async function dialWebRTC(signalingAddress: string, host: string, opts?: DialOptions): Promise<grpc.TransportFactory> {
+export async function dialWebRTC(signalingAddress: string, host: string, opts?: DialOptions): Promise<WebRTCConnection> {
 	const webrtcOpts = opts?.webrtcOptions;
 	const { pc, dc } = await newPeerConnectionForClient(webrtcOpts !== undefined && webrtcOpts.disableTrickleICE, webrtcOpts?.rtcConfig);
 
@@ -297,7 +306,7 @@ export async function dialWebRTC(signalingAddress: string, host: string, opts?: 
 	await cc.ready;
 	exchangeDone = true;
 	sendDone();
-	return cc.transportFactory();
+	return { transportFactory: cc.transportFactory(), peerConnection: pc };
 }
 
 function iceCandidateFromProto(i: ICECandidate): RTCIceCandidateInit {

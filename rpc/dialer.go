@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"net"
 	"strings"
 	"sync"
 	"time"
@@ -42,41 +41,6 @@ type Dialer interface {
 type ClientConn interface {
 	grpc.ClientConnInterface
 	Close() error
-}
-
-type dialCtxKey int
-
-const (
-	dialCtxKeyDialer = dialCtxKey(iota)
-	dialCtxKeyResolver
-)
-
-// ContextWithDialer attaches a Dialer to the given context.
-func ContextWithDialer(ctx context.Context, d Dialer) context.Context {
-	return context.WithValue(ctx, dialCtxKeyDialer, d)
-}
-
-// contextDialer returns a Dialer. It may be nil if the value was never set.
-func contextDialer(ctx context.Context) Dialer {
-	dialer := ctx.Value(dialCtxKeyDialer)
-	if dialer == nil {
-		return nil
-	}
-	return dialer.(Dialer)
-}
-
-// contextWithResolver attaches a Resolver to the given context.
-func contextWithResolver(ctx context.Context, r *net.Resolver) context.Context {
-	return context.WithValue(ctx, dialCtxKeyResolver, r)
-}
-
-// contextResolver returns a Resolver. It may be nil if the value was never set.
-func contextResolver(ctx context.Context) *net.Resolver {
-	resolver := ctx.Value(dialCtxKeyResolver)
-	if resolver == nil {
-		return nil
-	}
-	return resolver.(*net.Resolver)
 }
 
 type cachedDialer struct {
