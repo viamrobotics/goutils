@@ -17,10 +17,6 @@
         "es2017.object",
         "dom"
     ],
-    "baseUrl": "./",
-    "paths": {
-      "proto/*": ["../../../dist/js/proto/*", "../../dist/js/proto/*"],
-      "google-rpc/*": ["../../../dist/js/google/rpc/*", "../../dist/js/google/rpc/*"]
-    }
+    "baseUrl": "./"
   }
 }

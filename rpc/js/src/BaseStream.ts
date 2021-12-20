@@ -1,5 +1,5 @@
 import { grpc } from "@improbable-eng/grpc-web";
-import { PacketMessage, Stream } from "proto/rpc/webrtc/v1/grpc_pb";
+import { PacketMessage, Stream } from "./gen/proto/rpc/webrtc/v1/grpc_pb";
 
 // MaxMessageSize is the maximum size a gRPC message can be.
 let MaxMessageSize = 1 << 25;

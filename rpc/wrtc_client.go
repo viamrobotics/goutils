@@ -170,7 +170,7 @@ func dialWebRTC(ctx context.Context, address string, dOpts *dialOptions, logger 
 		}
 	}
 
-	encodedSDP, err := EncodeSDP(pc.LocalDescription())
+	encodedSDP, err := encodeSDP(pc.LocalDescription())
 	if err != nil {
 		return nil, err
 	}
@@ -211,7 +211,7 @@ func dialWebRTC(ctx context.Context, address string, dOpts *dialOptions, logger 
 				haveInit = true
 				uuid = callResp.Uuid
 				answer := webrtc.SessionDescription{}
-				if err := DecodeSDP(s.Init.Sdp, &answer); err != nil {
+				if err := decodeSDP(s.Init.Sdp, &answer); err != nil {
 					return err
 				}
 

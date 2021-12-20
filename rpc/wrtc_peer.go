@@ -148,7 +148,7 @@ func newPeerConnectionForServer(ctx context.Context, sdp string, config webrtc.C
 			logger.Errorw("renegotiation: error setting local description", "error", err)
 			return
 		}
-		encodedSDP, err := EncodeSDP(pc.LocalDescription())
+		encodedSDP, err := encodeSDP(pc.LocalDescription())
 		if err != nil {
 			logger.Errorw("renegotiation: error encoding SDP", "error", err)
 			return
@@ -190,7 +190,7 @@ func newPeerConnectionForServer(ctx context.Context, sdp string, config webrtc.C
 	})
 	negotiationChannel.OnMessage(func(msg webrtc.DataChannelMessage) {
 		answer := webrtc.SessionDescription{}
-		if err := DecodeSDP(string(msg.Data), &answer); err != nil {
+		if err := decodeSDP(string(msg.Data), &answer); err != nil {
 			logger.Errorw("renegotiation: error decoding SDP", "error", err)
 			return
 		}
@@ -201,7 +201,7 @@ func newPeerConnectionForServer(ctx context.Context, sdp string, config webrtc.C
 	})
 
 	offer := webrtc.SessionDescription{}
-	if err := DecodeSDP(sdp, &offer); err != nil {
+	if err := decodeSDP(sdp, &offer); err != nil {
 		return pc, dataChannel, err
 	}
 

@@ -1,5 +1,5 @@
 import { grpc } from "@improbable-eng/grpc-web";
-import { Metadata, PacketMessage, RequestHeaders, RequestMessage, Response, ResponseHeaders, ResponseMessage, ResponseTrailers, Stream, Strings } from "proto/rpc/webrtc/v1/grpc_pb";
+import { Metadata, PacketMessage, RequestHeaders, RequestMessage, Response, ResponseHeaders, ResponseMessage, ResponseTrailers, Stream, Strings } from "./gen/proto/rpc/webrtc/v1/grpc_pb";
 import { BaseStream } from "./BaseStream";
 import { ClientChannel } from "./ClientChannel";
 

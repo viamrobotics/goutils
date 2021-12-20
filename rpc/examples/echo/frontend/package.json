@@ -4,7 +4,7 @@
   "license": "MIT",
   "dependencies": {
     "@improbable-eng/grpc-web": "^0.13.0",
-    "@viamrobotics/rpc": "^0.1.12",
+    "@viamrobotics/rpc": "^0.1.16",
     "google-protobuf": "^3.14.0"
   },
   "devDependencies": {
@@ -18,5 +18,9 @@
     "ts-loader": "^8.0.14",
     "ts-protoc-gen": "^0.14.0",
     "typescript": "^4.1.3"
+  },
+  "scripts": {
+    "prepare": "./etc/prepare.sh",
+    "test": "echo \"Error: no test specified\" && exit 1"
   }
 }

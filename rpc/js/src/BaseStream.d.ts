@@ -1,5 +1,5 @@
 import { grpc } from "@improbable-eng/grpc-web";
-import { PacketMessage, Stream } from "proto/rpc/webrtc/v1/grpc_pb";
+import { PacketMessage, Stream } from "./gen/proto/rpc/webrtc/v1/grpc_pb";
 export declare class BaseStream {
     protected readonly stream: Stream;
     private readonly onDone;

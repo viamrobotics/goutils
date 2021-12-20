@@ -3,7 +3,7 @@ all: build
 .PHONY: all
 
 build:
-	cd frontend && npm install && npx webpack
+	cd frontend && npm install && npm link @viamrobotics/rpc && npx webpack
 
 run_server: build
 	go run server/cmd/main.go

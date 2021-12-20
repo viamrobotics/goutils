@@ -1,7 +1,7 @@
 import { grpc } from "@improbable-eng/grpc-web";
-import { EchoBiDiRequest, EchoMultipleRequest, EchoMultipleResponse, EchoRequest, EchoResponse } from "proto/rpc/examples/echo/v1/echo_pb";
-import { EchoServiceClient, ServiceError } from "proto/rpc/examples/echo/v1/echo_pb_service";
-import { dialDirect, dialWebRTC, Credentials } from "rpc";
+import { EchoBiDiRequest, EchoMultipleRequest, EchoMultipleResponse, EchoRequest, EchoResponse } from "./gen/proto/rpc/examples/echo/v1/echo_pb";
+import { EchoServiceClient, ServiceError } from "./gen/proto/rpc/examples/echo/v1/echo_pb_service";
+import { dialDirect, dialWebRTC, Credentials } from "@viamrobotics/rpc";
 
 const signalingAddress = `${window.location.protocol}//${window.location.host}`;
 const host = "local";

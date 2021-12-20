@@ -122,7 +122,7 @@ func runServer(
 		return err
 	}
 	var signalingOpts []rpc.DialOption
-	if signalingAddress == "" && !secure {
+	if signalingAddress != "" && !secure {
 		signalingOpts = append(signalingOpts, rpc.WithInsecure())
 	}
 	serverOpts = append(serverOpts, rpc.WithWebRTCServerOptions(rpc.WebRTCServerOptions{

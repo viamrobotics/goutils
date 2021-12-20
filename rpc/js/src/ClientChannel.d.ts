@@ -1,5 +1,5 @@
 import { grpc } from "@improbable-eng/grpc-web";
-import { RequestHeaders, RequestMessage, Stream } from "proto/rpc/webrtc/v1/grpc_pb";
+import { RequestHeaders, RequestMessage, Stream } from "./gen/proto/rpc/webrtc/v1/grpc_pb";
 import { BaseChannel } from "./BaseChannel";
 export declare class ClientChannel extends BaseChannel {
     private streamIDCounter;

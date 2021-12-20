@@ -298,7 +298,7 @@ func (ans *webrtcSignalingAnswerer) answer() (err error) {
 		}
 	}
 
-	encodedSDP, err := EncodeSDP(pc.LocalDescription())
+	encodedSDP, err := encodeSDP(pc.LocalDescription())
 	if err != nil {
 		return ans.client.Send(&webrtcpb.AnswerResponse{
 			Uuid: uuid,

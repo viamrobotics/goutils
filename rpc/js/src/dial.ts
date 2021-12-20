@@ -1,12 +1,12 @@
 import { grpc } from "@improbable-eng/grpc-web";
-import { CallRequest, CallResponse, CallUpdateRequest, CallUpdateResponse, ICECandidate } from "proto/rpc/webrtc/v1/signaling_pb";
-import { SignalingService } from "proto/rpc/webrtc/v1/signaling_pb_service";
-import { AuthenticateRequest, AuthenticateResponse, Credentials as PBCredentials } from "proto/rpc/v1/auth_pb";
-import { AuthService } from "proto/rpc/v1/auth_pb_service";
+import { CallRequest, CallResponse, CallUpdateRequest, CallUpdateResponse, ICECandidate } from "./gen/proto/rpc/webrtc/v1/signaling_pb";
+import { SignalingService } from "./gen/proto/rpc/webrtc/v1/signaling_pb_service";
+import { AuthenticateRequest, AuthenticateResponse, Credentials as PBCredentials } from "./gen/proto/rpc/v1/auth_pb";
+import { AuthService } from "./gen/proto/rpc/v1/auth_pb_service";
 import { ClientChannel } from "./ClientChannel";
 import { newPeerConnectionForClient } from "./peer";
-import { Code } from "google-rpc/code_pb"
-import { Status } from "google-rpc/status_pb"
+import { Code } from "./gen/google/rpc/code_pb"
+import { Status } from "./gen/google/rpc/status_pb"
 
 export interface DialOptions {
 	authEntity?: string;
