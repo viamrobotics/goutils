@@ -107,7 +107,6 @@ func (ans *webrtcSignalingAnswerer) Start() error {
 				var needPartialReconnect bool
 				s, isGRPCErr := status.FromError(err)
 				if errors.Is(err, io.EOF) || (isGRPCErr && strings.Contains(s.Message(), "too_many_pings")) {
-					println("partial", isGRPCErr)
 					needPartialReconnect = true
 				}
 				if needPartialReconnect {
