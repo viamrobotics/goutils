@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 	"time"
 
@@ -103,7 +104,13 @@ func (ans *webrtcSignalingAnswerer) Start() error {
 			default:
 			}
 			if err := ans.answer(); err != nil {
-				if errors.Is(err, io.EOF) {
+				var needPartialReconnect bool
+				s, isGRPCErr := status.FromError(err)
+				if errors.Is(err, io.EOF) || (isGRPCErr && strings.Contains(s.Message(), "too_many_pings")) {
+					println("partial", isGRPCErr)
+					needPartialReconnect = true
+				}
+				if needPartialReconnect {
 					// normal error
 					if connectErr := reconnect(); connectErr != nil {
 						ans.logger.Errorw("error reconnecting answer client", "error", err, "reconnect_err", connectErr)
