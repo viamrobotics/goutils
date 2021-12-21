@@ -47,7 +47,7 @@ func TestWebRTCClientServer(t *testing.T) {
 		webrtc.Configuration{},
 		logger,
 	)
-	test.That(t, answerer.Start(), test.ShouldBeNil)
+	answerer.Start()
 
 	for _, tc := range []bool{true, false} {
 		t.Run(fmt.Sprintf("with trickle disabled %t", tc), func(t *testing.T) {

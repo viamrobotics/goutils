@@ -47,7 +47,7 @@ func TestWebRTCSignaling(t *testing.T) {
 		webrtc.Configuration{},
 		logger,
 	)
-	test.That(t, answerer.Start(), test.ShouldBeNil)
+	answerer.Start()
 
 	cc, err := grpc.Dial(grpcListener.Addr().String(), grpc.WithBlock(), grpc.WithInsecure())
 	test.That(t, err, test.ShouldBeNil)

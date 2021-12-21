@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/base64"
-	"fmt"
 	"net"
 	"net/http"
 	"strings"
@@ -400,16 +399,7 @@ func (ss *simpleServer) Start() error {
 		return nil
 	}
 
-	errMu.Lock()
-	if startErr := ss.webrtcAnswerer.Start(); startErr != nil && utils.FilterOutError(startErr, context.Canceled) != nil {
-		err = multierr.Combine(err, fmt.Errorf("error starting WebRTC answerer: %w", startErr))
-	}
-	capErr := err
-	errMu.Unlock()
-
-	if capErr != nil {
-		ss.grpcServer.Stop()
-	}
+	ss.webrtcAnswerer.Start()
 
 	errMu.Lock()
 	defer errMu.Unlock()

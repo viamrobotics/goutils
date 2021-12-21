@@ -26,7 +26,6 @@ import (
 type webrtcSignalingAnswerer struct {
 	address                 string
 	host                    string
-	client                  webrtcpb.SignalingService_AnswerClient
 	server                  *webrtcServer
 	dialOpts                []DialOption
 	webrtcConfig            webrtc.Configuration
@@ -54,11 +53,20 @@ func newWebRTCSignalingAnswerer(address, host string, server *webrtcServer, dial
 	}
 }
 
-const answererReconnectWait = time.Second
+const (
+	defaultMaxAnswerers   = 1
+	answererReconnectWait = time.Second
+)
 
 // Start connects to the signaling service and listens forever until instructed to stop
 // via Stop.
-func (ans *webrtcSignalingAnswerer) Start() error {
+func (ans *webrtcSignalingAnswerer) Start() {
+	for i := 0; i < defaultMaxAnswerers; i++ {
+		ans.startAnswerer()
+	}
+}
+
+func (ans *webrtcSignalingAnswerer) startAnswerer() {
 	var connInUse ClientConn
 	var connMu sync.Mutex
 	reconnect := func() error {
@@ -81,13 +89,13 @@ func (ans *webrtcSignalingAnswerer) Start() error {
 		connMu.Unlock()
 		return nil
 	}
-	newAnswer := func() error {
+	newAnswer := func() (webrtcpb.SignalingService_AnswerClient, error) {
 		connMu.Lock()
 		conn := connInUse
 		connMu.Unlock()
 		if conn == nil {
 			if err := reconnect(); err != nil {
-				return err
+				return nil, err
 			}
 		}
 		connMu.Lock()
@@ -98,23 +106,31 @@ func (ans *webrtcSignalingAnswerer) Start() error {
 		answerCtx := metadata.NewOutgoingContext(ans.closeCtx, md)
 		answerClient, err := client.Answer(answerCtx)
 		if err != nil {
-			return multierr.Combine(err, conn.Close())
+			return nil, multierr.Combine(err, conn.Close())
 		}
-		ans.client = answerClient
-		return nil
+		return answerClient, nil
 	}
-
 	ans.activeBackgroundWorkers.Add(1)
 	utils.ManagedGo(func() {
+		var client webrtcpb.SignalingService_AnswerClient
+		defer func() {
+			if client == nil {
+				return
+			}
+			if err := client.CloseSend(); err != nil {
+				ans.logger.Errorw("error closing send side of answering client", "error", err)
+			}
+		}()
 		for {
 			select {
 			case <-ans.closeCtx.Done():
 				return
 			default:
 			}
-			err := newAnswer()
+			var err error
+			client, err = newAnswer()
 			if err == nil {
-				err = ans.answer()
+				err = ans.answer(client)
 			}
 			s, isGRPCErr := status.FromError(err)
 			if err == nil || errors.Is(err, io.EOF) ||
@@ -150,17 +166,7 @@ func (ans *webrtcSignalingAnswerer) Start() error {
 				ans.logger.Errorw("error closing signaling connection", "error", err)
 			}
 		}()
-		defer func() {
-			if ans.client == nil {
-				return
-			}
-			if err := ans.client.CloseSend(); err != nil {
-				ans.logger.Errorw("error closing send side of answering client", "error", err)
-			}
-		}()
 	})
-
-	return nil
 }
 
 // Stop waits for the answer to stop listening and return.
@@ -177,8 +183,8 @@ func (ans *webrtcSignalingAnswerer) Stop() {
 // to each other in that only one offer is completely answered at a time. In order to
 // change this, this should really be answerAll and hold the state of all active
 // offers (by UUID).
-func (ans *webrtcSignalingAnswerer) answer() (err error) {
-	resp, err := ans.client.Recv()
+func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_AnswerClient) (err error) {
+	resp, err := client.Recv()
 	if err != nil {
 		return err
 	}
@@ -187,7 +193,7 @@ func (ans *webrtcSignalingAnswerer) answer() (err error) {
 	initStage, ok := resp.Stage.(*webrtcpb.AnswerRequest_Init)
 	if !ok {
 		err := errors.Errorf("expected first stage to be init; got %T", resp.Stage)
-		return ans.client.Send(&webrtcpb.AnswerResponse{
+		return client.Send(&webrtcpb.AnswerResponse{
 			Uuid: uuid,
 			Stage: &webrtcpb.AnswerResponse_Error{
 				Error: &webrtcpb.AnswerResponseErrorStage{
@@ -211,7 +217,7 @@ func (ans *webrtcSignalingAnswerer) answer() (err error) {
 		ans.logger,
 	)
 	if err != nil {
-		return ans.client.Send(&webrtcpb.AnswerResponse{
+		return client.Send(&webrtcpb.AnswerResponse{
 			Uuid: uuid,
 			Stage: &webrtcpb.AnswerResponse_Error{
 				Error: &webrtcpb.AnswerResponseErrorStage{
@@ -232,7 +238,7 @@ func (ans *webrtcSignalingAnswerer) answer() (err error) {
 	sendDone := func() error {
 		var err error
 		sendDoneErrorOnce.Do(func() {
-			err = ans.client.Send(&webrtcpb.AnswerResponse{
+			err = client.Send(&webrtcpb.AnswerResponse{
 				Uuid: uuid,
 				Stage: &webrtcpb.AnswerResponse_Done{
 					Done: &webrtcpb.AnswerResponseDoneStage{},
@@ -277,7 +283,7 @@ func (ans *webrtcSignalingAnswerer) answer() (err error) {
 					return
 				}
 				iProto := iceCandidateToProto(i)
-				if err := ans.client.Send(&webrtcpb.AnswerResponse{
+				if err := client.Send(&webrtcpb.AnswerResponse{
 					Uuid: uuid,
 					Stage: &webrtcpb.AnswerResponse_Update{
 						Update: &webrtcpb.AnswerResponseUpdateStage{
@@ -298,7 +304,7 @@ func (ans *webrtcSignalingAnswerer) answer() (err error) {
 
 	encodedSDP, err := encodeSDP(pc.LocalDescription())
 	if err != nil {
-		return ans.client.Send(&webrtcpb.AnswerResponse{
+		return client.Send(&webrtcpb.AnswerResponse{
 			Uuid: uuid,
 			Stage: &webrtcpb.AnswerResponse_Error{
 				Error: &webrtcpb.AnswerResponseErrorStage{
@@ -308,7 +314,7 @@ func (ans *webrtcSignalingAnswerer) answer() (err error) {
 		})
 	}
 
-	if err := ans.client.Send(&webrtcpb.AnswerResponse{
+	if err := client.Send(&webrtcpb.AnswerResponse{
 		Uuid: uuid,
 		Stage: &webrtcpb.AnswerResponse_Init{
 			Init: &webrtcpb.AnswerResponseInitStage{
@@ -332,7 +338,7 @@ func (ans *webrtcSignalingAnswerer) answer() (err error) {
 					return err
 				}
 
-				ansResp, err := ans.client.Recv()
+				ansResp, err := client.Recv()
 				if err != nil {
 					if !errors.Is(err, io.EOF) {
 						return err
@@ -387,7 +393,7 @@ func (ans *webrtcSignalingAnswerer) answer() (err error) {
 	if answerErr := doAnswer(); answerErr != nil {
 		var err error
 		sendDoneErrorOnce.Do(func() {
-			err = ans.client.Send(&webrtcpb.AnswerResponse{
+			err = client.Send(&webrtcpb.AnswerResponse{
 				Uuid: uuid,
 				Stage: &webrtcpb.AnswerResponse_Error{
 					Error: &webrtcpb.AnswerResponseErrorStage{
