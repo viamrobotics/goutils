@@ -107,6 +107,8 @@ type WebRTCCallAnswer struct {
 	Err        error
 }
 
+const noActiveOfferStr = "no active offer"
+
 func newInactiveOfferErr(uuid string) error {
-	return errors.Errorf("no active offer for %q", uuid)
+	return errors.Errorf("%s for %q", noActiveOfferStr, uuid)
 }

@@ -274,28 +274,31 @@ func (ans *webrtcSignalingAnswerer) answer() (err error) {
 			if exchangeCtx.Err() != nil {
 				return
 			}
-			select {
-			case <-initSent:
-			case <-exchangeCtx.Done():
-				return
-			}
-			if i == nil {
-				if err := sendDone(); err != nil {
+			// must spin off to unblock the ICE gatherer
+			utils.PanicCapturingGo(func() {
+				select {
+				case <-initSent:
+				case <-exchangeCtx.Done():
+					return
+				}
+				if i == nil {
+					if err := sendDone(); err != nil {
+						sendErr(err)
+					}
+					return
+				}
+				iProto := iceCandidateToProto(i)
+				if err := ans.client.Send(&webrtcpb.AnswerResponse{
+					Uuid: uuid,
+					Stage: &webrtcpb.AnswerResponse_Update{
+						Update: &webrtcpb.AnswerResponseUpdateStage{
+							Candidate: iProto,
+						},
+					},
+				}); err != nil {
 					sendErr(err)
 				}
-				return
-			}
-			iProto := iceCandidateToProto(i)
-			if err := ans.client.Send(&webrtcpb.AnswerResponse{
-				Uuid: uuid,
-				Stage: &webrtcpb.AnswerResponse_Update{
-					Update: &webrtcpb.AnswerResponseUpdateStage{
-						Candidate: iProto,
-					},
-				},
-			}); err != nil {
-				sendErr(err)
-			}
+			})
 		})
 
 		err = pc.SetLocalDescription(answer)

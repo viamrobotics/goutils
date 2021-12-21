@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"strings"
 	"sync"
 
 	"github.com/edaniels/golog"
@@ -110,6 +111,9 @@ func dialWebRTC(ctx context.Context, address string, dOpts *dialOptions, logger 
 
 	errCh := make(chan error)
 	sendErr := func(err error) {
+		if s, ok := status.FromError(err); ok && strings.Contains(s.Message(), noActiveOfferStr) {
+			return
+		}
 		select {
 		case <-exchangeCtx.Done():
 		case errCh <- err:
@@ -142,26 +146,28 @@ func dialWebRTC(ctx context.Context, address string, dOpts *dialOptions, logger 
 			if exchangeCtx.Err() != nil {
 				return
 			}
-			select {
-			case <-remoteDescSet:
-			case <-exchangeCtx.Done():
-				return
-			}
-			if i == nil {
-				if err := sendDone(); err != nil {
+			utils.PanicCapturingGo(func() {
+				select {
+				case <-remoteDescSet:
+				case <-exchangeCtx.Done():
+					return
+				}
+				if i == nil {
+					if err := sendDone(); err != nil {
+						sendErr(err)
+					}
+					return
+				}
+				iProto := iceCandidateToProto(i)
+				if _, err := signalingClient.CallUpdate(exchangeCtx, &webrtcpb.CallUpdateRequest{
+					Uuid: uuid,
+					Update: &webrtcpb.CallUpdateRequest_Candidate{
+						Candidate: iProto,
+					},
+				}); err != nil {
 					sendErr(err)
 				}
-				return
-			}
-			iProto := iceCandidateToProto(i)
-			if _, err := signalingClient.CallUpdate(exchangeCtx, &webrtcpb.CallUpdateRequest{
-				Uuid: uuid,
-				Update: &webrtcpb.CallUpdateRequest_Candidate{
-					Candidate: iProto,
-				},
-			}); err != nil {
-				sendErr(err)
-			}
+			})
 		})
 
 		err = pc.SetLocalDescription(offer)
