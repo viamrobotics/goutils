@@ -57,11 +57,14 @@ func hostFromCtx(ctx context.Context) (string, error) {
 
 // Call is a request/offer to start a caller with the connected answerer.
 func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcpb.SignalingService_CallServer) error {
-	host, err := hostFromCtx(server.Context())
+	ctx := server.Context()
+	ctx, cancel := context.WithTimeout(ctx, webrtcConnectionTimeout)
+	defer cancel()
+	host, err := hostFromCtx(ctx)
 	if err != nil {
 		return err
 	}
-	uuid, respCh, respDone, cancel, err := srv.callQueue.SendOfferInit(server.Context(), host, req.Sdp, req.DisableTrickle)
+	uuid, respCh, respDone, cancel, err := srv.callQueue.SendOfferInit(ctx, host, req.Sdp, req.DisableTrickle)
 	if err != nil {
 		return err
 	}
@@ -69,13 +72,13 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 
 	var haveInit bool
 	for {
-		if err := server.Context().Err(); err != nil {
+		if err := ctx.Err(); err != nil {
 			return err
 		}
 		var resp WebRTCCallAnswer
 		select {
-		case <-server.Context().Done():
-			return server.Context().Err()
+		case <-ctx.Done():
+			return ctx.Err()
 		case <-respDone:
 			return nil
 		case resp = <-respCh:
@@ -124,6 +127,8 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 // In a world where https://github.com/grpc/grpc-web/issues/24 is fixed,
 // this should be removed in favor of a bidirectional stream on Call.
 func (srv *WebRTCSignalingServer) CallUpdate(ctx context.Context, req *webrtcpb.CallUpdateRequest) (*webrtcpb.CallUpdateResponse, error) {
+	ctx, cancel := context.WithTimeout(ctx, webrtcConnectionTimeout)
+	defer cancel()
 	host, err := hostFromCtx(ctx)
 	if err != nil {
 		return nil, err
@@ -336,7 +341,6 @@ func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 	return func() (err error) {
 		defer func() {
 			err = multierr.Combine(err, <-callerErrCh)
-			err = utils.FilterOutError(err, context.Canceled)
 		}()
 		defer func() {
 			err = multierr.Combine(err, offer.AnswererDone(server.Context()))
@@ -353,6 +357,8 @@ func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 
 // OptionalWebRTCConfig returns any WebRTC configuration the caller may want to use.
 func (srv *WebRTCSignalingServer) OptionalWebRTCConfig(ctx context.Context, req *webrtcpb.OptionalWebRTCConfigRequest) (*webrtcpb.OptionalWebRTCConfigResponse, error) {
+	ctx, cancel := context.WithTimeout(ctx, webrtcConnectionTimeout)
+	defer cancel()
 	host, err := hostFromCtx(ctx)
 	if err != nil {
 		return nil, err

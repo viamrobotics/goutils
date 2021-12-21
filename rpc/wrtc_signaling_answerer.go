@@ -12,6 +12,7 @@ import (
 	"github.com/pion/webrtc/v3"
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
@@ -64,20 +65,6 @@ func (ans *webrtcSignalingAnswerer) Start() error {
 		connMu.Lock()
 		conn := connInUse
 		connMu.Unlock()
-		client := webrtcpb.NewSignalingServiceClient(conn)
-		md := metadata.New(map[string]string{RPCHostMetadataField: ans.host})
-		answerCtx := metadata.NewOutgoingContext(ans.closeCtx, md)
-		answerClient, err := client.Answer(answerCtx)
-		if err != nil {
-			return multierr.Combine(err, conn.Close())
-		}
-		ans.client = answerClient
-		return nil
-	}
-	fullReconnect := func() error {
-		connMu.Lock()
-		conn := connInUse
-		connMu.Unlock()
 		if conn != nil {
 			if err := conn.Close(); err != nil {
 				ans.logger.Errorw("error closing existing signaling connection", "error", err)
@@ -92,7 +79,29 @@ func (ans *webrtcSignalingAnswerer) Start() error {
 		connMu.Lock()
 		connInUse = conn
 		connMu.Unlock()
-		return reconnect()
+		return nil
+	}
+	newAnswer := func() error {
+		connMu.Lock()
+		conn := connInUse
+		connMu.Unlock()
+		if conn == nil {
+			if err := reconnect(); err != nil {
+				return err
+			}
+		}
+		connMu.Lock()
+		conn = connInUse
+		connMu.Unlock()
+		client := webrtcpb.NewSignalingServiceClient(conn)
+		md := metadata.New(map[string]string{RPCHostMetadataField: ans.host})
+		answerCtx := metadata.NewOutgoingContext(ans.closeCtx, md)
+		answerClient, err := client.Answer(answerCtx)
+		if err != nil {
+			return multierr.Combine(err, conn.Close())
+		}
+		ans.client = answerClient
+		return nil
 	}
 
 	ans.activeBackgroundWorkers.Add(1)
@@ -103,44 +112,29 @@ func (ans *webrtcSignalingAnswerer) Start() error {
 				return
 			default:
 			}
-			if err := ans.answer(); err != nil {
-				var needPartialReconnect bool
-				s, isGRPCErr := status.FromError(err)
-				if errors.Is(err, io.EOF) || (isGRPCErr && strings.Contains(s.Message(), "too_many_pings")) {
-					needPartialReconnect = true
+			err := newAnswer()
+			if err == nil {
+				err = ans.answer()
+			}
+			s, isGRPCErr := status.FromError(err)
+			if err == nil || errors.Is(err, io.EOF) ||
+				(isGRPCErr && (s.Code() == codes.DeadlineExceeded || s.Code() == codes.Canceled || strings.Contains(s.Message(), "too_many_pings"))) ||
+				utils.FilterOutError(err, context.Canceled) == nil {
+				continue
+			}
+
+			ans.logger.Errorw("error answering", "error", err)
+			for {
+				ans.logger.Debugw("reconnecting answer client", "in", answererReconnectWait.String())
+				if !utils.SelectContextOrWait(ans.closeCtx, answererReconnectWait) {
+					return
 				}
-				if needPartialReconnect {
-					// normal error
-					if connectErr := reconnect(); connectErr != nil {
-						ans.logger.Errorw("error reconnecting answer client", "error", err, "reconnect_err", connectErr)
-						continue
-					}
-				} else if utils.FilterOutError(err, context.Canceled) != nil {
-					// exceptional error
-					shouldLogError := false
-					if !errors.Is(err, errWebRTCSignalingAnswererDisconnected) {
-						shouldLogError = true
-					}
-					if shouldLogError {
-						ans.logger.Errorw("error answering", "error", err)
-					}
-					for {
-						if shouldLogError {
-							ans.logger.Debugw("reconnecting answer client", "in", answererReconnectWait.String())
-						}
-						if !utils.SelectContextOrWait(ans.closeCtx, answererReconnectWait) {
-							return
-						}
-						if connectErr := fullReconnect(); connectErr != nil {
-							ans.logger.Errorw("error reconnecting answer client", "error", err, "reconnect_err", connectErr)
-							continue
-						}
-						if shouldLogError {
-							ans.logger.Debug("reconnected answer client")
-						}
-						break
-					}
+				if connectErr := reconnect(); connectErr != nil {
+					ans.logger.Errorw("error reconnecting answer client", "error", err, "reconnect_err", connectErr)
+					continue
 				}
+				ans.logger.Debug("reconnected answer client")
+				break
 			}
 		}
 	}, func() {
@@ -175,8 +169,6 @@ func (ans *webrtcSignalingAnswerer) Stop() {
 	ans.activeBackgroundWorkers.Wait()
 }
 
-var errWebRTCSignalingAnswererDisconnected = errors.New("signaling answerer disconnected")
-
 // answer accepts a single call offer, responds with a corresponding SDP, and
 // attempts to establish a WebRTC connection with the caller via ICE. Once established,
 // the designated WebRTC data channel is passed off to the underlying Server which
@@ -186,9 +178,6 @@ var errWebRTCSignalingAnswererDisconnected = errors.New("signaling answerer disc
 // change this, this should really be answerAll and hold the state of all active
 // offers (by UUID).
 func (ans *webrtcSignalingAnswerer) answer() (err error) {
-	if ans.client == nil {
-		return errWebRTCSignalingAnswererDisconnected
-	}
 	resp, err := ans.client.Recv()
 	if err != nil {
 		return err
@@ -350,6 +339,7 @@ func (ans *webrtcSignalingAnswerer) answer() (err error) {
 					}
 					return nil
 				}
+
 				switch s := ansResp.Stage.(type) {
 				case *webrtcpb.AnswerRequest_Init:
 				case *webrtcpb.AnswerRequest_Update:

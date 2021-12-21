@@ -32,6 +32,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/reflection"
+	"google.golang.org/grpc/status"
 )
 
 const generatedRSAKeyBits = 4096
@@ -174,7 +175,11 @@ func newWithListener(
 		grpcLogger = grpcLogger.WithOptions(zap.IncreaseLevel(zap.LevelEnablerFunc(zapcore.ErrorLevel.Enabled)))
 	}
 	var unaryInterceptors []grpc.UnaryServerInterceptor
-	unaryInterceptors = append(unaryInterceptors, grpc_recovery.UnaryServerInterceptor(), grpc_zap.UnaryServerInterceptor(grpcLogger))
+	unaryInterceptors = append(unaryInterceptors,
+		grpc_recovery.UnaryServerInterceptor(),
+		grpc_zap.UnaryServerInterceptor(grpcLogger),
+		unaryServerCodeInterceptor(),
+	)
 	unaryAuthIntPos := -1
 	if !sOpts.unauthenticated {
 		unaryInterceptors = append(unaryInterceptors, server.authUnaryInterceptor)
@@ -187,7 +192,11 @@ func newWithListener(
 	serverOpts = append(serverOpts, grpc.UnaryInterceptor(unaryInterceptor))
 
 	var streamInterceptors []grpc.StreamServerInterceptor
-	streamInterceptors = append(streamInterceptors, grpc_recovery.StreamServerInterceptor(), grpc_zap.StreamServerInterceptor(grpcLogger))
+	streamInterceptors = append(streamInterceptors,
+		grpc_recovery.StreamServerInterceptor(),
+		grpc_zap.StreamServerInterceptor(grpcLogger),
+		streamServerCodeInterceptor(),
+	)
 	streamAuthIntPos := -1
 	if !sOpts.unauthenticated {
 		streamInterceptors = append(streamInterceptors, server.authStreamInterceptor)
@@ -517,4 +526,36 @@ func (ss *simpleServer) RegisterServiceServer(
 		}
 	}
 	return nil
+}
+
+func unaryServerCodeInterceptor() grpc.UnaryServerInterceptor {
+	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+		resp, err := handler(ctx, req)
+		if err == nil {
+			return resp, nil
+		}
+		if _, ok := status.FromError(err); ok {
+			return nil, err
+		}
+		if s := status.FromContextError(err); s != nil {
+			return nil, s.Err()
+		}
+		return nil, err
+	}
+}
+
+func streamServerCodeInterceptor() grpc.StreamServerInterceptor {
+	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+		err := handler(srv, stream)
+		if err == nil {
+			return nil
+		}
+		if _, ok := status.FromError(err); ok {
+			return err
+		}
+		if s := status.FromContextError(err); s != nil {
+			return s.Err()
+		}
+		return err
+	}
 }
