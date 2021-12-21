@@ -486,7 +486,12 @@ func (ss *simpleServer) Stop() (err error) {
 }
 
 // A RegisterServiceHandlerFromEndpointFunc is a means to have a service attach itself to a gRPC gateway mux.
-type RegisterServiceHandlerFromEndpointFunc func(ctx context.Context, mux *runtime.ServeMux, endpoint string, opts []grpc.DialOption) (err error)
+type RegisterServiceHandlerFromEndpointFunc func(
+	ctx context.Context,
+	mux *runtime.ServeMux,
+	endpoint string,
+	opts []grpc.DialOption,
+) (err error)
 
 func (ss *simpleServer) RegisterServiceServer(
 	ctx context.Context,

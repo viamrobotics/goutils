@@ -181,7 +181,8 @@ func TestServerAuth(t *testing.T) {
 		test.That(t, httpResp3.StatusCode, test.ShouldEqual, 200)
 		rd, err = ioutil.ReadAll(httpResp3.Body)
 		test.That(t, err, test.ShouldBeNil)
-		test.That(t, httpResp3.Header["Grpc-Message"], test.ShouldResemble, []string{"unauthenticated: token contains an invalid number of segments"})
+		test.That(t, httpResp3.Header["Grpc-Message"],
+			test.ShouldResemble, []string{"unauthenticated: token contains an invalid number of segments"})
 		test.That(t, string(rd), test.ShouldResemble, "")
 
 		// works from here

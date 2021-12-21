@@ -380,7 +380,12 @@ type staticDialer struct {
 	address string
 }
 
-func (sd *staticDialer) DialDirect(ctx context.Context, target string, onClose func() error, opts ...grpc.DialOption) (ClientConn, bool, error) {
+func (sd *staticDialer) DialDirect(
+	ctx context.Context,
+	target string,
+	onClose func() error,
+	opts ...grpc.DialOption,
+) (ClientConn, bool, error) {
 	conn, err := grpc.DialContext(ctx, sd.address, opts...)
 	return conn, false, err
 }

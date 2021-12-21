@@ -396,29 +396,37 @@ func (s *cachedStore) walkUserTreeUncached(
 // writeThroughUserTree examines the tree with respect to the given local path and stores all artifacts
 // not in the tree into the underlying store and updates the tree with the artifact location/hash.
 func (s *cachedStore) writeThroughUserTree(tree map[string]*TreeNode, treePath []string, localPath string) error {
-	return s.walkUserTreeUncached(tree, treePath, localPath, func(changeType nodeChangeType, nodeHash, localPath string, treePath []string, data []byte) error {
-		Logger.Debugw("writing through", "path", localPath, "hash", nodeHash)
-		if err := s.store(nodeHash, data); err != nil {
-			return err
-		}
-		s.config.StoreHash(nodeHash, len(data), treePath)
-		return nil
-	})
+	return s.walkUserTreeUncached(
+		tree,
+		treePath,
+		localPath,
+		func(changeType nodeChangeType, nodeHash, localPath string, treePath []string, data []byte) error {
+			Logger.Debugw("writing through", "path", localPath, "hash", nodeHash)
+			if err := s.store(nodeHash, data); err != nil {
+				return err
+			}
+			s.config.StoreHash(nodeHash, len(data), treePath)
+			return nil
+		})
 }
 
 // status examines the tree with respect to the given local path and reports all artifacts
 // not in the tree.
 func (s *cachedStore) status() (*Status, error) {
 	var status Status
-	if err := s.walkUserTreeUncached(s.config.tree, nil, s.rootDir, func(changeType nodeChangeType, nodeHash, localPath string, treePath []string, data []byte) error {
-		switch changeType {
-		case nodeChangeTypeUnstored:
-			status.Unstored = append(status.Unstored, localPath)
-		case nodeChangeTypeModified:
-			status.Modified = append(status.Modified, localPath)
-		}
-		return nil
-	}); err != nil {
+	if err := s.walkUserTreeUncached(
+		s.config.tree,
+		nil,
+		s.rootDir,
+		func(changeType nodeChangeType, nodeHash, localPath string, treePath []string, data []byte) error {
+			switch changeType {
+			case nodeChangeTypeUnstored:
+				status.Unstored = append(status.Unstored, localPath)
+			case nodeChangeTypeModified:
+				status.Modified = append(status.Modified, localPath)
+			}
+			return nil
+		}); err != nil {
 		return nil, err
 	}
 	return &status, nil

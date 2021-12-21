@@ -55,7 +55,12 @@ func NewCachedDialer() Dialer {
 	return &cachedDialer{conns: map[string]*refCountedConnWrapper{}}
 }
 
-func (cd *cachedDialer) DialDirect(ctx context.Context, target string, onClose func() error, opts ...grpc.DialOption) (ClientConn, bool, error) {
+func (cd *cachedDialer) DialDirect(
+	ctx context.Context,
+	target string,
+	onClose func() error,
+	opts ...grpc.DialOption,
+) (ClientConn, bool, error) {
 	return cd.DialFunc("grpc", target, func() (ClientConn, func() error, error) {
 		conn, err := grpc.DialContext(ctx, target, opts...)
 		if err != nil {

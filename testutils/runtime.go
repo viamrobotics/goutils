@@ -34,11 +34,19 @@ type ContextualMainExecution struct {
 // ContextualMain calls a main entry point function with a cancellable
 // context via the returned execution struct. The main function is run
 // in a separate goroutine.
-func ContextualMain(main func(ctx context.Context, args []string, logger golog.Logger) error, args []string, logger golog.Logger) ContextualMainExecution {
+func ContextualMain(
+	main func(ctx context.Context, args []string, logger golog.Logger) error,
+	args []string,
+	logger golog.Logger,
+) ContextualMainExecution {
 	return contextualMain(main, args, logger)
 }
 
-func contextualMain(main func(ctx context.Context, args []string, logger golog.Logger) error, args []string, logger golog.Logger) ContextualMainExecution {
+func contextualMain(
+	main func(ctx context.Context, args []string, logger golog.Logger) error,
+	args []string,
+	logger golog.Logger,
+) ContextualMainExecution {
 	ctx, stop := context.WithCancel(context.Background())
 	quitC := make(chan os.Signal)
 	ctx = utils.ContextWithQuitSignal(ctx, quitC)

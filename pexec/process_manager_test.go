@@ -193,7 +193,11 @@ func TestProcessManagerStart(t *testing.T) {
 			test.That(t, err, test.ShouldBeNil)
 			defer os.Remove(temp.Name())
 
-			_, err = pm.AddProcessFromConfig(context.Background(), ProcessConfig{ID: "1", Name: "bash", Args: []string{"-c", fmt.Sprintf(`echo hello >> %s`, temp.Name())}, OneShot: true})
+			_, err = pm.AddProcessFromConfig(context.Background(),
+				ProcessConfig{
+					ID:   "1",
+					Name: "bash",
+					Args: []string{"-c", fmt.Sprintf(`echo hello >> %s`, temp.Name())}, OneShot: true})
 			test.That(t, err, test.ShouldBeNil)
 
 			rd, err := ioutil.ReadFile(temp.Name())
@@ -207,10 +211,18 @@ func TestProcessManagerStart(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			cancel()
 
-			_, err = pm.AddProcessFromConfig(ctx, ProcessConfig{ID: "2", Name: "bash", Args: []string{"-c", fmt.Sprintf(`echo hello >> %s`, temp.Name())}, OneShot: true})
+			_, err = pm.AddProcessFromConfig(ctx,
+				ProcessConfig{
+					ID:   "2",
+					Name: "bash",
+					Args: []string{"-c", fmt.Sprintf(`echo hello >> %s`, temp.Name())}, OneShot: true})
 			test.That(t, err, test.ShouldNotBeNil)
 			test.That(t, err.Error(), test.ShouldContainSubstring, "canceled")
-			_, err = pm.AddProcessFromConfig(ctx, ProcessConfig{ID: "3", Name: "bash", Args: []string{"-c", fmt.Sprintf(`echo hello >> %s`, temp.Name())}})
+			_, err = pm.AddProcessFromConfig(ctx,
+				ProcessConfig{
+					ID:   "3",
+					Name: "bash",
+					Args: []string{"-c", fmt.Sprintf(`echo hello >> %s`, temp.Name())}})
 			test.That(t, err, test.ShouldBeNil)
 
 			// a "timed" ctx should only have an effect on one shots
@@ -257,9 +269,17 @@ func TestProcessManagerStart(t *testing.T) {
 		test.That(t, err, test.ShouldBeNil)
 		defer os.Remove(temp.Name())
 
-		_, err = pm.AddProcessFromConfig(context.Background(), ProcessConfig{ID: "1", Name: "bash", Args: []string{"-c", fmt.Sprintf(`echo hello >> %s`, temp.Name())}, OneShot: true})
+		_, err = pm.AddProcessFromConfig(context.Background(),
+			ProcessConfig{
+				ID:   "1",
+				Name: "bash",
+				Args: []string{"-c", fmt.Sprintf(`echo hello >> %s`, temp.Name())}, OneShot: true})
 		test.That(t, err, test.ShouldBeNil)
-		_, err = pm.AddProcessFromConfig(context.Background(), ProcessConfig{ID: "2", Name: "bash", Args: []string{"-c", fmt.Sprintf(`echo world >> %s`, temp.Name())}, OneShot: true})
+		_, err = pm.AddProcessFromConfig(context.Background(),
+			ProcessConfig{
+				ID:   "2",
+				Name: "bash",
+				Args: []string{"-c", fmt.Sprintf(`echo world >> %s`, temp.Name())}, OneShot: true})
 		test.That(t, err, test.ShouldBeNil)
 
 		rd, err := ioutil.ReadFile(temp.Name())

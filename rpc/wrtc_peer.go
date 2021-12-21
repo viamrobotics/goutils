@@ -52,7 +52,12 @@ func newWebRTCAPI(logger golog.Logger) (*webrtc.API, error) {
 	return webrtc.NewAPI(options...), nil
 }
 
-func newPeerConnectionForClient(ctx context.Context, config webrtc.Configuration, disableTrickle bool, logger golog.Logger) (pc *webrtc.PeerConnection, dc *webrtc.DataChannel, err error) {
+func newPeerConnectionForClient(
+	ctx context.Context,
+	config webrtc.Configuration,
+	disableTrickle bool,
+	logger golog.Logger,
+) (pc *webrtc.PeerConnection, dc *webrtc.DataChannel, err error) {
 	webAPI, err := newWebRTCAPI(logger)
 	if err != nil {
 		return nil, nil, err
@@ -112,7 +117,13 @@ func newPeerConnectionForClient(ctx context.Context, config webrtc.Configuration
 	return pc, dataChannel, nil
 }
 
-func newPeerConnectionForServer(ctx context.Context, sdp string, config webrtc.Configuration, disableTrickle bool, logger golog.Logger) (pc *webrtc.PeerConnection, dc *webrtc.DataChannel, err error) {
+func newPeerConnectionForServer(
+	ctx context.Context,
+	sdp string,
+	config webrtc.Configuration,
+	disableTrickle bool,
+	logger golog.Logger,
+) (pc *webrtc.PeerConnection, dc *webrtc.DataChannel, err error) {
 	webAPI, err := newWebRTCAPI(logger)
 	if err != nil {
 		return nil, nil, err

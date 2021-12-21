@@ -114,7 +114,12 @@ func (srv *webrtcServer) removePeer(peerConn *webrtc.PeerConnection) {
 
 type (
 	handlerFunc   func(s *webrtcServerStream) error
-	methodHandler func(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error)
+	methodHandler func(
+		srv interface{},
+		ctx context.Context,
+		dec func(interface{}) error,
+		interceptor grpc.UnaryServerInterceptor,
+	) (interface{}, error)
 )
 
 func (srv *webrtcServer) unaryHandler(ss interface{}, handler methodHandler) handlerFunc {

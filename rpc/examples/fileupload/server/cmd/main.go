@@ -202,7 +202,8 @@ func runServer(
 			panic(err)
 		}
 	}))
-	mux.Handle(pat.Get("/static/*"), http.StripPrefix("/static", http.FileServer(http.Dir(internal.ResolveFile("rpc/examples/fileupload/frontend/dist")))))
+	mux.Handle(pat.Get("/static/*"),
+		http.StripPrefix("/static", http.FileServer(http.Dir(internal.ResolveFile("rpc/examples/fileupload/frontend/dist")))))
 	mux.Handle(pat.New("/api/*"), http.StripPrefix("/api", rpcServer.GatewayHandler()))
 	mux.Handle(pat.New("/*"), rpcServer.GRPCHandler())
 

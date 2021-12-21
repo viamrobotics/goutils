@@ -126,7 +126,13 @@ func TestManagedProcessStart(t *testing.T) {
 
 			proc := NewManagedProcess(ProcessConfig{
 				Name: "bash",
-				Args: []string{"-c", fmt.Sprintf("trap \"echo world >> %[1]s\nexit 0\" SIGINT; echo hello >> %[1]s\nwhile true; do echo hey; sleep 1; done", temp.Name())},
+				Args: []string{
+					"-c",
+					fmt.Sprintf(
+						"trap \"echo world >> %[1]s\nexit 0\" SIGINT; echo hello >> %[1]s\nwhile true; do echo hey; sleep 1; done",
+						temp.Name(),
+					),
+				},
 			}, logger)
 			test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
 

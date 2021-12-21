@@ -74,7 +74,12 @@ func (ss *simpleServer) Authenticate(ctx context.Context, req *rpcpb.Authenticat
 	}, nil
 }
 
-func (ss *simpleServer) authUnaryInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+func (ss *simpleServer) authUnaryInterceptor(
+	ctx context.Context,
+	req interface{},
+	info *grpc.UnaryServerInfo,
+	handler grpc.UnaryHandler,
+) (interface{}, error) {
 	if !ss.exemptMethods[info.FullMethod] {
 		if err := ss.ensureAuthed(ctx); err != nil {
 			return nil, err
@@ -83,7 +88,12 @@ func (ss *simpleServer) authUnaryInterceptor(ctx context.Context, req interface{
 	return handler(ctx, req)
 }
 
-func (ss *simpleServer) authStreamInterceptor(srv interface{}, serverStream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+func (ss *simpleServer) authStreamInterceptor(
+	srv interface{},
+	serverStream grpc.ServerStream,
+	info *grpc.StreamServerInfo,
+	handler grpc.StreamHandler,
+) error {
 	if !ss.exemptMethods[info.FullMethod] {
 		if err := ss.ensureAuthed(serverStream.Context()); err != nil {
 			return err

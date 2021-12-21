@@ -111,7 +111,11 @@ const (
 // It returns a UUID to track/authenticate the offer over time, the initial SDP for the
 // sender to start its peer connection with, as well as a channel to receive candidates on
 // over time.
-func (queue *mongoDBWebRTCCallQueue) SendOfferInit(ctx context.Context, host, sdp string, disableTrickle bool) (string, <-chan WebRTCCallAnswer, <-chan struct{}, func(), error) {
+func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
+	ctx context.Context,
+	host, sdp string,
+	disableTrickle bool,
+) (string, <-chan WebRTCCallAnswer, <-chan struct{}, func(), error) {
 	newUUID := uuid.NewString()
 	call := mongodbWebRTCCall{
 		ID:        newUUID,

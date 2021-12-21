@@ -79,7 +79,13 @@ func (ch *webrtcClientChannel) Close() error {
 // received.  This is typically called by generated code.
 //
 // All errors returned by Invoke are compatible with the status package.
-func (ch *webrtcClientChannel) Invoke(ctx context.Context, method string, args interface{}, reply interface{}, opts ...grpc.CallOption) error {
+func (ch *webrtcClientChannel) Invoke(
+	ctx context.Context,
+	method string,
+	args interface{},
+	reply interface{},
+	opts ...grpc.CallOption,
+) error {
 	fields := newClientLoggerFields(ctx, method)
 	startTime := time.Now()
 	err := ch.invoke(ctx, method, args, reply)
@@ -121,7 +127,12 @@ func (ch *webrtcClientChannel) invoke(ctx context.Context, method string, args i
 //
 // If none of the above happen, a goroutine and a context will be leaked, and grpc
 // will not call the optionally-configured stats handler with a stats.End message.
-func (ch *webrtcClientChannel) NewStream(ctx context.Context, desc *grpc.StreamDesc, method string, opts ...grpc.CallOption) (grpc.ClientStream, error) {
+func (ch *webrtcClientChannel) NewStream(
+	ctx context.Context,
+	desc *grpc.StreamDesc,
+	method string,
+	opts ...grpc.CallOption,
+) (grpc.ClientStream, error) {
 	fields := newClientLoggerFields(ctx, method)
 	startTime := time.Now()
 	clientStream, err := ch.newClientStream(ctx, desc, method)
@@ -243,7 +254,8 @@ func (ch *webrtcClientChannel) writeMessage(stream *webrtcpb.Stream, msg *webrtc
 	})
 }
 
-// taken from https://github.com/grpc-ecosystem/go-grpc-middleware/blob/560829fc74fcf9a69b7ab01d484f8b8961dc734b/logging/zap/client_interceptors.go#L17
+// taken from
+// https://github.com/grpc-ecosystem/go-grpc-middleware/blob/560829fc74fcf9a69b7ab01d484f8b8961dc734b/logging/zap/client_interceptors.go
 
 func logFinalClientLine(ctx context.Context, startTime time.Time, err error, msg string) {
 	code := grpc_logging.DefaultErrorToCode(err)

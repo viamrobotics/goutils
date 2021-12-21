@@ -39,7 +39,13 @@ type webrtcSignalingAnswerer struct {
 // address. Note that using this assumes that the connection at the given address is secure and
 // assumed that all calls are authenticated. Random ports will be opened on this host to establish
 // connections as a means to service ICE (https://webrtcforthecurious.com/docs/03-connecting/#how-does-it-work).
-func newWebRTCSignalingAnswerer(address, host string, server *webrtcServer, dialOpts []DialOption, webrtcConfig webrtc.Configuration, logger golog.Logger) *webrtcSignalingAnswerer {
+func newWebRTCSignalingAnswerer(
+	address, host string,
+	server *webrtcServer,
+	dialOpts []DialOption,
+	webrtcConfig webrtc.Configuration,
+	logger golog.Logger,
+) *webrtcSignalingAnswerer {
 	closeCtx, cancel := context.WithCancel(context.Background())
 	return &webrtcSignalingAnswerer{
 		address:                 address,

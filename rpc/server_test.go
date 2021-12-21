@@ -87,10 +87,11 @@ func TestServer(t *testing.T) {
 				test.That(t, err, test.ShouldNotBeNil)
 				test.That(t, err.Error(), test.ShouldContainSubstring, "no way to")
 
-				authResp, err := authClient.Authenticate(context.Background(), &rpcpb.AuthenticateRequest{Entity: "foo", Credentials: &rpcpb.Credentials{
-					Type:    "fake",
-					Payload: "something",
-				}})
+				authResp, err := authClient.Authenticate(
+					context.Background(), &rpcpb.AuthenticateRequest{Entity: "foo", Credentials: &rpcpb.Credentials{
+						Type:    "fake",
+						Payload: "something",
+					}})
 				test.That(t, err, test.ShouldBeNil)
 
 				md := make(metadata.MD)

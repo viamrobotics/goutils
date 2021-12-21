@@ -98,7 +98,11 @@ type memoryWebRTCCallOfferInit struct {
 // It returns a UUID to track/authenticate the offer over time, the initial SDP for the
 // sender to start its peer connection with, as well as a channel to receive candidates on
 // over time.
-func (queue *memoryWebRTCCallQueue) SendOfferInit(ctx context.Context, host, sdp string, disableTrickle bool) (string, <-chan WebRTCCallAnswer, <-chan struct{}, func(), error) {
+func (queue *memoryWebRTCCallQueue) SendOfferInit(
+	ctx context.Context,
+	host, sdp string,
+	disableTrickle bool,
+) (string, <-chan WebRTCCallAnswer, <-chan struct{}, func(), error) {
 	hostQueueForSend := queue.getOrMakeHostQueue(host)
 
 	var newUUID string

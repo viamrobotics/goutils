@@ -356,7 +356,10 @@ func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 }
 
 // OptionalWebRTCConfig returns any WebRTC configuration the caller may want to use.
-func (srv *WebRTCSignalingServer) OptionalWebRTCConfig(ctx context.Context, req *webrtcpb.OptionalWebRTCConfigRequest) (*webrtcpb.OptionalWebRTCConfigResponse, error) {
+func (srv *WebRTCSignalingServer) OptionalWebRTCConfig(
+	ctx context.Context,
+	req *webrtcpb.OptionalWebRTCConfigRequest,
+) (*webrtcpb.OptionalWebRTCConfigResponse, error) {
 	ctx, cancel := context.WithTimeout(ctx, webrtcConnectionTimeout)
 	defer cancel()
 	host, err := hostFromCtx(ctx)

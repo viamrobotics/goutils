@@ -31,7 +31,12 @@ func setupWebRTCPeers(t *testing.T) (client, server *webrtc.PeerConnection, clie
 	return pc1, pc2, dc1, dc2
 }
 
-func setupWebRTCBaseChannels(t *testing.T) (client *webrtcBaseChannel, server *webrtcBaseChannel, clientDone <-chan struct{}, serverDone <-chan struct{}) {
+func setupWebRTCBaseChannels(t *testing.T) (
+	client *webrtcBaseChannel,
+	server *webrtcBaseChannel,
+	clientDone <-chan struct{},
+	serverDone <-chan struct{},
+) {
 	logger := golog.NewTestLogger(t)
 	pc1, pc2, dc1, dc2 := setupWebRTCPeers(t)
 

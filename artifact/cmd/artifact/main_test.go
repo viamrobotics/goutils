@@ -130,127 +130,136 @@ func TestMainMain(t *testing.T) {
 		{"no args", nil, "clean|pull|push|rm|status", nil, nil, nil},
 		{"unknown", []string{"unknown"}, "clean|pull|push|rm|status", nil, nil, nil},
 		{"clean nothing", []string{"clean"}, "", before, nil, nil},
-		{"clean something", []string{"clean"}, "", func(t *testing.T, logger golog.Logger, exec *testutils.ContextualMainExecution) {
-			before(t, logger, exec)
+		{"clean something", []string{"clean"}, "",
+			func(t *testing.T, logger golog.Logger, exec *testutils.ContextualMainExecution) {
+				before(t, logger, exec)
 
-			filePath := artifact.MustNewPath("some/file")
-			test.That(t, os.MkdirAll(filepath.Dir(filePath), 0755), test.ShouldBeNil)
-			test.That(t, ioutil.WriteFile(filePath, []byte("hello"), 0644), test.ShouldBeNil)
-			_, err := os.Stat(filePath)
-			test.That(t, err, test.ShouldBeNil)
-		}, nil, func(t *testing.T, _ *observer.ObservedLogs) {
-			filePath := artifact.MustNewPath("some/file")
-			_, err := os.Stat(filePath)
-			test.That(t, err, test.ShouldNotBeNil)
-		}},
+				filePath := artifact.MustNewPath("some/file")
+				test.That(t, os.MkdirAll(filepath.Dir(filePath), 0755), test.ShouldBeNil)
+				test.That(t, ioutil.WriteFile(filePath, []byte("hello"), 0644), test.ShouldBeNil)
+				_, err := os.Stat(filePath)
+				test.That(t, err, test.ShouldBeNil)
+			}, nil, func(t *testing.T, _ *observer.ObservedLogs) {
+				filePath := artifact.MustNewPath("some/file")
+				_, err := os.Stat(filePath)
+				test.That(t, err, test.ShouldNotBeNil)
+			}},
 		{"pull bad args", []string{"pull", "--all=hello"}, "boolean", nil, nil, nil},
-		{"pull", []string{"pull"}, "", func(t *testing.T, logger golog.Logger, exec *testutils.ContextualMainExecution) {
-			pullBefore(t, logger, exec)
-		}, nil, func(t *testing.T, _ *observer.ObservedLogs) {
-			_, err := os.Stat(artifact.MustNewPath("one/two"))
-			test.That(t, err, test.ShouldBeNil)
-			_, err = os.Stat(artifact.MustNewPath("one/three"))
-			test.That(t, err, test.ShouldBeNil)
-			_, err = os.Stat(artifact.MustNewPath("two"))
-			test.That(t, err, test.ShouldBeNil)
-		}},
-		{"pull specific", []string{"pull", "one/two"}, "", func(t *testing.T, logger golog.Logger, exec *testutils.ContextualMainExecution) {
-			pullBefore(t, logger, exec)
-		}, nil, func(t *testing.T, _ *observer.ObservedLogs) {
-			_, err := os.Stat(artifact.MustNewPath("one/two"))
-			test.That(t, err, test.ShouldBeNil)
-			_, err = os.Stat(artifact.MustNewPath("one/three"))
-			test.That(t, err, test.ShouldNotBeNil)
-			_, err = os.Stat(artifact.MustNewPath("two"))
-			test.That(t, err, test.ShouldNotBeNil)
-		}},
-		{"pull limit", []string{"pull"}, "", func(t *testing.T, logger golog.Logger, exec *testutils.ContextualMainExecution) {
-			pullLimitBefore(t, logger, exec)
-		}, nil, func(t *testing.T, _ *observer.ObservedLogs) {
-			_, err := os.Stat(artifact.MustNewPath("one/two"))
-			test.That(t, err, test.ShouldNotBeNil)
-			_, err = os.Stat(artifact.MustNewPath("one/three"))
-			test.That(t, err, test.ShouldNotBeNil)
-			_, err = os.Stat(artifact.MustNewPath("two"))
-			test.That(t, err, test.ShouldNotBeNil)
-		}},
-		{"pull limit specific", []string{"pull", "one/two"}, "", func(t *testing.T, logger golog.Logger, exec *testutils.ContextualMainExecution) {
-			pullLimitBefore(t, logger, exec)
-		}, nil, func(t *testing.T, _ *observer.ObservedLogs) {
-			_, err := os.Stat(artifact.MustNewPath("one/two"))
-			test.That(t, err, test.ShouldNotBeNil)
-			_, err = os.Stat(artifact.MustNewPath("one/three"))
-			test.That(t, err, test.ShouldNotBeNil)
-			_, err = os.Stat(artifact.MustNewPath("two"))
-			test.That(t, err, test.ShouldNotBeNil)
-		}},
-		{"pull limit all", []string{"pull", "--all"}, "", func(t *testing.T, logger golog.Logger, exec *testutils.ContextualMainExecution) {
-			pullLimitBefore(t, logger, exec)
-		}, nil, func(t *testing.T, _ *observer.ObservedLogs) {
-			_, err := os.Stat(artifact.MustNewPath("one/two"))
-			test.That(t, err, test.ShouldBeNil)
-			_, err = os.Stat(artifact.MustNewPath("one/three"))
-			test.That(t, err, test.ShouldBeNil)
-			_, err = os.Stat(artifact.MustNewPath("two"))
-			test.That(t, err, test.ShouldBeNil)
-		}},
-		{"push", []string{"push"}, "", func(t *testing.T, logger golog.Logger, exec *testutils.ContextualMainExecution) {
-			pushBefore(t, logger, exec)
-		}, nil, func(t *testing.T, _ *observer.ObservedLogs) {
-			filePath := artifact.MustNewPath("some/file")
-			otherFilePath := artifact.MustNewPath("some/other_file")
+		{"pull", []string{"pull"}, "",
+			func(t *testing.T, logger golog.Logger, exec *testutils.ContextualMainExecution) {
+				pullBefore(t, logger, exec)
+			}, nil, func(t *testing.T, _ *observer.ObservedLogs) {
+				_, err := os.Stat(artifact.MustNewPath("one/two"))
+				test.That(t, err, test.ShouldBeNil)
+				_, err = os.Stat(artifact.MustNewPath("one/three"))
+				test.That(t, err, test.ShouldBeNil)
+				_, err = os.Stat(artifact.MustNewPath("two"))
+				test.That(t, err, test.ShouldBeNil)
+			}},
+		{"pull specific", []string{"pull", "one/two"}, "",
+			func(t *testing.T, logger golog.Logger, exec *testutils.ContextualMainExecution) {
+				pullBefore(t, logger, exec)
+			}, nil, func(t *testing.T, _ *observer.ObservedLogs) {
+				_, err := os.Stat(artifact.MustNewPath("one/two"))
+				test.That(t, err, test.ShouldBeNil)
+				_, err = os.Stat(artifact.MustNewPath("one/three"))
+				test.That(t, err, test.ShouldNotBeNil)
+				_, err = os.Stat(artifact.MustNewPath("two"))
+				test.That(t, err, test.ShouldNotBeNil)
+			}},
+		{"pull limit", []string{"pull"}, "",
+			func(t *testing.T, logger golog.Logger, exec *testutils.ContextualMainExecution) {
+				pullLimitBefore(t, logger, exec)
+			}, nil, func(t *testing.T, _ *observer.ObservedLogs) {
+				_, err := os.Stat(artifact.MustNewPath("one/two"))
+				test.That(t, err, test.ShouldNotBeNil)
+				_, err = os.Stat(artifact.MustNewPath("one/three"))
+				test.That(t, err, test.ShouldNotBeNil)
+				_, err = os.Stat(artifact.MustNewPath("two"))
+				test.That(t, err, test.ShouldNotBeNil)
+			}},
+		{"pull limit specific", []string{"pull", "one/two"}, "",
+			func(t *testing.T, logger golog.Logger, exec *testutils.ContextualMainExecution) {
+				pullLimitBefore(t, logger, exec)
+			}, nil, func(t *testing.T, _ *observer.ObservedLogs) {
+				_, err := os.Stat(artifact.MustNewPath("one/two"))
+				test.That(t, err, test.ShouldNotBeNil)
+				_, err = os.Stat(artifact.MustNewPath("one/three"))
+				test.That(t, err, test.ShouldNotBeNil)
+				_, err = os.Stat(artifact.MustNewPath("two"))
+				test.That(t, err, test.ShouldNotBeNil)
+			}},
+		{"pull limit all", []string{"pull", "--all"}, "",
+			func(t *testing.T, logger golog.Logger, exec *testutils.ContextualMainExecution) {
+				pullLimitBefore(t, logger, exec)
+			}, nil, func(t *testing.T, _ *observer.ObservedLogs) {
+				_, err := os.Stat(artifact.MustNewPath("one/two"))
+				test.That(t, err, test.ShouldBeNil)
+				_, err = os.Stat(artifact.MustNewPath("one/three"))
+				test.That(t, err, test.ShouldBeNil)
+				_, err = os.Stat(artifact.MustNewPath("two"))
+				test.That(t, err, test.ShouldBeNil)
+			}},
+		{"push", []string{"push"}, "",
+			func(t *testing.T, logger golog.Logger, exec *testutils.ContextualMainExecution) {
+				pushBefore(t, logger, exec)
+			}, nil, func(t *testing.T, _ *observer.ObservedLogs) {
+				filePath := artifact.MustNewPath("some/file")
+				otherFilePath := artifact.MustNewPath("some/other_file")
 
-			test.That(t, os.RemoveAll(artifact.MustNewPath("/")), test.ShouldBeNil)
-			_, err := os.Stat(filePath)
-			test.That(t, err, test.ShouldNotBeNil)
-			_, err = os.Stat(otherFilePath)
-			test.That(t, err, test.ShouldNotBeNil)
+				test.That(t, os.RemoveAll(artifact.MustNewPath("/")), test.ShouldBeNil)
+				_, err := os.Stat(filePath)
+				test.That(t, err, test.ShouldNotBeNil)
+				_, err = os.Stat(otherFilePath)
+				test.That(t, err, test.ShouldNotBeNil)
 
-			test.That(t, tools.Pull("/", true), test.ShouldBeNil)
-			_, err = os.Stat(filePath)
-			test.That(t, err, test.ShouldBeNil)
-			_, err = os.Stat(otherFilePath)
-			test.That(t, err, test.ShouldBeNil)
-		}},
+				test.That(t, tools.Pull("/", true), test.ShouldBeNil)
+				_, err = os.Stat(filePath)
+				test.That(t, err, test.ShouldBeNil)
+				_, err = os.Stat(otherFilePath)
+				test.That(t, err, test.ShouldBeNil)
+			}},
 		{"remove bad args", []string{"rm"}, "required", nil, nil, nil},
-		{"remove specific", []string{"rm", "some/file"}, "", func(t *testing.T, logger golog.Logger, exec *testutils.ContextualMainExecution) {
-			removeBefore(t, logger, exec)
-			test.That(t, os.Chdir(artifact.MustNewPath("/")), test.ShouldBeNil)
-		}, nil, func(t *testing.T, _ *observer.ObservedLogs) {
-			filePath := artifact.MustNewPath("some/file")
-			otherFilePath := artifact.MustNewPath("some/other_file")
+		{"remove specific", []string{"rm", "some/file"}, "",
+			func(t *testing.T, logger golog.Logger, exec *testutils.ContextualMainExecution) {
+				removeBefore(t, logger, exec)
+				test.That(t, os.Chdir(artifact.MustNewPath("/")), test.ShouldBeNil)
+			}, nil, func(t *testing.T, _ *observer.ObservedLogs) {
+				filePath := artifact.MustNewPath("some/file")
+				otherFilePath := artifact.MustNewPath("some/other_file")
 
-			test.That(t, os.RemoveAll(artifact.MustNewPath("/")), test.ShouldBeNil)
-			_, err := os.Stat(filePath)
-			test.That(t, err, test.ShouldNotBeNil)
-			_, err = os.Stat(otherFilePath)
-			test.That(t, err, test.ShouldNotBeNil)
+				test.That(t, os.RemoveAll(artifact.MustNewPath("/")), test.ShouldBeNil)
+				_, err := os.Stat(filePath)
+				test.That(t, err, test.ShouldNotBeNil)
+				_, err = os.Stat(otherFilePath)
+				test.That(t, err, test.ShouldNotBeNil)
 
-			test.That(t, tools.Pull("/", true), test.ShouldBeNil)
-			_, err = os.Stat(filePath)
-			test.That(t, err, test.ShouldNotBeNil)
-			_, err = os.Stat(otherFilePath)
-			test.That(t, err, test.ShouldBeNil)
-		}},
-		{"remove specific unknown", []string{"rm", "some/unknown_file"}, "", func(t *testing.T, logger golog.Logger, exec *testutils.ContextualMainExecution) {
-			removeBefore(t, logger, exec)
-			test.That(t, os.Chdir(artifact.MustNewPath("/")), test.ShouldBeNil)
-		}, nil, func(t *testing.T, _ *observer.ObservedLogs) {
-			filePath := artifact.MustNewPath("some/file")
-			otherFilePath := artifact.MustNewPath("some/other_file")
+				test.That(t, tools.Pull("/", true), test.ShouldBeNil)
+				_, err = os.Stat(filePath)
+				test.That(t, err, test.ShouldNotBeNil)
+				_, err = os.Stat(otherFilePath)
+				test.That(t, err, test.ShouldBeNil)
+			}},
+		{"remove specific unknown", []string{"rm", "some/unknown_file"}, "",
+			func(t *testing.T, logger golog.Logger, exec *testutils.ContextualMainExecution) {
+				removeBefore(t, logger, exec)
+				test.That(t, os.Chdir(artifact.MustNewPath("/")), test.ShouldBeNil)
+			}, nil, func(t *testing.T, _ *observer.ObservedLogs) {
+				filePath := artifact.MustNewPath("some/file")
+				otherFilePath := artifact.MustNewPath("some/other_file")
 
-			test.That(t, os.RemoveAll(artifact.MustNewPath("/")), test.ShouldBeNil)
-			_, err := os.Stat(filePath)
-			test.That(t, err, test.ShouldNotBeNil)
-			_, err = os.Stat(otherFilePath)
-			test.That(t, err, test.ShouldNotBeNil)
+				test.That(t, os.RemoveAll(artifact.MustNewPath("/")), test.ShouldBeNil)
+				_, err := os.Stat(filePath)
+				test.That(t, err, test.ShouldNotBeNil)
+				_, err = os.Stat(otherFilePath)
+				test.That(t, err, test.ShouldNotBeNil)
 
-			test.That(t, tools.Pull("/", true), test.ShouldBeNil)
-			_, err = os.Stat(filePath)
-			test.That(t, err, test.ShouldBeNil)
-			_, err = os.Stat(otherFilePath)
-			test.That(t, err, test.ShouldBeNil)
-		}},
+				test.That(t, tools.Pull("/", true), test.ShouldBeNil)
+				_, err = os.Stat(filePath)
+				test.That(t, err, test.ShouldBeNil)
+				_, err = os.Stat(otherFilePath)
+				test.That(t, err, test.ShouldBeNil)
+			}},
 		{"remove root does nothing", []string{"rm", "/"}, "", func(t *testing.T, logger golog.Logger, exec *testutils.ContextualMainExecution) {
 			removeBefore(t, logger, exec)
 			test.That(t, os.Chdir(artifact.MustNewPath("/")), test.ShouldBeNil)
@@ -300,26 +309,27 @@ func TestMainMain(t *testing.T) {
 			test.That(t, messages[0].Message, test.ShouldNotContainSubstring, filePath)
 			test.That(t, messages[0].Message, test.ShouldContainSubstring, otherFilePath)
 		}},
-		{"status unstored and modified", []string{"status"}, "", func(t *testing.T, logger golog.Logger, exec *testutils.ContextualMainExecution) {
-			statusBefore(t, logger, exec)
-			test.That(t, tools.Push(), test.ShouldBeNil)
-			otherFilePath := artifact.MustNewPath("some/other_file")
-			test.That(t, ioutil.WriteFile(otherFilePath, []byte("changes"), 0644), test.ShouldBeNil)
-			newFilePath := artifact.MustNewPath("some/new_file")
-			test.That(t, os.MkdirAll(filepath.Dir(newFilePath), 0755), test.ShouldBeNil)
-			test.That(t, ioutil.WriteFile(newFilePath, []byte("newwwww"), 0644), test.ShouldBeNil)
-		}, nil, func(t *testing.T, logs *observer.ObservedLogs) {
-			filePath := artifact.MustNewPath("some/file")
-			otherFilePath := artifact.MustNewPath("some/other_file")
-			newFilePath := artifact.MustNewPath("some/new_file")
+		{"status unstored and modified", []string{"status"}, "",
+			func(t *testing.T, logger golog.Logger, exec *testutils.ContextualMainExecution) {
+				statusBefore(t, logger, exec)
+				test.That(t, tools.Push(), test.ShouldBeNil)
+				otherFilePath := artifact.MustNewPath("some/other_file")
+				test.That(t, ioutil.WriteFile(otherFilePath, []byte("changes"), 0644), test.ShouldBeNil)
+				newFilePath := artifact.MustNewPath("some/new_file")
+				test.That(t, os.MkdirAll(filepath.Dir(newFilePath), 0755), test.ShouldBeNil)
+				test.That(t, ioutil.WriteFile(newFilePath, []byte("newwwww"), 0644), test.ShouldBeNil)
+			}, nil, func(t *testing.T, logs *observer.ObservedLogs) {
+				filePath := artifact.MustNewPath("some/file")
+				otherFilePath := artifact.MustNewPath("some/other_file")
+				newFilePath := artifact.MustNewPath("some/new_file")
 
-			messages := logs.FilterMessageSnippet("").All()
-			test.That(t, messages, test.ShouldHaveLength, 1)
-			test.That(t, messages[0].Message, test.ShouldContainSubstring, "Unstored")
-			test.That(t, messages[0].Message, test.ShouldContainSubstring, "Modified")
-			test.That(t, messages[0].Message, test.ShouldNotContainSubstring, filePath)
-			test.That(t, messages[0].Message, test.ShouldContainSubstring, otherFilePath)
-			test.That(t, messages[0].Message, test.ShouldContainSubstring, newFilePath)
-		}},
+				messages := logs.FilterMessageSnippet("").All()
+				test.That(t, messages, test.ShouldHaveLength, 1)
+				test.That(t, messages[0].Message, test.ShouldContainSubstring, "Unstored")
+				test.That(t, messages[0].Message, test.ShouldContainSubstring, "Modified")
+				test.That(t, messages[0].Message, test.ShouldNotContainSubstring, filePath)
+				test.That(t, messages[0].Message, test.ShouldContainSubstring, otherFilePath)
+				test.That(t, messages[0].Message, test.ShouldContainSubstring, newFilePath)
+			}},
 	})
 }
