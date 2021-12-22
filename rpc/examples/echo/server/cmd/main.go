@@ -120,7 +120,8 @@ func runServer(
 		authPublicKey = key.(*rsa.PublicKey)
 	}
 
-	listener, secure, err := utils.NewPossiblySecureTCPListenerFromFile(port, tlsCertFile, tlsKeyFile)
+	humanAddress := fmt.Sprintf("localhost:%d", port)
+	listener, secure, err := utils.NewPossiblySecureTCPListenerFromFile(humanAddress, tlsCertFile, tlsKeyFile)
 	if err != nil {
 		return err
 	}
@@ -134,7 +135,6 @@ func runServer(
 		ExternalSignalingAddress:  signalingAddress,
 		SignalingHost:             signalingHost,
 	}))
-	humanAddress := fmt.Sprintf("localhost:%d", port)
 
 	if apiKey == "" && authPublicKey == nil {
 		serverOpts = append(serverOpts, rpc.WithUnauthenticated())

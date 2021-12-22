@@ -27,20 +27,21 @@ func TestGetAllLocalIPv4s(t *testing.T) {
 
 func TestNewPossiblySecureTCPListenerFromFile(t *testing.T) {
 	t.Run("providing just cert should fail", func(t *testing.T) {
-		_, _, err := NewPossiblySecureTCPListenerFromFile(0, "cert", "")
+		_, _, err := NewPossiblySecureTCPListenerFromFile("", "cert", "")
 		test.That(t, err, test.ShouldBeError, ErrInsufficientX509KeyPair)
 	})
 
 	t.Run("providing just key should fail", func(t *testing.T) {
-		_, _, err := NewPossiblySecureTCPListenerFromFile(0, "", "key")
+		_, _, err := NewPossiblySecureTCPListenerFromFile("", "", "key")
 		test.That(t, err, test.ShouldBeError, ErrInsufficientX509KeyPair)
 	})
 
 	t.Run("no cert or key should be insecure", func(t *testing.T) {
-		listener, secure, err := NewPossiblySecureTCPListenerFromFile(0, "", "")
+		listener, secure, err := NewPossiblySecureTCPListenerFromFile("", "", "")
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, secure, test.ShouldBeFalse)
 		test.That(t, listener, test.ShouldNotBeNil)
+		test.That(t, listener.Addr().String(), test.ShouldStartWith, "127.0.0.1:")
 
 		httpServer := &http.Server{
 			ReadTimeout:    10 * time.Second,
@@ -65,7 +66,7 @@ func TestNewPossiblySecureTCPListenerFromFile(t *testing.T) {
 
 	t.Run("with cert and key should be secure", func(t *testing.T) {
 		listener, secure, err := NewPossiblySecureTCPListenerFromFile(
-			0,
+			"",
 			internal.ResolveFile("testdata/cert.pem"),
 			internal.ResolveFile("testdata/key.pem"),
 		)

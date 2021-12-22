@@ -75,15 +75,20 @@ func GetAllLocalIPv4s() ([]string, error) {
 // ErrInsufficientX509KeyPair is returned when an incomplete X509 key pair is used.
 var ErrInsufficientX509KeyPair = errors.New("must provide both cert and key of an X509 key pair, not just one part")
 
-// NewPossiblySecureTCPListenerFromFile returns a TCP listener at the given port that is
+// NewPossiblySecureTCPListenerFromFile returns a TCP listener at the given address that is
 // either insecure or TLS based listener depending on presence of the tlsCertFile and tlsKeyFile
-// which are expected to be an X509 key pair.
-func NewPossiblySecureTCPListenerFromFile(port int, tlsCertFile, tlsKeyFile string) (net.Listener, bool, error) {
+// which are expected to be an X509 key pair. If no address is specified, the listener will bind
+// to localhost IPV4 on a random port.
+func NewPossiblySecureTCPListenerFromFile(address string, tlsCertFile, tlsKeyFile string) (net.Listener, bool, error) {
 	if (tlsCertFile == "") != (tlsKeyFile == "") {
 		return nil, false, ErrInsufficientX509KeyPair
 	}
+
+	if address == "" {
+		address = "localhost:"
+	}
 	if tlsCertFile == "" || tlsKeyFile == "" {
-		insecureListener, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
+		insecureListener, err := net.Listen("tcp", address)
 		if err != nil {
 			return nil, false, err
 		}
@@ -93,7 +98,7 @@ func NewPossiblySecureTCPListenerFromFile(port int, tlsCertFile, tlsKeyFile stri
 	if err != nil {
 		return nil, false, err
 	}
-	secureListener, err := tls.Listen("tcp", fmt.Sprintf("localhost:%d", port), &tls.Config{
+	secureListener, err := tls.Listen("tcp", address, &tls.Config{
 		Certificates: []tls.Certificate{cert},
 	})
 	if err != nil {
