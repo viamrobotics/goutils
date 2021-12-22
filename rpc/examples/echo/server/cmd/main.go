@@ -120,11 +120,12 @@ func runServer(
 		authPublicKey = key.(*rsa.PublicKey)
 	}
 
-	humanAddress := fmt.Sprintf("localhost:%d", port)
-	listener, secure, err := utils.NewPossiblySecureTCPListenerFromFile(humanAddress, tlsCertFile, tlsKeyFile)
+	bindAddress := fmt.Sprintf("localhost:%d", port)
+	listener, secure, err := utils.NewPossiblySecureTCPListenerFromFile(bindAddress, tlsCertFile, tlsKeyFile)
 	if err != nil {
 		return err
 	}
+	listenerAddr := listener.Addr().String()
 	var signalingOpts []rpc.DialOption
 	if signalingAddress != "" && !secure {
 		signalingOpts = append(signalingOpts, rpc.WithInsecure())
@@ -142,8 +143,8 @@ func runServer(
 		handler := rpc.MakeSimpleAuthHandler(
 			[]string{
 				signalingHost,
-				listener.Addr().String(),
-				humanAddress,
+				listenerAddr,
+				bindAddress,
 			},
 			apiKey,
 		)
@@ -214,7 +215,7 @@ func runServer(
 	if err != nil {
 		return err
 	}
-	httpServer.Addr = listener.Addr().String()
+	httpServer.Addr = listenerAddr
 
 	done := make(chan struct{})
 	defer func() { <-done }()
@@ -243,7 +244,7 @@ func runServer(
 	} else {
 		scheme = "http"
 	}
-	logger.Infow("serving", "url", fmt.Sprintf("%s://%s", scheme, humanAddress))
+	logger.Infow("serving", "url", fmt.Sprintf("%s://%s", scheme, listenerAddr))
 	if err := httpServer.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
