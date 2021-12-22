@@ -6,7 +6,6 @@ import (
 	"html/template"
 	"io/fs"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -151,27 +150,4 @@ func fixFiles(files []fs.DirEntry, root string) []string {
 
 func baseTemplate() *template.Template {
 	return template.New("app").Funcs(sprig.FuncMap())
-}
-
-type verifyHost struct {
-	webRoot string
-	host    string
-	handler http.Handler
-}
-
-// NewVerifyHost makes sure the host is correct, and will redirect otherwise
-func NewVerifyHost(root string, h http.Handler) http.Handler {
-	u, err := url.Parse(root)
-	if err != nil {
-		panic(err)
-	}
-	return &verifyHost{root, u.Host, h}
-}
-
-func (vh *verifyHost) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.Host != "" && r.Host != vh.host {
-		http.Redirect(w, r, vh.webRoot, http.StatusTemporaryRedirect)
-	} else {
-		vh.handler.ServeHTTP(w, r)
-	}
 }

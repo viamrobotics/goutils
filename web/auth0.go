@@ -27,7 +27,7 @@ type Auth0Config struct {
 	Domain     string
 	ClientID   string
 	Secret     string
-	WebRoot    string
+	BaseURL    string
 	EnableTest bool
 }
 
@@ -59,8 +59,8 @@ func InstallAuth0(ctx context.Context, mux *goji.Mux, sessions *SessionManager, 
 		return nil, errors.New("need a domain for auth0")
 	}
 
-	if config.WebRoot == "" {
-		return nil, errors.New("need a WebRoot for auth0")
+	if config.BaseURL == "" {
+		return nil, errors.New("need a base URL for auth0")
 	}
 
 	if sessions == nil {
@@ -90,7 +90,7 @@ func InstallAuth0(ctx context.Context, mux *goji.Mux, sessions *SessionManager, 
 	state.authConfig = oauth2.Config{
 		ClientID:     config.ClientID,
 		ClientSecret: config.Secret,
-		RedirectURL:  config.WebRoot + "/callback",
+		RedirectURL:  config.BaseURL + "/callback",
 		Endpoint:     p.Endpoint(),
 		Scopes:       []string{oidc.ScopeOpenID, "profile", "email"},
 	}
@@ -315,7 +315,7 @@ func (h *logoutHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	logoutURL.Path = "/v2/logout"
 	parameters := url.Values{}
 
-	parameters.Add("returnTo", h.state.config.WebRoot)
+	parameters.Add("returnTo", h.state.config.BaseURL)
 	parameters.Add("client_id", h.state.config.ClientID)
 	logoutURL.RawQuery = parameters.Encode()
 
