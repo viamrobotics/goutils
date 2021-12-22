@@ -15,7 +15,7 @@ import (
 )
 
 // A memoryWebRTCCallQueue is an in-memory implementation of a call queue designed to be used for
-// testing and single node deployments.
+// testing and single node/host deployments.
 type memoryWebRTCCallQueue struct {
 	mu                      sync.Mutex
 	activeBackgroundWorkers sync.WaitGroup
@@ -61,15 +61,12 @@ func newMemoryWebRTCCallQueue(uuidDeterministic bool) *memoryWebRTCCallQueue {
 			}
 			now := time.Now()
 			queue.mu.Lock()
-			for hostName, hostQueue := range queue.hostQueues {
+			for _, hostQueue := range queue.hostQueues {
 				hostQueue.mu.Lock()
 				for offerID, offer := range hostQueue.activeOffers {
 					if d, ok := offer.offer.answererDoneCtx.Deadline(); ok && d.Before(now) {
 						delete(hostQueue.activeOffers, offerID)
 					}
-				}
-				if len(hostQueue.activeOffers) == 0 && hostQueue.expires.Before(now) {
-					delete(queue.hostQueues, hostName)
 				}
 				hostQueue.mu.Unlock()
 			}
@@ -289,7 +286,6 @@ type singleWebRTCHostQueue struct {
 	mu           sync.RWMutex
 	exchangeCh   chan *memoryWebRTCCallOfferExchange
 	activeOffers map[string]*memoryWebRTCCallOfferExchange
-	expires      time.Time
 }
 
 func (queue *memoryWebRTCCallQueue) getOrMakeHostQueue(host string) *singleWebRTCHostQueue {
@@ -297,13 +293,11 @@ func (queue *memoryWebRTCCallQueue) getOrMakeHostQueue(host string) *singleWebRT
 	defer queue.mu.Unlock()
 	hostQueue, ok := queue.hostQueues[host]
 	if ok {
-		hostQueue.expires = time.Now().Add(getDefaultOfferDeadline())
 		return hostQueue
 	}
 	hostQueue = &singleWebRTCHostQueue{
 		exchangeCh:   make(chan *memoryWebRTCCallOfferExchange),
 		activeOffers: make(map[string]*memoryWebRTCCallOfferExchange),
-		expires:      time.Now().Add(getDefaultOfferDeadline()),
 	}
 	queue.hostQueues[host] = hostQueue
 	return hostQueue
