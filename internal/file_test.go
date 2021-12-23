@@ -14,5 +14,5 @@ func TestResolveFile(t *testing.T) {
 	resolved := ResolveFile("internal/file_test.go")
 	rd, err := ioutil.ReadFile(resolved)
 	test.That(t, err, test.ShouldBeNil)
-	test.That(t, bytes.Contains(rd, []byte("var sentinel = \"great\"")), test.ShouldBeTrue)
+	test.That(t, bytes.Contains(rd, []byte("sentinel := \"great\"")), test.ShouldBeTrue)
 }
