@@ -7,12 +7,11 @@
 package v1
 
 import (
-	reflect "reflect"
-	sync "sync"
-
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	reflect "reflect"
+	sync "sync"
 )
 
 const (
@@ -232,15 +231,12 @@ func file_proto_rpc_v1_auth_proto_rawDescGZIP() []byte {
 	return file_proto_rpc_v1_auth_proto_rawDescData
 }
 
-var (
-	file_proto_rpc_v1_auth_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
-	file_proto_rpc_v1_auth_proto_goTypes  = []interface{}{
-		(*Credentials)(nil),          // 0: proto.rpc.v1.Credentials
-		(*AuthenticateRequest)(nil),  // 1: proto.rpc.v1.AuthenticateRequest
-		(*AuthenticateResponse)(nil), // 2: proto.rpc.v1.AuthenticateResponse
-	}
-)
-
+var file_proto_rpc_v1_auth_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_proto_rpc_v1_auth_proto_goTypes = []interface{}{
+	(*Credentials)(nil),          // 0: proto.rpc.v1.Credentials
+	(*AuthenticateRequest)(nil),  // 1: proto.rpc.v1.AuthenticateRequest
+	(*AuthenticateResponse)(nil), // 2: proto.rpc.v1.AuthenticateResponse
+}
 var file_proto_rpc_v1_auth_proto_depIdxs = []int32{
 	0, // 0: proto.rpc.v1.AuthenticateRequest.credentials:type_name -> proto.rpc.v1.Credentials
 	1, // 1: proto.rpc.v1.AuthService.Authenticate:input_type -> proto.rpc.v1.AuthenticateRequest

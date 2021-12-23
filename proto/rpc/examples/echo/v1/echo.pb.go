@@ -7,12 +7,11 @@
 package v1
 
 import (
-	reflect "reflect"
-	sync "sync"
-
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	reflect "reflect"
+	sync "sync"
 )
 
 const (
@@ -372,18 +371,15 @@ func file_proto_rpc_examples_echo_v1_echo_proto_rawDescGZIP() []byte {
 	return file_proto_rpc_examples_echo_v1_echo_proto_rawDescData
 }
 
-var (
-	file_proto_rpc_examples_echo_v1_echo_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
-	file_proto_rpc_examples_echo_v1_echo_proto_goTypes  = []interface{}{
-		(*EchoRequest)(nil),          // 0: proto.rpc.examples.echo.v1.EchoRequest
-		(*EchoResponse)(nil),         // 1: proto.rpc.examples.echo.v1.EchoResponse
-		(*EchoMultipleRequest)(nil),  // 2: proto.rpc.examples.echo.v1.EchoMultipleRequest
-		(*EchoMultipleResponse)(nil), // 3: proto.rpc.examples.echo.v1.EchoMultipleResponse
-		(*EchoBiDiRequest)(nil),      // 4: proto.rpc.examples.echo.v1.EchoBiDiRequest
-		(*EchoBiDiResponse)(nil),     // 5: proto.rpc.examples.echo.v1.EchoBiDiResponse
-	}
-)
-
+var file_proto_rpc_examples_echo_v1_echo_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_proto_rpc_examples_echo_v1_echo_proto_goTypes = []interface{}{
+	(*EchoRequest)(nil),          // 0: proto.rpc.examples.echo.v1.EchoRequest
+	(*EchoResponse)(nil),         // 1: proto.rpc.examples.echo.v1.EchoResponse
+	(*EchoMultipleRequest)(nil),  // 2: proto.rpc.examples.echo.v1.EchoMultipleRequest
+	(*EchoMultipleResponse)(nil), // 3: proto.rpc.examples.echo.v1.EchoMultipleResponse
+	(*EchoBiDiRequest)(nil),      // 4: proto.rpc.examples.echo.v1.EchoBiDiRequest
+	(*EchoBiDiResponse)(nil),     // 5: proto.rpc.examples.echo.v1.EchoBiDiResponse
+}
 var file_proto_rpc_examples_echo_v1_echo_proto_depIdxs = []int32{
 	0, // 0: proto.rpc.examples.echo.v1.EchoService.Echo:input_type -> proto.rpc.examples.echo.v1.EchoRequest
 	2, // 1: proto.rpc.examples.echo.v1.EchoService.EchoMultiple:input_type -> proto.rpc.examples.echo.v1.EchoMultipleRequest

@@ -24,16 +24,16 @@ import (
 )
 
 // Suppress "imported and not used" errors
-var (
-	_ codes.Code
-	_ io.Reader
-	_ status.Status
-	_ = runtime.String
-	_ = utilities.NewDoubleArray
-	_ = metadata.Join
-)
+var _ codes.Code
+var _ io.Reader
+var _ status.Status
+var _ = runtime.String
+var _ = utilities.NewDoubleArray
+var _ = metadata.Join
 
-var filter_SignalingService_Call_0 = &utilities.DoubleArray{Encoding: map[string]int{}, Base: []int(nil), Check: []int(nil)}
+var (
+	filter_SignalingService_Call_0 = &utilities.DoubleArray{Encoding: map[string]int{}, Base: []int(nil), Check: []int(nil)}
+)
 
 func request_SignalingService_Call_0(ctx context.Context, marshaler runtime.Marshaler, client SignalingServiceClient, req *http.Request, pathParams map[string]string) (SignalingService_CallClient, runtime.ServerMetadata, error) {
 	var protoReq CallRequest
@@ -56,9 +56,12 @@ func request_SignalingService_Call_0(ctx context.Context, marshaler runtime.Mars
 	}
 	metadata.HeaderMD = header
 	return stream, metadata, nil
+
 }
 
-var filter_SignalingService_CallUpdate_0 = &utilities.DoubleArray{Encoding: map[string]int{}, Base: []int(nil), Check: []int(nil)}
+var (
+	filter_SignalingService_CallUpdate_0 = &utilities.DoubleArray{Encoding: map[string]int{}, Base: []int(nil), Check: []int(nil)}
+)
 
 func request_SignalingService_CallUpdate_0(ctx context.Context, marshaler runtime.Marshaler, client SignalingServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var protoReq CallUpdateRequest
@@ -73,6 +76,7 @@ func request_SignalingService_CallUpdate_0(ctx context.Context, marshaler runtim
 
 	msg, err := client.CallUpdate(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
+
 }
 
 func local_request_SignalingService_CallUpdate_0(ctx context.Context, marshaler runtime.Marshaler, server SignalingServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -88,6 +92,7 @@ func local_request_SignalingService_CallUpdate_0(ctx context.Context, marshaler 
 
 	msg, err := server.CallUpdate(ctx, &protoReq)
 	return msg, metadata, err
+
 }
 
 func request_SignalingService_Answer_0(ctx context.Context, marshaler runtime.Marshaler, client SignalingServiceClient, req *http.Request, pathParams map[string]string) (SignalingService_AnswerClient, runtime.ServerMetadata, error) {
@@ -139,6 +144,7 @@ func request_SignalingService_OptionalWebRTCConfig_0(ctx context.Context, marsha
 
 	msg, err := client.OptionalWebRTCConfig(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
+
 }
 
 func local_request_SignalingService_OptionalWebRTCConfig_0(ctx context.Context, marshaler runtime.Marshaler, server SignalingServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -147,6 +153,7 @@ func local_request_SignalingService_OptionalWebRTCConfig_0(ctx context.Context, 
 
 	msg, err := server.OptionalWebRTCConfig(ctx, &protoReq)
 	return msg, metadata, err
+
 }
 
 // RegisterSignalingServiceHandlerServer registers the http handlers for service SignalingService to "mux".
@@ -154,6 +161,7 @@ func local_request_SignalingService_OptionalWebRTCConfig_0(ctx context.Context, 
 // StreamingRPC :currently unsupported pending https://github.com/grpc/grpc-go/issues/906.
 // Note that using this registration option will cause many gRPC library features to stop working. Consider using RegisterSignalingServiceHandlerFromEndpoint instead.
 func RegisterSignalingServiceHandlerServer(ctx context.Context, mux *runtime.ServeMux, server SignalingServiceServer) error {
+
 	mux.Handle("POST", pattern_SignalingService_Call_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		err := status.Error(codes.Unimplemented, "streaming calls are not yet supported in the in-process transport")
 		_, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
@@ -181,6 +189,7 @@ func RegisterSignalingServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_SignalingService_CallUpdate_0(ctx, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+
 	})
 
 	mux.Handle("POST", pattern_SignalingService_Answer_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -210,6 +219,7 @@ func RegisterSignalingServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_SignalingService_OptionalWebRTCConfig_0(ctx, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+
 	})
 
 	return nil
@@ -252,6 +262,7 @@ func RegisterSignalingServiceHandler(ctx context.Context, mux *runtime.ServeMux,
 // doesn't go through the normal gRPC flow (creating a gRPC client etc.) then it will be up to the passed in
 // "SignalingServiceClient" to call the correct interceptors.
 func RegisterSignalingServiceHandlerClient(ctx context.Context, mux *runtime.ServeMux, client SignalingServiceClient) error {
+
 	mux.Handle("POST", pattern_SignalingService_Call_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
@@ -269,6 +280,7 @@ func RegisterSignalingServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_SignalingService_Call_0(ctx, mux, outboundMarshaler, w, req, func() (proto.Message, error) { return resp.Recv() }, mux.GetForwardResponseOptions()...)
+
 	})
 
 	mux.Handle("PUT", pattern_SignalingService_CallUpdate_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -288,6 +300,7 @@ func RegisterSignalingServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_SignalingService_CallUpdate_0(ctx, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+
 	})
 
 	mux.Handle("POST", pattern_SignalingService_Answer_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -307,6 +320,7 @@ func RegisterSignalingServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_SignalingService_Answer_0(ctx, mux, outboundMarshaler, w, req, func() (proto.Message, error) { return resp.Recv() }, mux.GetForwardResponseOptions()...)
+
 	})
 
 	mux.Handle("GET", pattern_SignalingService_OptionalWebRTCConfig_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -326,6 +340,7 @@ func RegisterSignalingServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_SignalingService_OptionalWebRTCConfig_0(ctx, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+
 	})
 
 	return nil

@@ -7,13 +7,12 @@
 package v1
 
 import (
-	reflect "reflect"
-	sync "sync"
-
 	status "google.golang.org/genproto/googleapis/rpc/status"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	durationpb "google.golang.org/protobuf/types/known/durationpb"
+	reflect "reflect"
+	sync "sync"
 )
 
 const (
@@ -817,26 +816,23 @@ func file_proto_rpc_webrtc_v1_grpc_proto_rawDescGZIP() []byte {
 	return file_proto_rpc_webrtc_v1_grpc_proto_rawDescData
 }
 
-var (
-	file_proto_rpc_webrtc_v1_grpc_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
-	file_proto_rpc_webrtc_v1_grpc_proto_goTypes  = []interface{}{
-		(*PacketMessage)(nil),       // 0: proto.rpc.webrtc.v1.PacketMessage
-		(*Stream)(nil),              // 1: proto.rpc.webrtc.v1.Stream
-		(*Request)(nil),             // 2: proto.rpc.webrtc.v1.Request
-		(*RequestHeaders)(nil),      // 3: proto.rpc.webrtc.v1.RequestHeaders
-		(*RequestMessage)(nil),      // 4: proto.rpc.webrtc.v1.RequestMessage
-		(*Response)(nil),            // 5: proto.rpc.webrtc.v1.Response
-		(*ResponseHeaders)(nil),     // 6: proto.rpc.webrtc.v1.ResponseHeaders
-		(*ResponseMessage)(nil),     // 7: proto.rpc.webrtc.v1.ResponseMessage
-		(*ResponseTrailers)(nil),    // 8: proto.rpc.webrtc.v1.ResponseTrailers
-		(*Strings)(nil),             // 9: proto.rpc.webrtc.v1.Strings
-		(*Metadata)(nil),            // 10: proto.rpc.webrtc.v1.Metadata
-		nil,                         // 11: proto.rpc.webrtc.v1.Metadata.MdEntry
-		(*durationpb.Duration)(nil), // 12: google.protobuf.Duration
-		(*status.Status)(nil),       // 13: google.rpc.Status
-	}
-)
-
+var file_proto_rpc_webrtc_v1_grpc_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_proto_rpc_webrtc_v1_grpc_proto_goTypes = []interface{}{
+	(*PacketMessage)(nil),       // 0: proto.rpc.webrtc.v1.PacketMessage
+	(*Stream)(nil),              // 1: proto.rpc.webrtc.v1.Stream
+	(*Request)(nil),             // 2: proto.rpc.webrtc.v1.Request
+	(*RequestHeaders)(nil),      // 3: proto.rpc.webrtc.v1.RequestHeaders
+	(*RequestMessage)(nil),      // 4: proto.rpc.webrtc.v1.RequestMessage
+	(*Response)(nil),            // 5: proto.rpc.webrtc.v1.Response
+	(*ResponseHeaders)(nil),     // 6: proto.rpc.webrtc.v1.ResponseHeaders
+	(*ResponseMessage)(nil),     // 7: proto.rpc.webrtc.v1.ResponseMessage
+	(*ResponseTrailers)(nil),    // 8: proto.rpc.webrtc.v1.ResponseTrailers
+	(*Strings)(nil),             // 9: proto.rpc.webrtc.v1.Strings
+	(*Metadata)(nil),            // 10: proto.rpc.webrtc.v1.Metadata
+	nil,                         // 11: proto.rpc.webrtc.v1.Metadata.MdEntry
+	(*durationpb.Duration)(nil), // 12: google.protobuf.Duration
+	(*status.Status)(nil),       // 13: google.rpc.Status
+}
 var file_proto_rpc_webrtc_v1_grpc_proto_depIdxs = []int32{
 	1,  // 0: proto.rpc.webrtc.v1.Request.stream:type_name -> proto.rpc.webrtc.v1.Stream
 	3,  // 1: proto.rpc.webrtc.v1.Request.headers:type_name -> proto.rpc.webrtc.v1.RequestHeaders
