@@ -13,17 +13,12 @@ import (
 
 	"github.com/edaniels/golog"
 	"github.com/google/uuid"
-	"github.com/pkg/errors"
-
-	"go.viam.com/utils"
-	rpcpb "go.viam.com/utils/proto/rpc/v1"
-	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
-
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
 	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/recovery"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/improbable-eng/grpc-web/go/grpcweb"
+	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -32,6 +27,10 @@ import (
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
+
+	"go.viam.com/utils"
+	rpcpb "go.viam.com/utils/proto/rpc/v1"
+	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
 )
 
 const generatedRSAKeyBits = 4096
@@ -277,9 +276,11 @@ func newWithListener(
 		answererDialOptsCopy := make([]DialOption, len(sOpts.webrtcOpts.ExternalSignalingDialOpts))
 		copy(answererDialOptsCopy, sOpts.webrtcOpts.ExternalSignalingDialOpts)
 		if address == "" {
+			//nolint:makezero
 			answererDialOptsCopy = append(answererDialOptsCopy, WithInsecure())
 			address = grpcListener.Addr().String()
 			if !sOpts.unauthenticated {
+				//nolint:makezero
 				answererDialOptsCopy = append(answererDialOptsCopy, WithEntityCredentials(server.internalUUID, server.internalCreds))
 			}
 		}
@@ -359,6 +360,8 @@ func (ss *simpleServer) GRPCHandler() http.Handler {
 			ss.grpcServer.ServeHTTP(w, r)
 		case requestTypeGRPCWeb:
 			ss.grpcWebServer.ServeHTTP(w, r)
+		case requestTypeNone:
+			fallthrough
 		default:
 			w.WriteHeader(http.StatusBadRequest)
 		}
@@ -375,6 +378,8 @@ func (ss *simpleServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		ss.grpcServer.ServeHTTP(w, r)
 	case requestTypeGRPCWeb:
 		ss.grpcWebServer.ServeHTTP(w, r)
+	case requestTypeNone:
+		fallthrough
 	default:
 		ss.grpcGatewayHandler.ServeHTTP(w, r)
 	}
@@ -445,7 +450,7 @@ func (ss *simpleServer) SignalingHost() string {
 	return ss.signalingHost
 }
 
-func (ss *simpleServer) Stop() (err error) {
+func (ss *simpleServer) Stop() error {
 	ss.mu.Lock()
 	if ss.stopped {
 		ss.mu.Unlock()
@@ -453,6 +458,7 @@ func (ss *simpleServer) Stop() (err error) {
 	}
 	ss.stopped = true
 	ss.mu.Unlock()
+	var err error
 	if ss.signalingCallQueue != nil {
 		err = multierr.Combine(err, ss.signalingCallQueue.Close())
 	}
@@ -482,7 +488,7 @@ func (ss *simpleServer) Stop() (err error) {
 	err = multierr.Combine(err, ss.httpServer.Shutdown(context.Background()))
 	ss.logger.Info("HTTP server shut down")
 	ss.logger.Info("stopped cleanly")
-	return nil
+	return err
 }
 
 // A RegisterServiceHandlerFromEndpointFunc is a means to have a service attach itself to a gRPC gateway mux.

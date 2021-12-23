@@ -171,7 +171,7 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts *dialOptions, log
 	if dOpts.insecure {
 		dialOpts = append(dialOpts, grpc.WithInsecure())
 	} else {
-		dialOpts = append(dialOpts, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{})))
+		dialOpts = append(dialOpts, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12})))
 	}
 
 	grpcLogger := logger.Desugar()
@@ -272,10 +272,11 @@ type perRPCJWTCredentials struct {
 	accessToken string
 }
 
-// TODO(https://github.com/viamrobotics/goutils/issues/13): handle expiration
+// TODO(https://github.com/viamrobotics/goutils/issues/13): handle expiration.
 func (creds *perRPCJWTCredentials) GetRequestMetadata(ctx context.Context, uri ...string) (map[string]string, error) {
 	for _, uriVal := range uri {
 		if strings.HasSuffix(uriVal, "/proto.rpc.v1.AuthService") {
+			//nolint:nilnil
 			return nil, nil
 		}
 	}

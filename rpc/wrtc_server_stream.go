@@ -5,27 +5,24 @@ import (
 	"fmt"
 	"io"
 
-	"go.uber.org/multierr"
-
-	"go.viam.com/utils"
-	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
-
 	"github.com/edaniels/golog"
 	"github.com/pkg/errors"
+	"go.uber.org/multierr"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
+
+	"go.viam.com/utils"
+	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
 )
 
 var _ = grpc.ServerStream(&webrtcServerStream{})
 
-var (
-	// ErrIllegalHeaderWrite indicates that setting header is illegal because of
-	// the state of the stream.
-	ErrIllegalHeaderWrite = errors.New("transport: the stream is done or WriteHeader was already called")
-)
+// ErrIllegalHeaderWrite indicates that setting header is illegal because of
+// the state of the stream.
+var ErrIllegalHeaderWrite = errors.New("transport: the stream is done or WriteHeader was already called")
 
 // A webrtcServerStream is the high level gRPC streaming interface used for handling both
 // unary and streaming call responses.
@@ -79,8 +76,7 @@ func (s *webrtcServerStream) SetHeader(header metadata.MD) error {
 // The provided md and headers set by SetHeader() will be sent.
 // It fails if called multiple times.
 func (s *webrtcServerStream) SendHeader(header metadata.MD) error {
-	err := s.SetHeader(header)
-	if err != nil {
+	if err := s.SetHeader(header); err != nil {
 		return err
 	}
 	return s.writeHeaders()

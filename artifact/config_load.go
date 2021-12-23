@@ -71,6 +71,7 @@ func searchConfig() (string, error) {
 // searches for an adjacent tree file (not required to exist).
 func LoadConfigFromFile(path string) (*Config, error) {
 	pathDir := filepath.Dir(path)
+	//nolint:gosec
 	configFile, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -87,7 +88,8 @@ func LoadConfigFromFile(path string) (*Config, error) {
 	treePath := filepath.Join(pathDir, TreeName)
 	config.configDir = pathDir
 	config.commitFn = func() error {
-		newTreeFile, err := os.OpenFile(treePath, os.O_RDWR|os.O_CREATE, 0755)
+		//nolint:gosec
+		newTreeFile, err := os.OpenFile(treePath, os.O_RDWR|os.O_CREATE, 0o600)
 		if err != nil {
 			return err
 		}
@@ -100,6 +102,7 @@ func LoadConfigFromFile(path string) (*Config, error) {
 		return enc.Encode(config.tree)
 	}
 
+	//nolint:gosec
 	treeFile, err := os.Open(treePath)
 	if err == nil {
 		defer utils.UncheckedErrorFunc(treeFile.Close)

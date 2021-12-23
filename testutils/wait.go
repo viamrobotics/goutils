@@ -10,6 +10,7 @@ import (
 // test code be able to be signaled that the assertion is ready to be checked.
 // That is, if waiting with respect time is critical, it's okay to use this.
 func WaitForAssertion(t *testing.T, assertion func(tb testing.TB)) {
+	t.Helper()
 	var attempts int
 	var checkOk bool
 	maxAttempts := 100
@@ -32,7 +33,6 @@ type testingTBNoFail struct {
 }
 
 func (t *testingTBNoFail) Cleanup(func()) {
-
 }
 
 func (t *testingTBNoFail) Error(args ...interface{}) {
@@ -64,15 +64,12 @@ func (t *testingTBNoFail) Fatalf(format string, args ...interface{}) {
 }
 
 func (t *testingTBNoFail) Helper() {
-
 }
 
 func (t *testingTBNoFail) Log(args ...interface{}) {
-
 }
 
 func (t *testingTBNoFail) Logf(format string, args ...interface{}) {
-
 }
 
 func (t *testingTBNoFail) Name() string {
@@ -80,15 +77,12 @@ func (t *testingTBNoFail) Name() string {
 }
 
 func (t *testingTBNoFail) Skip(args ...interface{}) {
-
 }
 
 func (t *testingTBNoFail) SkipNow() {
-
 }
 
 func (t *testingTBNoFail) Skipf(format string, args ...interface{}) {
-
 }
 
 func (t *testingTBNoFail) Skipped() bool {

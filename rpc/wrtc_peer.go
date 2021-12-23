@@ -17,16 +17,14 @@ import (
 
 const webrtcConnectionTimeout = 20 * time.Second
 
-var (
-	// DefaultICEServers is the default set of ICE servers to use for WebRTC session negotiation.
-	// There is no guarantee that the defaults here will remain usable.
-	DefaultICEServers = []webrtc.ICEServer{
-		// feel free to use your own ICE servers
-		{
-			URLs: []string{"stun:global.stun.twilio.com:3478?transport=udp"},
-		},
-	}
-)
+// DefaultICEServers is the default set of ICE servers to use for WebRTC session negotiation.
+// There is no guarantee that the defaults here will remain usable.
+var DefaultICEServers = []webrtc.ICEServer{
+	// feel free to use your own ICE servers
+	{
+		URLs: []string{"stun:global.stun.twilio.com:3478?transport=udp"},
+	},
+}
 
 // DefaultWebRTCConfiguration is the standard configuration used for WebRTC peers.
 var DefaultWebRTCConfiguration = webrtc.Configuration{
@@ -276,6 +274,8 @@ func getWebRTCPeerConnectionStats(peerConnection *webrtc.PeerConnection) webrtcP
 			candidateType = "peer-reflexive"
 		case webrtc.ICECandidateTypeSrflx:
 			candidateType = "server-reflexive"
+		case webrtc.ICECandidateTypeHost:
+			candidateType = "host"
 		}
 		if candidateType == "" {
 			continue

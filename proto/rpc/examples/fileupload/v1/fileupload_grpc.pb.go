@@ -74,8 +74,7 @@ type FileUploadServiceServer interface {
 }
 
 // UnimplementedFileUploadServiceServer must be embedded to have forward compatible implementations.
-type UnimplementedFileUploadServiceServer struct {
-}
+type UnimplementedFileUploadServiceServer struct{}
 
 func (UnimplementedFileUploadServiceServer) UploadFile(FileUploadService_UploadFileServer) error {
 	return status.Errorf(codes.Unimplemented, "method UploadFile not implemented")

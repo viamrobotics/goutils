@@ -86,7 +86,7 @@ func (ch *webrtcClientChannel) Invoke(
 	reply interface{},
 	opts ...grpc.CallOption,
 ) error {
-	fields := newClientLoggerFields(ctx, method)
+	fields := newClientLoggerFields(method)
 	startTime := time.Now()
 	err := ch.invoke(ctx, method, args, reply)
 	newCtx := ctxzap.ToContext(ctx, ch.webrtcBaseChannel.logger.Desugar().With(fields...))
@@ -133,15 +133,15 @@ func (ch *webrtcClientChannel) NewStream(
 	method string,
 	opts ...grpc.CallOption,
 ) (grpc.ClientStream, error) {
-	fields := newClientLoggerFields(ctx, method)
+	fields := newClientLoggerFields(method)
 	startTime := time.Now()
-	clientStream, err := ch.newClientStream(ctx, desc, method)
+	clientStream, err := ch.newClientStream(ctx, method)
 	newCtx := ctxzap.ToContext(ctx, ch.webrtcBaseChannel.logger.Desugar().With(fields...))
 	logFinalClientLine(newCtx, startTime, err, "finished client streaming call")
 	return clientStream, err
 }
 
-func (ch *webrtcClientChannel) newClientStream(ctx context.Context, desc *grpc.StreamDesc, method string) (grpc.ClientStream, error) {
+func (ch *webrtcClientChannel) newClientStream(ctx context.Context, method string) (grpc.ClientStream, error) {
 	clientStream, err := ch.newStream(ctx, ch.nextStreamID())
 	if err != nil {
 		return nil, err
@@ -269,7 +269,7 @@ var (
 	systemField = zap.String("system", "grpc")
 )
 
-func newClientLoggerFields(ctx context.Context, fullMethodString string) []zapcore.Field {
+func newClientLoggerFields(fullMethodString string) []zapcore.Field {
 	service := path.Dir(fullMethodString)[1:]
 	method := path.Base(fullMethodString)
 	return []zapcore.Field{

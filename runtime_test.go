@@ -6,13 +6,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pkg/errors"
-
 	"github.com/edaniels/golog"
+	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 	"go.viam.com/test"
 )
 
+//nolint:dupl
 func TestContextualMain(t *testing.T) {
 	var captured []interface{}
 	fatal = func(logger golog.Logger, args ...interface{}) {
@@ -38,6 +38,7 @@ func TestContextualMain(t *testing.T) {
 	test.That(t, captured, test.ShouldResemble, []interface{}{err1})
 }
 
+//nolint:dupl
 func TestContextualMainQuit(t *testing.T) {
 	var captured []interface{}
 	fatal = func(logger golog.Logger, args ...interface{}) {

@@ -1521,31 +1521,34 @@ func file_proto_rpc_webrtc_v1_signaling_proto_rawDescGZIP() []byte {
 	return file_proto_rpc_webrtc_v1_signaling_proto_rawDescData
 }
 
-var file_proto_rpc_webrtc_v1_signaling_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
-var file_proto_rpc_webrtc_v1_signaling_proto_goTypes = []interface{}{
-	(*ICECandidate)(nil),                 // 0: proto.rpc.webrtc.v1.ICECandidate
-	(*CallRequest)(nil),                  // 1: proto.rpc.webrtc.v1.CallRequest
-	(*CallResponseInitStage)(nil),        // 2: proto.rpc.webrtc.v1.CallResponseInitStage
-	(*CallResponseUpdateStage)(nil),      // 3: proto.rpc.webrtc.v1.CallResponseUpdateStage
-	(*CallResponse)(nil),                 // 4: proto.rpc.webrtc.v1.CallResponse
-	(*CallUpdateRequest)(nil),            // 5: proto.rpc.webrtc.v1.CallUpdateRequest
-	(*CallUpdateResponse)(nil),           // 6: proto.rpc.webrtc.v1.CallUpdateResponse
-	(*ICEServer)(nil),                    // 7: proto.rpc.webrtc.v1.ICEServer
-	(*WebRTCConfig)(nil),                 // 8: proto.rpc.webrtc.v1.WebRTCConfig
-	(*AnswerRequestInitStage)(nil),       // 9: proto.rpc.webrtc.v1.AnswerRequestInitStage
-	(*AnswerRequestUpdateStage)(nil),     // 10: proto.rpc.webrtc.v1.AnswerRequestUpdateStage
-	(*AnswerRequestDoneStage)(nil),       // 11: proto.rpc.webrtc.v1.AnswerRequestDoneStage
-	(*AnswerRequestErrorStage)(nil),      // 12: proto.rpc.webrtc.v1.AnswerRequestErrorStage
-	(*AnswerRequest)(nil),                // 13: proto.rpc.webrtc.v1.AnswerRequest
-	(*AnswerResponseInitStage)(nil),      // 14: proto.rpc.webrtc.v1.AnswerResponseInitStage
-	(*AnswerResponseUpdateStage)(nil),    // 15: proto.rpc.webrtc.v1.AnswerResponseUpdateStage
-	(*AnswerResponseDoneStage)(nil),      // 16: proto.rpc.webrtc.v1.AnswerResponseDoneStage
-	(*AnswerResponseErrorStage)(nil),     // 17: proto.rpc.webrtc.v1.AnswerResponseErrorStage
-	(*AnswerResponse)(nil),               // 18: proto.rpc.webrtc.v1.AnswerResponse
-	(*OptionalWebRTCConfigRequest)(nil),  // 19: proto.rpc.webrtc.v1.OptionalWebRTCConfigRequest
-	(*OptionalWebRTCConfigResponse)(nil), // 20: proto.rpc.webrtc.v1.OptionalWebRTCConfigResponse
-	(*status.Status)(nil),                // 21: google.rpc.Status
-}
+var (
+	file_proto_rpc_webrtc_v1_signaling_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
+	file_proto_rpc_webrtc_v1_signaling_proto_goTypes  = []interface{}{
+		(*ICECandidate)(nil),                 // 0: proto.rpc.webrtc.v1.ICECandidate
+		(*CallRequest)(nil),                  // 1: proto.rpc.webrtc.v1.CallRequest
+		(*CallResponseInitStage)(nil),        // 2: proto.rpc.webrtc.v1.CallResponseInitStage
+		(*CallResponseUpdateStage)(nil),      // 3: proto.rpc.webrtc.v1.CallResponseUpdateStage
+		(*CallResponse)(nil),                 // 4: proto.rpc.webrtc.v1.CallResponse
+		(*CallUpdateRequest)(nil),            // 5: proto.rpc.webrtc.v1.CallUpdateRequest
+		(*CallUpdateResponse)(nil),           // 6: proto.rpc.webrtc.v1.CallUpdateResponse
+		(*ICEServer)(nil),                    // 7: proto.rpc.webrtc.v1.ICEServer
+		(*WebRTCConfig)(nil),                 // 8: proto.rpc.webrtc.v1.WebRTCConfig
+		(*AnswerRequestInitStage)(nil),       // 9: proto.rpc.webrtc.v1.AnswerRequestInitStage
+		(*AnswerRequestUpdateStage)(nil),     // 10: proto.rpc.webrtc.v1.AnswerRequestUpdateStage
+		(*AnswerRequestDoneStage)(nil),       // 11: proto.rpc.webrtc.v1.AnswerRequestDoneStage
+		(*AnswerRequestErrorStage)(nil),      // 12: proto.rpc.webrtc.v1.AnswerRequestErrorStage
+		(*AnswerRequest)(nil),                // 13: proto.rpc.webrtc.v1.AnswerRequest
+		(*AnswerResponseInitStage)(nil),      // 14: proto.rpc.webrtc.v1.AnswerResponseInitStage
+		(*AnswerResponseUpdateStage)(nil),    // 15: proto.rpc.webrtc.v1.AnswerResponseUpdateStage
+		(*AnswerResponseDoneStage)(nil),      // 16: proto.rpc.webrtc.v1.AnswerResponseDoneStage
+		(*AnswerResponseErrorStage)(nil),     // 17: proto.rpc.webrtc.v1.AnswerResponseErrorStage
+		(*AnswerResponse)(nil),               // 18: proto.rpc.webrtc.v1.AnswerResponse
+		(*OptionalWebRTCConfigRequest)(nil),  // 19: proto.rpc.webrtc.v1.OptionalWebRTCConfigRequest
+		(*OptionalWebRTCConfigResponse)(nil), // 20: proto.rpc.webrtc.v1.OptionalWebRTCConfigResponse
+		(*status.Status)(nil),                // 21: google.rpc.Status
+	}
+)
+
 var file_proto_rpc_webrtc_v1_signaling_proto_depIdxs = []int32{
 	0,  // 0: proto.rpc.webrtc.v1.CallResponseUpdateStage.candidate:type_name -> proto.rpc.webrtc.v1.ICECandidate
 	2,  // 1: proto.rpc.webrtc.v1.CallResponse.init:type_name -> proto.rpc.webrtc.v1.CallResponseInitStage

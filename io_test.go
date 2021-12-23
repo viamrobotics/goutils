@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/pkg/errors"
-
 	"go.viam.com/test"
 )
 
@@ -52,8 +51,7 @@ func TestReadBytes(t *testing.T) {
 	test.That(t, err, test.ShouldBeError, context.Canceled)
 }
 
-type dummyReader struct {
-}
+type dummyReader struct{}
 
 func (r *dummyReader) Read(buf []byte) (int, error) {
 	buf[0] = 0x5

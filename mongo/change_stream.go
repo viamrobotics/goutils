@@ -27,7 +27,7 @@ type ChangeEvent struct {
 // ChangeEventOperationType is the type of operation that occurred.
 type ChangeEventOperationType string
 
-// ChangeEvent operation types
+// ChangeEvent operation types.
 const (
 	ChangeEventOperationTypeInsert       = ChangeEventOperationType("insert")
 	ChangeEventOperationTypeDelete       = ChangeEventOperationType("delete")

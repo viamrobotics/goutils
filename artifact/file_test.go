@@ -24,14 +24,14 @@ func TestPath(t *testing.T) {
 		MustPath("to/somewhere")
 	}, test.ShouldPanic)
 
-	test.That(t, os.MkdirAll(filepath.Join(dir, DotDir), 0755), test.ShouldBeNil)
+	test.That(t, os.MkdirAll(filepath.Join(dir, DotDir), 0o755), test.ShouldBeNil)
 	confPath := filepath.Join(dir, DotDir, ConfigName)
 	test.That(t, ioutil.WriteFile(confPath, []byte(`{
 	"cache": "somedir",
 	"root": "someotherdir",
 	"source_pull_size_limit": 5,
 	"ignore": ["one", "two"]
-}`), 0644), test.ShouldBeNil)
+}`), 0o644), test.ShouldBeNil)
 	found, err := searchConfig()
 	test.That(t, err, test.ShouldBeNil)
 
@@ -50,8 +50,8 @@ func TestPath(t *testing.T) {
 	test.That(t, err, test.ShouldBeNil)
 
 	toSomePath := filepath.Join(rootDir, "to/somewhere")
-	test.That(t, os.MkdirAll(filepath.Dir(toSomePath), 0755), test.ShouldBeNil)
-	test.That(t, ioutil.WriteFile(toSomePath, []byte("hello world"), 0644), test.ShouldBeNil)
+	test.That(t, os.MkdirAll(filepath.Dir(toSomePath), 0o755), test.ShouldBeNil)
+	test.That(t, ioutil.WriteFile(toSomePath, []byte("hello world"), 0o644), test.ShouldBeNil)
 	test.That(t, cache.WriteThroughUser(), test.ShouldBeNil)
 
 	resolved, err := Path("to/somewhere")
@@ -66,9 +66,9 @@ func TestNewPath(t *testing.T) {
 	dir, undo := TestSetupGlobalCache(t)
 	defer undo()
 
-	test.That(t, os.MkdirAll(filepath.Join(dir, DotDir), 0755), test.ShouldBeNil)
+	test.That(t, os.MkdirAll(filepath.Join(dir, DotDir), 0o755), test.ShouldBeNil)
 	confPath := filepath.Join(dir, DotDir, ConfigName)
-	test.That(t, ioutil.WriteFile(confPath, []byte(confRaw), 0644), test.ShouldBeNil)
+	test.That(t, ioutil.WriteFile(confPath, []byte(confRaw), 0o644), test.ShouldBeNil)
 	found, err := searchConfig()
 	test.That(t, err, test.ShouldBeNil)
 
@@ -92,8 +92,8 @@ func TestEmplaceFile(t *testing.T) {
 	unknownHash := "foo"
 	file1Path := filepath.Join(storeDir, "file1")
 	err = emplaceFile(store, unknownHash, file1Path)
-	test.That(t, IsErrArtifactNotFound(err), test.ShouldBeTrue)
-	test.That(t, err, test.ShouldResemble, &errArtifactNotFound{hash: &unknownHash})
+	test.That(t, IsNotFoundError(err), test.ShouldBeTrue)
+	test.That(t, err, test.ShouldResemble, &NotFoundError{hash: &unknownHash})
 	_, err = os.Stat(file1Path)
 	test.That(t, err, test.ShouldNotBeNil)
 

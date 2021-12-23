@@ -11,9 +11,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/pkg/errors"
-
 	"github.com/edaniels/golog"
+	"github.com/pkg/errors"
 
 	"go.viam.com/utils"
 )
@@ -95,6 +94,7 @@ func (p *managedProcess) Start(ctx context.Context) error {
 	if p.oneShot {
 		// Here we use the context since we block on waiting for the command
 		// to finish running.
+		//nolint:gosec
 		cmd := exec.CommandContext(ctx, p.name, p.args...)
 		cmd.Dir = p.cwd
 		var runErr error
@@ -117,6 +117,7 @@ func (p *managedProcess) Start(ctx context.Context) error {
 
 	// This is fully managed so we will control when to kill the process and not
 	// use the CommandContext variant.
+	//nolint:gosec
 	cmd := exec.Command(p.name, p.args...)
 	cmd.Dir = p.cwd
 
@@ -142,6 +143,7 @@ func (p *managedProcess) Start(ctx context.Context) error {
 
 	// It's okay to not wait for management to start.
 	utils.ManagedGo(func() {
+		//nolint:contextcheck
 		p.manage(stdOut, stdErr)
 	}, nil)
 	return nil

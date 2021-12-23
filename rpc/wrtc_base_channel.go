@@ -79,6 +79,9 @@ func newBaseChannel(
 				peerDoneOnce = true
 				onPeerDone()
 			}
+		case webrtc.ICEConnectionStateChecking, webrtc.ICEConnectionStateCompleted,
+			webrtc.ICEConnectionStateConnected, webrtc.ICEConnectionStateNew:
+			fallthrough
 		default:
 			ch.activeBackgroundWorkers.Add(1)
 			utils.PanicCapturingGo(func() {

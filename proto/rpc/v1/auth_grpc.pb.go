@@ -54,8 +54,7 @@ type AuthServiceServer interface {
 }
 
 // UnimplementedAuthServiceServer must be embedded to have forward compatible implementations.
-type UnimplementedAuthServiceServer struct {
-}
+type UnimplementedAuthServiceServer struct{}
 
 func (UnimplementedAuthServiceServer) Authenticate(context.Context, *AuthenticateRequest) (*AuthenticateResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Authenticate not implemented")

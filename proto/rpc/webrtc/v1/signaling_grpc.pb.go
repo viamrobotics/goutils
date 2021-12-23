@@ -146,18 +146,20 @@ type SignalingServiceServer interface {
 }
 
 // UnimplementedSignalingServiceServer must be embedded to have forward compatible implementations.
-type UnimplementedSignalingServiceServer struct {
-}
+type UnimplementedSignalingServiceServer struct{}
 
 func (UnimplementedSignalingServiceServer) Call(*CallRequest, SignalingService_CallServer) error {
 	return status.Errorf(codes.Unimplemented, "method Call not implemented")
 }
+
 func (UnimplementedSignalingServiceServer) CallUpdate(context.Context, *CallUpdateRequest) (*CallUpdateResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CallUpdate not implemented")
 }
+
 func (UnimplementedSignalingServiceServer) Answer(SignalingService_AnswerServer) error {
 	return status.Errorf(codes.Unimplemented, "method Answer not implemented")
 }
+
 func (UnimplementedSignalingServiceServer) OptionalWebRTCConfig(context.Context, *OptionalWebRTCConfigRequest) (*OptionalWebRTCConfigResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method OptionalWebRTCConfig not implemented")
 }

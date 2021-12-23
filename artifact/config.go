@@ -68,7 +68,7 @@ func (c *Config) Lookup(path string) (*TreeNode, error) {
 	parts := strings.Split(path, "/")
 	node, ok := c.tree.lookup(parts)
 	if !ok {
-		return nil, NewErrArtifactNotFoundPath(path)
+		return nil, NewArtifactNotFoundPathError(path)
 	}
 	return node, nil
 }

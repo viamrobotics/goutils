@@ -115,15 +115,16 @@ type EchoServiceServer interface {
 }
 
 // UnimplementedEchoServiceServer must be embedded to have forward compatible implementations.
-type UnimplementedEchoServiceServer struct {
-}
+type UnimplementedEchoServiceServer struct{}
 
 func (UnimplementedEchoServiceServer) Echo(context.Context, *EchoRequest) (*EchoResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Echo not implemented")
 }
+
 func (UnimplementedEchoServiceServer) EchoMultiple(*EchoMultipleRequest, EchoService_EchoMultipleServer) error {
 	return status.Errorf(codes.Unimplemented, "method EchoMultiple not implemented")
 }
+
 func (UnimplementedEchoServiceServer) EchoBiDi(EchoService_EchoBiDiServer) error {
 	return status.Errorf(codes.Unimplemented, "method EchoBiDi not implemented")
 }

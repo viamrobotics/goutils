@@ -44,6 +44,7 @@ func extendWebRTCConfig(original *webrtc.Configuration, optional *webrtcpb.WebRT
 		iceServers := make([]webrtc.ICEServer, len(original.ICEServers)+len(optional.AdditionalIceServers))
 		copy(iceServers, original.ICEServers)
 		for _, server := range optional.AdditionalIceServers {
+			//nolint:makezero
 			iceServers = append(iceServers, webrtc.ICEServer{
 				URLs:       server.Urls,
 				Username:   server.Username,

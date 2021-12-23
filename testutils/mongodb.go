@@ -88,7 +88,7 @@ func cleanupMongoDBNamespaces() {
 var (
 	cachedBackingMongoDBClient          *mongo.Client
 	cachedBackingMongoDBClientConnected bool
-	cachedBackingMongoDBClientErr       error
+	errCachedBackingMongoDBClient       error
 )
 
 func backingMongoDBClient() (*mongo.Client, error) {
@@ -97,8 +97,8 @@ func backingMongoDBClient() (*mongo.Client, error) {
 	if cachedBackingMongoDBClient != nil && cachedBackingMongoDBClientConnected {
 		return cachedBackingMongoDBClient, nil
 	}
-	if cachedBackingMongoDBClientErr != nil {
-		return nil, cachedBackingMongoDBClientErr
+	if errCachedBackingMongoDBClient != nil {
+		return nil, errCachedBackingMongoDBClient
 	}
 	mongoURI, err := backingMongoDBURI()
 	if err != nil {
@@ -108,29 +108,30 @@ func backingMongoDBClient() (*mongo.Client, error) {
 	defer cancel()
 	client, err := mongo.NewClient(options.Client().ApplyURI(mongoURI))
 	if err != nil {
-		cachedBackingMongoDBClientErr = err
-		return nil, cachedBackingMongoDBClientErr
+		errCachedBackingMongoDBClient = err
+		return nil, errCachedBackingMongoDBClient
 	}
 	if err := client.Connect(ctx); err != nil {
-		cachedBackingMongoDBClientErr = err
-		return nil, cachedBackingMongoDBClientErr
+		errCachedBackingMongoDBClient = err
+		return nil, errCachedBackingMongoDBClient
 	}
 	if err := client.Ping(ctx, readpref.Primary()); err != nil {
-		cachedBackingMongoDBClientErr = multierr.Combine(err, client.Disconnect(ctx))
-		return nil, cachedBackingMongoDBClientErr
+		errCachedBackingMongoDBClient = multierr.Combine(err, client.Disconnect(ctx))
+		return nil, errCachedBackingMongoDBClient
 	}
 	if result := client.Database("admin").RunCommand(ctx, bson.D{{"replSetGetStatus", 1}}); result.Err() != nil {
-		cachedBackingMongoDBClientErr = multierr.Combine(result.Err(), client.Disconnect(ctx))
-		return nil, cachedBackingMongoDBClientErr
+		errCachedBackingMongoDBClient = multierr.Combine(result.Err(), client.Disconnect(ctx))
+		return nil, errCachedBackingMongoDBClient
 	}
 	cachedBackingMongoDBClient = client
 	cachedBackingMongoDBClientConnected = true
-	cachedBackingMongoDBClientErr = nil
+	errCachedBackingMongoDBClient = nil
 	return client, nil
 }
 
 // BackingMongoDBClient returns a backing MongoDB client to use.
 func BackingMongoDBClient(t *testing.T) *mongo.Client {
+	t.Helper()
 	client, err := backingMongoDBClient()
 	if err != nil {
 		skipWithError(t, err)

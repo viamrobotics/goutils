@@ -6,11 +6,11 @@ import (
 	"io"
 	"sync"
 
-	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
-
 	"github.com/edaniels/golog"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/proto"
+
+	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
 )
 
 type webrtcBaseStream struct {

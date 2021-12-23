@@ -37,33 +37,33 @@ func NewStore(config StoreConfig) (Store, error) {
 	}
 }
 
-// NewErrArtifactNotFoundHash returns an error for when an artifact
+// NewArtifactNotFoundHashError returns an error for when an artifact
 // is not found by its hash.
-func NewErrArtifactNotFoundHash(hash string) error {
-	return &errArtifactNotFound{hash: &hash}
+func NewArtifactNotFoundHashError(hash string) error {
+	return &NotFoundError{hash: &hash}
 }
 
-// NewErrArtifactNotFoundPath returns an error for when an artifact
+// NewArtifactNotFoundPathError returns an error for when an artifact
 // is not found by its path.
-func NewErrArtifactNotFoundPath(path string) error {
-	return &errArtifactNotFound{path: &path}
+func NewArtifactNotFoundPathError(path string) error {
+	return &NotFoundError{path: &path}
 }
 
-// IsErrArtifactNotFound returns if the given error is any kind of
+// IsNotFoundError returns if the given error is any kind of
 // artifact not found error.
-func IsErrArtifactNotFound(err error) bool {
-	var errArt *errArtifactNotFound
+func IsNotFoundError(err error) bool {
+	var errArt *NotFoundError
 	return errors.As(err, &errArt)
 }
 
-// An errArtifactNotFound is used when an artifact can not be found.
-type errArtifactNotFound struct {
+// An NotFoundError is used when an artifact can not be found.
+type NotFoundError struct {
 	path *string
 	hash *string
 }
 
 // Error returns an error specific to the way the artifact was searched for.
-func (e *errArtifactNotFound) Error() string {
+func (e *NotFoundError) Error() string {
 	if e.path != nil {
 		return fmt.Sprintf("artifact not found; path=%q", *e.path)
 	}

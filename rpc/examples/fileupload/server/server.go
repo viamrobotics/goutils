@@ -1,3 +1,4 @@
+// Package server implement a file upload server.
 package server
 
 import (

@@ -119,7 +119,6 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 		}); err != nil {
 			return err
 		}
-
 	}
 }
 

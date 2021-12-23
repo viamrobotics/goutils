@@ -201,11 +201,14 @@ func file_proto_rpc_examples_fileupload_v1_fileupload_proto_rawDescGZIP() []byte
 	return file_proto_rpc_examples_fileupload_v1_fileupload_proto_rawDescData
 }
 
-var file_proto_rpc_examples_fileupload_v1_fileupload_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
-var file_proto_rpc_examples_fileupload_v1_fileupload_proto_goTypes = []interface{}{
-	(*UploadFileRequest)(nil),  // 0: proto.rpc.examples.fileupload.v1.UploadFileRequest
-	(*UploadFileResponse)(nil), // 1: proto.rpc.examples.fileupload.v1.UploadFileResponse
-}
+var (
+	file_proto_rpc_examples_fileupload_v1_fileupload_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+	file_proto_rpc_examples_fileupload_v1_fileupload_proto_goTypes  = []interface{}{
+		(*UploadFileRequest)(nil),  // 0: proto.rpc.examples.fileupload.v1.UploadFileRequest
+		(*UploadFileResponse)(nil), // 1: proto.rpc.examples.fileupload.v1.UploadFileResponse
+	}
+)
+
 var file_proto_rpc_examples_fileupload_v1_fileupload_proto_depIdxs = []int32{
 	0, // 0: proto.rpc.examples.fileupload.v1.FileUploadService.UploadFile:input_type -> proto.rpc.examples.fileupload.v1.UploadFileRequest
 	1, // 1: proto.rpc.examples.fileupload.v1.FileUploadService.UploadFile:output_type -> proto.rpc.examples.fileupload.v1.UploadFileResponse

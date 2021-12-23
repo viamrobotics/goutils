@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"testing"
 	"time"
@@ -18,16 +19,11 @@ func TestSession1(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	s, err := sm.Get(r, false)
-	if err != nil {
+	if _, err := sm.Get(r, false); !errors.Is(err, errNoSession) {
 		t.Fatal(err)
 	}
 
-	if s != nil {
-		t.Fatal("wtf")
-	}
-
-	s, err = sm.Get(r, true)
+	s, err := sm.Get(r, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +41,6 @@ func TestSession1(t *testing.T) {
 // ----
 
 func TestMongoStore(t *testing.T) {
-
 	connectCtx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 
@@ -85,6 +80,9 @@ func TestMongoStore(t *testing.T) {
 		t.Fatal("b wrong")
 	}
 
+	if _, err := store.Get(ctx, "something"); !errors.Is(err, errNoSession) {
+		t.Fatal(err)
+	}
 }
 
 // ----
@@ -102,7 +100,6 @@ func (dw *DummyWriter) Header() http.Header {
 
 func (dw *DummyWriter) Write(b []byte) (int, error) {
 	return len(b), nil
-
 }
 
 func (dw *DummyWriter) WriteHeader(code int) {

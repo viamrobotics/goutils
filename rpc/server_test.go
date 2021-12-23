@@ -11,15 +11,14 @@ import (
 	"testing"
 
 	"github.com/edaniels/golog"
-
-	pb "go.viam.com/utils/proto/rpc/examples/echo/v1"
-	rpcpb "go.viam.com/utils/proto/rpc/v1"
-	echoserver "go.viam.com/utils/rpc/examples/echo/server"
-
 	"go.viam.com/test"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+
+	pb "go.viam.com/utils/proto/rpc/examples/echo/v1"
+	rpcpb "go.viam.com/utils/proto/rpc/v1"
+	echoserver "go.viam.com/utils/rpc/examples/echo/server"
 )
 
 func TestServer(t *testing.T) {
@@ -176,6 +175,7 @@ func TestServer(t *testing.T) {
 				req.Header.Add("authorization", bearer)
 				httpResp3, err = http.DefaultClient.Do(req)
 				test.That(t, err, test.ShouldBeNil)
+				defer httpResp3.Body.Close()
 			} else {
 				test.That(t, httpResp3.StatusCode, test.ShouldEqual, 200)
 			}

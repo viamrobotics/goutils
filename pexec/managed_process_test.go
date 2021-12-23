@@ -7,10 +7,9 @@ import (
 	"os"
 	"testing"
 
-	"github.com/pkg/errors"
-
 	"github.com/edaniels/golog"
 	"github.com/fsnotify/fsnotify"
+	"github.com/pkg/errors"
 	"go.viam.com/test"
 )
 

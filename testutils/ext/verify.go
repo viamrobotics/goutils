@@ -20,6 +20,7 @@ func VerifyTestMain(m goleak.TestingM) {
 	if err != nil {
 		golog.Global.Fatalw("error opening artifact", "error", err)
 	}
+	//nolint:ifshort
 	exitCode := m.Run()
 	testutils.Teardown()
 	if err := cache.Close(); err != nil {

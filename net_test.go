@@ -58,6 +58,7 @@ func TestNewPossiblySecureTCPListenerFromFile(t *testing.T) {
 
 		resp, err := http.DefaultClient.Get(fmt.Sprintf("http://%s", listener.Addr().String()))
 		test.That(t, err, test.ShouldBeNil)
+		defer resp.Body.Close()
 		test.That(t, resp.StatusCode, test.ShouldEqual, http.StatusOK)
 
 		test.That(t, httpServer.Shutdown(context.Background()), test.ShouldBeNil)
@@ -92,6 +93,7 @@ func TestNewPossiblySecureTCPListenerFromFile(t *testing.T) {
 		client := &http.Client{Transport: customTransport}
 		resp, err := client.Get(fmt.Sprintf("https://%s", listener.Addr().String()))
 		test.That(t, err, test.ShouldBeNil)
+		defer resp.Body.Close()
 		test.That(t, resp.StatusCode, test.ShouldEqual, http.StatusOK)
 
 		test.That(t, httpServer.Shutdown(context.Background()), test.ShouldBeNil)

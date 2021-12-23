@@ -1,3 +1,4 @@
+// Package secrets helps manage application runtime secrets.
 package secrets
 
 import (

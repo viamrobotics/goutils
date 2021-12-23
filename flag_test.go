@@ -149,7 +149,7 @@ func TestParseFlags(t *testing.T) {
 
 type parseStruct1 struct {
 	A string
-	b string //nolint
+	b string
 }
 
 type parseStruct2 struct {

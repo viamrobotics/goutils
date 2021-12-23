@@ -6,9 +6,8 @@ import (
 	"testing"
 
 	"github.com/edaniels/golog"
-	"google.golang.org/grpc"
-
 	"go.viam.com/test"
+	"google.golang.org/grpc"
 
 	pb "go.viam.com/utils/proto/rpc/examples/echo/v1"
 	echoserver "go.viam.com/utils/rpc/examples/echo/server"

@@ -22,7 +22,7 @@ import (
 	"go.viam.com/utils"
 )
 
-// Auth0Config config for auth0
+// Auth0Config config for auth0.
 type Auth0Config struct {
 	Domain     string
 	ClientID   string
@@ -53,7 +53,7 @@ func (s *auth0State) newAuthProvider(ctx context.Context) (*oidc.Provider, error
 	return p, nil
 }
 
-// InstallAuth0 does initial setup and installs routes for auth0
+// InstallAuth0 does initial setup and installs routes for auth0.
 func InstallAuth0(ctx context.Context, mux *goji.Mux, sessions *SessionManager, config Auth0Config) (io.Closer, error) {
 	if config.Domain == "" {
 		return nil, errors.New("need a domain for auth0")
@@ -152,11 +152,10 @@ func (h *callbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Redirect(w, r, backto, http.StatusSeeOther)
-
 }
 
 // Handle programmatically generated access + id tokens
-// Currently used only in testing
+// Currently used only in testing.
 type tokenCallbackHandler struct {
 	state *auth0State
 }

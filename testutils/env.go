@@ -17,6 +17,7 @@ var (
 )
 
 func skipWithError(t *testing.T, err error) {
+	t.Helper()
 	if noSkip {
 		t.Fatal(err)
 		return
@@ -26,6 +27,7 @@ func skipWithError(t *testing.T, err error) {
 
 // SkipUnlessInternet verifies there is an internet connection.
 func SkipUnlessInternet(t *testing.T) {
+	t.Helper()
 	if internetConnected == nil {
 		var connected bool
 		conn, err := net.Dial("tcp", "mozilla.org:80")
@@ -51,6 +53,7 @@ func artifactGoogleCreds() (string, error) {
 
 // SkipUnlessArtifactGoogleCreds verifies google credentials are available for artifact.
 func SkipUnlessArtifactGoogleCreds(t *testing.T) {
+	t.Helper()
 	_, err := artifactGoogleCreds()
 	if err == nil {
 		return
@@ -60,6 +63,7 @@ func SkipUnlessArtifactGoogleCreds(t *testing.T) {
 
 // ArtifactGoogleCreds returns the google credentials for artifact.
 func ArtifactGoogleCreds(t *testing.T) string {
+	t.Helper()
 	creds, err := artifactGoogleCreds()
 	if err != nil {
 		skipWithError(t, err)
@@ -79,6 +83,7 @@ func backingMongoDBURI() (string, error) {
 
 // SkipUnlessBackingMongoDBURI verifies there is a backing MongoDB URI to use.
 func SkipUnlessBackingMongoDBURI(t *testing.T) {
+	t.Helper()
 	_, err := backingMongoDBURI()
 	if err == nil {
 		return
@@ -88,6 +93,7 @@ func SkipUnlessBackingMongoDBURI(t *testing.T) {
 
 // BackingMongoDBURI returns the backing MongoDB URI to use.
 func BackingMongoDBURI(t *testing.T) string {
+	t.Helper()
 	mongoURI, err := backingMongoDBURI()
 	if err != nil {
 		skipWithError(t, err)

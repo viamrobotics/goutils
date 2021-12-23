@@ -17,16 +17,16 @@ func TestPull(t *testing.T) {
 	dir, undo := artifact.TestSetupGlobalCache(t)
 	defer undo()
 
-	test.That(t, os.MkdirAll(filepath.Join(dir, artifact.DotDir), 0755), test.ShouldBeNil)
+	test.That(t, os.MkdirAll(filepath.Join(dir, artifact.DotDir), 0o755), test.ShouldBeNil)
 	confPath := filepath.Join(dir, artifact.DotDir, artifact.ConfigName)
 	sourcePath := filepath.Join(dir, "source")
-	test.That(t, os.MkdirAll(sourcePath, 0755), test.ShouldBeNil)
+	test.That(t, os.MkdirAll(sourcePath, 0o755), test.ShouldBeNil)
 	test.That(t, ioutil.WriteFile(confPath, []byte(fmt.Sprintf(`{
 		"source_store": {
 			"type": "fs",
 			"path": "%s"
 		}
-	}`, sourcePath)), 0644), test.ShouldBeNil)
+	}`, sourcePath)), 0o644), test.ShouldBeNil)
 	treePath := filepath.Join(dir, artifact.DotDir, artifact.TreeName)
 	test.That(t, ioutil.WriteFile(treePath, []byte(`{
 		"one": {
@@ -43,7 +43,7 @@ func TestPull(t *testing.T) {
 			"size": 10,
 			"hash": "baz"
 		}
-	}`), 0644), test.ShouldBeNil)
+	}`), 0o644), test.ShouldBeNil)
 
 	store, err := artifact.NewStore(&artifact.FileSystemStoreConfig{Path: sourcePath})
 	test.That(t, err, test.ShouldBeNil)
@@ -74,17 +74,17 @@ func TestPullLimit(t *testing.T) {
 	dir, undo := artifact.TestSetupGlobalCache(t)
 	defer undo()
 
-	test.That(t, os.MkdirAll(filepath.Join(dir, artifact.DotDir), 0755), test.ShouldBeNil)
+	test.That(t, os.MkdirAll(filepath.Join(dir, artifact.DotDir), 0o755), test.ShouldBeNil)
 	confPath := filepath.Join(dir, artifact.DotDir, artifact.ConfigName)
 	sourcePath := filepath.Join(dir, "source")
-	test.That(t, os.MkdirAll(sourcePath, 0755), test.ShouldBeNil)
+	test.That(t, os.MkdirAll(sourcePath, 0o755), test.ShouldBeNil)
 	test.That(t, ioutil.WriteFile(confPath, []byte(fmt.Sprintf(`{
 		"source_store": {
 			"type": "fs",
 			"path": "%s"
 		},
 		"source_pull_size_limit": 3
-	}`, sourcePath)), 0644), test.ShouldBeNil)
+	}`, sourcePath)), 0o644), test.ShouldBeNil)
 	treePath := filepath.Join(dir, artifact.DotDir, artifact.TreeName)
 	test.That(t, ioutil.WriteFile(treePath, []byte(`{
 		"one": {
@@ -101,7 +101,7 @@ func TestPullLimit(t *testing.T) {
 			"size": 10,
 			"hash": "baz"
 		}
-	}`), 0644), test.ShouldBeNil)
+	}`), 0o644), test.ShouldBeNil)
 
 	store, err := artifact.NewStore(&artifact.FileSystemStoreConfig{Path: sourcePath})
 	test.That(t, err, test.ShouldBeNil)

@@ -24,7 +24,7 @@ func TestSetupGlobalCache(t *testing.T) (string, func()) {
 	}
 	dir := t.TempDir()
 	startAt := filepath.Join(dir, "one", "two", "three")
-	test.That(t, os.MkdirAll(startAt, 0755), test.ShouldBeNil)
+	test.That(t, os.MkdirAll(startAt, 0o750), test.ShouldBeNil)
 	test.That(t, os.Chdir(startAt), test.ShouldBeNil)
 	return startAt, undoFunc
 }

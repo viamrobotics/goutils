@@ -110,6 +110,12 @@ func UnmarshalFlags(flagSet *flag.FlagSet, into interface{}) error {
 							return errors.Wrapf(err, "error parsing positional argument %d", info.Position)
 						}
 						val = conv
+					case reflect.Array, reflect.Chan, reflect.Complex128, reflect.Complex64, reflect.Float32,
+						reflect.Float64, reflect.Func, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Int8,
+						reflect.Interface, reflect.Invalid, reflect.Map, reflect.Ptr, reflect.Slice, reflect.Struct,
+						reflect.Uint, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uint8, reflect.Uintptr,
+						reflect.UnsafePointer:
+						fallthrough
 					default:
 						return errors.Errorf("error parsing positional argument %d for %s: do not know how to unmarshal a %q",
 							info.Position,
@@ -131,7 +137,10 @@ func UnmarshalFlags(flagSet *flag.FlagSet, into interface{}) error {
 				}
 			} else {
 				if info.IsFlagVal {
-					flagValP := flagVal.Value.(*flagValueProxy)
+					flagValP, ok := flagVal.Value.(*flagValueProxy)
+					if !ok {
+						panic(errors.Errorf("expected *flagValueProxy but got %T", flagVal.Value))
+					}
 					if flagValP.IsSet {
 						flagValIsSet = true
 						if field.Type.Kind() != reflect.Ptr {
@@ -262,6 +271,12 @@ func parseFlagInfo(field reflect.StructField, val string) (flagInfo, error) {
 					return flagInfo{}, errors.Wrapf(err, "error parsing flag info default for %q", fieldName)
 				}
 				info.DefaultIfc = int(conv)
+			case reflect.Array, reflect.Chan, reflect.Complex128, reflect.Complex64, reflect.Float32,
+				reflect.Float64, reflect.Func, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Int8,
+				reflect.Interface, reflect.Invalid, reflect.Map, reflect.Ptr, reflect.Slice, reflect.Struct,
+				reflect.Uint, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uint8, reflect.Uintptr,
+				reflect.UnsafePointer:
+				fallthrough
 			default:
 				return flagInfo{}, errors.Errorf("error parsing flag  infofor %q: unsupported default for flag kind %q", info.Name, field.Type.Kind())
 			}
@@ -280,9 +295,7 @@ func parseFlagInfo(field reflect.StructField, val string) (flagInfo, error) {
 	return info, nil
 }
 
-var (
-	flagValueT = reflect.TypeOf((*flag.Value)(nil)).Elem()
-)
+var flagValueT = reflect.TypeOf((*flag.Value)(nil)).Elem()
 
 type flagValueProxy struct {
 	flag.Value
@@ -360,7 +373,10 @@ func extractFlags(flagSet *flag.FlagSet, from interface{}) error {
 		case reflect.Bool:
 			var defaultVal bool
 			if info.Default != "" {
-				defaultVal = info.DefaultIfc.(bool)
+				defaultVal, ok = info.DefaultIfc.(bool)
+				if !ok {
+					panic(errors.Errorf("expected int but got %T", info.DefaultIfc))
+				}
 			}
 			flagSet.Bool(info.Name, defaultVal, info.Usage)
 		case reflect.String:
@@ -368,7 +384,10 @@ func extractFlags(flagSet *flag.FlagSet, from interface{}) error {
 		case reflect.Int:
 			var defaultVal int
 			if info.Default != "" {
-				defaultVal = info.DefaultIfc.(int)
+				defaultVal, ok = info.DefaultIfc.(int)
+				if !ok {
+					panic(errors.Errorf("expected int but got %T", info.DefaultIfc))
+				}
 			}
 			flagSet.Int(info.Name, defaultVal, info.Usage)
 		case reflect.Slice:
@@ -377,20 +396,23 @@ func extractFlags(flagSet *flag.FlagSet, from interface{}) error {
 			if sliceElem.Implements(flagValueT) || reflect.PtrTo(sliceElem).Implements(flagValueT) {
 				ctor = func(val string) (interface{}, error) {
 					newSliceElem := reflect.New(sliceElem)
-					if err := newSliceElem.Interface().(flag.Value).(flag.Value).Set(val); err != nil {
+					if err := newSliceElem.Interface().(flag.Value).Set(val); err != nil {
 						return nil, errors.Wrapf(err, "error setting flag for %q", info.Name)
 					}
 					return newSliceElem.Elem().Interface(), nil
 				}
 			} else {
-				switch sliceElem.Kind() {
-				default:
-					return errors.Errorf("error extracting flag for %q: unsupported slice element type %q", info.Name, sliceElem)
-				}
+				return errors.Errorf("error extracting flag for %q: unsupported slice element type %q", info.Name, sliceElem)
 			}
 			flagSet.Var(&sliceFlag{
 				ctor: ctor,
 			}, info.Name, info.Usage)
+		case reflect.Array, reflect.Chan, reflect.Complex128, reflect.Complex64, reflect.Float32,
+			reflect.Float64, reflect.Func, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Int8,
+			reflect.Interface, reflect.Invalid, reflect.Map, reflect.Ptr, reflect.Struct,
+			reflect.Uint, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uint8, reflect.Uintptr,
+			reflect.UnsafePointer:
+			fallthrough
 		default:
 			return errors.Errorf("error extracting flag for %q: unsupported flag kind %q", info.Name, fieldT.Kind())
 		}

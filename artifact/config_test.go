@@ -18,8 +18,8 @@ func TestConfig(t *testing.T) {
 
 	_, err = emptyConfig.Lookup("one")
 	test.That(t, err, test.ShouldNotBeNil)
-	test.That(t, IsErrArtifactNotFound(err), test.ShouldBeTrue)
-	var errNotFound *errArtifactNotFound
+	test.That(t, IsNotFoundError(err), test.ShouldBeTrue)
+	var errNotFound *NotFoundError
 	test.That(t, errors.As(err, &errNotFound), test.ShouldBeTrue)
 	test.That(t, *errNotFound.path, test.ShouldEqual, "one")
 
@@ -29,7 +29,7 @@ func TestConfig(t *testing.T) {
 
 	_, err = emptyConfig.Lookup("one/two")
 	test.That(t, err, test.ShouldNotBeNil)
-	test.That(t, IsErrArtifactNotFound(err), test.ShouldBeTrue)
+	test.That(t, IsNotFoundError(err), test.ShouldBeTrue)
 	test.That(t, errors.As(err, &errNotFound), test.ShouldBeTrue)
 	test.That(t, *errNotFound.path, test.ShouldEqual, "one/two")
 
@@ -40,7 +40,7 @@ func TestConfig(t *testing.T) {
 
 	_, err = emptyConfig.Lookup("one")
 	test.That(t, err, test.ShouldNotBeNil)
-	test.That(t, IsErrArtifactNotFound(err), test.ShouldBeTrue)
+	test.That(t, IsNotFoundError(err), test.ShouldBeTrue)
 	test.That(t, errors.As(err, &errNotFound), test.ShouldBeTrue)
 	test.That(t, *errNotFound.path, test.ShouldEqual, "one")
 
@@ -56,7 +56,7 @@ func TestConfig(t *testing.T) {
 	emptyConfig.RemovePath("one")
 	_, err = emptyConfig.Lookup("one")
 	test.That(t, err, test.ShouldNotBeNil)
-	test.That(t, IsErrArtifactNotFound(err), test.ShouldBeTrue)
+	test.That(t, IsNotFoundError(err), test.ShouldBeTrue)
 	test.That(t, errors.As(err, &errNotFound), test.ShouldBeTrue)
 	test.That(t, *errNotFound.path, test.ShouldEqual, "one")
 }

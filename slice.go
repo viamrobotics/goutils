@@ -26,5 +26,6 @@ func RawBytesFromSlice(val interface{}) []byte {
 		Cap:  size,
 		Data: firstElem,
 	}
+	//nolint:gosec
 	return *(*[]byte)(unsafe.Pointer(header))
 }

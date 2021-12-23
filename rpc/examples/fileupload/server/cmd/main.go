@@ -14,18 +14,17 @@ import (
 	"net/http"
 
 	"github.com/Masterminds/sprig"
+	"github.com/edaniels/golog"
 	"github.com/pkg/errors"
+	"go.uber.org/multierr"
+	"goji.io"
+	"goji.io/pat"
 
 	"go.viam.com/utils"
 	"go.viam.com/utils/internal"
 	fupb "go.viam.com/utils/proto/rpc/examples/fileupload/v1"
 	"go.viam.com/utils/rpc"
 	"go.viam.com/utils/rpc/examples/fileupload/server"
-
-	"github.com/edaniels/golog"
-	"go.uber.org/multierr"
-	"goji.io"
-	"goji.io/pat"
 )
 
 func main() {
@@ -92,6 +91,7 @@ func runServer(
 ) (err error) {
 	var serverOpts []rpc.ServerOption
 	if authPrivateKeyFile != "" {
+		//nolint:gosec
 		rd, err := ioutil.ReadFile(authPrivateKeyFile)
 		if err != nil {
 			return err
@@ -105,6 +105,7 @@ func runServer(
 	}
 	var authPublicKey *rsa.PublicKey
 	if authPublicKeyFile != "" {
+		//nolint:gosec
 		rd, err := ioutil.ReadFile(authPublicKeyFile)
 		if err != nil {
 			return err
@@ -114,7 +115,11 @@ func runServer(
 		if err != nil {
 			return err
 		}
-		authPublicKey = key.(*rsa.PublicKey)
+		var ok bool
+		authPublicKey, ok = key.(*rsa.PublicKey)
+		if !ok {
+			return errors.Errorf("expected *rsa.PublicKey but got %T", key)
+		}
 	}
 
 	bindAddress := fmt.Sprintf("localhost:%d", port)
@@ -170,9 +175,11 @@ func runServer(
 	}
 
 	t := template.New("foo").Funcs(template.FuncMap{
+		//nolint:gosec
 		"jsSafe": func(js string) template.JS {
 			return template.JS(js)
 		},
+		//nolint:gosec
 		"htmlSafe": func(html string) template.HTML {
 			return template.HTML(html)
 		},
@@ -224,7 +231,7 @@ func runServer(
 				panic(err)
 			}
 		}()
-		if err := httpServer.Shutdown(context.Background()); err != nil {
+		if err := httpServer.Shutdown(ctx); err != nil {
 			panic(err)
 		}
 	})

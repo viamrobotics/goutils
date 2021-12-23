@@ -9,14 +9,13 @@ import (
 
 	"github.com/edaniels/golog"
 	"github.com/pion/webrtc/v3"
+	"go.viam.com/test"
 	pbstatus "google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
-
-	"go.viam.com/test"
 
 	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
 	"go.viam.com/utils/testutils"

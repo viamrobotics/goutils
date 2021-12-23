@@ -1,3 +1,4 @@
+// Package internal contains utilities not meant for external consumption.
 package internal
 
 import (
@@ -12,6 +13,7 @@ import (
 // refer to files when you're not sure where the caller actually
 // lives in relation to the target file.
 func ResolveFile(fn string) string {
+	//nolint:dogsled
 	_, thisFilePath, _, _ := runtime.Caller(0)
 	thisDirPath, err := filepath.Abs(filepath.Dir(thisFilePath))
 	if err != nil {

@@ -62,11 +62,12 @@ func MustNewPath(to string) string {
 
 // emplaceFile ensures that a given artifact identified by a given hash
 // is placed in the given path (creating parent directories along the way).
-func emplaceFile(store Store, hash, path string) (err error) {
+func emplaceFile(store Store, hash, path string) error {
 	if err := store.Contains(hash); err != nil {
 		return err
 	}
 
+	//nolint:gosec
 	if existing, err := os.Open(path); err == nil {
 		data, err := ioutil.ReadAll(existing)
 		if err != nil {
@@ -87,7 +88,7 @@ func emplaceFile(store Store, hash, path string) (err error) {
 		}
 	}
 
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return err
 	}
 
@@ -99,7 +100,8 @@ func emplaceFile(store Store, hash, path string) (err error) {
 		err = multierr.Combine(err, hashFile.Close())
 	}()
 
-	emplacedFile, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0755)
+	//nolint:gosec
+	emplacedFile, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
 	if err != nil {
 		return err
 	}
@@ -112,5 +114,5 @@ func emplaceFile(store Store, hash, path string) (err error) {
 		}
 	}()
 	_, err = io.Copy(emplacedFile, hashFile)
-	return
+	return err
 }

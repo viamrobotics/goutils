@@ -10,20 +10,19 @@ import (
 	"net/http"
 	"time"
 
-	"go.opencensus.io/trace"
-
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.opencensus.io/trace"
 )
 
-// SessionManager handles working with sessions from http
+// SessionManager handles working with sessions from http.
 type SessionManager struct {
 	store      Store
 	cookieName string
 }
 
-// Session representation of a session
+// Session representation of a session.
 type Session struct {
 	store   Store
 	manager *SessionManager
@@ -34,7 +33,7 @@ type Session struct {
 	Data bson.M
 }
 
-// Store actually stores raw data somewhere
+// Store actually stores raw data somewhere.
 type Store interface {
 	Delete(ctx context.Context, id string) error
 	Get(ctx context.Context, id string) (*Session, error)
@@ -44,17 +43,17 @@ type Store interface {
 
 // ----
 
-// NewSessionManager creates a new SessionManager
+// NewSessionManager creates a new SessionManager.
 func NewSessionManager(theStore Store) *SessionManager {
 	sm := &SessionManager{store: theStore, cookieName: "session-id"}
 	theStore.SetSessionManager(sm)
 	return sm
 }
 
-// Get get a session from the request via cookies
+// Get get a session from the request via cookies.
 func (sm *SessionManager) Get(r *http.Request, createIfNotExist bool) (*Session, error) {
 	var s *Session
-	var id string = ""
+	id := ""
 
 	c, err := r.Cookie(sm.cookieName)
 	if !errors.Is(err, http.ErrNoCookie) {
@@ -67,7 +66,7 @@ func (sm *SessionManager) Get(r *http.Request, createIfNotExist bool) (*Session,
 		id = c.Value
 
 		s, err = sm.store.Get(r.Context(), id)
-		if err != nil {
+		if err != nil && !errors.Is(err, errNoSession) {
 			return nil, fmt.Errorf("couldn't get cookie from store: %w", err)
 		}
 
@@ -77,7 +76,7 @@ func (sm *SessionManager) Get(r *http.Request, createIfNotExist bool) (*Session,
 	}
 
 	if !createIfNotExist {
-		return nil, nil
+		return nil, errNoSession
 	}
 
 	if id == "" {
@@ -98,7 +97,7 @@ func (sm *SessionManager) Get(r *http.Request, createIfNotExist bool) (*Session,
 	return s, nil
 }
 
-// DeleteSession deletes a session
+// DeleteSession deletes a session.
 func (sm *SessionManager) DeleteSession(ctx context.Context, r *http.Request, w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{Name: sm.cookieName, Value: "deleted", MaxAge: -1})
 
@@ -113,8 +112,7 @@ func (sm *SessionManager) DeleteSession(ctx context.Context, r *http.Request, w 
 
 func (sm *SessionManager) newID() (string, error) {
 	b := make([]byte, 32)
-	_, err := rand.Read(b)
-	if err != nil {
+	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}
 
@@ -123,7 +121,7 @@ func (sm *SessionManager) newID() (string, error) {
 
 // ----
 
-// Save saves a session back to the store it came freom
+// Save saves a session back to the store it came freom.
 func (s *Session) Save(ctx context.Context, r *http.Request, w http.ResponseWriter) error {
 	if s.isNew {
 		http.SetCookie(w, &http.Cookie{
@@ -133,14 +131,13 @@ func (s *Session) Save(ctx context.Context, r *http.Request, w http.ResponseWrit
 			Secure: r.TLS != nil,
 		})
 		s.isNew = false
-
 	}
 	return s.store.Save(ctx, s)
 }
 
 // -----
 
-// NewMongoDBSessionStore new MongoDB backed store
+// NewMongoDBSessionStore new MongoDB backed store.
 func NewMongoDBSessionStore(coll *mongo.Collection) Store {
 	return &mongoDBSessionStore{collection: coll}
 }
@@ -162,6 +159,8 @@ func (mss *mongoDBSessionStore) Delete(ctx context.Context, id string) error {
 	return err
 }
 
+var errNoSession = errors.New("no session found")
+
 func (mss *mongoDBSessionStore) Get(ctx context.Context, id string) (*Session, error) {
 	ctx, span := trace.StartSpan(ctx, "MongoDBSessionStore::Get")
 	defer span.End()
@@ -169,14 +168,13 @@ func (mss *mongoDBSessionStore) Get(ctx context.Context, id string) (*Session, e
 	res := mss.collection.FindOne(ctx, bson.M{"_id": id})
 	if res.Err() != nil {
 		if errors.Is(res.Err(), mongo.ErrNoDocuments) {
-			return nil, nil
+			return nil, errNoSession
 		}
 		return nil, fmt.Errorf("couldn't load session from db: %w", res.Err())
 	}
 
 	m := bson.M{}
-	err := res.Decode(&m)
-	if err != nil {
+	if err := res.Decode(&m); err != nil {
 		return nil, err
 	}
 
@@ -212,7 +210,7 @@ func (mss *mongoDBSessionStore) Save(ctx context.Context, s *Session) error {
 
 // ------
 
-// NewMemorySessionStore creates a new memory session store
+// NewMemorySessionStore creates a new memory session store.
 func NewMemorySessionStore() Store {
 	return &memorySessionStore{}
 }
@@ -235,7 +233,7 @@ func (mss *memorySessionStore) Delete(ctx context.Context, id string) error {
 
 func (mss *memorySessionStore) Get(ctx context.Context, id string) (*Session, error) {
 	if mss.data == nil {
-		return nil, nil
+		return nil, errNoSession
 	}
 	return mss.data[id], nil
 }

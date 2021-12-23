@@ -24,12 +24,14 @@ import (
 )
 
 // Suppress "imported and not used" errors
-var _ codes.Code
-var _ io.Reader
-var _ status.Status
-var _ = runtime.String
-var _ = utilities.NewDoubleArray
-var _ = metadata.Join
+var (
+	_ codes.Code
+	_ io.Reader
+	_ status.Status
+	_ = runtime.String
+	_ = utilities.NewDoubleArray
+	_ = metadata.Join
+)
 
 func request_FileUploadService_UploadFile_0(ctx context.Context, marshaler runtime.Marshaler, client FileUploadServiceClient, req *http.Request, pathParams map[string]string) (FileUploadService_UploadFileClient, runtime.ServerMetadata, error) {
 	var metadata runtime.ServerMetadata
@@ -79,7 +81,6 @@ func request_FileUploadService_UploadFile_0(ctx context.Context, marshaler runti
 // StreamingRPC :currently unsupported pending https://github.com/grpc/grpc-go/issues/906.
 // Note that using this registration option will cause many gRPC library features to stop working. Consider using RegisterFileUploadServiceHandlerFromEndpoint instead.
 func RegisterFileUploadServiceHandlerServer(ctx context.Context, mux *runtime.ServeMux, server FileUploadServiceServer) error {
-
 	mux.Handle("POST", pattern_FileUploadService_UploadFile_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		err := status.Error(codes.Unimplemented, "streaming calls are not yet supported in the in-process transport")
 		_, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
@@ -127,7 +128,6 @@ func RegisterFileUploadServiceHandler(ctx context.Context, mux *runtime.ServeMux
 // doesn't go through the normal gRPC flow (creating a gRPC client etc.) then it will be up to the passed in
 // "FileUploadServiceClient" to call the correct interceptors.
 func RegisterFileUploadServiceHandlerClient(ctx context.Context, mux *runtime.ServeMux, client FileUploadServiceClient) error {
-
 	mux.Handle("POST", pattern_FileUploadService_UploadFile_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
@@ -145,16 +145,11 @@ func RegisterFileUploadServiceHandlerClient(ctx context.Context, mux *runtime.Se
 		}
 
 		forward_FileUploadService_UploadFile_0(ctx, mux, outboundMarshaler, w, req, func() (proto.Message, error) { return resp.Recv() }, mux.GetForwardResponseOptions()...)
-
 	})
 
 	return nil
 }
 
-var (
-	pattern_FileUploadService_UploadFile_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"proto.rpc.examples.fileupload.v1.FileUploadService", "UploadFile"}, ""))
-)
+var pattern_FileUploadService_UploadFile_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"proto.rpc.examples.fileupload.v1.FileUploadService", "UploadFile"}, ""))
 
-var (
-	forward_FileUploadService_UploadFile_0 = runtime.ForwardResponseStream
-)
+var forward_FileUploadService_UploadFile_0 = runtime.ForwardResponseStream

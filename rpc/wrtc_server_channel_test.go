@@ -8,12 +8,11 @@ import (
 
 	"github.com/edaniels/golog"
 	"github.com/pion/webrtc/v3"
+	"go.viam.com/test"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
-
-	"go.viam.com/test"
 
 	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
 	"go.viam.com/utils/testutils"

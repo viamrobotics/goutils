@@ -14,7 +14,7 @@ import (
 	"github.com/Masterminds/sprig"
 )
 
-// TemplateManager responsible for managing, caching, finding templates
+// TemplateManager responsible for managing, caching, finding templates.
 type TemplateManager interface {
 	LookupTemplate(name string) (*template.Template, error)
 }
@@ -35,7 +35,7 @@ func (tm *embedTM) LookupTemplate(name string) (*template.Template, error) {
 	return lookupTemplate(tm.cachedTemplates, name)
 }
 
-// NewTemplateManagerEmbed creates a TemplateManager from an embedded file system
+// NewTemplateManagerEmbed creates a TemplateManager from an embedded file system.
 func NewTemplateManagerEmbed(fs fs.ReadDirFS, srcDir string) (TemplateManager, error) {
 	files, err := fs.ReadDir(srcDir)
 	if err != nil {
@@ -70,44 +70,44 @@ func (tm *fsTM) LookupTemplate(name string) (*template.Template, error) {
 	return lookupTemplate(main, name)
 }
 
-// NewTemplateManagerFS creates a new TemplateManager from the file system
+// NewTemplateManagerFS creates a new TemplateManager from the file system.
 func NewTemplateManagerFS(srcDir string) (TemplateManager, error) {
 	return &fsTM{srcDir}, nil
 }
 
 // -------------------------
 
-// TemplateHandler implement this to be able to use middleware
+// TemplateHandler implement this to be able to use middleware.
 type TemplateHandler interface {
 	// return (template name, thing to pass to template, error)
 	Serve(w http.ResponseWriter, r *http.Request) (*Template, interface{}, error)
 }
 
-// TemplateHandlerFunc the func version of the handler
+// TemplateHandlerFunc the func version of the handler.
 type TemplateHandlerFunc func(w http.ResponseWriter, r *http.Request) (*Template, interface{}, error)
 
-// Serve does the work
+// Serve does the work.
 func (f TemplateHandlerFunc) Serve(w http.ResponseWriter, r *http.Request) (*Template, interface{}, error) {
 	return f(w, r)
 }
 
-// Template specifies which template to render
+// Template specifies which template to render.
 type Template struct {
 	named  string
 	direct *template.Template
 }
 
-// NamedTemplate creates a Template with a name
+// NamedTemplate creates a Template with a name.
 func NamedTemplate(called string) *Template {
 	return &Template{named: called}
 }
 
-// DirectTemplate creates a template to say use this specific template
+// DirectTemplate creates a template to say use this specific template.
 func DirectTemplate(t *template.Template) *Template {
 	return &Template{direct: t}
 }
 
-// TemplateMiddleware handles the rendering of the template from the data and finding of the template
+// TemplateMiddleware handles the rendering of the template from the data and finding of the template.
 type TemplateMiddleware struct {
 	Templates TemplateManager
 	Handler   TemplateHandler

@@ -57,7 +57,7 @@ var (
 // through the given client.
 // TODO(https://github.com/viamrobotics/core/issues/108): more efficient, multiplexed change streams;
 // uniquely identify host ephemerally
-// TODO(https://github.com/viamrobotics/core/issues/109): max queue size
+// TODO(https://github.com/viamrobotics/core/issues/109): max queue size.
 func NewMongoDBWebRTCCallQueue(client *mongo.Client) (WebRTCCallQueue, error) {
 	coll := client.Database(mongodbWebRTCCallQueueDBName).Collection(mongodbWebRTCCallQueueCollName)
 	if err := mongoutils.EnsureIndexes(coll, mongodbWebRTCCallQueueIndexes...); err != nil {
@@ -137,6 +137,7 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 
 	// need to watch before insertion to avoid a race
 	sendCtx, sendCtxCancel := context.WithTimeout(queue.cancelCtx, getDefaultOfferDeadline())
+	//nolint:contextcheck
 	csNext := mongoutils.ChangeStreamBackground(sendCtx, cs)
 
 	var ctxDeadlineExceedViaCS bool
@@ -300,6 +301,7 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, host string)
 	}
 
 	recvOfferCtx, recvOfferCtxCancel := context.WithCancel(queue.cancelCtx)
+	//nolint:contextcheck
 	csOfferNext := mongoutils.ChangeStreamBackground(recvOfferCtx, cs)
 
 	cleanup := func() {
@@ -371,6 +373,7 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, host string)
 		return nil, err
 	}
 	recvCtx, recvCtxCancel := context.WithTimeout(queue.cancelCtx, getDefaultOfferDeadline())
+	//nolint:contextcheck
 	csNext := mongoutils.ChangeStreamBackground(recvCtx, cs)
 
 	cleanup = func() {
@@ -552,13 +555,14 @@ func (resp *mongoDBWebRTCCallOfferExchange) CallerErr() error {
 func (resp *mongoDBWebRTCCallOfferExchange) AnswererRespond(ctx context.Context, ans WebRTCCallAnswer) error {
 	toSet := bson.D{{webrtcCallAnsweredField, true}}
 	var toPush bson.D
-	if ans.InitialSDP != nil {
+	switch {
+	case ans.InitialSDP != nil:
 		toSet = append(toSet, bson.E{webrtcCallAnswererSDPField, ans.InitialSDP})
-	} else if ans.Candidate != nil {
+	case ans.Candidate != nil:
 		toPush = append(toPush, bson.E{webrtcCallAnswererCandidatesField, iceCandidateToMongo(ans.Candidate)})
-	} else if ans.Err != nil {
+	case ans.Err != nil:
 		toSet = append(toSet, bson.E{webrtcCallAnswererErrorField, ans.Err.Error()})
-	} else {
+	default:
 		return errors.New("expected either SDP, ICE candidate, or error to be set")
 	}
 

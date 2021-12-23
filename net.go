@@ -15,6 +15,7 @@ import (
 // there is not much port churn. Typically an OS will monotonically increase the
 // port numbers it assigns.
 func TryReserveRandomPort() (port int, err error) {
+	//nolint:gosec
 	listener, err := net.Listen("tcp", ":0")
 	if err != nil {
 		return 0, err
@@ -26,9 +27,8 @@ func TryReserveRandomPort() (port int, err error) {
 }
 
 // GetAllLocalIPv4s finds all the local ips from all interfaces
-// It only returns IPv4 addresses, and tries not to return any loopback addresses
+// It only returns IPv4 addresses, and tries not to return any loopback addresses.
 func GetAllLocalIPv4s() ([]string, error) {
-
 	allInterfaces, err := net.Interfaces()
 	if err != nil {
 		return nil, err
@@ -66,7 +66,6 @@ func GetAllLocalIPv4s() ([]string, error) {
 				return nil, fmt.Errorf("unknow address type: %T", v)
 			}
 		}
-
 	}
 
 	return all, nil
@@ -100,6 +99,7 @@ func NewPossiblySecureTCPListenerFromFile(address string, tlsCertFile, tlsKeyFil
 	}
 	secureListener, err := tls.Listen("tcp", address, &tls.Config{
 		Certificates: []tls.Certificate{cert},
+		MinVersion:   tls.VersionTLS12,
 	})
 	if err != nil {
 		return nil, false, err

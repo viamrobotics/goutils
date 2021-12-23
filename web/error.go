@@ -9,28 +9,28 @@ import (
 	"go.viam.com/utils"
 )
 
-// ErrorResponse lets you specify a status code
+// ErrorResponse lets you specify a status code.
 type ErrorResponse interface {
 	Error() string
 	Status() int
 }
 
-// ErrorResponseStatus creates an error response with a specific code
+// ErrorResponseStatus creates an error response with a specific code.
 func ErrorResponseStatus(code int) ErrorResponse {
-	return errorResponseStatus(code)
+	return responseStatusError(code)
 }
 
-type errorResponseStatus int
+type responseStatusError int
 
-func (s errorResponseStatus) Error() string {
+func (s responseStatusError) Error() string {
 	return http.StatusText(int(s))
 }
 
-func (s errorResponseStatus) Status() int {
+func (s responseStatusError) Status() int {
 	return int(s)
 }
 
-// HandleError returns true if there was an error and you should stop
+// HandleError returns true if there was an error and you should stop.
 func HandleError(w http.ResponseWriter, err error, context ...string) bool {
 	if err == nil {
 		return false

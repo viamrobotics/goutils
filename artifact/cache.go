@@ -17,7 +17,7 @@ import (
 )
 
 // the global cache singleton is used in all contexts where
-// a config or cache are not explicitly created
+// a config or cache are not explicitly created.
 var (
 	globalCacheSingleton   Cache
 	globalCacheSingletonMu sync.Mutex
@@ -100,7 +100,7 @@ func NewCache(config *Config) (Cache, error) {
 	if !filepath.IsAbs(cacheDir) && config.configDir != "" {
 		cacheDir = filepath.Join(config.configDir, cacheDir)
 	}
-	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+	if err := os.MkdirAll(cacheDir, 0o750); err != nil {
 		return nil, err
 	}
 	var artifactsRoot string
@@ -113,7 +113,7 @@ func NewCache(config *Config) (Cache, error) {
 			artifactsRoot = filepath.Join(config.configDir, config.Root)
 		}
 	}
-	if err := os.MkdirAll(artifactsRoot, 0755); err != nil {
+	if err := os.MkdirAll(artifactsRoot, 0o750); err != nil {
 		return nil, err
 	}
 	fsStore, err := newFileSystemStore(&FileSystemStoreConfig{Path: cacheDir})
@@ -150,7 +150,7 @@ func (s *cachedStore) Contains(hash string) error {
 	defer s.mu.Unlock()
 	if err := s.cache.Contains(hash); err == nil {
 		return nil
-	} else if s.source == nil || !IsErrArtifactNotFound(err) {
+	} else if s.source == nil || !IsNotFoundError(err) {
 		return err
 	}
 	return s.source.Contains(hash)
@@ -161,7 +161,7 @@ func (s *cachedStore) Load(hash string) (io.ReadCloser, error) {
 	defer s.mu.Unlock()
 	if rc, err := s.cache.Load(hash); err == nil {
 		return rc, nil
-	} else if s.source == nil || !IsErrArtifactNotFound(err) {
+	} else if s.source == nil || !IsNotFoundError(err) {
 		return nil, err
 	}
 	return s.source.Load(hash)
@@ -214,7 +214,7 @@ func (s *cachedStore) Clean() error {
 }
 
 // WriteThroughUser writes all objects in the user visible area to the
-// through to the file system cache and the source cache
+// through to the file system cache and the source cache.
 func (s *cachedStore) WriteThroughUser() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -264,7 +264,7 @@ func (s *cachedStore) ensureNode(node *TreeNode, dstPath string, ignoreLimit boo
 			return "", errors.Wrap(err, "error emplacing into file system cache")
 		}
 		return dstPath, nil
-	} else if !IsErrArtifactNotFound(err) {
+	} else if !IsNotFoundError(err) {
 		return "", errors.Wrap(err, "error checking if hash is in file system cache")
 	}
 
@@ -343,7 +343,8 @@ func (s *cachedStore) walkUserTreeUncached(
 				continue
 			}
 		}
-		newTreePath := append(treePath, name)
+		newTreePath := append([]string{}, treePath...)
+		newTreePath = append(newTreePath, name)
 		newLocalPath := filepath.Join(localPath, name)
 		stat, err := os.Stat(newLocalPath)
 		if err != nil {
@@ -361,6 +362,7 @@ func (s *cachedStore) walkUserTreeUncached(
 			continue
 		}
 		existingNode, hasExistingNode := tree[name]
+		//nolint:gosec
 		f, err := os.Open(newLocalPath)
 		if err != nil {
 			return errors.Wrap(err, "error opening file to write through cache")
@@ -390,7 +392,6 @@ func (s *cachedStore) walkUserTreeUncached(
 		}
 	}
 	return nil
-
 }
 
 // writeThroughUserTree examines the tree with respect to the given local path and stores all artifacts
@@ -434,22 +435,20 @@ func (s *cachedStore) status() (*Status, error) {
 
 func computeHash(data []byte) (string, error) {
 	hasher := fnv.New128a()
-	_, err := hasher.Write(data)
-	if err != nil {
+	if _, err := hasher.Write(data); err != nil {
 		return "", err
 	}
 	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
 
-type noopCache struct {
-}
+type noopCache struct{}
 
 func (cache *noopCache) Contains(hash string) error {
-	return NewErrArtifactNotFoundHash(hash)
+	return NewArtifactNotFoundHashError(hash)
 }
 
 func (cache *noopCache) Load(hash string) (io.ReadCloser, error) {
-	return nil, NewErrArtifactNotFoundHash(hash)
+	return nil, NewArtifactNotFoundHashError(hash)
 }
 
 func (cache *noopCache) Store(hash string, r io.Reader) error {
@@ -461,7 +460,7 @@ func (cache *noopCache) NewPath(to string) string {
 }
 
 func (cache *noopCache) Ensure(path string, ignoreLimit bool) (string, error) {
-	return "", NewErrArtifactNotFoundPath(path)
+	return "", NewArtifactNotFoundPathError(path)
 }
 
 func (cache *noopCache) Remove(path string) error {

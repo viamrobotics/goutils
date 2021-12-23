@@ -15,7 +15,7 @@ func newFileSystemStore(config *FileSystemStoreConfig) (*fileSystemStore, error)
 	if err == nil && !dirStat.IsDir() {
 		return nil, errors.Errorf("expected path to be directory %q", config.Path)
 	} else if err != nil {
-		if err := os.MkdirAll(config.Path, 0755); err != nil {
+		if err := os.MkdirAll(config.Path, 0o750); err != nil {
 			return nil, err
 		}
 	}
@@ -39,7 +39,7 @@ func (s *fileSystemStore) Contains(hash string) error {
 			return nil
 		}
 	}
-	return NewErrArtifactNotFoundHash(hash)
+	return NewArtifactNotFoundHashError(hash)
 }
 
 func (s *fileSystemStore) pathToHashFile(hash string) string {
@@ -55,7 +55,8 @@ func (s *fileSystemStore) Load(hash string) (io.ReadCloser, error) {
 
 func (s *fileSystemStore) Store(hash string, r io.Reader) (err error) {
 	path := s.pathToHashFile(hash)
-	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0755)
+	//nolint:gosec
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
 	if err != nil {
 		return err
 	}

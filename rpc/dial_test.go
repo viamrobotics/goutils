@@ -18,10 +18,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"go.viam.com/utils"
 	pb "go.viam.com/utils/proto/rpc/examples/echo/v1"
 	echoserver "go.viam.com/utils/rpc/examples/echo/server"
-
-	"go.viam.com/utils"
 	"go.viam.com/utils/testutils"
 )
 
@@ -133,11 +132,9 @@ func TestDial(t *testing.T) {
 		m := &dns.Msg{Compress: false}
 		m.SetReply(r)
 
-		switch r.Opcode {
-		case dns.OpcodeQuery:
+		if r.Opcode == dns.OpcodeQuery {
 			for _, q := range m.Question {
-				switch q.Qtype {
-				case dns.TypeA:
+				if q.Qtype == dns.TypeA {
 					rr := &dns.A{
 						Hdr: dns.RR_Header{
 							Name:   q.Name,
@@ -159,11 +156,9 @@ func TestDial(t *testing.T) {
 		m.SetReply(r)
 
 		if !noAnswer {
-			switch r.Opcode {
-			case dns.OpcodeQuery:
+			if r.Opcode == dns.OpcodeQuery {
 				for _, q := range m.Question {
-					switch q.Qtype {
-					case dns.TypeA:
+					if q.Qtype == dns.TypeA {
 						rr := &dns.A{
 							Hdr: dns.RR_Header{
 								Name:   q.Name,
@@ -209,11 +204,9 @@ func TestDial(t *testing.T) {
 		m := &dns.Msg{Compress: false}
 		m.SetReply(r)
 
-		switch r.Opcode {
-		case dns.OpcodeQuery:
+		if r.Opcode == dns.OpcodeQuery {
 			for _, q := range m.Question {
-				switch q.Qtype {
-				case dns.TypeSRV:
+				if q.Qtype == dns.TypeSRV {
 					rr := &dns.SRV{
 						Hdr: dns.RR_Header{
 							Name:   q.Name,

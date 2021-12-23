@@ -9,7 +9,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-// do not change this unless the MongoDB TTL is also modified in advance
+// do not change this unless the MongoDB TTL is also modified in advance.
 var (
 	_defaultOfferDeadlineMu sync.Mutex
 	_defaultOfferDeadline   = time.Minute

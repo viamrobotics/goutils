@@ -1,3 +1,4 @@
+// Package mongoutils contains utilities for working with MongoDB more effectively.
 package mongoutils
 
 import (

@@ -53,9 +53,9 @@ func TestLoadConfig(t *testing.T) {
 	test.That(t, err, test.ShouldNotBeNil)
 	test.That(t, err.Error(), test.ShouldContainSubstring, "not found")
 
-	test.That(t, os.MkdirAll(filepath.Join(dir, DotDir), 0755), test.ShouldBeNil)
+	test.That(t, os.MkdirAll(filepath.Join(dir, DotDir), 0o755), test.ShouldBeNil)
 	confPath := filepath.Join(dir, DotDir, ConfigName)
-	test.That(t, ioutil.WriteFile(confPath, []byte(confRaw), 0644), test.ShouldBeNil)
+	test.That(t, ioutil.WriteFile(confPath, []byte(confRaw), 0o644), test.ShouldBeNil)
 
 	found, err := searchConfig()
 	test.That(t, err, test.ShouldBeNil)
@@ -80,11 +80,11 @@ func TestLoadConfig(t *testing.T) {
 	})
 
 	test.That(t, os.Remove(confPath), test.ShouldBeNil)
-	test.That(t, os.MkdirAll(filepath.Join(dir, "../../", DotDir), 0755), test.ShouldBeNil)
+	test.That(t, os.MkdirAll(filepath.Join(dir, "../../", DotDir), 0o755), test.ShouldBeNil)
 	confPath = filepath.Join(dir, "../../", DotDir, ConfigName)
 	treePath := filepath.Join(dir, "../../", DotDir, TreeName)
-	test.That(t, ioutil.WriteFile(confPath, []byte(confRaw), 0644), test.ShouldBeNil)
-	test.That(t, ioutil.WriteFile(treePath, []byte(treeRaw), 0644), test.ShouldBeNil)
+	test.That(t, ioutil.WriteFile(confPath, []byte(confRaw), 0o644), test.ShouldBeNil)
+	test.That(t, ioutil.WriteFile(treePath, []byte(treeRaw), 0o644), test.ShouldBeNil)
 
 	found, err = searchConfig()
 	test.That(t, err, test.ShouldBeNil)
@@ -140,18 +140,18 @@ func TestSearchConfig(t *testing.T) {
 	test.That(t, err, test.ShouldNotBeNil)
 	test.That(t, err.Error(), test.ShouldContainSubstring, "not found")
 
-	test.That(t, os.MkdirAll(filepath.Join(dir, DotDir), 0755), test.ShouldBeNil)
+	test.That(t, os.MkdirAll(filepath.Join(dir, DotDir), 0o755), test.ShouldBeNil)
 	confPath := filepath.Join(dir, DotDir, ConfigName)
-	test.That(t, ioutil.WriteFile(confPath, []byte(confRaw), 0644), test.ShouldBeNil)
+	test.That(t, ioutil.WriteFile(confPath, []byte(confRaw), 0o644), test.ShouldBeNil)
 
 	found, err := searchConfig()
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, found, test.ShouldContainSubstring, confPath)
 
 	test.That(t, os.Remove(confPath), test.ShouldBeNil)
-	test.That(t, os.MkdirAll(filepath.Join(dir, "../../", DotDir), 0755), test.ShouldBeNil)
+	test.That(t, os.MkdirAll(filepath.Join(dir, "../../", DotDir), 0o755), test.ShouldBeNil)
 	confPath = filepath.Join(dir, "../../", DotDir, ConfigName)
-	test.That(t, ioutil.WriteFile(confPath, []byte(confRaw), 0644), test.ShouldBeNil)
+	test.That(t, ioutil.WriteFile(confPath, []byte(confRaw), 0o644), test.ShouldBeNil)
 
 	found, err = searchConfig()
 	test.That(t, err, test.ShouldBeNil)
@@ -169,7 +169,7 @@ func TestLoadConfigFromFile(t *testing.T) {
 	t.Run("without tree", func(t *testing.T) {
 		dir := t.TempDir()
 		confPath := filepath.Join(dir, "config.json")
-		test.That(t, ioutil.WriteFile(confPath, []byte(confRaw), 0644), test.ShouldBeNil)
+		test.That(t, ioutil.WriteFile(confPath, []byte(confRaw), 0o644), test.ShouldBeNil)
 		config, err := LoadConfigFromFile(confPath)
 		test.That(t, err, test.ShouldBeNil)
 		commitFn := config.commitFn
@@ -239,8 +239,8 @@ func TestLoadConfigFromFile(t *testing.T) {
 		dir := t.TempDir()
 		confPath := filepath.Join(dir, "config.json")
 		treePath := filepath.Join(dir, TreeName)
-		test.That(t, ioutil.WriteFile(confPath, []byte(confRaw), 0644), test.ShouldBeNil)
-		test.That(t, ioutil.WriteFile(treePath, []byte(treeRaw), 0644), test.ShouldBeNil)
+		test.That(t, ioutil.WriteFile(confPath, []byte(confRaw), 0o644), test.ShouldBeNil)
+		test.That(t, ioutil.WriteFile(treePath, []byte(treeRaw), 0o644), test.ShouldBeNil)
 		config, err := LoadConfigFromFile(confPath)
 		test.That(t, err, test.ShouldBeNil)
 		commitFn := config.commitFn

@@ -1,20 +1,19 @@
 package utils
 
 import (
-	"math/rand"
+	"crypto/rand"
+	"math"
+	"math/big"
 	"strings"
-	"time"
 )
 
 const alphaLowers string = "abcdefghijklmnopqrstuvwxyz"
 
-var alphaUppers string
-var randSrc rand.Source
-
-func init() {
-	alphaUppers = strings.ToUpper(alphaLowers)
-	randSrc = rand.NewSource(time.Now().Unix())
-}
+var (
+	alphaUppers     = strings.ToUpper(alphaLowers)
+	maxIntBig       = big.NewInt(math.MaxInt64)
+	fiftyFityChance = big.NewInt(2)
+)
 
 // RandomAlphaString returns a random alphabetic string of the given size.
 // Note(erd): all random strings are subject to modulus bias; hope that
@@ -25,8 +24,16 @@ func RandomAlphaString(size int) string {
 	}
 	chars := make([]byte, 0, size)
 	for i := 0; i < size; i++ {
-		val := int(randSrc.Int63())
-		switch rand.Intn(2) {
+		valBig, err := rand.Int(rand.Reader, maxIntBig)
+		if err != nil {
+			panic(err)
+		}
+		val := int(valBig.Int64())
+		chance, err := rand.Int(rand.Reader, fiftyFityChance)
+		if err != nil {
+			panic(err)
+		}
+		switch chance.Int64() {
 		case 0:
 			chars = append(chars, alphaLowers[val%len(alphaLowers)])
 		case 1:

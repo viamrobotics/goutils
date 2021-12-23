@@ -1,3 +1,4 @@
+// Package perf exposes application performance utilities.
 package perf
 
 import (
@@ -20,7 +21,7 @@ type niceLoggingSpanExporter struct {
 	children map[string][]mySpanInfo
 }
 
-// NewNiceLoggingSpanExporter creates a new Exporter that prints to the default log
+// NewNiceLoggingSpanExporter creates a new Exporter that prints to the default log.
 func NewNiceLoggingSpanExporter() trace.Exporter {
 	return &niceLoggingSpanExporter{children: map[string][]mySpanInfo{}}
 }
@@ -52,8 +53,7 @@ func (e *niceLoggingSpanExporter) ExportSpan(s *trace.SpanData) {
 	parentSpanID := hex.EncodeToString(s.ParentSpanID[:])
 
 	if !reZero.MatchString(parentSpanID) {
-		lst := append(e.children[parentSpanID], mySpanInfo{myinfo, spanID})
-		e.children[parentSpanID] = lst
+		e.children[parentSpanID] = append(e.children[parentSpanID], mySpanInfo{myinfo, spanID})
 		return
 	}
 

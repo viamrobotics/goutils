@@ -1,3 +1,4 @@
+// Package web contains utilities to help build out a web service.
 package web
 
 import (
@@ -12,14 +13,14 @@ import (
 	"go.viam.com/utils"
 )
 
-// APIHandler what a user has to implement to use APIMiddleware
+// APIHandler what a user has to implement to use APIMiddleware.
 type APIHandler interface {
 	// return (result, error)
 	// if both are null, do nothing
 	ServeAPI(w http.ResponseWriter, r *http.Request) (interface{}, error)
 }
 
-// APIMiddleware simple layer between http.Handler interface that does json marshalling and error handling
+// APIMiddleware simple layer between http.Handler interface that does json marshalling and error handling.
 type APIMiddleware struct {
 	Handler APIHandler
 }
@@ -58,7 +59,7 @@ func handleAPIError(w http.ResponseWriter, err error, extra interface{}) bool {
 	return true
 }
 
-// ServeHTTP call the api
+// ServeHTTP call the api.
 func (am *APIMiddleware) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()

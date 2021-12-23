@@ -12,6 +12,7 @@ import (
 )
 
 func testWebRTCCallQueue(t *testing.T, callQueue WebRTCCallQueue) {
+	t.Helper()
 	t.Run("sending an offer for too long should signal done", func(t *testing.T) {
 		undo := setDefaultOfferDeadline(time.Second)
 		defer undo()

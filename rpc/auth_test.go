@@ -96,7 +96,8 @@ func TestWithPublicKeyProvider(t *testing.T) {
 		CredentialsType: CredentialsType("fake"),
 	})
 
-	provder := wrappedHandler.(TokenVerificationKeyProvider)
+	provder, ok := wrappedHandler.(TokenVerificationKeyProvider)
+	test.That(t, ok, test.ShouldBeTrue)
 
 	verificationKey, err := provder.TokenVerificationKey(token)
 	test.That(t, err, test.ShouldBeNil)

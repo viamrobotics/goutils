@@ -10,13 +10,12 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/pkg/errors"
-
-	"go.viam.com/utils"
-
 	"github.com/edaniels/golog"
+	"github.com/pkg/errors"
 	"go.uber.org/zap/zaptest/observer"
 	"go.viam.com/test"
+
+	"go.viam.com/utils"
 )
 
 // ContextualMainExecution reflects the execution of a main function
@@ -112,6 +111,7 @@ func contextualMain(
 		Start: start,
 		Stop:  stop,
 		QuitSignal: func(t *testing.T) {
+			t.Helper()
 			select {
 			case <-mainDone:
 				earlyDone(t)
@@ -120,6 +120,7 @@ func contextualMain(
 			}
 		},
 		ExpectIters: func(t *testing.T, amount int) {
+			t.Helper()
 			expectMu.Lock()
 			started := make(chan struct{})
 			close(closeDiscard)
@@ -154,6 +155,7 @@ func contextualMain(
 			<-started
 		},
 		WaitIters: func(t *testing.T) {
+			t.Helper()
 			<-waitIters
 		},
 	}
@@ -250,14 +252,17 @@ func TestMain(t *testing.T, mainWithArgs func(ctx context.Context, args []string
 }
 
 func fatalf(t *testing.T, format string, args ...interface{}) {
+	t.Helper()
 	fatal(t, fmt.Sprintf(format, args...))
 }
 
 var tError = func(t *testing.T, args ...interface{}) {
+	t.Helper()
 	t.Error(args...)
 }
 
 var fatal = func(t *testing.T, args ...interface{}) {
+	t.Helper()
 	t.Fatal(args...)
 }
 

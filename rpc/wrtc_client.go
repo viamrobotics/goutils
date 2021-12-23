@@ -190,6 +190,7 @@ func dialWebRTC(ctx context.Context, address string, dOpts *dialOptions, logger 
 	}
 
 	// TODO(https://github.com/viamrobotics/goutils/issues/12): do separate auth here
+	//nolint:contextcheck
 	clientCh := newWebRTCClientChannel(pc, dc, logger)
 
 	exchangeCandidates := func() error {

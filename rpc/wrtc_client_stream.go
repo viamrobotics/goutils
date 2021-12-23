@@ -5,13 +5,13 @@ import (
 	"errors"
 	"sync"
 
-	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
-
 	"github.com/edaniels/golog"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
+
+	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
 )
 
 var _ = grpc.ClientStream(&webrtcClientStream{})

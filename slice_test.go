@@ -7,7 +7,6 @@ import (
 )
 
 func TestRawBytesInt32Slice(t *testing.T) {
-
 	ints := []uint32{0x55555555, 0x55555555}
 	b := RawBytesFromSlice(ints)
 

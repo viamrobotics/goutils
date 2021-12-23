@@ -5,14 +5,12 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/edaniels/golog"
 	"github.com/pkg/errors"
-
 	"go.uber.org/zap/zaptest/observer"
+	"go.viam.com/test"
 
 	"go.viam.com/utils"
-
-	"github.com/edaniels/golog"
-	"go.viam.com/test"
 )
 
 func TestContextualMain(t *testing.T) {
@@ -24,6 +22,7 @@ func TestContextualMain(t *testing.T) {
 		tError = prevError
 	}()
 	fatal = func(t *testing.T, args ...interface{}) {
+		t.Helper()
 		captured = args
 	}
 	tError = fatal
@@ -122,6 +121,7 @@ func TestTestMain(t *testing.T) {
 	}()
 	var mu sync.Mutex
 	fatal = func(t *testing.T, args ...interface{}) {
+		t.Helper()
 		mu.Lock()
 		captured = args
 		mu.Unlock()
@@ -141,10 +141,12 @@ func TestTestMain(t *testing.T) {
 			Args: []string{"1", "2", "3"},
 			Err:  err1.Error(),
 			Before: func(t *testing.T, logger golog.Logger, exec *ContextualMainExecution) {
+				t.Helper()
 				captured = nil
 				test.That(t, logger, test.ShouldNotBeNil)
 			},
 			After: func(t *testing.T, logs *observer.ObservedLogs) {
+				t.Helper()
 				test.That(t, capturedArgs, test.ShouldResemble, []string{"main", "1", "2", "3"})
 				test.That(t, captured, test.ShouldBeNil)
 				test.That(t, logs, test.ShouldNotBeNil)
@@ -155,11 +157,13 @@ func TestTestMain(t *testing.T) {
 			Args: []string{"1", "2", "3"},
 			Err:  err1.Error(),
 			Before: func(t *testing.T, logger golog.Logger, exec *ContextualMainExecution) {
+				t.Helper()
 				captured = nil
 				test.That(t, logger, test.ShouldNotBeNil)
 				logger.Info("hi")
 			},
 			During: func(ctx context.Context, t *testing.T, exec *ContextualMainExecution) {
+				t.Helper()
 				<-exec.Ready
 				exec.QuitSignal(t)
 				exec.Stop()
@@ -167,6 +171,7 @@ func TestTestMain(t *testing.T) {
 				test.That(t, exec, test.ShouldNotBeNil)
 			},
 			After: func(t *testing.T, logs *observer.ObservedLogs) {
+				t.Helper()
 				test.That(t, captured, test.ShouldHaveLength, 1)
 				test.That(t, captured[0], test.ShouldContainSubstring, "while")
 				test.That(t, captured[0], test.ShouldContainSubstring, "whoops")
@@ -189,16 +194,19 @@ func TestTestMain(t *testing.T) {
 			Args: []string{"1", "2", "3"},
 			Err:  err1.Error(),
 			Before: func(t *testing.T, logger golog.Logger, exec *ContextualMainExecution) {
+				t.Helper()
 				captured = nil
 				test.That(t, logger, test.ShouldNotBeNil)
 			},
 			During: func(ctx context.Context, t *testing.T, exec *ContextualMainExecution) {
+				t.Helper()
 				<-exec.Ready
 				exec.QuitSignal(t)
 				test.That(t, capturedArgs, test.ShouldResemble, []string{"main", "1", "2", "3"})
 				test.That(t, exec, test.ShouldNotBeNil)
 			},
 			After: func(t *testing.T, logs *observer.ObservedLogs) {
+				t.Helper()
 				test.That(t, captured, test.ShouldBeNil)
 				test.That(t, logs, test.ShouldNotBeNil)
 			},
@@ -208,17 +216,20 @@ func TestTestMain(t *testing.T) {
 			Args: []string{"1", "2", "3"},
 			Err:  err1.Error(),
 			Before: func(t *testing.T, logger golog.Logger, exec *ContextualMainExecution) {
+				t.Helper()
 				captured = nil
 				test.That(t, logger, test.ShouldNotBeNil)
 				logger.Info("hi")
 			},
 			During: func(ctx context.Context, t *testing.T, exec *ContextualMainExecution) {
+				t.Helper()
 				<-exec.Ready
 				exec.QuitSignal(t)
 				test.That(t, capturedArgs, test.ShouldResemble, []string{"main", "1", "2", "3"})
 				test.That(t, exec, test.ShouldNotBeNil)
 			},
 			After: func(t *testing.T, logs *observer.ObservedLogs) {
+				t.Helper()
 				test.That(t, captured, test.ShouldHaveLength, 0)
 				test.That(t, logs, test.ShouldNotBeNil)
 				test.That(t, logs.FilterMessage("hi").All(), test.ShouldHaveLength, 1)
@@ -241,11 +252,13 @@ func TestTestMain(t *testing.T) {
 			Args: []string{"1", "2", "3"},
 			Err:  "",
 			Before: func(t *testing.T, logger golog.Logger, exec *ContextualMainExecution) {
+				t.Helper()
 				captured = nil
 				test.That(t, logger, test.ShouldNotBeNil)
 				exec.ExpectIters(t, 2)
 			},
 			During: func(ctx context.Context, t *testing.T, exec *ContextualMainExecution) {
+				t.Helper()
 				<-exec.Ready
 				exec.WaitIters(t)
 				exec.QuitSignal(t)
@@ -253,6 +266,7 @@ func TestTestMain(t *testing.T) {
 				test.That(t, exec, test.ShouldNotBeNil)
 			},
 			After: func(t *testing.T, logs *observer.ObservedLogs) {
+				t.Helper()
 				test.That(t, captured, test.ShouldBeNil)
 				test.That(t, logs, test.ShouldNotBeNil)
 			},
@@ -262,17 +276,20 @@ func TestTestMain(t *testing.T) {
 			Args: []string{"1", "2", "3"},
 			Err:  "",
 			Before: func(t *testing.T, logger golog.Logger, exec *ContextualMainExecution) {
+				t.Helper()
 				captured = nil
 				test.That(t, logger, test.ShouldNotBeNil)
 				logger.Info("hi")
 			},
 			During: func(ctx context.Context, t *testing.T, exec *ContextualMainExecution) {
+				t.Helper()
 				<-exec.Ready
 				exec.QuitSignal(t)
 				test.That(t, capturedArgs, test.ShouldResemble, []string{"main", "1", "2", "3"})
 				test.That(t, exec, test.ShouldNotBeNil)
 			},
 			After: func(t *testing.T, logs *observer.ObservedLogs) {
+				t.Helper()
 				test.That(t, captured, test.ShouldHaveLength, 0)
 				test.That(t, logs, test.ShouldNotBeNil)
 				test.That(t, logs.FilterMessage("hi").All(), test.ShouldHaveLength, 1)

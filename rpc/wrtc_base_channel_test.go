@@ -15,6 +15,7 @@ import (
 )
 
 func setupWebRTCPeers(t *testing.T) (client, server *webrtc.PeerConnection, clientDc, serverDc *webrtc.DataChannel) {
+	t.Helper()
 	logger := golog.NewTestLogger(t)
 
 	pc1, dc1, err := newPeerConnectionForClient(context.Background(), webrtc.Configuration{}, true, logger)
@@ -37,6 +38,7 @@ func setupWebRTCBaseChannels(t *testing.T) (
 	clientDone <-chan struct{},
 	serverDone <-chan struct{},
 ) {
+	t.Helper()
 	logger := golog.NewTestLogger(t)
 	pc1, pc2, dc1, dc2 := setupWebRTCPeers(t)
 

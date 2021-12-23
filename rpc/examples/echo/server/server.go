@@ -1,3 +1,4 @@
+// Package server implement an echo server.
 package server
 
 import (
