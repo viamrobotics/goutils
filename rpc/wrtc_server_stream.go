@@ -195,6 +195,17 @@ func (s *webrtcServerStream) onRequest(request *webrtcpb.Request) {
 	}
 }
 
+func isContextCanceled(err error) bool {
+	if err == nil {
+		return false
+	}
+	if utils.FilterOutError(err, context.Canceled) == nil {
+		return true
+	}
+	gStatus, isGRPCErr := status.FromError(err)
+	return isGRPCErr && gStatus.Code() == codes.Canceled
+}
+
 func (s *webrtcServerStream) processHeaders(headers *webrtcpb.RequestHeaders) {
 	s.logger = s.logger.With("method", headers.Method)
 
@@ -229,7 +240,7 @@ func (s *webrtcServerStream) processHeaders(headers *webrtcpb.RequestHeaders) {
 		}()
 		defer s.ch.server.activeBackgroundWorkers.Done()
 		if err := handlerFunc(s); err != nil {
-			if utils.FilterOutError(err, context.Canceled) != nil || errors.Is(err, io.ErrClosedPipe) {
+			if errors.Is(err, io.ErrClosedPipe) || isContextCanceled(err) {
 				return
 			}
 			s.logger.Errorw("error calling handler", "error", err)
@@ -265,11 +276,9 @@ func (s *webrtcServerStream) closeWithSendError(err error) error {
 	}
 	chClosed, chClosedReason := s.ch.Closed()
 	if s.Closed() || chClosed {
-		if err != nil && errors.Is(chClosedReason, errDataChannelClosed) && errors.Is(err, context.Canceled) {
+		if errors.Is(chClosedReason, errDataChannelClosed) &&
+			isContextCanceled(err) {
 			return nil
-		}
-		if err == nil {
-			return errors.New("close called multiple times")
 		}
 		return errors.Wrap(err, "close called multiple times with error")
 	}
