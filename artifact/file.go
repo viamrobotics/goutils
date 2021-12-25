@@ -100,19 +100,25 @@ func emplaceFile(store Store, hash, path string) error {
 		err = multierr.Combine(err, hashFile.Close())
 	}()
 
-	//nolint:gosec
-	emplacedFile, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
+	tempFile, err := ioutil.TempFile("", hash)
 	if err != nil {
 		return err
 	}
-
 	defer func() {
 		if err != nil {
-			err = multierr.Combine(err, os.Remove(path))
+			err = multierr.Combine(err, os.Remove(tempFile.Name()))
 		} else {
-			err = emplacedFile.Close()
+			err = tempFile.Close()
 		}
 	}()
-	_, err = io.Copy(emplacedFile, hashFile)
-	return err
+	if err := os.Chmod(tempFile.Name(), 0o600); err != nil {
+		return err
+	}
+	if _, err = io.Copy(tempFile, hashFile); err != nil {
+		return err
+	}
+	if err := os.Rename(tempFile.Name(), path); err != nil {
+		return err
+	}
+	return nil
 }
