@@ -7,10 +7,17 @@ import (
 
 // TryClose attempts to close the target if it implements
 // the right interface.
-func TryClose(target interface{}) error {
+func TryClose(ctx context.Context, target interface{}) error {
 	closer, ok := target.(io.Closer)
 	if !ok {
-		return nil
+		ctxCloser, ok := target.(interface {
+			Close(ctx context.Context) error
+		})
+		if !ok {
+			return nil
+		}
+
+		return ctxCloser.Close(ctx)
 	}
 	return closer.Close()
 }

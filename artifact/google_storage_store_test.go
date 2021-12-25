@@ -35,7 +35,7 @@ func TestNewGoogleStorageStore(t *testing.T) {
 	defer undo()
 	store, err := NewStore(&GoogleStorageStoreConfig{Bucket: "somebucket"})
 	test.That(t, err, test.ShouldBeNil)
-	test.That(t, utils.TryClose(store), test.ShouldBeNil)
+	test.That(t, utils.TryClose(context.Background(), store), test.ShouldBeNil)
 
 	setGoogleCredsPath("unknownpath")
 	_, err = NewStore(&GoogleStorageStoreConfig{Bucket: "somebucket"})
@@ -98,7 +98,7 @@ func TestNewGoogleStorageStore(t *testing.T) {
 	store, err = NewStore(&GoogleStorageStoreConfig{Bucket: bucketName})
 	test.That(t, err, test.ShouldBeNil)
 	defer func() {
-		test.That(t, utils.TryClose(store), test.ShouldBeNil)
+		test.That(t, utils.TryClose(context.Background(), store), test.ShouldBeNil)
 	}()
 
 	testStore(t, store, false)
@@ -107,7 +107,7 @@ func TestNewGoogleStorageStore(t *testing.T) {
 	sameStore, err := NewStore(&GoogleStorageStoreConfig{Bucket: bucketName})
 	test.That(t, err, test.ShouldBeNil)
 	defer func() {
-		test.That(t, utils.TryClose(sameStore), test.ShouldBeNil)
+		test.That(t, utils.TryClose(context.Background(), sameStore), test.ShouldBeNil)
 	}()
 	testStore(t, sameStore, true)
 
@@ -115,7 +115,7 @@ func TestNewGoogleStorageStore(t *testing.T) {
 	readOnlyStore, err := NewStore(&GoogleStorageStoreConfig{Bucket: bucketName})
 	test.That(t, err, test.ShouldBeNil)
 	defer func() {
-		test.That(t, utils.TryClose(readOnlyStore), test.ShouldBeNil)
+		test.That(t, utils.TryClose(context.Background(), readOnlyStore), test.ShouldBeNil)
 	}()
 	testStore(t, readOnlyStore, true)
 }

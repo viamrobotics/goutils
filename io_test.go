@@ -10,17 +10,27 @@ import (
 
 func TestTryClose(t *testing.T) {
 	// not a closer
-	test.That(t, TryClose(5), test.ShouldBeNil)
+	test.That(t, TryClose(context.Background(), 5), test.ShouldBeNil)
 
 	stc := &somethingToClose{}
-	test.That(t, TryClose(stc), test.ShouldBeNil)
+	test.That(t, TryClose(context.Background(), stc), test.ShouldBeNil)
 	test.That(t, stc.called, test.ShouldEqual, 1)
 
 	stc.err = true
-	err := TryClose(stc)
+	err := TryClose(context.Background(), stc)
 	test.That(t, err, test.ShouldNotBeNil)
 	test.That(t, err.Error(), test.ShouldContainSubstring, "whoops")
 	test.That(t, stc.called, test.ShouldEqual, 2)
+
+	stcc := &somethingToCloseContext{}
+	test.That(t, TryClose(context.Background(), stcc), test.ShouldBeNil)
+	test.That(t, stcc.called, test.ShouldEqual, 1)
+
+	stcc.err = true
+	err = TryClose(context.Background(), stcc)
+	test.That(t, err, test.ShouldNotBeNil)
+	test.That(t, err.Error(), test.ShouldContainSubstring, "whoops")
+	test.That(t, stcc.called, test.ShouldEqual, 2)
 }
 
 type somethingToClose struct {
@@ -29,6 +39,19 @@ type somethingToClose struct {
 }
 
 func (stc *somethingToClose) Close() error {
+	stc.called++
+	if stc.err {
+		return errors.New("whoops")
+	}
+	return nil
+}
+
+type somethingToCloseContext struct {
+	called int
+	err    bool
+}
+
+func (stc *somethingToCloseContext) Close(ctx context.Context) error {
 	stc.called++
 	if stc.err {
 		return errors.New("whoops")

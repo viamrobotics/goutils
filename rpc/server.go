@@ -471,7 +471,7 @@ func (ss *simpleServer) Stop() error {
 	ss.logger.Info("service servers for gateway canceled")
 	ss.logger.Info("closing service servers")
 	for _, srv := range ss.serviceServers {
-		err = multierr.Combine(err, utils.TryClose(srv))
+		err = multierr.Combine(err, utils.TryClose(context.Background(), srv))
 	}
 	ss.logger.Info("service servers closed")
 	if ss.webrtcAnswerer != nil {
