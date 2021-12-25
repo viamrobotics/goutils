@@ -55,6 +55,9 @@ issues:
     - path: _test\.go$|^tests/|^samples/
       linters:
         - errcheck
+        - contextcheck
+        - exhaustive
+        - forcetypeassert
         - goconst
         - gosec
         - govet
