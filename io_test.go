@@ -31,6 +31,10 @@ func TestTryClose(t *testing.T) {
 	test.That(t, err, test.ShouldNotBeNil)
 	test.That(t, err.Error(), test.ShouldContainSubstring, "whoops")
 	test.That(t, stcc.called, test.ShouldEqual, 2)
+
+	stcs := &somethingToCloseSimple{}
+	test.That(t, TryClose(context.Background(), stcs), test.ShouldBeNil)
+	test.That(t, stcs.called, test.ShouldEqual, 1)
 }
 
 type somethingToClose struct {
@@ -57,6 +61,14 @@ func (stc *somethingToCloseContext) Close(ctx context.Context) error {
 		return errors.New("whoops")
 	}
 	return nil
+}
+
+type somethingToCloseSimple struct {
+	called int
+}
+
+func (stc *somethingToCloseSimple) Close() {
+	stc.called++
 }
 
 func TestReadBytes(t *testing.T) {

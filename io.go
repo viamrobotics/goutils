@@ -8,18 +8,19 @@ import (
 // TryClose attempts to close the target if it implements
 // the right interface.
 func TryClose(ctx context.Context, target interface{}) error {
-	closer, ok := target.(io.Closer)
-	if !ok {
-		ctxCloser, ok := target.(interface {
-			Close(ctx context.Context) error
-		})
-		if !ok {
-			return nil
-		}
-
-		return ctxCloser.Close(ctx)
+	switch t := target.(type) {
+	case io.Closer:
+		return t.Close()
+	case interface {
+		Close(ctx context.Context) error
+	}:
+		return t.Close(ctx)
+	case interface{ Close() }:
+		t.Close()
+		return nil
+	default:
+		return nil
 	}
-	return closer.Close()
 }
 
 // ReadBytes ensures that all bytes requested to be read
