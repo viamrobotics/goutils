@@ -17,6 +17,8 @@ import (
 
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
+
+	"go.viam.com/utils"
 )
 
 // Path returns the local file system path to the given artifact path. It
@@ -100,21 +102,20 @@ func emplaceFile(store Store, hash, path string) error {
 		err = multierr.Combine(err, hashFile.Close())
 	}()
 
-	tempFile, err := ioutil.TempFile("", hash)
+	tempFile, err := ioutil.TempFile(filepath.Dir(path), hash)
 	if err != nil {
 		return err
 	}
 	defer func() {
-		if err != nil {
-			err = multierr.Combine(err, os.Remove(tempFile.Name()))
-		} else {
-			err = tempFile.Close()
-		}
+		utils.UncheckedError(os.Remove(tempFile.Name()))
 	}()
 	if err := os.Chmod(tempFile.Name(), 0o600); err != nil {
 		return err
 	}
 	if _, err = io.Copy(tempFile, hashFile); err != nil {
+		return err
+	}
+	if err := tempFile.Close(); err != nil {
 		return err
 	}
 	if err := os.Rename(tempFile.Name(), path); err != nil {
