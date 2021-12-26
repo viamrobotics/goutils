@@ -2,11 +2,13 @@ package artifact
 
 import (
 	"io"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 
 	"github.com/pkg/errors"
-	"go.uber.org/multierr"
+
+	"go.viam.com/utils"
 )
 
 // newFileSystemStore returns a new fileSystemStore based on the given config.
@@ -55,18 +57,29 @@ func (s *fileSystemStore) Load(hash string) (io.ReadCloser, error) {
 
 func (s *fileSystemStore) Store(hash string, r io.Reader) (err error) {
 	path := s.pathToHashFile(hash)
-	//nolint:gosec
-	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
+
+	tempFile, err := ioutil.TempFile(filepath.Dir(path), hash)
 	if err != nil {
 		return err
 	}
+	var successful bool
 	defer func() {
-		if err != nil {
-			err = multierr.Combine(err, f.Close(), os.Remove(path))
-		} else {
-			err = f.Close()
+		if !successful {
+			utils.UncheckedError(os.Remove(tempFile.Name()))
 		}
 	}()
-	_, err = io.Copy(f, r)
-	return
+	if err := os.Chmod(tempFile.Name(), 0o600); err != nil {
+		return err
+	}
+	if _, err = io.Copy(tempFile, r); err != nil {
+		return err
+	}
+	if err := tempFile.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tempFile.Name(), path); err != nil {
+		return err
+	}
+	successful = true
+	return nil
 }
