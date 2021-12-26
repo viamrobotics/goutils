@@ -106,8 +106,11 @@ func emplaceFile(store Store, hash, path string) error {
 	if err != nil {
 		return err
 	}
+	var successful bool
 	defer func() {
-		utils.UncheckedError(os.Remove(tempFile.Name()))
+		if !successful {
+			utils.UncheckedError(os.Remove(tempFile.Name()))
+		}
 	}()
 	if err := os.Chmod(tempFile.Name(), 0o600); err != nil {
 		return err
@@ -121,5 +124,6 @@ func emplaceFile(store Store, hash, path string) error {
 	if err := os.Rename(tempFile.Name(), path); err != nil {
 		return err
 	}
+	successful = true
 	return nil
 }
