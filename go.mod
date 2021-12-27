@@ -7,6 +7,7 @@ require (
 	cloud.google.com/go/secretmanager v1.0.0
 	cloud.google.com/go/storage v1.10.0
 	github.com/Masterminds/sprig v2.22.0+incompatible
+	github.com/alessio/shellescape v1.4.1
 	github.com/coreos/go-oidc/v3 v3.1.0
 	github.com/edaniels/golinters v0.0.5-0.20210512224240-495d3b8eed19
 	github.com/edaniels/golog v0.0.0-20210326173913-16d408aa7a5e

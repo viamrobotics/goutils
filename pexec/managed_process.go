@@ -13,6 +13,7 @@ import (
 
 	"github.com/edaniels/golog"
 	"github.com/pkg/errors"
+	"github.com/alessio/shellescape"
 
 	"go.viam.com/utils"
 )
@@ -40,6 +41,16 @@ type ManagedProcess interface {
 // NewManagedProcess returns a new, unstarted, from the given configuration.
 func NewManagedProcess(config ProcessConfig, logger golog.Logger) ManagedProcess {
 	logger = logger.Named(fmt.Sprintf("process.%s_%s", config.ID, config.Name))
+
+	// In an AppImage execve() is meant to be hooked to swap out the AppImage's libraries and the system ones.
+	// Go doesn't use libc's execve() though, so the hooks fail and trying to exec binaries outside the AppImage can fail.
+	// We work around this by execing through a bash shell (included in the AppImage) which then gets hooked properly.
+	_, isAppImage := os.LookupEnv("APPIMAGE")
+	if isAppImage {
+		config.Args = []string{"-c", shellescape.QuoteCommand(append([]string{config.Name}, config.Args...))}
+		config.Name = "bash"
+	}
+
 	return &managedProcess{
 		id:         config.ID,
 		name:       config.Name,
