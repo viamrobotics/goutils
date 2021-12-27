@@ -58,6 +58,9 @@ jobs:
       uses: codecov/codecov-action@v1
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
+    - name: Cleanup
+      uses: colpal/actions-clean@v1
+      if: ${{ always() }} # To ensure this step runs even when earlier steps fail
 
   build_and_test_from_pr: # TODO(https://github.com/viamrobotics/goutils/issues/8): reuse above
     name: Build and Test (PR)
