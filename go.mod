@@ -14,6 +14,7 @@ require (
 	github.com/fsnotify/fsnotify v1.5.1
 	github.com/fullstorydev/grpcurl v1.8.0
 	github.com/golang-jwt/jwt/v4 v4.2.0
+	github.com/golang/protobuf v1.5.2
 	github.com/golangci/golangci-lint v1.43.0
 	github.com/google/uuid v1.3.0
 	github.com/grpc-ecosystem/go-grpc-middleware v1.2.2
@@ -25,7 +26,6 @@ require (
 	github.com/pion/webrtc/v3 v3.1.8
 	github.com/pkg/errors v0.9.1
 	github.com/pseudomuto/protoc-gen-doc v1.3.2
-	github.com/srikrsna/protoc-gen-gotag v0.6.2
 	go.mongodb.org/mongo-driver v1.8.0
 	go.opencensus.io v0.23.0
 	go.uber.org/goleak v1.1.12
@@ -94,7 +94,6 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/glog v0.0.0-20210429001901-424d2337a529 // indirect
 	github.com/golang/groupcache v0.0.0-20200121045136-8c9f03a8e57e // indirect
-	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/golang/snappy v0.0.3 // indirect
 	github.com/golangci/check v0.0.0-20180506172741-cfe4005ccda2 // indirect
 	github.com/golangci/dupl v0.0.0-20180902072040-3e9179ac440a // indirect
@@ -131,7 +130,6 @@ require (
 	github.com/kyoh86/exportloopref v0.1.8 // indirect
 	github.com/ldez/gomoddirectives v0.2.2 // indirect
 	github.com/ldez/tagliatelle v0.2.0 // indirect
-	github.com/lyft/protoc-gen-star v0.5.3 // indirect
 	github.com/magiconair/properties v1.8.5 // indirect
 	github.com/maratori/testpackage v1.0.1 // indirect
 	github.com/matoous/godox v0.0.0-20210227103229-6504466cf951 // indirect
