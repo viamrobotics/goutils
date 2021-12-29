@@ -1,4 +1,4 @@
-PATH_WITH_GO_BIN=${PATH}:`pwd`/bin
+PATH_WITH_GO_BIN=`pwd`/bin:${PATH}
 
 setup-cert:
 	cd etc && bash ./setup_cert.sh
