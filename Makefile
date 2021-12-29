@@ -6,7 +6,7 @@ setup-cert:
 setup-priv-key:
 	cd etc && bash ./setup_priv_key.sh
 
-build: buf build-web build-go
+build: build-web build-go
 
 build-go: buf-go
 	go build ./...
