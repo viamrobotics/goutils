@@ -35,6 +35,7 @@ buf-go: tool-install
 	PATH=$(PATH_WITH_GO_BIN) buf generate
 
 buf-web: tool-install
+	npm install
 	PATH=$(PATH_WITH_GO_BIN) buf lint
 	PATH=$(PATH_WITH_GO_BIN) buf generate --template ./etc/buf.web.gen.yaml
 	PATH=$(PATH_WITH_GO_BIN) buf generate --template ./etc/buf.web.gen.yaml buf.build/googleapis/googleapis
