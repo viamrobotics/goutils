@@ -30,8 +30,6 @@ vendor/
 # gRPC/Protocol Buffers
 bin
 dist/*
-proto/rpc/*
-!proto/rpc/*/*.proto
 
 # Test data
 coverage.txt
