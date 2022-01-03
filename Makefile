@@ -42,7 +42,7 @@ buf-web: tool-install
 
 lint: tool-install
 	PATH=$(PATH_WITH_TOOLS) buf lint
-	go list -f '{{.Dir}}' ./... | grep -v gen | grep -v proto | xargs go vet -vettool=`go env GOPATH`/bin/combined
+	go list -f '{{.Dir}}' ./... | grep -v gen | grep -v proto | xargs go vet -vettool=bin/combined
 	go list -f '{{.Dir}}' ./... | grep -v gen | grep -v proto | xargs go run github.com/golangci/golangci-lint/cmd/golangci-lint run -v --fix --config=./etc/.golangci.yaml
 
 cover:
