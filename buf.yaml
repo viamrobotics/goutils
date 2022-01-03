@@ -8,6 +8,7 @@ build:
     - rpc/examples/echo/frontend/node_modules
     - rpc/examples/fileupload/frontend/node_modules
     - rpc/js/node_modules
+    - node_modules
 lint:
   use:
     - DEFAULT
