@@ -16,19 +16,24 @@ build-web: buf-web
 	cd rpc/examples/echo/frontend && npm install && npm link @viamrobotics/rpc && npx webpack
 	cd rpc/examples/fileupload/frontend && npm install && npm link @viamrobotics/rpc && npx webpack
 
-buf: buf-go buf-web
-
-buf-go:
-	GOBIN=`pwd`/bin go install github.com/golang/protobuf/protoc-gen-go \
+tool-install:
+	GOBIN=`pwd`/bin go install github.com/bufbuild/buf/cmd/buf \
+		github.com/bufbuild/buf/cmd/protoc-gen-buf-breaking \
+		github.com/bufbuild/buf/cmd/protoc-gen-buf-lint \
+		github.com/golang/protobuf/protoc-gen-go \
 		github.com/pseudomuto/protoc-gen-doc/cmd/protoc-gen-doc \
 		google.golang.org/grpc/cmd/protoc-gen-go-grpc \
 		github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway \
 		github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2
-	buf lint
+
+buf: buf-go buf-web
+
+buf-go: tool-install
+	PATH=$(PATH_WITH_GO_BIN) buf lint
 	PATH=$(PATH_WITH_GO_BIN) buf generate
 
-buf-web:
-	buf lint
+buf-web: tool-install
+	PATH=$(PATH_WITH_GO_BIN) buf lint
 	PATH=$(PATH_WITH_GO_BIN) buf generate --template ./etc/buf.web.gen.yaml
 	PATH=$(PATH_WITH_GO_BIN) buf generate --template ./etc/buf.web.gen.yaml buf.build/googleapis/googleapis
 
