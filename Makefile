@@ -1,4 +1,4 @@
-PATH_WITH_GO_BIN=`pwd`/bin:${PATH}
+PATH_WITH_TOOLS="`pwd`/bin:`pwd`/node_modules/.bin:${PATH}"
 
 setup-cert:
 	cd etc && bash ./setup_cert.sh
@@ -31,17 +31,17 @@ tool-install:
 buf: buf-go buf-web
 
 buf-go: tool-install
-	PATH=$(PATH_WITH_GO_BIN) buf lint
-	PATH=$(PATH_WITH_GO_BIN) buf generate
+	PATH=$(PATH_WITH_TOOLS) buf lint
+	PATH=$(PATH_WITH_TOOLS) buf generate
 
 buf-web: tool-install
 	npm install
-	PATH=$(PATH_WITH_GO_BIN) buf lint
-	PATH=$(PATH_WITH_GO_BIN) buf generate --template ./etc/buf.web.gen.yaml
-	PATH=$(PATH_WITH_GO_BIN) buf generate --template ./etc/buf.web.gen.yaml buf.build/googleapis/googleapis
+	PATH=$(PATH_WITH_TOOLS) buf lint
+	PATH=$(PATH_WITH_TOOLS) buf generate --template ./etc/buf.web.gen.yaml
+	PATH=$(PATH_WITH_TOOLS) buf generate --template ./etc/buf.web.gen.yaml buf.build/googleapis/googleapis
 
 lint: tool-install
-	PATH=$(PATH_WITH_GO_BIN) buf lint
+	PATH=$(PATH_WITH_TOOLS) buf lint
 	go list -f '{{.Dir}}' ./... | grep -v gen | grep -v proto | xargs go vet -vettool=`go env GOPATH`/bin/combined
 	go list -f '{{.Dir}}' ./... | grep -v gen | grep -v proto | xargs go run github.com/golangci/golangci-lint/cmd/golangci-lint run -v --fix --config=./etc/.golangci.yaml
 
