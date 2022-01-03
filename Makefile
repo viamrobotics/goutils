@@ -17,14 +17,16 @@ build-web: buf-web
 	cd rpc/examples/fileupload/frontend && npm install && npm link @viamrobotics/rpc && npx webpack
 
 tool-install:
-	GOBIN=`pwd`/bin go install github.com/bufbuild/buf/cmd/buf \
+	GOBIN=`pwd`/bin go install google.golang.org/protobuf/cmd/protoc-gen-go \
+		github.com/bufbuild/buf/cmd/buf \
 		github.com/bufbuild/buf/cmd/protoc-gen-buf-breaking \
 		github.com/bufbuild/buf/cmd/protoc-gen-buf-lint \
-		github.com/golang/protobuf/protoc-gen-go \
 		github.com/pseudomuto/protoc-gen-doc/cmd/protoc-gen-doc \
 		google.golang.org/grpc/cmd/protoc-gen-go-grpc \
 		github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway \
-		github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2
+		github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2 \
+		github.com/edaniels/golinters/cmd/combined \
+		github.com/golangci/golangci-lint/cmd/golangci-lint
 
 buf: buf-go buf-web
 
@@ -37,10 +39,8 @@ buf-web: tool-install
 	PATH=$(PATH_WITH_GO_BIN) buf generate --template ./etc/buf.web.gen.yaml
 	PATH=$(PATH_WITH_GO_BIN) buf generate --template ./etc/buf.web.gen.yaml buf.build/googleapis/googleapis
 
-lint:
-	buf lint
-	go install github.com/edaniels/golinters/cmd/combined
-	go install github.com/golangci/golangci-lint/cmd/golangci-lint
+lint: tool-install
+	PATH=$(PATH_WITH_GO_BIN) buf lint
 	go list -f '{{.Dir}}' ./... | grep -v gen | grep -v proto | xargs go vet -vettool=`go env GOPATH`/bin/combined
 	go list -f '{{.Dir}}' ./... | grep -v gen | grep -v proto | xargs go run github.com/golangci/golangci-lint/cmd/golangci-lint run -v --fix --config=./etc/.golangci.yaml
 
