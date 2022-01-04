@@ -1,6 +1,6 @@
 {
   "name": "@viamrobotics/rpc",
-  "version": "0.1.16",
+  "version": "0.1.17",
   "license": "MIT",
   "dependencies": {
     "@improbable-eng/grpc-web": "^0.13.0",

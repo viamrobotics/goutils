@@ -286,11 +286,19 @@ export async function dialWebRTC(signalingAddress: string, host: string, opts?: 
 		}
 	});
 
+	let clientEndResolve: () => void;
+	let clientEndReject: (reason?: any) => void;
+	let clientEnd = new Promise<void>((resolve, reject) => {
+		clientEndResolve = resolve;
+		clientEndReject = reject;
+	});
 	client.onEnd((status: grpc.Code, statusMessage: string, trailers: grpc.Metadata) => {
 		if (status === grpc.Code.OK) {
+			clientEndResolve();
 			return;
 		}
 		console.error(statusMessage);
+		clientEndReject(statusMessage);
 	});
 	client.start({ 'rpc-host': host })
 
@@ -303,6 +311,7 @@ export async function dialWebRTC(signalingAddress: string, host: string, opts?: 
 	client.send(callRequest);
 
 	const cc = new ClientChannel(pc, dc);
+	await clientEnd;
 	await cc.ready;
 	exchangeDone = true;
 	sendDone();
