@@ -220,10 +220,14 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 			}
 
 			if len(callResp.AnswererCandidates) > candLen {
-				candLen++
-				cand := iceCandidateFromMongo(callResp.AnswererCandidates[len(callResp.AnswererCandidates)-1])
-				if !sendAnswer(WebRTCCallAnswer{Candidate: &cand}) {
-					return
+				prevCandLen := candLen
+				newCandLen := len(callResp.AnswererCandidates) - candLen
+				candLen += newCandLen
+				for i := 0; i < newCandLen; i++ {
+					cand := iceCandidateFromMongo(callResp.AnswererCandidates[prevCandLen+i])
+					if !sendAnswer(WebRTCCallAnswer{Candidate: &cand}) {
+						return
+					}
 				}
 			}
 
