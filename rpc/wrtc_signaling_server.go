@@ -87,7 +87,10 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 			return resp.Err
 		}
 
-		if !haveInit && resp.InitialSDP != nil {
+		if !haveInit && resp.InitialSDP == nil {
+			return errors.New("expected to have initial SDP if no error")
+		}
+		if !haveInit {
 			haveInit = true
 			if err := server.Send(&webrtcpb.CallResponse{
 				Uuid: uuid,
@@ -99,9 +102,6 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 			}); err != nil {
 				return err
 			}
-		}
-		if !haveInit {
-			continue
 		}
 
 		if resp.Candidate == nil {

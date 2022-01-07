@@ -212,17 +212,17 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 				return
 			}
 
-			if len(callResp.AnswererCandidates) > candLen {
-				candLen++
-				cand := iceCandidateFromMongo(callResp.AnswererCandidates[len(callResp.AnswererCandidates)-1])
-				if !sendAnswer(WebRTCCallAnswer{Candidate: &cand}) {
+			if !haveInitSDP && callResp.AnswererSDP != "" {
+				haveInitSDP = true
+				if !sendAnswer(WebRTCCallAnswer{InitialSDP: &callResp.AnswererSDP}) {
 					return
 				}
 			}
 
-			if !haveInitSDP && callResp.AnswererSDP != "" {
-				haveInitSDP = true
-				if !sendAnswer(WebRTCCallAnswer{InitialSDP: &callResp.AnswererSDP}) {
+			if len(callResp.AnswererCandidates) > candLen {
+				candLen++
+				cand := iceCandidateFromMongo(callResp.AnswererCandidates[len(callResp.AnswererCandidates)-1])
+				if !sendAnswer(WebRTCCallAnswer{Candidate: &cand}) {
 					return
 				}
 			}
