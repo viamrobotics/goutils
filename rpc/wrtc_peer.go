@@ -4,7 +4,6 @@ import (
 	"context"
 	"io"
 	"sync"
-	"time"
 
 	"github.com/edaniels/golog"
 	"github.com/pion/interceptor"
@@ -14,8 +13,6 @@ import (
 	"go.viam.com/utils"
 	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
 )
-
-const webrtcConnectionTimeout = 20 * time.Second
 
 // DefaultICEServers is the default set of ICE servers to use for WebRTC session negotiation.
 // There is no guarantee that the defaults here will remain usable.

@@ -58,7 +58,7 @@ func hostFromCtx(ctx context.Context) (string, error) {
 // Call is a request/offer to start a caller with the connected answerer.
 func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcpb.SignalingService_CallServer) error {
 	ctx := server.Context()
-	ctx, cancel := context.WithTimeout(ctx, webrtcConnectionTimeout)
+	ctx, cancel := context.WithTimeout(ctx, getDefaultOfferDeadline())
 	defer cancel()
 	host, err := hostFromCtx(ctx)
 	if err != nil {
@@ -126,7 +126,7 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 // In a world where https://github.com/grpc/grpc-web/issues/24 is fixed,
 // this should be removed in favor of a bidirectional stream on Call.
 func (srv *WebRTCSignalingServer) CallUpdate(ctx context.Context, req *webrtcpb.CallUpdateRequest) (*webrtcpb.CallUpdateResponse, error) {
-	ctx, cancel := context.WithTimeout(ctx, webrtcConnectionTimeout)
+	ctx, cancel := context.WithTimeout(ctx, getDefaultOfferDeadline())
 	defer cancel()
 	host, err := hostFromCtx(ctx)
 	if err != nil {
@@ -224,7 +224,7 @@ func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 		return err
 	}
 
-	offerCtx, offerCtxCancel := context.WithTimeout(ctx, webrtcConnectionTimeout)
+	offerCtx, offerCtxCancel := context.WithTimeout(ctx, getDefaultOfferDeadline())
 	var answererStoppedExchange bool
 	callerLoop := func() error {
 		defer func() {
@@ -359,7 +359,7 @@ func (srv *WebRTCSignalingServer) OptionalWebRTCConfig(
 	ctx context.Context,
 	req *webrtcpb.OptionalWebRTCConfigRequest,
 ) (*webrtcpb.OptionalWebRTCConfigResponse, error) {
-	ctx, cancel := context.WithTimeout(ctx, webrtcConnectionTimeout)
+	ctx, cancel := context.WithTimeout(ctx, getDefaultOfferDeadline())
 	defer cancel()
 	host, err := hostFromCtx(ctx)
 	if err != nil {

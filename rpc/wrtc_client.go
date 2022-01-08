@@ -60,7 +60,7 @@ func dialWebRTC(ctx context.Context, address string, dOpts *dialOptions, logger 
 		address = u.Host
 		host = u.Query().Get("host")
 	}
-	dialCtx, timeoutCancel := context.WithTimeout(ctx, webrtcConnectionTimeout)
+	dialCtx, timeoutCancel := context.WithTimeout(ctx, getDefaultOfferDeadline())
 	defer timeoutCancel()
 
 	logger.Debugw("connecting to signaling server", "address", address)

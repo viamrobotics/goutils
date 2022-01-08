@@ -255,7 +255,7 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 	}
 
 	errCh := make(chan interface{})
-	exchangeCtx, exchangeCancel := context.WithTimeout(ans.closeCtx, webrtcConnectionTimeout)
+	exchangeCtx, exchangeCancel := context.WithTimeout(ans.closeCtx, getDefaultOfferDeadline())
 	defer exchangeCancel()
 	sendErr := func(err interface{}) {
 		select {

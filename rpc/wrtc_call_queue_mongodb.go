@@ -39,12 +39,12 @@ var (
 	mongodbWebRTCCallQueueIndexes           = []mongo.IndexModel{
 		{
 			Keys: bson.D{
-				{"host", 1},
+				{webrtcCallHostField, 1},
 			},
 		},
 		{
 			Keys: bson.D{
-				{"started_at", 1},
+				{webrtcCallStartedAtField, 1},
 			},
 			Options: &options.IndexOptions{
 				ExpireAfterSeconds: &mongodbWebRTCCallQueueExpireAfter,
@@ -97,6 +97,7 @@ type mongodbWebRTCCall struct {
 const (
 	webrtcCallIDField                 = "_id"
 	webrtcCallHostField               = "host"
+	webrtcCallStartedAtField          = "started_at"
 	webrtcCallCallerCandidatesField   = "caller_candidates"
 	webrtcCallCallerDoneField         = "caller_done"
 	webrtcCallCallerErrorField        = "caller_error"
@@ -136,8 +137,7 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 	}
 
 	// need to watch before insertion to avoid a race
-	sendCtx, sendCtxCancel := context.WithTimeout(queue.cancelCtx, getDefaultOfferDeadline())
-	//nolint:contextcheck
+	sendCtx, sendCtxCancel := utils.MergeContext(ctx, queue.cancelCtx)
 	csNext := mongoutils.ChangeStreamBackground(sendCtx, cs)
 
 	var ctxDeadlineExceedViaCS bool
@@ -304,8 +304,7 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, host string)
 		return nil, err
 	}
 
-	recvOfferCtx, recvOfferCtxCancel := context.WithCancel(queue.cancelCtx)
-	//nolint:contextcheck
+	recvOfferCtx, recvOfferCtxCancel := utils.MergeContext(ctx, queue.cancelCtx)
 	csOfferNext := mongoutils.ChangeStreamBackground(recvOfferCtx, cs)
 
 	cleanup := func() {
@@ -330,6 +329,7 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, host string)
 	result := queue.coll.FindOne(ctx, bson.D{
 		{webrtcCallHostField, host},
 		{webrtcCallAnsweredField, false},
+		{webrtcCallStartedAtField, bson.D{{"$gt", time.Now().Add(-getDefaultOfferDeadline())}}},
 	})
 	var callReq mongodbWebRTCCall
 	err = result.Decode(&callReq)
@@ -376,8 +376,8 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, host string)
 	if err != nil {
 		return nil, err
 	}
-	recvCtx, recvCtxCancel := context.WithTimeout(queue.cancelCtx, getDefaultOfferDeadline())
-	//nolint:contextcheck
+
+	recvCtx, recvCtxCancel := utils.MergeContextWithTimeout(ctx, queue.cancelCtx, getDefaultOfferDeadline())
 	csNext := mongoutils.ChangeStreamBackground(recvCtx, cs)
 
 	cleanup = func() {
@@ -454,10 +454,14 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, host string)
 			}
 
 			if len(callUpdate.CallerCandidates) > candLen {
-				candLen++
-				cand := callUpdate.CallerCandidates[len(callUpdate.CallerCandidates)-1]
-				if !sendCandidate(iceCandidateFromMongo(cand)) {
-					return
+				prevCandLen := candLen
+				newCandLen := len(callUpdate.CallerCandidates) - candLen
+				candLen += newCandLen
+				for i := 0; i < newCandLen; i++ {
+					cand := iceCandidateFromMongo(callUpdate.CallerCandidates[prevCandLen+i])
+					if !sendCandidate(cand) {
+						return
+					}
 				}
 			}
 
