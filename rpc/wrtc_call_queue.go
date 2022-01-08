@@ -12,7 +12,7 @@ import (
 // do not change this unless the MongoDB TTL is also modified in advance.
 var (
 	_defaultOfferDeadlineMu sync.Mutex
-	_defaultOfferDeadline   = time.Minute
+	_defaultOfferDeadline   = 20 * time.Second
 )
 
 func getDefaultOfferDeadline() time.Duration {
