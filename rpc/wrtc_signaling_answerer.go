@@ -25,7 +25,7 @@ import (
 // data channels.
 type webrtcSignalingAnswerer struct {
 	address                 string
-	host                    string
+	hosts                   []string
 	server                  *webrtcServer
 	dialOpts                []DialOption
 	webrtcConfig            webrtc.Configuration
@@ -40,7 +40,8 @@ type webrtcSignalingAnswerer struct {
 // assumed that all calls are authenticated. Random ports will be opened on this host to establish
 // connections as a means to service ICE (https://webrtcforthecurious.com/docs/03-connecting/#how-does-it-work).
 func newWebRTCSignalingAnswerer(
-	address, host string,
+	address string,
+	hosts []string,
 	server *webrtcServer,
 	dialOpts []DialOption,
 	webrtcConfig webrtc.Configuration,
@@ -49,7 +50,7 @@ func newWebRTCSignalingAnswerer(
 	closeCtx, cancel := context.WithCancel(context.Background())
 	return &webrtcSignalingAnswerer{
 		address:                 address,
-		host:                    host,
+		hosts:                   hosts,
 		server:                  server,
 		dialOpts:                dialOpts,
 		webrtcConfig:            webrtcConfig,
@@ -108,7 +109,8 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 		conn = connInUse
 		connMu.Unlock()
 		client := webrtcpb.NewSignalingServiceClient(conn)
-		md := metadata.New(map[string]string{RPCHostMetadataField: ans.host})
+		md := metadata.New(nil)
+		md.Append(RPCHostMetadataField, ans.hosts...)
 		answerCtx := metadata.NewOutgoingContext(ans.closeCtx, md)
 		answerClient, err := client.Answer(answerCtx)
 		if err != nil {

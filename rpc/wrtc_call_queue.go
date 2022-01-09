@@ -53,9 +53,9 @@ type WebRTCCallQueue interface {
 	// an error from the sender side.
 	SendOfferError(ctx context.Context, host, uuid string, err error) error
 
-	// RecvOffer receives the next offer for the given host. It should respond with an answer
+	// RecvOffer receives the next offer for the given hosts. It should respond with an answer
 	// once a decision is made.
-	RecvOffer(ctx context.Context, host string) (WebRTCCallOfferExchange, error)
+	RecvOffer(ctx context.Context, hosts []string) (WebRTCCallOfferExchange, error)
 
 	// Close shuts down the queue.
 	Close() error

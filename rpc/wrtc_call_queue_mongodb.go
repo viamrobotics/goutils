@@ -290,13 +290,13 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferError(ctx context.Context, host, u
 
 // RecvOffer receives the next offer for the given host. It should respond with an answer
 // once a decision is made.
-func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, host string) (WebRTCCallOfferExchange, error) {
+func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []string) (WebRTCCallOfferExchange, error) {
 	// Start watching for an offer inserted
 	cs, err := queue.coll.Watch(ctx, []bson.D{
 		{
 			{"$match", bson.D{
 				{"operationType", mongoutils.ChangeEventOperationTypeInsert},
-				{fmt.Sprintf("fullDocument.%s", webrtcCallHostField), host},
+				{fmt.Sprintf("fullDocument.%s", webrtcCallHostField), bson.D{{"$in", hosts}}},
 			}},
 		},
 	}, options.ChangeStream().SetFullDocument(options.UpdateLookup))
@@ -327,7 +327,7 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, host string)
 	// since we will eventually fail to connect with one peer. We also expect
 	// only one host to try receiving at a time anyway.
 	result := queue.coll.FindOne(ctx, bson.D{
-		{webrtcCallHostField, host},
+		{webrtcCallHostField, bson.D{{"$in", hosts}}},
 		{webrtcCallAnsweredField, false},
 		{webrtcCallStartedAtField, bson.D{{"$gt", time.Now().Add(-getDefaultOfferDeadline())}}},
 	})

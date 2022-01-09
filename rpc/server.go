@@ -79,8 +79,8 @@ type Server interface {
 	// SignalingAddr returns the WebRTC signaling address in use.
 	SignalingAddr() string
 
-	// SignalingHost returns the host WebRTC communications are happening on behalf of.
-	SignalingHost() string
+	// SignalingHosts returns the hosts WebRTC communications are happening on behalf of.
+	SignalingHosts() []string
 }
 
 type simpleServer struct {
@@ -94,7 +94,7 @@ type simpleServer struct {
 	webrtcServer         *webrtcServer
 	webrtcAnswerer       *webrtcSignalingAnswerer
 	signalingAddr        string
-	signalingHost        string
+	signalingHosts       []string
 	serviceServerCancels []func()
 	serviceServers       []interface{}
 	signalingCallQueue   WebRTCCallQueue
@@ -285,12 +285,12 @@ func newWithListener(
 			}
 		}
 		server.signalingAddr = address
-		signalingHost := sOpts.webrtcOpts.SignalingHost
-		if signalingHost == "" {
-			signalingHost = "local"
+		signalingHosts := sOpts.webrtcOpts.SignalingHosts
+		if len(signalingHosts) == 0 {
+			signalingHosts = []string{"local"}
 		}
-		server.signalingHost = signalingHost
-		logger.Infow("will run signaling answerer", "signaling_address", address, "for_host", signalingHost)
+		server.signalingHosts = signalingHosts
+		logger.Infow("will run signaling answerer", "signaling_address", address, "for_hosts", signalingHosts)
 
 		config := DefaultWebRTCConfiguration
 		if sOpts.webrtcOpts.Config != nil {
@@ -299,7 +299,7 @@ func newWithListener(
 
 		server.webrtcAnswerer = newWebRTCSignalingAnswerer(
 			address,
-			signalingHost,
+			signalingHosts,
 			server.webrtcServer,
 			answererDialOptsCopy,
 			config,
@@ -446,8 +446,8 @@ func (ss *simpleServer) SignalingAddr() string {
 	return ss.signalingAddr
 }
 
-func (ss *simpleServer) SignalingHost() string {
-	return ss.signalingHost
+func (ss *simpleServer) SignalingHosts() []string {
+	return ss.signalingHosts
 }
 
 func (ss *simpleServer) Stop() error {

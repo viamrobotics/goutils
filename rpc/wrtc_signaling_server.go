@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 	"time"
 
@@ -44,15 +45,35 @@ func NewWebRTCSignalingServer(callQueue WebRTCCallQueue, webrtcConfigProvider We
 const RPCHostMetadataField = "rpc-host"
 
 func hostFromCtx(ctx context.Context) (string, error) {
+	hosts, err := hostsFromCtx(ctx)
+	if err != nil {
+		return "", err
+	}
+	if len(hosts) != 1 {
+		return "", fmt.Errorf("expected 1 %s", RPCHostMetadataField)
+	}
+	return hosts[0], nil
+}
+
+const maxHostsInMetadata = 2
+
+func hostsFromCtx(ctx context.Context) ([]string, error) {
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok || len(md[RPCHostMetadataField]) == 0 {
-		return "", fmt.Errorf("expected %s to be set in metadata", RPCHostMetadataField)
+		return nil, fmt.Errorf("expected %s to be set in metadata", RPCHostMetadataField)
 	}
-	host := md[RPCHostMetadataField][0]
-	if host == "" {
-		return "", fmt.Errorf("expected non-empty %s", RPCHostMetadataField)
+	if len(md[RPCHostMetadataField]) > maxHostsInMetadata {
+		return nil, fmt.Errorf("too many %s", RPCHostMetadataField)
 	}
-	return host, nil
+
+	hostsCopy := make([]string, len(md[RPCHostMetadataField]))
+	copy(hostsCopy, md[RPCHostMetadataField])
+	for _, host := range hostsCopy {
+		if host == "" {
+			return nil, fmt.Errorf("expected non-empty %s", RPCHostMetadataField)
+		}
+	}
+	return hostsCopy, nil
 }
 
 // Call is a request/offer to start a caller with the connected answerer.
@@ -153,12 +174,13 @@ type hostICEServers struct {
 	Expires time.Time
 }
 
-func (srv *WebRTCSignalingServer) additionalICEServers(ctx context.Context, host string, cache bool) ([]*webrtcpb.ICEServer, error) {
+func (srv *WebRTCSignalingServer) additionalICEServers(ctx context.Context, hosts []string, cache bool) ([]*webrtcpb.ICEServer, error) {
 	if srv.webrtcConfigProvider == nil {
 		return nil, nil
 	}
+	hostsKey := strings.Join(hosts, ",")
 	srv.mu.RLock()
-	hostServers := srv.hostICEServers[host]
+	hostServers := srv.hostICEServers[hostsKey]
 	srv.mu.RUnlock()
 	if time.Now().Before(hostServers.Expires) {
 		return hostServers.Servers, nil
@@ -169,7 +191,7 @@ func (srv *WebRTCSignalingServer) additionalICEServers(ctx context.Context, host
 	}
 	if cache {
 		srv.mu.Lock()
-		srv.hostICEServers[host] = hostICEServers{
+		srv.hostICEServers[hostsKey] = hostICEServers{
 			Servers: config.ICEServers,
 			Expires: config.Expires,
 		}
@@ -180,9 +202,11 @@ func (srv *WebRTCSignalingServer) additionalICEServers(ctx context.Context, host
 
 // Note: We expect but do not enforce one host for one answer. If this is not true, a race
 // can happen where we may double fetch additional ICE servers.
-func (srv *WebRTCSignalingServer) clearAdditionalICEServers(host string) {
+func (srv *WebRTCSignalingServer) clearAdditionalICEServers(hosts []string) {
 	srv.mu.Lock()
-	delete(srv.hostICEServers, host)
+	for _, host := range hosts {
+		delete(srv.hostICEServers, host)
+	}
 	srv.mu.Unlock()
 }
 
@@ -191,18 +215,18 @@ func (srv *WebRTCSignalingServer) clearAdditionalICEServers(host string) {
 // Note: See SinalingAnswer.answer for the complementary side of this process.
 func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_AnswerServer) error {
 	ctx := server.Context()
-	host, err := hostFromCtx(ctx)
+	hosts, err := hostsFromCtx(ctx)
 	if err != nil {
 		return err
 	}
-	defer srv.clearAdditionalICEServers(host)
+	defer srv.clearAdditionalICEServers(hosts)
 
-	offer, err := srv.callQueue.RecvOffer(ctx, host)
+	offer, err := srv.callQueue.RecvOffer(ctx, hosts)
 	if err != nil {
 		return err
 	}
 
-	iceServers, err := srv.additionalICEServers(ctx, host, true)
+	iceServers, err := srv.additionalICEServers(ctx, hosts, true)
 	if err != nil {
 		return err
 	}
@@ -361,11 +385,11 @@ func (srv *WebRTCSignalingServer) OptionalWebRTCConfig(
 ) (*webrtcpb.OptionalWebRTCConfigResponse, error) {
 	ctx, cancel := context.WithTimeout(ctx, getDefaultOfferDeadline())
 	defer cancel()
-	host, err := hostFromCtx(ctx)
+	hosts, err := hostsFromCtx(ctx)
 	if err != nil {
 		return nil, err
 	}
-	iceServers, err := srv.additionalICEServers(ctx, host, false)
+	iceServers, err := srv.additionalICEServers(ctx, hosts, false)
 	if err != nil {
 		return nil, err
 	}

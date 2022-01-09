@@ -194,7 +194,7 @@ func TestWebRTCServerChannel(t *testing.T) {
 		Eos: true,
 	}), test.ShouldBeNil)
 
-	offer, err := signalServer.callQueue.RecvOffer(context.Background(), "yeehaw")
+	offer, err := signalServer.callQueue.RecvOffer(context.Background(), []string{"yeehaw"})
 	test.That(t, err, test.ShouldBeNil)
 	answererSDP := "world"
 	test.That(t, offer.AnswererRespond(context.Background(), WebRTCCallAnswer{InitialSDP: &answererSDP}), test.ShouldBeNil)
@@ -242,7 +242,7 @@ func TestWebRTCServerChannel(t *testing.T) {
 		Eos: true,
 	}), test.ShouldBeNil)
 
-	offer, err = signalServer.callQueue.RecvOffer(context.Background(), "yeehaw")
+	offer, err = signalServer.callQueue.RecvOffer(context.Background(), []string{"yeehaw"})
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, offer.AnswererRespond(context.Background(), WebRTCCallAnswer{Err: errors.New("ohno")}), test.ShouldBeNil)
 

@@ -60,178 +60,183 @@ func TestDial(t *testing.T) {
 	err = <-errChan
 	test.That(t, err, test.ShouldBeNil)
 
-	var testMu sync.Mutex
-	fakeAuthWorks := false
-	rpcServer, err = NewServer(
-		logger,
-		WithWebRTCServerOptions(WebRTCServerOptions{
-			Enable:        true,
-			SignalingHost: "yeehaw",
-		}),
-		WithAuthHandler("fake", MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) error {
+	hosts := []string{"yeehaw", "woahthere"}
+	for _, host := range hosts {
+		t.Run(host, func(t *testing.T) {
+			var testMu sync.Mutex
+			fakeAuthWorks := false
+			rpcServer, err = NewServer(
+				logger,
+				WithWebRTCServerOptions(WebRTCServerOptions{
+					Enable:         true,
+					SignalingHosts: hosts,
+				}),
+				WithAuthHandler("fake", MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) error {
+					testMu.Lock()
+					defer testMu.Unlock()
+					if fakeAuthWorks {
+						return nil
+					}
+					return errors.New("this auth does not work yet")
+				}, func(ctx context.Context, entity string) error {
+					return nil
+				})),
+			)
+			test.That(t, err, test.ShouldBeNil)
+
+			httpListener, err = net.Listen("tcp", "localhost:0")
+			test.That(t, err, test.ShouldBeNil)
+
+			errChan = make(chan error)
+			go func() {
+				errChan <- rpcServer.Serve(httpListener)
+			}()
+
+			// unauthenticated
+
+			// will not fail because dialing is okay to do pre-rpc
+			conn, err = Dial(context.Background(), httpListener.Addr().String(), logger, WithInsecure())
+			test.That(t, err, test.ShouldBeNil)
+			test.That(t, conn.Close(), test.ShouldBeNil)
+
 			testMu.Lock()
-			defer testMu.Unlock()
-			if fakeAuthWorks {
-				return nil
-			}
-			return errors.New("this auth does not work yet")
-		}, func(ctx context.Context, entity string) error {
-			return nil
-		})),
-	)
-	test.That(t, err, test.ShouldBeNil)
+			fakeAuthWorks = true
+			testMu.Unlock()
 
-	httpListener, err = net.Listen("tcp", "localhost:0")
-	test.That(t, err, test.ShouldBeNil)
+			// this fails because WebRTC does some RPC
+			_, err = Dial(context.Background(), host, logger,
+				WithInsecure(),
+				WithWebRTCOptions(DialWebRTCOptions{
+					SignalingServer: httpListener.Addr().String(),
+				}))
+			test.That(t, err, test.ShouldNotBeNil)
+			gStatus, ok := status.FromError(err)
+			test.That(t, ok, test.ShouldBeTrue)
+			test.That(t, gStatus.Code(), test.ShouldEqual, codes.Unauthenticated)
 
-	errChan = make(chan error)
-	go func() {
-		errChan <- rpcServer.Serve(httpListener)
-	}()
+			conn, err = Dial(context.Background(), host, logger,
+				WithInsecure(),
+				WithWebRTCOptions(DialWebRTCOptions{
+					SignalingServer: httpListener.Addr().String(),
+				}),
+				WithCredentials(Credentials{Type: "fake"}),
+			)
+			test.That(t, err, test.ShouldBeNil)
+			test.That(t, conn.Close(), test.ShouldBeNil)
 
-	// unauthenticated
+			port, err := utils.TryReserveRandomPort()
+			test.That(t, err, test.ShouldBeNil)
+			mux := dns.NewServeMux()
+			httpIP := httpListener.Addr().(*net.TCPAddr).IP
+			httpPort := httpListener.Addr().(*net.TCPAddr).Port
 
-	// will not fail because dialing is okay to do pre-rpc
-	conn, err = Dial(context.Background(), httpListener.Addr().String(), logger, WithInsecure())
-	test.That(t, err, test.ShouldBeNil)
-	test.That(t, conn.Close(), test.ShouldBeNil)
+			var noAnswer bool
+			mux.HandleFunc(host, func(rw dns.ResponseWriter, r *dns.Msg) {
+				m := &dns.Msg{Compress: false}
+				m.SetReply(r)
 
-	testMu.Lock()
-	fakeAuthWorks = true
-	testMu.Unlock()
-
-	// this fails because WebRTC does some RPC
-	_, err = Dial(context.Background(), "yeehaw", logger,
-		WithInsecure(),
-		WithWebRTCOptions(DialWebRTCOptions{
-			SignalingServer: httpListener.Addr().String(),
-		}))
-	test.That(t, err, test.ShouldNotBeNil)
-	gStatus, ok := status.FromError(err)
-	test.That(t, ok, test.ShouldBeTrue)
-	test.That(t, gStatus.Code(), test.ShouldEqual, codes.Unauthenticated)
-
-	conn, err = Dial(context.Background(), "yeehaw", logger,
-		WithInsecure(),
-		WithWebRTCOptions(DialWebRTCOptions{
-			SignalingServer: httpListener.Addr().String(),
-		}),
-		WithCredentials(Credentials{Type: "fake"}),
-	)
-	test.That(t, err, test.ShouldBeNil)
-	test.That(t, conn.Close(), test.ShouldBeNil)
-
-	port, err := utils.TryReserveRandomPort()
-	test.That(t, err, test.ShouldBeNil)
-	mux := dns.NewServeMux()
-	httpIP := httpListener.Addr().(*net.TCPAddr).IP
-	httpPort := httpListener.Addr().(*net.TCPAddr).Port
-
-	var noAnswer bool
-	mux.HandleFunc("yeehaw", func(rw dns.ResponseWriter, r *dns.Msg) {
-		m := &dns.Msg{Compress: false}
-		m.SetReply(r)
-
-		if r.Opcode == dns.OpcodeQuery {
-			for _, q := range m.Question {
-				if q.Qtype == dns.TypeA {
-					rr := &dns.A{
-						Hdr: dns.RR_Header{
-							Name:   q.Name,
-							Rrtype: dns.TypeA,
-							Class:  dns.ClassINET,
-							Ttl:    60,
-						},
-						A: httpIP,
-					}
-					m.Answer = append(m.Answer, rr)
-				}
-			}
-		}
-
-		utils.UncheckedError(rw.WriteMsg(m))
-	})
-	mux.HandleFunc("local.something.", func(rw dns.ResponseWriter, r *dns.Msg) {
-		m := &dns.Msg{Compress: false}
-		m.SetReply(r)
-
-		if !noAnswer {
-			if r.Opcode == dns.OpcodeQuery {
-				for _, q := range m.Question {
-					if q.Qtype == dns.TypeA {
-						rr := &dns.A{
-							Hdr: dns.RR_Header{
-								Name:   q.Name,
-								Rrtype: dns.TypeA,
-								Class:  dns.ClassINET,
-								Ttl:    60,
-							},
-							A: httpIP,
+				if r.Opcode == dns.OpcodeQuery {
+					for _, q := range m.Question {
+						if q.Qtype == dns.TypeA {
+							rr := &dns.A{
+								Hdr: dns.RR_Header{
+									Name:   q.Name,
+									Rrtype: dns.TypeA,
+									Class:  dns.ClassINET,
+									Ttl:    60,
+								},
+								A: httpIP,
+							}
+							m.Answer = append(m.Answer, rr)
 						}
-						m.Answer = append(m.Answer, rr)
 					}
 				}
-			}
-		}
 
-		utils.UncheckedError(rw.WriteMsg(m))
-	})
-	dnsServer := &dns.Server{
-		Addr:    fmt.Sprintf(":%d", port),
-		Net:     "udp",
-		Handler: mux,
-	}
-	go dnsServer.ListenAndServe()
+				utils.UncheckedError(rw.WriteMsg(m))
+			})
+			mux.HandleFunc("local.something.", func(rw dns.ResponseWriter, r *dns.Msg) {
+				m := &dns.Msg{Compress: false}
+				m.SetReply(r)
 
-	resolver := &net.Resolver{
-		PreferGo: true,
-		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-			return net.Dial("udp", dnsServer.Addr)
-		},
-	}
-	ctx := contextWithResolver(context.Background(), resolver)
-	ctx = ContextWithDialer(ctx, &staticDialer{httpListener.Addr().String()})
-	conn, err = Dial(ctx, fmt.Sprintf("something:%d", httpPort), logger, WithInsecure())
-	test.That(t, err, test.ShouldBeNil)
-	test.That(t, conn.Close(), test.ShouldBeNil)
-
-	conn, err = Dial(ctx, fmt.Sprintf("something:%d", httpPort), logger, WithInsecure())
-	test.That(t, err, test.ShouldBeNil)
-	test.That(t, conn.Close(), test.ShouldBeNil)
-
-	noAnswer = true
-	mux.HandleFunc("_webrtc._tcp.yeehaw.", func(rw dns.ResponseWriter, r *dns.Msg) {
-		m := &dns.Msg{Compress: false}
-		m.SetReply(r)
-
-		if r.Opcode == dns.OpcodeQuery {
-			for _, q := range m.Question {
-				if q.Qtype == dns.TypeSRV {
-					rr := &dns.SRV{
-						Hdr: dns.RR_Header{
-							Name:   q.Name,
-							Rrtype: dns.TypeSRV,
-							Class:  dns.ClassINET,
-							Ttl:    60,
-						},
-						Target: "localhost.",
-						Port:   uint16(httpPort),
+				if !noAnswer {
+					if r.Opcode == dns.OpcodeQuery {
+						for _, q := range m.Question {
+							if q.Qtype == dns.TypeA {
+								rr := &dns.A{
+									Hdr: dns.RR_Header{
+										Name:   q.Name,
+										Rrtype: dns.TypeA,
+										Class:  dns.ClassINET,
+										Ttl:    60,
+									},
+									A: httpIP,
+								}
+								m.Answer = append(m.Answer, rr)
+							}
+						}
 					}
-					m.Answer = append(m.Answer, rr)
 				}
+
+				utils.UncheckedError(rw.WriteMsg(m))
+			})
+			dnsServer := &dns.Server{
+				Addr:    fmt.Sprintf(":%d", port),
+				Net:     "udp",
+				Handler: mux,
 			}
-		}
+			go dnsServer.ListenAndServe()
 
-		utils.UncheckedError(rw.WriteMsg(m))
-	})
-	conn, err = Dial(ctx, "yeehaw", logger, WithInsecure(), WithCredentials(Credentials{Type: "fake"}))
-	test.That(t, err, test.ShouldBeNil)
-	test.That(t, conn.Close(), test.ShouldBeNil)
+			resolver := &net.Resolver{
+				PreferGo: true,
+				Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+					return net.Dial("udp", dnsServer.Addr)
+				},
+			}
+			ctx := contextWithResolver(context.Background(), resolver)
+			ctx = ContextWithDialer(ctx, &staticDialer{httpListener.Addr().String()})
+			conn, err = Dial(ctx, fmt.Sprintf("something:%d", httpPort), logger, WithInsecure())
+			test.That(t, err, test.ShouldBeNil)
+			test.That(t, conn.Close(), test.ShouldBeNil)
 
-	test.That(t, rpcServer.Stop(), test.ShouldBeNil)
-	err = <-errChan
-	test.That(t, err, test.ShouldBeNil)
-	test.That(t, dnsServer.Shutdown(), test.ShouldBeNil)
+			conn, err = Dial(ctx, fmt.Sprintf("something:%d", httpPort), logger, WithInsecure())
+			test.That(t, err, test.ShouldBeNil)
+			test.That(t, conn.Close(), test.ShouldBeNil)
+
+			noAnswer = true
+			mux.HandleFunc(fmt.Sprintf("_webrtc._tcp.%s.", host), func(rw dns.ResponseWriter, r *dns.Msg) {
+				m := &dns.Msg{Compress: false}
+				m.SetReply(r)
+
+				if r.Opcode == dns.OpcodeQuery {
+					for _, q := range m.Question {
+						if q.Qtype == dns.TypeSRV {
+							rr := &dns.SRV{
+								Hdr: dns.RR_Header{
+									Name:   q.Name,
+									Rrtype: dns.TypeSRV,
+									Class:  dns.ClassINET,
+									Ttl:    60,
+								},
+								Target: "localhost.",
+								Port:   uint16(httpPort),
+							}
+							m.Answer = append(m.Answer, rr)
+						}
+					}
+				}
+
+				utils.UncheckedError(rw.WriteMsg(m))
+			})
+			conn, err = Dial(ctx, host, logger, WithInsecure(), WithCredentials(Credentials{Type: "fake"}))
+			test.That(t, err, test.ShouldBeNil)
+			test.That(t, conn.Close(), test.ShouldBeNil)
+
+			test.That(t, rpcServer.Stop(), test.ShouldBeNil)
+			err = <-errChan
+			test.That(t, err, test.ShouldBeNil)
+			test.That(t, dnsServer.Shutdown(), test.ShouldBeNil)
+		})
+	}
 }
 
 func TestDialExternalAuth(t *testing.T) {
@@ -244,8 +249,8 @@ func TestDialExternalAuth(t *testing.T) {
 	rpcServerInternal, err := NewServer(
 		logger,
 		WithWebRTCServerOptions(WebRTCServerOptions{
-			Enable:        true,
-			SignalingHost: "yeehaw",
+			Enable:         true,
+			SignalingHosts: []string{"yeehaw"},
 		}),
 		WithAuthHandler("fake", MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) error {
 			return nil
@@ -269,8 +274,8 @@ func TestDialExternalAuth(t *testing.T) {
 	rpcServerExternal, err := NewServer(
 		logger,
 		WithWebRTCServerOptions(WebRTCServerOptions{
-			Enable:        true,
-			SignalingHost: "yeehaw",
+			Enable:         true,
+			SignalingHosts: []string{"yeehaw"},
 		}),
 		WithAuthHandler("fake", MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) error {
 			return nil

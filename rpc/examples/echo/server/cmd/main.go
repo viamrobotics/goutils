@@ -139,7 +139,7 @@ func runServer(
 		Enable:                    true,
 		ExternalSignalingDialOpts: signalingOpts,
 		ExternalSignalingAddress:  signalingAddress,
-		SignalingHost:             signalingHost,
+		SignalingHosts:            []string{signalingHost},
 	}))
 
 	if apiKey == "" && authPublicKey == nil {

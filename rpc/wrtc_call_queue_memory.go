@@ -100,7 +100,7 @@ func (queue *memoryWebRTCCallQueue) SendOfferInit(
 	host, sdp string,
 	disableTrickle bool,
 ) (string, <-chan WebRTCCallAnswer, <-chan struct{}, func(), error) {
-	hostQueueForSend := queue.getOrMakeHostQueue(host)
+	hostQueueForSend := queue.getOrMakeHostsQueue([]string{host})
 
 	var newUUID string
 	if queue.uuidDeterministic {
@@ -145,7 +145,7 @@ func (queue *memoryWebRTCCallQueue) SendOfferInit(
 // SendOfferUpdate updates the offer associated with the given UUID with a newly discovered
 // ICE candidate.
 func (queue *memoryWebRTCCallQueue) SendOfferUpdate(ctx context.Context, host, uuid string, candidate webrtc.ICECandidateInit) error {
-	hostQueue := queue.getOrMakeHostQueue(host)
+	hostQueue := queue.getOrMakeHostsQueue([]string{host})
 
 	hostQueue.mu.RLock()
 	offer, ok := hostQueue.activeOffers[uuid]
@@ -166,7 +166,7 @@ func (queue *memoryWebRTCCallQueue) SendOfferUpdate(ctx context.Context, host, u
 // SendOfferDone informs the queue that the offer associated with the UUID is done sending any
 // more information.
 func (queue *memoryWebRTCCallQueue) SendOfferDone(ctx context.Context, host, uuid string) error {
-	hostQueue := queue.getOrMakeHostQueue(host)
+	hostQueue := queue.getOrMakeHostsQueue([]string{host})
 
 	hostQueue.mu.Lock()
 	offer, ok := hostQueue.activeOffers[uuid]
@@ -183,7 +183,7 @@ func (queue *memoryWebRTCCallQueue) SendOfferDone(ctx context.Context, host, uui
 // SendOfferError informs the queue that the offer associated with the UUID has encountered
 // an error from the sender side.
 func (queue *memoryWebRTCCallQueue) SendOfferError(ctx context.Context, host, uuid string, err error) error {
-	hostQueue := queue.getOrMakeHostQueue(host)
+	hostQueue := queue.getOrMakeHostsQueue([]string{host})
 
 	hostQueue.mu.Lock()
 	offer, ok := hostQueue.activeOffers[uuid]
@@ -200,8 +200,8 @@ func (queue *memoryWebRTCCallQueue) SendOfferError(ctx context.Context, host, uu
 
 // RecvOffer receives the next offer for the given host. It should respond with an answer
 // once a decision is made.
-func (queue *memoryWebRTCCallQueue) RecvOffer(ctx context.Context, host string) (WebRTCCallOfferExchange, error) {
-	hostQueue := queue.getOrMakeHostQueue(host)
+func (queue *memoryWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []string) (WebRTCCallOfferExchange, error) {
+	hostQueue := queue.getOrMakeHostsQueue(hosts)
 
 	recvCtx, recvCtxCancel := context.WithCancel(queue.cancelCtx)
 	defer recvCtxCancel()
@@ -288,17 +288,27 @@ type singleWebRTCHostQueue struct {
 	activeOffers map[string]*memoryWebRTCCallOfferExchange
 }
 
-func (queue *memoryWebRTCCallQueue) getOrMakeHostQueue(host string) *singleWebRTCHostQueue {
+func (queue *memoryWebRTCCallQueue) getOrMakeHostsQueue(hosts []string) *singleWebRTCHostQueue {
 	queue.mu.Lock()
 	defer queue.mu.Unlock()
-	hostQueue, ok := queue.hostQueues[host]
-	if ok {
-		return hostQueue
+	var sharedHostQueue *singleWebRTCHostQueue
+	var missing []string
+	for _, host := range hosts {
+		hostQueue, ok := queue.hostQueues[host]
+		if ok {
+			sharedHostQueue = hostQueue
+		} else {
+			missing = append(missing, host)
+		}
 	}
-	hostQueue = &singleWebRTCHostQueue{
-		exchangeCh:   make(chan *memoryWebRTCCallOfferExchange),
-		activeOffers: make(map[string]*memoryWebRTCCallOfferExchange),
+	if sharedHostQueue == nil {
+		sharedHostQueue = &singleWebRTCHostQueue{
+			exchangeCh:   make(chan *memoryWebRTCCallOfferExchange),
+			activeOffers: make(map[string]*memoryWebRTCCallOfferExchange),
+		}
 	}
-	queue.hostQueues[host] = hostQueue
-	return hostQueue
+	for _, host := range missing {
+		queue.hostQueues[host] = sharedHostQueue
+	}
+	return sharedHostQueue
 }

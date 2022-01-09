@@ -43,8 +43,8 @@ type WebRTCServerOptions struct {
 	// an answerer for itself.
 	ExternalSignalingAddress string
 
-	// SignalingHost specifies what host is being listened for.
-	SignalingHost string
+	// SignalingHosts specifies what hosts are being listened for.
+	SignalingHosts []string
 
 	// Config is the WebRTC specific configuration (i.e. ICE settings)
 	Config *webrtc.Configuration

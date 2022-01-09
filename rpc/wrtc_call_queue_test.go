@@ -3,6 +3,7 @@ package rpc
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -21,7 +22,7 @@ func testWebRTCCallQueue(t *testing.T, callQueue WebRTCCallQueue) {
 		done := make(chan struct{})
 		defer func() { <-done }()
 		go func() {
-			callQueue.RecvOffer(context.Background(), host)
+			callQueue.RecvOffer(context.Background(), []string{host})
 			close(done)
 		}()
 		_, _, ansCtx, _, err := callQueue.SendOfferInit(context.Background(), host, "somesdp", false)
@@ -57,7 +58,7 @@ func testWebRTCCallQueue(t *testing.T, callQueue WebRTCCallQueue) {
 		done := make(chan struct{})
 		defer func() { <-done }()
 		go func() {
-			offer, err := callQueue.RecvOffer(context.Background(), host)
+			offer, err := callQueue.RecvOffer(context.Background(), []string{host})
 			if err != nil {
 				recvErrCh <- err
 				return
@@ -122,7 +123,7 @@ func testWebRTCCallQueue(t *testing.T, callQueue WebRTCCallQueue) {
 		done := make(chan struct{})
 		defer func() { <-done }()
 		go func() {
-			offer, err := callQueue.RecvOffer(context.Background(), host)
+			offer, err := callQueue.RecvOffer(context.Background(), []string{host})
 			if err != nil {
 				recvErrCh <- err
 				return
@@ -171,47 +172,51 @@ func testWebRTCCallQueue(t *testing.T, callQueue WebRTCCallQueue) {
 	})
 
 	t.Run("sending successfully with an sdp", func(t *testing.T) {
-		host := primitive.NewObjectID().Hex()
-		recvErrCh := make(chan error)
-		sdpMid := "sdpmid"
-		sdpMLineIndex := uint16(1)
-		usernameFragment := "ufrag"
-		c1 := &webrtc.ICECandidateInit{
-			Candidate:        "c1",
-			SDPMid:           &sdpMid,
-			SDPMLineIndex:    &sdpMLineIndex,
-			UsernameFragment: &usernameFragment,
+		hosts := []string{primitive.NewObjectID().Hex(), primitive.NewObjectID().Hex()}
+		for idx, host := range hosts {
+			t.Run(fmt.Sprintf("%d", idx), func(t *testing.T) {
+				recvErrCh := make(chan error)
+				sdpMid := "sdpmid"
+				sdpMLineIndex := uint16(1)
+				usernameFragment := "ufrag"
+				c1 := &webrtc.ICECandidateInit{
+					Candidate:        "c1",
+					SDPMid:           &sdpMid,
+					SDPMLineIndex:    &sdpMLineIndex,
+					UsernameFragment: &usernameFragment,
+				}
+				done := make(chan struct{})
+				defer func() { <-done }()
+				go func() {
+					offer, err := callQueue.RecvOffer(context.Background(), hosts)
+					if err != nil {
+						recvErrCh <- err
+						return
+					}
+
+					sdp := "world"
+					recvErrCh <- offer.AnswererRespond(context.Background(), WebRTCCallAnswer{InitialSDP: &sdp})
+					recvErrCh <- offer.AnswererRespond(context.Background(), WebRTCCallAnswer{Candidate: c1})
+					recvErrCh <- offer.AnswererDone(context.Background())
+					close(done)
+				}()
+
+				newUUID, answers, answersDone, cancel, err := callQueue.SendOfferInit(context.Background(), host, "hello", false)
+				defer cancel()
+				test.That(t, err, test.ShouldBeNil)
+				test.That(t, newUUID, test.ShouldNotBeEmpty)
+				ans := <-answers
+				test.That(t, ans.InitialSDP, test.ShouldNotBeNil)
+				test.That(t, *ans.InitialSDP, test.ShouldEqual, "world")
+				test.That(t, <-recvErrCh, test.ShouldBeNil)
+				ans = <-answers
+				test.That(t, ans.Candidate, test.ShouldNotBeNil)
+				test.That(t, ans.Candidate, test.ShouldResemble, c1)
+				test.That(t, <-recvErrCh, test.ShouldBeNil)
+				<-answersDone
+				test.That(t, <-recvErrCh, test.ShouldBeNil)
+			})
 		}
-		done := make(chan struct{})
-		defer func() { <-done }()
-		go func() {
-			offer, err := callQueue.RecvOffer(context.Background(), host)
-			if err != nil {
-				recvErrCh <- err
-				return
-			}
-
-			sdp := "world"
-			recvErrCh <- offer.AnswererRespond(context.Background(), WebRTCCallAnswer{InitialSDP: &sdp})
-			recvErrCh <- offer.AnswererRespond(context.Background(), WebRTCCallAnswer{Candidate: c1})
-			recvErrCh <- offer.AnswererDone(context.Background())
-			close(done)
-		}()
-
-		newUUID, answers, answersDone, cancel, err := callQueue.SendOfferInit(context.Background(), host, "hello", false)
-		defer cancel()
-		test.That(t, err, test.ShouldBeNil)
-		test.That(t, newUUID, test.ShouldNotBeEmpty)
-		ans := <-answers
-		test.That(t, ans.InitialSDP, test.ShouldNotBeNil)
-		test.That(t, *ans.InitialSDP, test.ShouldEqual, "world")
-		test.That(t, <-recvErrCh, test.ShouldBeNil)
-		ans = <-answers
-		test.That(t, ans.Candidate, test.ShouldNotBeNil)
-		test.That(t, ans.Candidate, test.ShouldResemble, c1)
-		test.That(t, <-recvErrCh, test.ShouldBeNil)
-		<-answersDone
-		test.That(t, <-recvErrCh, test.ShouldBeNil)
 	})
 
 	t.Run("sending successfully with an error", func(t *testing.T) {
@@ -220,7 +225,7 @@ func testWebRTCCallQueue(t *testing.T, callQueue WebRTCCallQueue) {
 		done := make(chan struct{})
 		defer func() { <-done }()
 		go func() {
-			offer, err := callQueue.RecvOffer(context.Background(), host)
+			offer, err := callQueue.RecvOffer(context.Background(), []string{host})
 			if err != nil {
 				recvErrCh <- err
 				return
@@ -252,7 +257,7 @@ func testWebRTCCallQueue(t *testing.T, callQueue WebRTCCallQueue) {
 			// should be ample time in tests
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			_, err := callQueue.RecvOffer(ctx, primitive.NewObjectID().Hex())
+			_, err := callQueue.RecvOffer(ctx, []string{primitive.NewObjectID().Hex()})
 			recvErrCh <- err
 			close(done)
 		}()

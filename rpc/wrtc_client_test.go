@@ -39,9 +39,10 @@ func TestWebRTCClientServer(t *testing.T) {
 	webrtcServer := newWebRTCServer(logger)
 	webrtcServer.RegisterService(&echopb.EchoService_ServiceDesc, &echoserver.Server{})
 
+	hosts := []string{"yeehaw", "woahthere"}
 	answerer := newWebRTCSignalingAnswerer(
 		grpcListener.Addr().String(),
-		"yeehaw",
+		hosts,
 		webrtcServer,
 		[]DialOption{WithInsecure()},
 		webrtc.Configuration{},
@@ -49,32 +50,36 @@ func TestWebRTCClientServer(t *testing.T) {
 	)
 	answerer.Start()
 
-	for _, tc := range []bool{true, false} {
-		t.Run(fmt.Sprintf("with trickle disabled %t", tc), func(t *testing.T) {
-			cc, err := DialWebRTC(
-				context.Background(),
-				HostURI(grpcListener.Addr().String(), "yeehaw"),
-				logger,
-				WithWebRTCOptions(DialWebRTCOptions{
-					Insecure:          true,
-					DisableTrickleICE: tc,
-				}),
-			)
-			test.That(t, err, test.ShouldBeNil)
-			defer func() {
-				test.That(t, cc.Close(), test.ShouldBeNil)
-			}()
+	for _, host := range hosts {
+		t.Run(host, func(t *testing.T) {
+			for _, tc := range []bool{true, false} {
+				t.Run(fmt.Sprintf("with trickle disabled %t", tc), func(t *testing.T) {
+					cc, err := DialWebRTC(
+						context.Background(),
+						HostURI(grpcListener.Addr().String(), host),
+						logger,
+						WithWebRTCOptions(DialWebRTCOptions{
+							Insecure:          true,
+							DisableTrickleICE: tc,
+						}),
+					)
+					test.That(t, err, test.ShouldBeNil)
+					defer func() {
+						test.That(t, cc.Close(), test.ShouldBeNil)
+					}()
 
-			echoClient := echopb.NewEchoServiceClient(cc)
-			resp, err := echoClient.Echo(context.Background(), &echopb.EchoRequest{Message: "hello"})
-			test.That(t, err, test.ShouldBeNil)
-			test.That(t, resp.Message, test.ShouldEqual, "hello")
+					echoClient := echopb.NewEchoServiceClient(cc)
+					resp, err := echoClient.Echo(context.Background(), &echopb.EchoRequest{Message: "hello"})
+					test.That(t, err, test.ShouldBeNil)
+					test.That(t, resp.Message, test.ShouldEqual, "hello")
 
-			// big message
-			bigZ := strings.Repeat("z", 1<<18)
-			resp, err = echoClient.Echo(context.Background(), &echopb.EchoRequest{Message: bigZ})
-			test.That(t, err, test.ShouldBeNil)
-			test.That(t, resp.Message, test.ShouldEqual, bigZ)
+					// big message
+					bigZ := strings.Repeat("z", 1<<18)
+					resp, err = echoClient.Echo(context.Background(), &echopb.EchoRequest{Message: bigZ})
+					test.That(t, err, test.ShouldBeNil)
+					test.That(t, resp.Message, test.ShouldEqual, bigZ)
+				})
+			}
 		})
 	}
 
