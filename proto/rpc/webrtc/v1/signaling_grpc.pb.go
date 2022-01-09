@@ -18,19 +18,22 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type SignalingServiceClient interface {
-	// Call makes an offer to a client that it expects an answer to. It is
-	// assumed that the service is hosted solely for a specific client. That is,
-	// every client has its own signaling service identified by its hostname
-	// and in the case of TLS being used, SNI.
+	// Call makes an offer to a client that it expects an answer to. The host
+	// of the client in question should be identified in the rpc-host metadata
+	// field.
 	Call(ctx context.Context, in *CallRequest, opts ...grpc.CallOption) (SignalingService_CallClient, error)
 	// CallUpdate is used to send additional info in relation to a Call.
+	// The host of the client for the call in question should be identified
+	// in the rpc-host metadata field.
 	// In a world where https://github.com/grpc/grpc-web/issues/24 is fixed,
 	// this should be removed in favor of a bidirectional stream on Call.
 	CallUpdate(ctx context.Context, in *CallUpdateRequest, opts ...grpc.CallOption) (*CallUpdateResponse, error)
 	// Answer sets up an answering service where the caller answers call offers
 	// and responds with answers.
+	// The host(s) to answer for should be in the rpc-host metadata field.
 	Answer(ctx context.Context, opts ...grpc.CallOption) (SignalingService_AnswerClient, error)
 	// OptionalWebRTCConfig returns any WebRTC configuration the caller may want to use.
+	// The host to get a config for must be in the rpc-host metadata field.
 	OptionalWebRTCConfig(ctx context.Context, in *OptionalWebRTCConfigRequest, opts ...grpc.CallOption) (*OptionalWebRTCConfigResponse, error)
 }
 
@@ -127,19 +130,22 @@ func (c *signalingServiceClient) OptionalWebRTCConfig(ctx context.Context, in *O
 // All implementations must embed UnimplementedSignalingServiceServer
 // for forward compatibility
 type SignalingServiceServer interface {
-	// Call makes an offer to a client that it expects an answer to. It is
-	// assumed that the service is hosted solely for a specific client. That is,
-	// every client has its own signaling service identified by its hostname
-	// and in the case of TLS being used, SNI.
+	// Call makes an offer to a client that it expects an answer to. The host
+	// of the client in question should be identified in the rpc-host metadata
+	// field.
 	Call(*CallRequest, SignalingService_CallServer) error
 	// CallUpdate is used to send additional info in relation to a Call.
+	// The host of the client for the call in question should be identified
+	// in the rpc-host metadata field.
 	// In a world where https://github.com/grpc/grpc-web/issues/24 is fixed,
 	// this should be removed in favor of a bidirectional stream on Call.
 	CallUpdate(context.Context, *CallUpdateRequest) (*CallUpdateResponse, error)
 	// Answer sets up an answering service where the caller answers call offers
 	// and responds with answers.
+	// The host(s) to answer for should be in the rpc-host metadata field.
 	Answer(SignalingService_AnswerServer) error
 	// OptionalWebRTCConfig returns any WebRTC configuration the caller may want to use.
+	// The host to get a config for must be in the rpc-host metadata field.
 	OptionalWebRTCConfig(context.Context, *OptionalWebRTCConfigRequest) (*OptionalWebRTCConfigResponse, error)
 	mustEmbedUnimplementedSignalingServiceServer()
 }

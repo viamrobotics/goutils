@@ -1889,10 +1889,9 @@ sides must both respect this setting. </p></td>
                 <td>Call</td>
                 <td><a href="#proto.rpc.webrtc.v1.CallRequest">CallRequest</a></td>
                 <td><a href="#proto.rpc.webrtc.v1.CallResponse">CallResponse</a> stream</td>
-                <td><p>Call makes an offer to a client that it expects an answer to. It is
-assumed that the service is hosted solely for a specific client. That is,
-every client has its own signaling service identified by its hostname
-and in the case of TLS being used, SNI.</p></td>
+                <td><p>Call makes an offer to a client that it expects an answer to. The host
+of the client in question should be identified in the rpc-host metadata
+field.</p></td>
               </tr>
             
               <tr>
@@ -1900,6 +1899,8 @@ and in the case of TLS being used, SNI.</p></td>
                 <td><a href="#proto.rpc.webrtc.v1.CallUpdateRequest">CallUpdateRequest</a></td>
                 <td><a href="#proto.rpc.webrtc.v1.CallUpdateResponse">CallUpdateResponse</a></td>
                 <td><p>CallUpdate is used to send additional info in relation to a Call.
+The host of the client for the call in question should be identified
+in the rpc-host metadata field.
 In a world where https://github.com/grpc/grpc-web/issues/24 is fixed,
 this should be removed in favor of a bidirectional stream on Call.</p></td>
               </tr>
@@ -1909,14 +1910,16 @@ this should be removed in favor of a bidirectional stream on Call.</p></td>
                 <td><a href="#proto.rpc.webrtc.v1.AnswerResponse">AnswerResponse</a> stream</td>
                 <td><a href="#proto.rpc.webrtc.v1.AnswerRequest">AnswerRequest</a> stream</td>
                 <td><p>Answer sets up an answering service where the caller answers call offers
-and responds with answers.</p></td>
+and responds with answers.
+The host(s) to answer for should be in the rpc-host metadata field.</p></td>
               </tr>
             
               <tr>
                 <td>OptionalWebRTCConfig</td>
                 <td><a href="#proto.rpc.webrtc.v1.OptionalWebRTCConfigRequest">OptionalWebRTCConfigRequest</a></td>
                 <td><a href="#proto.rpc.webrtc.v1.OptionalWebRTCConfigResponse">OptionalWebRTCConfigResponse</a></td>
-                <td><p>OptionalWebRTCConfig returns any WebRTC configuration the caller may want to use.</p></td>
+                <td><p>OptionalWebRTCConfig returns any WebRTC configuration the caller may want to use.
+The host to get a config for must be in the rpc-host metadata field.</p></td>
               </tr>
             
           </tbody>
