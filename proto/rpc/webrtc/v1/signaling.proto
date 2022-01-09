@@ -9,10 +9,9 @@ import "google/rpc/status.proto";
 // A SignalingService provides the means to have one client "call" another
 // client using the Session Description Protocol (SDP).
 service SignalingService {
-	// Call makes an offer to a client that it expects an answer to. It is
-	// assumed that the service is hosted solely for a specific client. That is,
-	// every client has its own signaling service identified by its hostname
-	// and in the case of TLS being used, SNI.
+	// Call makes an offer to a client that it expects an answer to. The host
+	// of the client in question should be identified in the rpc-host metadata
+	// field.
 	rpc Call(CallRequest) returns (stream CallResponse) {
 		option (google.api.http) = {
 			post: "/rpc/webrtc/v1/call"
@@ -20,6 +19,8 @@ service SignalingService {
 	}
 
 	// CallUpdate is used to send additional info in relation to a Call.
+	// The host of the client for the call in question should be identified
+	// in the rpc-host metadata field.
 	// In a world where https://github.com/grpc/grpc-web/issues/24 is fixed,
 	// this should be removed in favor of a bidirectional stream on Call.
 	rpc CallUpdate(CallUpdateRequest) returns (CallUpdateResponse) {
@@ -30,9 +31,11 @@ service SignalingService {
 
 	// Answer sets up an answering service where the caller answers call offers
 	// and responds with answers.
+	// The host(s) to answer for should be in the rpc-host metadata field.
 	rpc Answer(stream AnswerResponse) returns (stream AnswerRequest);
 
 	// OptionalWebRTCConfig returns any WebRTC configuration the caller may want to use.
+	// The host to get a config for must be in the rpc-host metadata field.
 	rpc OptionalWebRTCConfig(OptionalWebRTCConfigRequest) returns (OptionalWebRTCConfigResponse)  {
 		option (google.api.http) = {
 			get: "/rpc/webrtc/v1/optional_webrtc_config"
