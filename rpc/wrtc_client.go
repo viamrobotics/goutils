@@ -82,7 +82,7 @@ func dialWebRTC(ctx context.Context, address string, dOpts *dialOptions, logger 
 	logger.Debug("connected")
 
 	md := metadata.New(map[string]string{RPCHostMetadataField: host})
-	signalCtx := metadata.NewOutgoingContext(ctx, md)
+	signalCtx := metadata.NewOutgoingContext(dialCtx, md)
 
 	signalingClient := webrtcpb.NewSignalingServiceClient(conn)
 	configResp, err := signalingClient.OptionalWebRTCConfig(signalCtx, &webrtcpb.OptionalWebRTCConfigRequest{})
@@ -258,8 +258,8 @@ func dialWebRTC(ctx context.Context, address string, dOpts *dialOptions, logger 
 
 	doCall := func() error {
 		select {
-		case <-ctx.Done():
-			return multierr.Combine(ctx.Err(), clientCh.Close())
+		case <-exchangeCtx.Done():
+			return multierr.Combine(exchangeCtx.Err(), clientCh.Close())
 		case <-clientCh.Ready():
 			return nil
 		case err := <-errCh:
