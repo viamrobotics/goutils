@@ -85,7 +85,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 				ans.logger.Errorw("error closing existing signaling connection", "error", err)
 			}
 		}
-		setupCtx, timeoutCancel := context.WithTimeout(ans.closeCtx, 5*time.Second)
+		setupCtx, timeoutCancel := context.WithTimeout(ans.closeCtx, 10*time.Second)
 		defer timeoutCancel()
 		conn, err := Dial(setupCtx, ans.address, ans.logger, ans.dialOpts...)
 		if err != nil {

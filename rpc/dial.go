@@ -66,7 +66,7 @@ func Dial(ctx context.Context, address string, logger golog.Logger, opts ...Dial
 	if target, port, err := lookupSRV(ctx, host); err == nil {
 		dOpts.webrtcOpts.Insecure = port != 443
 		dOpts.webrtcOpts.SignalingServer = fmt.Sprintf("%s:%d", target, port)
-	} else if ctx.Err() != nil {
+	} else if ctx.Err() != nil && !errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return nil, ctx.Err()
 	}
 
