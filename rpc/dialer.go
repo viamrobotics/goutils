@@ -171,7 +171,11 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts *dialOptions, log
 	if dOpts.insecure {
 		dialOpts = append(dialOpts, grpc.WithInsecure())
 	} else {
-		dialOpts = append(dialOpts, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12})))
+		tlsConfig := dOpts.tlsConfig
+		if tlsConfig == nil {
+			tlsConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+		}
+		dialOpts = append(dialOpts, grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)))
 	}
 
 	grpcLogger := logger.Desugar()

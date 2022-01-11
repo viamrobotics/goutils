@@ -1,10 +1,15 @@
 package rpc
 
+import "crypto/tls"
+
 // dialOptions configure a Dial call. dialOptions are set by the DialOption
 // values passed to Dial.
 type dialOptions struct {
 	// insecure determines if the RPC connection is TLS based.
 	insecure bool
+
+	// tlsConfig is the TLS config to use for any secured connections.
+	tlsConfig *tls.Config
 
 	authEntity string
 

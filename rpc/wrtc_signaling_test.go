@@ -104,7 +104,7 @@ func TestWebRTCSignaling(t *testing.T) {
 						HostURI(grpcListener.Addr().String(), host),
 						logger,
 						WithWebRTCOptions(DialWebRTCOptions{
-							Insecure:          true,
+							SignalingInsecure: true,
 							DisableTrickleICE: tc,
 						}),
 					)

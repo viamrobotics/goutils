@@ -64,9 +64,9 @@ func Dial(ctx context.Context, address string, logger golog.Logger, opts ...Dial
 
 	srvTimeoutCtx, srvTimeoutCtxCancel := context.WithTimeout(ctx, 5*time.Second)
 	defer srvTimeoutCtxCancel()
-	dOpts.webrtcOpts.Insecure = dOpts.insecure
+	dOpts.webrtcOpts.SignalingInsecure = dOpts.insecure
 	if target, port, err := lookupSRV(srvTimeoutCtx, host); err == nil {
-		dOpts.webrtcOpts.Insecure = port != 443
+		dOpts.webrtcOpts.SignalingInsecure = port != 443
 		dOpts.webrtcOpts.SignalingServer = fmt.Sprintf("%s:%d", target, port)
 	} else if srvTimeoutCtx.Err() != nil && !errors.Is(srvTimeoutCtx.Err(), context.DeadlineExceeded) {
 		return nil, srvTimeoutCtx.Err()

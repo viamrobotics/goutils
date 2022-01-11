@@ -20,7 +20,7 @@ func RawBytesFromSlice(val interface{}) []byte {
 
 	size := valV.Len() * int(valV.Type().Elem().Size())
 	firstElem := valV.Index(0).UnsafeAddr()
-	//nolint
+	//nolint:unsafeptr,govet
 	header := &reflect.SliceHeader{
 		Len:  size,
 		Cap:  size,

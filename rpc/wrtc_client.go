@@ -26,8 +26,8 @@ var ErrNoWebRTCSignaler = errors.New("no signaler present")
 
 // DialWebRTCOptions control how WebRTC is utilized in a dial attempt.
 type DialWebRTCOptions struct {
-	// Insecure determines if the WebRTC connection is DTLS based.
-	Insecure bool
+	// SignalingInsecure determines if the signaling connection is insecure.
+	SignalingInsecure bool
 
 	// Signaling server specifies the signaling server to
 	// contact on behalf of this client for WebRTC communications.
@@ -66,7 +66,7 @@ func dialWebRTC(ctx context.Context, address string, dOpts *dialOptions, logger 
 	logger.Debugw("connecting to signaling server", "address", address)
 
 	dOptsCopy := *dOpts
-	if dOpts.webrtcOpts.Insecure {
+	if dOpts.webrtcOpts.SignalingInsecure {
 		dOptsCopy.insecure = true
 	} else {
 		dOptsCopy.insecure = false

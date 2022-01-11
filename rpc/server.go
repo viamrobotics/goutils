@@ -48,7 +48,11 @@ type Server interface {
 
 	// Serve will externally serve, on the given listener, the
 	// all in one handler described by http.Handler.
-	Serve(listener net.Listener) (err error)
+	Serve(listener net.Listener) error
+
+	// ServeTLS will externally serve, using the given cert/key, the
+	// all in one handler described by http.Handler.
+	ServeTLS(listener net.Listener, certFile, keyFile string) error
 
 	// Stop stops the internal gRPC and the HTTP server if it
 	// was started.
@@ -98,7 +102,6 @@ type simpleServer struct {
 	serviceServerCancels []func()
 	serviceServers       []interface{}
 	signalingCallQueue   WebRTCCallQueue
-	secure               bool
 	authRSAPrivKey       *rsa.PrivateKey
 	internalUUID         string
 	internalCreds        Credentials
@@ -412,8 +415,19 @@ func (ss *simpleServer) Start() error {
 }
 
 func (ss *simpleServer) Serve(listener net.Listener) error {
-	var handler http.Handler = ss
-	if !ss.secure {
+	return ss.serveTLS(listener, "", "")
+}
+
+func (ss *simpleServer) ServeTLS(listener net.Listener, certFile, keyFile string) error {
+	return ss.serveTLS(listener, certFile, keyFile)
+}
+
+func (ss *simpleServer) serveTLS(listener net.Listener, certFile, keyFile string) error {
+	ss.httpServer.Addr = listener.Addr().String()
+	ss.httpServer.Handler = ss
+	secure := true
+	if certFile == "" && keyFile == "" {
+		secure = false
 		http2Server, err := utils.NewHTTP2Server()
 		if err != nil {
 			return err
@@ -421,15 +435,19 @@ func (ss *simpleServer) Serve(listener net.Listener) error {
 		ss.httpServer.RegisterOnShutdown(func() {
 			utils.UncheckedErrorFunc(http2Server.Close)
 		})
-		ss.httpServer.Addr = listener.Addr().String()
-		handler = h2c.NewHandler(ss, http2Server.HTTP2)
+		ss.httpServer.Handler = h2c.NewHandler(ss.httpServer.Handler, http2Server.HTTP2)
 	}
-	ss.httpServer.Addr = listener.Addr().String()
-	ss.httpServer.Handler = handler
+
 	var err error
 	var errMu sync.Mutex
 	utils.ManagedGo(func() {
-		if serveErr := ss.httpServer.Serve(listener); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+		var serveErr error
+		if secure {
+			serveErr = ss.httpServer.ServeTLS(listener, certFile, keyFile)
+		} else {
+			serveErr = ss.httpServer.Serve(listener)
+		}
+		if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
 			errMu.Lock()
 			err = multierr.Combine(err, serveErr)
 			errMu.Unlock()
@@ -516,10 +534,7 @@ func (ss *simpleServer) RegisterServiceServer(
 	}
 	if len(svcHandlers) != 0 {
 		addr := ss.grpcListener.Addr().String()
-		opts := []grpc.DialOption{grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(maxMessageSize))}
-		if !ss.secure {
-			opts = append(opts, grpc.WithInsecure())
-		}
+		opts := []grpc.DialOption{grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(maxMessageSize)), grpc.WithInsecure()}
 		for _, h := range svcHandlers {
 			if err := h(stopCtx, ss.grpcGatewayHandler, addr, opts); err != nil {
 				return err
