@@ -187,7 +187,17 @@ func newWithListener(
 		unaryAuthIntPos = len(unaryInterceptors) - 1
 	}
 	if sOpts.unaryInterceptor != nil {
-		unaryInterceptors = append(unaryInterceptors, sOpts.unaryInterceptor)
+		unaryInterceptors = append(unaryInterceptors, func(
+			ctx context.Context,
+			req interface{},
+			info *grpc.UnaryServerInfo,
+			handler grpc.UnaryHandler,
+		) (interface{}, error) {
+			if server.exemptMethods[info.FullMethod] {
+				return handler(ctx, req)
+			}
+			return sOpts.unaryInterceptor(ctx, req, info, handler)
+		})
 	}
 	unaryInterceptor := grpc_middleware.ChainUnaryServer(unaryInterceptors...)
 	serverOpts = append(serverOpts, grpc.UnaryInterceptor(unaryInterceptor))
@@ -204,7 +214,17 @@ func newWithListener(
 		streamAuthIntPos = len(streamInterceptors) - 1
 	}
 	if sOpts.streamInterceptor != nil {
-		streamInterceptors = append(streamInterceptors, sOpts.streamInterceptor)
+		streamInterceptors = append(streamInterceptors, func(
+			srv interface{},
+			serverStream grpc.ServerStream,
+			info *grpc.StreamServerInfo,
+			handler grpc.StreamHandler,
+		) error {
+			if server.exemptMethods[info.FullMethod] {
+				return handler(srv, serverStream)
+			}
+			return sOpts.streamInterceptor(srv, serverStream, info, handler)
+		})
 	}
 	streamInterceptor := grpc_middleware.ChainStreamServer(streamInterceptors...)
 	serverOpts = append(serverOpts, grpc.StreamInterceptor(streamInterceptor))

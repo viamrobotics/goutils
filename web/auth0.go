@@ -8,12 +8,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/edaniels/golog"
 	"go.opencensus.io/trace"
 	"goji.io"
 	"goji.io/pat"
@@ -54,7 +54,13 @@ func (s *auth0State) newAuthProvider(ctx context.Context) (*oidc.Provider, error
 }
 
 // InstallAuth0 does initial setup and installs routes for auth0.
-func InstallAuth0(ctx context.Context, mux *goji.Mux, sessions *SessionManager, config Auth0Config) (io.Closer, error) {
+func InstallAuth0(
+	ctx context.Context,
+	mux *goji.Mux,
+	sessions *SessionManager,
+	config Auth0Config,
+	logger golog.Logger,
+) (io.Closer, error) {
 	if config.Domain == "" {
 		return nil, errors.New("need a domain for auth0")
 	}
@@ -95,19 +101,20 @@ func InstallAuth0(ctx context.Context, mux *goji.Mux, sessions *SessionManager, 
 		Scopes:       []string{oidc.ScopeOpenID, "profile", "email"},
 	}
 
-	mux.Handle(pat.New("/callback"), &callbackHandler{state})
-	mux.Handle(pat.New("/login"), &loginHandler{state})
-	mux.Handle(pat.New("/logout"), &logoutHandler{state})
+	mux.Handle(pat.New("/callback"), &callbackHandler{state, logger})
+	mux.Handle(pat.New("/login"), &loginHandler{state, logger})
+	mux.Handle(pat.New("/logout"), &logoutHandler{state, logger})
 
 	if state.config.EnableTest {
-		mux.Handle(pat.New("/token-callback"), &tokenCallbackHandler{state})
+		mux.Handle(pat.New("/token-callback"), &tokenCallbackHandler{state, logger})
 	}
 
 	return state, nil
 }
 
 type callbackHandler struct {
-	state *auth0State
+	state  *auth0State
+	logger golog.Logger
 }
 
 func (h *callbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -118,7 +125,7 @@ func (h *callbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer span.End()
 
 	session, err := h.state.sessions.Get(r, true)
-	if HandleError(w, err, "getting session") {
+	if HandleError(w, err, h.logger, "getting session") {
 		return
 	}
 
@@ -129,13 +136,13 @@ func (h *callbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	token, err := h.state.authConfig.Exchange(ctx, r.URL.Query().Get("code"))
 	if err != nil {
-		log.Printf("no token found: %v", err)
+		h.logger.Debugw("no token found", "error", err)
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
 
 	session, err = verifyAndSaveToken(ctx, h.state, session, token)
-	if HandleError(w, err) {
+	if HandleError(w, err, h.logger) {
 		return
 	}
 
@@ -157,7 +164,8 @@ func (h *callbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // Handle programmatically generated access + id tokens
 // Currently used only in testing.
 type tokenCallbackHandler struct {
-	state *auth0State
+	state  *auth0State
+	logger golog.Logger
 }
 
 func (h *tokenCallbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -168,7 +176,7 @@ func (h *tokenCallbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request)
 	defer span.End()
 
 	session, err := h.state.sessions.Get(r, true)
-	if HandleError(w, err, "getting session") {
+	if HandleError(w, err, h.logger, "getting session") {
 		return
 	}
 
@@ -185,17 +193,17 @@ func (h *tokenCallbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request)
 	}
 
 	jsonToken := map[string]interface{}{}
-	if err := json.Unmarshal(bodyBytes, &jsonToken); HandleError(w, err, "reading token") {
+	if err := json.Unmarshal(bodyBytes, &jsonToken); HandleError(w, err, h.logger, "reading token") {
 		return
 	}
 
 	token := &oauth2.Token{}
-	if err := json.Unmarshal(bodyBytes, &token); HandleError(w, err, "reading token") {
+	if err := json.Unmarshal(bodyBytes, &token); HandleError(w, err, h.logger, "reading token") {
 		return
 	}
 
 	if e, ok := jsonToken["expires_in"].(float64); !ok {
-		HandleError(w, errors.New("could not determine token expiry"), "reading token")
+		HandleError(w, errors.New("could not determine token expiry"), h.logger, "reading token")
 		return
 	} else if e != 0 {
 		token.Expiry = time.Now().Add(time.Duration(e) * time.Second)
@@ -204,7 +212,7 @@ func (h *tokenCallbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request)
 	token = token.WithExtra(jsonToken)
 
 	session, err = verifyAndSaveToken(ctx, h.state, session, token)
-	if HandleError(w, err) {
+	if HandleError(w, err, h.logger) {
 		return
 	}
 
@@ -255,7 +263,8 @@ func verifyAndSaveToken(ctx context.Context, state *auth0State, session *Session
 // --------------------------------
 
 type loginHandler struct {
-	state *auth0State
+	state  *auth0State
+	logger golog.Logger
 }
 
 func (h *loginHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -268,13 +277,13 @@ func (h *loginHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Generate random state
 	b := make([]byte, 32)
 	_, err := rand.Read(b)
-	if HandleError(w, err, "error getting random number") {
+	if HandleError(w, err, h.logger, "error getting random number") {
 		return
 	}
 	state := base64.StdEncoding.EncodeToString(b)
 
 	session, err := h.state.sessions.Get(r, true)
-	if HandleError(w, err, "error getting session") {
+	if HandleError(w, err, h.logger, "error getting session") {
 		return
 	}
 	session.Data["state"] = state
@@ -286,7 +295,7 @@ func (h *loginHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		session.Data["backto"] = r.Header.Get("Referer")
 	}
 	err = session.Save(ctx, r, w)
-	if HandleError(w, err, "error saving session") {
+	if HandleError(w, err, h.logger, "error saving session") {
 		return
 	}
 
@@ -296,7 +305,8 @@ func (h *loginHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // --------------------------------
 
 type logoutHandler struct {
-	state *auth0State
+	state  *auth0State
+	logger golog.Logger
 }
 
 func (h *logoutHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -307,7 +317,7 @@ func (h *logoutHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer span.End()
 
 	logoutURL, err := url.Parse(h.state.config.Domain)
-	if HandleError(w, err, "internal config error parsing domain") {
+	if HandleError(w, err, h.logger, "internal config error parsing domain") {
 		return
 	}
 

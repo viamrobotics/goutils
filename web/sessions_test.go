@@ -7,12 +7,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/edaniels/golog"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
 func TestSession1(t *testing.T) {
-	sm := NewSessionManager(&memorySessionStore{})
+	sm := NewSessionManager(&memorySessionStore{}, golog.NewTestLogger(t))
 
 	r, err := http.NewRequest("GET", "http://localhost/", nil)
 	if err != nil {

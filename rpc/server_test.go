@@ -42,10 +42,10 @@ func TestServer(t *testing.T) {
 							}
 							if withAuthentication {
 								serverOpts = append(serverOpts,
-									WithAuthHandler("fake", MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) error {
-										return nil
-									}, func(ctx context.Context, entity string) error {
-										return nil
+									WithAuthHandler("fake", MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) (map[string]string, error) {
+										return map[string]string{}, nil
+									}, func(ctx context.Context, entity string) (interface{}, error) {
+										return 1, nil
 									})))
 							} else {
 								serverOpts = append(serverOpts, WithUnauthenticated())
@@ -112,7 +112,7 @@ func TestServer(t *testing.T) {
 									Payload: "something",
 								}})
 								test.That(t, err, test.ShouldNotBeNil)
-								test.That(t, err.Error(), test.ShouldContainSubstring, "no way to")
+								test.That(t, err.Error(), test.ShouldContainSubstring, "no auth handler")
 
 								authResp, err := authClient.Authenticate(
 									context.Background(), &rpcpb.AuthenticateRequest{Entity: "foo", Credentials: &rpcpb.Credentials{
@@ -256,10 +256,10 @@ func TestServer(t *testing.T) {
 							if withAuthentication {
 								test.That(t, err.Error(), test.ShouldContainSubstring, "authentication required")
 								rtcConn, err = dialWebRTC(context.Background(), HostURI(listener.Addr().String(), host), &dialOptions{
-									creds:     Credentials{Type: "fake"},
 									tlsConfig: tlsConf,
 									webrtcOpts: DialWebRTCOptions{
 										SignalingInsecure: !secure,
+										SignalingCreds:    Credentials{Type: "fake"},
 									},
 								}, logger)
 							}

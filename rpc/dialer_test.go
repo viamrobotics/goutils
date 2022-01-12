@@ -52,6 +52,7 @@ func TestCachedDialer(t *testing.T) {
 
 	closeCount := 0
 	closeCount2 := 0
+	closeCount3 := 0
 	closeChecker := func() error {
 		closeCount++
 		return nil
@@ -60,42 +61,61 @@ func TestCachedDialer(t *testing.T) {
 		closeCount2++
 		return nil
 	}
+	closeChecker3 := func() error {
+		closeCount3++
+		return nil
+	}
 	cachedDialer := NewCachedDialer()
 	conn1, cached, err := cachedDialer.DialDirect(
-		context.Background(), httpListener1.Addr().String(), closeChecker, grpc.WithInsecure(), grpc.WithBlock())
+		context.Background(), httpListener1.Addr().String(), "", closeChecker, grpc.WithInsecure(), grpc.WithBlock())
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, cached, test.ShouldBeFalse)
 	conn2, cached, err := cachedDialer.DialDirect(
-		context.Background(), httpListener1.Addr().String(), closeChecker, grpc.WithInsecure(), grpc.WithBlock())
+		context.Background(), httpListener1.Addr().String(), "", closeChecker, grpc.WithInsecure(), grpc.WithBlock())
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, cached, test.ShouldBeTrue)
 	conn3, cached, err := cachedDialer.DialDirect(
-		context.Background(), httpListener2.Addr().String(), closeChecker2, grpc.WithInsecure(), grpc.WithBlock())
+		context.Background(), httpListener1.Addr().String(), "more", closeChecker2, grpc.WithInsecure(), grpc.WithBlock())
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, cached, test.ShouldBeFalse)
+	conn4, cached, err := cachedDialer.DialDirect(
+		context.Background(), httpListener2.Addr().String(), "", closeChecker3, grpc.WithInsecure(), grpc.WithBlock())
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, cached, test.ShouldBeFalse)
 	test.That(t, conn1.(*reffedConn).ClientConn, test.ShouldEqual, conn2.(*reffedConn).ClientConn)
-	test.That(t, conn2.(*reffedConn).ClientConn, test.ShouldNotEqual, conn3.(*reffedConn).ClientConn)
+	test.That(t, conn3.(*reffedConn).ClientConn, test.ShouldNotEqual, conn2.(*reffedConn).ClientConn)
+	test.That(t, conn2.(*reffedConn).ClientConn, test.ShouldNotEqual, conn4.(*reffedConn).ClientConn)
 
 	test.That(t, closeCount, test.ShouldEqual, 0)
 	test.That(t, closeCount2, test.ShouldEqual, 0)
+	test.That(t, closeCount3, test.ShouldEqual, 0)
 
 	test.That(t, conn1.Close(), test.ShouldBeNil)
 
 	test.That(t, closeCount, test.ShouldEqual, 0)
 	test.That(t, closeCount2, test.ShouldEqual, 0)
+	test.That(t, closeCount3, test.ShouldEqual, 0)
 
 	test.That(t, conn2.Close(), test.ShouldBeNil)
 
 	test.That(t, closeCount, test.ShouldEqual, 1)
 	test.That(t, closeCount2, test.ShouldEqual, 0)
+	test.That(t, closeCount3, test.ShouldEqual, 0)
 
 	test.That(t, conn3.Close(), test.ShouldBeNil)
 
 	test.That(t, closeCount, test.ShouldEqual, 1)
 	test.That(t, closeCount2, test.ShouldEqual, 1)
+	test.That(t, closeCount3, test.ShouldEqual, 0)
+
+	test.That(t, conn4.Close(), test.ShouldBeNil)
+
+	test.That(t, closeCount, test.ShouldEqual, 1)
+	test.That(t, closeCount2, test.ShouldEqual, 1)
+	test.That(t, closeCount3, test.ShouldEqual, 1)
 
 	conn1New, cached, err := cachedDialer.DialDirect(
-		context.Background(), httpListener1.Addr().String(), closeChecker, grpc.WithInsecure(), grpc.WithBlock())
+		context.Background(), httpListener1.Addr().String(), "", closeChecker, grpc.WithInsecure(), grpc.WithBlock())
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, cached, test.ShouldBeFalse)
 	test.That(t, conn1New.(*reffedConn).ClientConn, test.ShouldNotEqual, conn1.(*reffedConn).ClientConn)

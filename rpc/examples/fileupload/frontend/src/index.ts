@@ -1,7 +1,8 @@
 import { grpc } from "@improbable-eng/grpc-web";
+import { Credentials, dialWebRTC } from "@viamrobotics/rpc";
+import { DialOptions } from "@viamrobotics/rpc/src/dial";
 import { UploadFileRequest, UploadFileResponse } from "./gen/proto/rpc/examples/fileupload/v1/fileupload_pb";
-import { FileUploadServiceClient, ServiceError } from "./gen/proto/rpc/examples/fileupload/v1/fileupload_pb_service";
-import { dialWebRTC, Credentials } from "@viamrobotics/rpc";
+import { FileUploadServiceClient } from "./gen/proto/rpc/examples/fileupload/v1/fileupload_pb_service";
 
 const signalingAddress = `${window.location.protocol}//${window.location.host}`;
 const host = "local";
@@ -10,6 +11,7 @@ declare global {
 	interface Window {
 		creds?: Credentials;
 		externalAuthAddr?: string;
+		externalAuthToEntity?: string;
 	}
 }
 
@@ -20,7 +22,24 @@ let clientProm = new Promise<FileUploadServiceClient>((resolve, reject) => {
 	clientReject = reject;
 });
 
-const opts = { credentials: window.creds, externalAuthAddress: window.externalAuthAddr };
+const opts: DialOptions = {
+	credentials: window.creds,
+	externalAuthAddress: window.externalAuthAddr,
+	externalAuthToEntity: window.externalAuthToEntity,
+	webrtcOptions: {
+		disableTrickleICE: false,
+		signalingCredentials: window.creds,
+	}
+};
+if (opts.externalAuthAddress) {
+	// we are authenticating against the external address and then
+	// we will authenticate for externalAuthToEntity.
+	opts.authEntity = opts.externalAuthAddress.replace(/^(.*:\/\/)/, '');
+
+	// do similar for WebRTC
+	opts.webrtcOptions!.signalingExternalAuthAddress = opts.externalAuthAddress;
+	opts.webrtcOptions!.signalingExternalAuthToEntity = opts.externalAuthToEntity;
+}
 dialWebRTC(signalingAddress, host, opts).then(async ({ transportFactory }) => {
 	console.log("WebRTC connection established")
 	const webrtcClient = new FileUploadServiceClient(host, { transport: transportFactory });

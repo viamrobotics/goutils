@@ -1,23 +1,41 @@
 import { grpc } from "@improbable-eng/grpc-web";
+import { ClientChannel } from "./ClientChannel";
+import { Code } from "./gen/google/rpc/code_pb";
+import { Status } from "./gen/google/rpc/status_pb";
+import { AuthenticateRequest, AuthenticateResponse, AuthenticateToRequest, AuthenticateToResponse, Credentials as PBCredentials } from "./gen/proto/rpc/v1/auth_pb";
+import { AuthService, ExternalAuthService } from "./gen/proto/rpc/v1/auth_pb_service";
 import { CallRequest, CallResponse, CallUpdateRequest, CallUpdateResponse, ICECandidate } from "./gen/proto/rpc/webrtc/v1/signaling_pb";
 import { SignalingService } from "./gen/proto/rpc/webrtc/v1/signaling_pb_service";
-import { AuthenticateRequest, AuthenticateResponse, Credentials as PBCredentials } from "./gen/proto/rpc/v1/auth_pb";
-import { AuthService } from "./gen/proto/rpc/v1/auth_pb_service";
-import { ClientChannel } from "./ClientChannel";
 import { newPeerConnectionForClient } from "./peer";
-import { Code } from "./gen/google/rpc/code_pb"
-import { Status } from "./gen/google/rpc/status_pb"
 
 export interface DialOptions {
 	authEntity?: string;
 	credentials?: Credentials;
 	webrtcOptions?: DialWebRTCOptions;
 	externalAuthAddress?: string;
+	externalAuthToEntity?: string;
 }
 
 export interface DialWebRTCOptions {
 	disableTrickleICE: boolean;
 	rtcConfig?: RTCConfiguration;
+
+	// signalingAuthEntity is the entity to authenticate as to the signaler.
+	signalingAuthEntity?: string;
+
+	// signalingExternalAuthAddress is the address to perform external auth yet.
+	// This is unlikely to be needed since the signaler is typically in the same
+	// place where authentication happens.
+	signalingExternalAuthAddress?: string;
+
+	// signalingExternalAuthToEntity is the entity to authenticate for after
+	// externally authenticating.
+	// This is unlikely to be needed since the signaler is typically in the same
+	// place where authentication happens.
+	signalingExternalAuthToEntity?: string;
+
+	// signalingCredentials are used to authenticate the request to the signaling server.
+	signalingCredentials?: Credentials;
 }
 
 export interface Credentials {
@@ -71,6 +89,38 @@ async function makeAuthenticatedTransportFactory(address: string, defaultFactory
 			});
 			await done;
 			accessToken = thisAccessToken;
+
+			if (opts?.externalAuthAddress && opts?.externalAuthToEntity) {
+				const md = new grpc.Metadata();
+				md.set("authorization", `Bearer ${accessToken}`);
+
+				done = new Promise<grpc.Metadata>((resolve, reject) => {
+					pResolve = resolve;
+					pReject = reject;
+				});
+				thisAccessToken = "";
+
+				const request = new AuthenticateToRequest();
+				request.setEntity(opts.externalAuthToEntity);
+				grpc.invoke(ExternalAuthService.AuthenticateTo, {
+					request: request,
+					host: opts.externalAuthAddress!,
+					transport: defaultFactory,
+					metadata: md,
+					onMessage: (message: AuthenticateToResponse) => {
+						thisAccessToken = message.getAccessToken();
+					},
+					onEnd: (code: grpc.Code, msg: string | undefined, trailers: grpc.Metadata) => {
+						if (code == grpc.Code.OK) {
+							pResolve(md);
+						} else {
+							pReject(msg);
+						}
+					}
+				});
+				await done;
+				accessToken = thisAccessToken;
+			}
 		}
 		const md = new grpc.Metadata();
 		md.set("authorization", `Bearer ${accessToken}`);
@@ -122,19 +172,42 @@ interface WebRTCConnection {
 // upon successful connection that contains a transport factory to use with gRPC client as well as the WebRTC
 // PeerConnection itself. Care should be taken with the PeerConnection and is currently returned for experimental
 // use.
-// TODO(https://github.com/viamrobotics/core/issues/111): figure out decent way to handle reconnect on connection termination
+// TODO(https://github.com/viamrobotics/goutils/issues/19): figure out decent way to handle reconnect on connection termination
 export async function dialWebRTC(signalingAddress: string, host: string, opts?: DialOptions): Promise<WebRTCConnection> {
 	const webrtcOpts = opts?.webrtcOptions;
 	const { pc, dc } = await newPeerConnectionForClient(webrtcOpts !== undefined && webrtcOpts.disableTrickleICE, webrtcOpts?.rtcConfig);
 
-	if (opts && opts.credentials && !opts.authEntity) {
-		opts.authEntity = host;
+	// replace auth entity and creds
+	let optsCopy = opts;
+	if (opts) {
+		optsCopy = { ...opts } as DialOptions;
+
+		optsCopy.authEntity = opts?.webrtcOptions?.signalingAuthEntity
+		if (!optsCopy.authEntity) {
+			if (optsCopy.externalAuthAddress) {
+				optsCopy.authEntity = opts.externalAuthAddress?.replace(/^(.*:\/\/)/, '');
+			} else {
+				optsCopy.authEntity = signalingAddress.replace(/^(.*:\/\/)/, '');
+			}
+		}
+		optsCopy.credentials = opts?.webrtcOptions?.signalingCredentials
+		optsCopy.externalAuthAddress = opts?.webrtcOptions?.signalingExternalAuthAddress
+		optsCopy.externalAuthToEntity = opts?.webrtcOptions?.signalingExternalAuthToEntity
 	}
-	const directTransport = await dialDirect(signalingAddress, opts);
+
+	const directTransport = await dialDirect(signalingAddress, optsCopy);
 	const client = grpc.client(SignalingService.Call, {
 		host: signalingAddress,
 		transport: directTransport,
 	});
+
+	if (opts?.externalAuthAddress) {
+		// TODO(https://github.com/viamrobotics/goutils/issues/12): prepare AuthenticateTo here
+		// for client channel.
+	} else if (opts?.credentials?.type) {
+		// TODO(https://github.com/viamrobotics/goutils/issues/12): prepare Authenticate here
+		// for client channel
+	}
 
 	let uuid = '';
 	// only send once since exchange may end or ICE may end
@@ -214,7 +287,7 @@ export async function dialWebRTC(signalingAddress: string, host: string, opts?: 
 				sendDone();
 				return;
 			}
-			
+
 			const iProto = iceCandidateToProto(event.candidate);
 			const callRequestUpdate = new CallUpdateRequest();
 			callRequestUpdate.setUuid(uuid);
@@ -232,7 +305,7 @@ export async function dialWebRTC(signalingAddress: string, host: string, opts?: 
 						return;
 					}
 					if (exchangeDone || iceComplete) {
-						return;	
+						return;
 					}
 					console.error("error sending candidate", statusMessage)
 				}

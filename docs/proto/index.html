@@ -249,6 +249,14 @@
                 </li>
               
                 <li>
+                  <a href="#proto.rpc.v1.AuthenticateToRequest"><span class="badge">M</span>AuthenticateToRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#proto.rpc.v1.AuthenticateToResponse"><span class="badge">M</span>AuthenticateToResponse</a>
+                </li>
+              
+                <li>
                   <a href="#proto.rpc.v1.Credentials"><span class="badge">M</span>Credentials</a>
                 </li>
               
@@ -257,6 +265,10 @@
               
                 <li>
                   <a href="#proto.rpc.v1.AuthService"><span class="badge">S</span>AuthService</a>
+                </li>
+              
+                <li>
+                  <a href="#proto.rpc.v1.ExternalAuthService"><span class="badge">S</span>ExternalAuthService</a>
                 </li>
               
             </ul>
@@ -805,6 +817,57 @@ Future(erd): maybe a refresh_token </p></td>
 
         
       
+        <h3 id="proto.rpc.v1.AuthenticateToRequest">AuthenticateToRequest</h3>
+        <p>An AuthenticateToRequest contains the entity to authenticate to.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>entity</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="proto.rpc.v1.AuthenticateToResponse">AuthenticateToResponse</h3>
+        <p>An AuthenticateResponse is returned after successful authentication.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>access_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>access_token is a JWT where only the expiration should be deemed
+important.
+
+Future(erd): maybe a refresh_token </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="proto.rpc.v1.Credentials">Credentials</h3>
         <p></p>
 
@@ -883,6 +946,56 @@ requests.</p></td>
                 <td>Authenticate</td>
                 <td>POST</td>
                 <td>/rpc/v1/authenticate</td>
+                <td></td>
+              </tr>
+              
+            
+            </tbody>
+          </table>
+          
+        
+        <h3 id="proto.rpc.v1.ExternalAuthService">ExternalAuthService</h3>
+        <p>An ExternalAuthService is intended to be used as a means to perform application level</p><p>authentication but for an external entity that it is responsible for handling auth for.</p><p>An example of its use would be for a entity that only trusts an external source to</p><p>perform authentication for it.</p><p>Its sole AuthenticateTo method should be used prior to any other services that the external</p><p>entity's gRPC server has to offer.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Method Name</td><td>Request Type</td><td>Response Type</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>AuthenticateTo</td>
+                <td><a href="#proto.rpc.v1.AuthenticateToRequest">AuthenticateToRequest</a></td>
+                <td><a href="#proto.rpc.v1.AuthenticateToResponse">AuthenticateToResponse</a></td>
+                <td><p>AuthenticateTo attempts to authenticate the caller on behalf of an entity.
+The resulting response contains an access token that should be used for future
+requests. This assumes that the caller is already authenticated to the
+server implementing this service.</p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+
+        
+          
+          
+          <h4>Methods with HTTP bindings</h4>
+          <table>
+            <thead>
+              <tr>
+                <td>Method Name</td>
+                <td>Method</td>
+                <td>Pattern</td>
+                <td>Body</td>
+              </tr>
+            </thead>
+            <tbody>
+            
+              
+              
+              <tr>
+                <td>AuthenticateTo</td>
+                <td>POST</td>
+                <td>/rpc/v1/authenticate_to</td>
                 <td></td>
               </tr>
               

@@ -6,10 +6,10 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"time"
 
+	"github.com/edaniels/golog"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -20,6 +20,7 @@ import (
 type SessionManager struct {
 	store      Store
 	cookieName string
+	logger     golog.Logger
 }
 
 // Session representation of a session.
@@ -44,8 +45,8 @@ type Store interface {
 // ----
 
 // NewSessionManager creates a new SessionManager.
-func NewSessionManager(theStore Store) *SessionManager {
-	sm := &SessionManager{store: theStore, cookieName: "session-id"}
+func NewSessionManager(theStore Store, logger golog.Logger) *SessionManager {
+	sm := &SessionManager{store: theStore, cookieName: "session-id", logger: logger}
 	theStore.SetSessionManager(sm)
 	return sm
 }
@@ -105,7 +106,7 @@ func (sm *SessionManager) DeleteSession(ctx context.Context, r *http.Request, w 
 	if err == nil {
 		err = sm.store.Delete(ctx, c.Value)
 		if err != nil {
-			log.Printf("cannot delete cookie: %v\n", err)
+			sm.logger.Errorw("cannot delete cookie", "error", err)
 		}
 	}
 }

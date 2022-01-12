@@ -2,6 +2,7 @@ package rpc
 
 import (
 	"context"
+	"errors"
 	"net"
 
 	"github.com/pion/webrtc/v3"
@@ -14,6 +15,8 @@ const (
 	ctxKeyDialer
 	ctxKeyResolver
 	ctxKeyPeerConnection
+	ctxKeyAuthMetadata
+	ctxKeyAuthEntity
 )
 
 // contextWithHost attaches a host name to the given context.
@@ -70,4 +73,42 @@ func ContextPeerConnection(ctx context.Context) (*webrtc.PeerConnection, bool) {
 		return nil, false
 	}
 	return pc.(*webrtc.PeerConnection), true
+}
+
+// contextWithAuthMetadata attaches authentication metadata to the given context.
+func contextWithAuthMetadata(ctx context.Context, authMD map[string]string) context.Context {
+	return context.WithValue(ctx, ctxKeyAuthMetadata, authMD)
+}
+
+// ContextAuthMetadata returns authentication metadata. It may be nil if the value was never set.
+func ContextAuthMetadata(ctx context.Context) map[string]string {
+	authMD := ctx.Value(ctxKeyAuthMetadata)
+	if authMD == nil {
+		return nil
+	}
+	return authMD.(map[string]string)
+}
+
+// ContextWithAuthEntity attaches authentication metadata to the given context.
+func ContextWithAuthEntity(ctx context.Context, authEntity interface{}) context.Context {
+	return context.WithValue(ctx, ctxKeyAuthEntity, authEntity)
+}
+
+// contextAuthEntity returns the authentication entity associated with this context.
+func contextAuthEntity(ctx context.Context) (interface{}, error) {
+	authEntity := ctx.Value(ctxKeyAuthEntity)
+	if authEntity == nil {
+		return nil, errors.New("no auth entity")
+	}
+	return authEntity, nil
+}
+
+// MustContextAuthEntity returns the authentication entity associated with this context;
+// it panics if there is none set.
+func MustContextAuthEntity(ctx context.Context) interface{} {
+	authEntity, err := contextAuthEntity(ctx)
+	if err != nil {
+		panic(err)
+	}
+	return authEntity
 }

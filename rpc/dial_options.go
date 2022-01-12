@@ -21,7 +21,9 @@ type dialOptions struct {
 	// webrtcOpts control how WebRTC is utilized in a dial attempt.
 	webrtcOpts DialWebRTCOptions
 
-	externalAuthAddr string
+	externalAuthAddr     string
+	externalAuthToEntity string
+	externalAuthInsecure bool
 
 	// debug is helpful to turn on when the library isn't working quite right.
 	// It will output much more logs.
@@ -65,6 +67,7 @@ func WithInsecure() DialOption {
 // WithEntityCredentials.
 func WithCredentials(creds Credentials) DialOption {
 	return newFuncDialOption(func(o *dialOptions) {
+		o.authEntity = ""
 		o.creds = creds
 	})
 }
@@ -82,13 +85,34 @@ func WithEntityCredentials(entity string, creds Credentials) DialOption {
 // WithExternalAuth returns a DialOption which sets the address to use
 // to perform authentication. Authentication done in this manner will never
 // have the dialed address be authenticated against but instead have access
-// tokens sent directly to it.
+// tokens sent directly to it. The entity which authentication is intended for
+// must also be specified. ExternalAuth uses the ExternalAuthService extension
+// and this library does not provide a standard implementation for it. It is
+// expected that the credentials used in these same dial options will be used
+// to first authenticate to the external server using the AuthService.
 // Note: When making a gRPC connection to the given address, the same
 // dial options are used. That means if the external address is secured,
 // so must the internal target.
-func WithExternalAuth(addr string) DialOption {
+func WithExternalAuth(addr, toEntity string) DialOption {
 	return newFuncDialOption(func(o *dialOptions) {
 		o.externalAuthAddr = addr
+		o.externalAuthToEntity = toEntity
+	})
+}
+
+// WithExternalAuthInsecure returns a DialOption which disables transport security for this
+// ClientConn when doing external auth. Note that transport security is required unless
+// WithExternalAuthInsecure is set.
+func WithExternalAuthInsecure() DialOption {
+	return newFuncDialOption(func(o *dialOptions) {
+		o.externalAuthInsecure = true
+	})
+}
+
+// WithTLSConfig sets the TLS configuration to use for all secured connections.
+func WithTLSConfig(config *tls.Config) DialOption {
+	return newFuncDialOption(func(o *dialOptions) {
+		o.tlsConfig = config
 	})
 }
 

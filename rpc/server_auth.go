@@ -18,7 +18,7 @@ import (
 func (ss *simpleServer) authHandler(forType CredentialsType) (AuthHandler, error) {
 	handler, ok := ss.authHandlers[forType]
 	if !ok {
-		return nil, status.Errorf(codes.InvalidArgument, "no way to authenticate with %q", forType)
+		return nil, status.Errorf(codes.InvalidArgument, "no auth handler for %q", forType)
 	}
 	return handler, nil
 }
@@ -28,9 +28,12 @@ const (
 	authorizationValuePrefixBearer = "Bearer "
 )
 
-type rpcClaims struct {
+// JWTClaims extends jwt.RegisteredClaims with information about the credentials as well
+// as authentication metadata.
+type JWTClaims struct {
 	jwt.RegisteredClaims
-	CredentialsType CredentialsType `json:"rpc_creds_type,omitempty"`
+	CredentialsType CredentialsType   `json:"rpc_creds_type,omitempty"`
+	AuthMetadata    map[string]string `json:"rpc_auth_md,omitempty"`
 }
 
 func (ss *simpleServer) Authenticate(ctx context.Context, req *rpcpb.AuthenticateRequest) (*rpcpb.AuthenticateResponse, error) {
@@ -45,18 +48,20 @@ func (ss *simpleServer) Authenticate(ctx context.Context, req *rpcpb.Authenticat
 	if err != nil {
 		return nil, err
 	}
-	if err := handler.Authenticate(ctx, req.Entity, req.Credentials.Payload); err != nil {
+	authMD, err := handler.Authenticate(ctx, req.Entity, req.Credentials.Payload)
+	if err != nil {
 		if _, ok := status.FromError(err); ok {
 			return nil, err
 		}
 		return nil, status.Errorf(codes.PermissionDenied, "failed to authenticate: %s", err.Error())
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodRS256, rpcClaims{
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, JWTClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			Audience: jwt.ClaimStrings{req.Entity},
 		},
 		CredentialsType: CredentialsType(req.Credentials.Type),
+		AuthMetadata:    authMD,
 		// TODO(https://github.com/viamrobotics/goutils/issues/10): expiration
 		// TODO(https://github.com/viamrobotics/goutils/issues/11): refresh token
 		// TODO(https://github.com/viamrobotics/goutils/issues/14): more complete info
@@ -80,9 +85,11 @@ func (ss *simpleServer) authUnaryInterceptor(
 	handler grpc.UnaryHandler,
 ) (interface{}, error) {
 	if !ss.exemptMethods[info.FullMethod] {
-		if err := ss.ensureAuthed(ctx); err != nil {
+		authEntity, err := ss.ensureAuthed(ctx)
+		if err != nil {
 			return nil, err
 		}
+		ctx = ContextWithAuthEntity(ctx, authEntity)
 	}
 	return handler(ctx, req)
 }
@@ -94,11 +101,23 @@ func (ss *simpleServer) authStreamInterceptor(
 	handler grpc.StreamHandler,
 ) error {
 	if !ss.exemptMethods[info.FullMethod] {
-		if err := ss.ensureAuthed(serverStream.Context()); err != nil {
+		authEntity, err := ss.ensureAuthed(serverStream.Context())
+		if err != nil {
 			return err
 		}
+		ctx := ContextWithAuthEntity(serverStream.Context(), authEntity)
+		serverStream = ctxWrappedServerStream{serverStream, ctx}
 	}
 	return handler(srv, serverStream)
+}
+
+type ctxWrappedServerStream struct {
+	grpc.ServerStream
+	ctx context.Context
+}
+
+func (wrapped ctxWrappedServerStream) Context() context.Context {
+	return wrapped.ctx
 }
 
 func tokenFromContext(ctx context.Context) (string, error) {
@@ -116,13 +135,13 @@ func tokenFromContext(ctx context.Context) (string, error) {
 	return strings.TrimPrefix(authHeader[0], authorizationValuePrefixBearer), nil
 }
 
-func (ss *simpleServer) ensureAuthed(ctx context.Context) error {
+func (ss *simpleServer) ensureAuthed(ctx context.Context) (interface{}, error) {
 	tokenString, err := tokenFromContext(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	var claims rpcClaims
+	var claims JWTClaims
 	var handler AuthHandler
 	if _, err := jwt.ParseWithClaims(tokenString, &claims, func(token *jwt.Token) (interface{}, error) {
 		var err error
@@ -142,10 +161,14 @@ func (ss *simpleServer) ensureAuthed(ctx context.Context) error {
 
 		return &ss.authRSAPrivKey.PublicKey, nil
 	}); err != nil {
-		return status.Errorf(codes.Unauthenticated, "unauthenticated: %s", err)
+		return nil, status.Errorf(codes.Unauthenticated, "unauthenticated: %s", err)
 	}
 	if len(claims.Audience) == 0 {
-		return errors.New("invalid jwt claims; no audience")
+		return nil, errors.New("invalid jwt claims; no audience")
+	}
+
+	if claims.AuthMetadata != nil {
+		ctx = contextWithAuthMetadata(ctx, claims.AuthMetadata)
 	}
 
 	return handler.VerifyEntity(ctx, claims.Audience[0])

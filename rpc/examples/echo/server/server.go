@@ -15,7 +15,12 @@ import (
 type Server struct {
 	mu sync.Mutex
 	echopb.UnimplementedEchoServiceServer
-	fail bool
+	fail       bool
+	authorized bool
+
+	// prevents a package cycle. DO NOT set this to anything other
+	// than the real thing.
+	ContextAuthEntity func(ctx context.Context) interface{}
 }
 
 // SetFail instructs the server to fail at certain points in its execution.
@@ -25,12 +30,24 @@ func (srv *Server) SetFail(fail bool) {
 	srv.mu.Unlock()
 }
 
+// SetAuthorized instructs the server to check authorization at certain points.
+func (srv *Server) SetAuthorized(authorized bool) {
+	srv.mu.Lock()
+	srv.authorized = authorized
+	srv.mu.Unlock()
+}
+
 // Echo responds back with the same message.
 func (srv *Server) Echo(ctx context.Context, req *echopb.EchoRequest) (*echopb.EchoResponse, error) {
 	srv.mu.Lock()
 	if srv.fail {
 		srv.mu.Unlock()
 		return nil, errors.New("whoops")
+	}
+	if srv.authorized {
+		if srv.ContextAuthEntity(ctx) != "somespecialinterface" {
+			return nil, errors.New("unauthenticated or unauthorized")
+		}
 	}
 	srv.mu.Unlock()
 	return &echopb.EchoResponse{Message: req.Message}, nil
