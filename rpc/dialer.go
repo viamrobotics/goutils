@@ -392,7 +392,7 @@ func (creds *perRPCJWTCredentials) GetRequestMetadata(ctx context.Context, uri .
 			// now perform external auth
 			if creds.externalAuthToEntity == "" {
 				if creds.debug {
-					creds.logger.Debug("not external auth; done")
+					creds.logger.Debug("not external auth for an entity; done")
 				}
 				creds.accessToken = accessToken
 			} else {
