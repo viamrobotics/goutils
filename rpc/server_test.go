@@ -45,7 +45,7 @@ func TestServer(t *testing.T) {
 									WithAuthHandler("fake", MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) (map[string]string, error) {
 										return map[string]string{}, nil
 									}, func(ctx context.Context, entity string) (interface{}, error) {
-										return 1, nil
+										return entity, nil
 									})))
 							} else {
 								serverOpts = append(serverOpts, WithUnauthenticated())

@@ -84,7 +84,7 @@ func TestDial(t *testing.T) {
 					}
 					return nil, errors.New("this auth does not work yet")
 				}, func(ctx context.Context, entity string) (interface{}, error) {
-					return 1, nil
+					return entity, nil
 				})),
 				WithAuthHandler("something", MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) (map[string]string, error) {
 					testMu.Lock()
@@ -94,7 +94,7 @@ func TestDial(t *testing.T) {
 					}
 					return nil, errors.New("this auth does not work yet")
 				}, func(ctx context.Context, entity string) (interface{}, error) {
-					return 1, nil
+					return entity, nil
 				})),
 				WithAuthHandler("fakeExtWithKey", WithPublicKeyProvider(
 					funcAuthHandler{
@@ -102,7 +102,7 @@ func TestDial(t *testing.T) {
 							return map[string]string{}, errors.New("go auth externally")
 						},
 						verify: func(ctx context.Context, entity string) (interface{}, error) {
-							return 1, nil
+							return entity, nil
 						},
 					},
 					&privKeyExternal.PublicKey,
@@ -116,7 +116,7 @@ func TestDial(t *testing.T) {
 							if entity != "someent" {
 								return nil, errors.New("not someent")
 							}
-							return 1, nil
+							return entity, nil
 						},
 					},
 					&privKeyExternal.PublicKey,
@@ -144,9 +144,12 @@ func TestDial(t *testing.T) {
 					if !found {
 						return nil, errors.Errorf("wrong entity %q; wanted %v", entity, acceptedFakeWithKeyEnts)
 					}
+					if payload != "sosecret" {
+						return nil, errors.New("wrong secret")
+					}
 					return map[string]string{}, nil
 				}, func(ctx context.Context, entity string) (interface{}, error) {
-					return 1, nil
+					return entity, nil
 				})),
 				WithAuthRSAPrivateKey(privKeyExternal),
 			)
@@ -297,7 +300,7 @@ func TestDial(t *testing.T) {
 				WithWebRTCOptions(DialWebRTCOptions{
 					SignalingServerAddress:        httpListener.Addr().String(),
 					SignalingInsecure:             true,
-					SignalingCreds:                Credentials{Type: "fakeExtWithKey"},
+					SignalingCreds:                Credentials{Type: "fakeExtWithKey", Payload: "sosecret"},
 					SignalingExternalAuthAddress:  httpListenerExternal.Addr().String(),
 					SignalingExternalAuthInsecure: true,
 				}),
@@ -305,13 +308,30 @@ func TestDial(t *testing.T) {
 			test.That(t, err, test.ShouldBeNil)
 			test.That(t, conn.Close(), test.ShouldBeNil)
 
+			// explicit signaling server with external auth but bad secret
+			_, err = Dial(context.Background(), host, logger,
+				WithDialDebug(),
+				WithWebRTCOptions(DialWebRTCOptions{
+					SignalingServerAddress:        httpListener.Addr().String(),
+					SignalingInsecure:             true,
+					SignalingCreds:                Credentials{Type: "fakeExtWithKey", Payload: "notsosecret"},
+					SignalingExternalAuthAddress:  httpListenerExternal.Addr().String(),
+					SignalingExternalAuthInsecure: true,
+				}),
+			)
+			test.That(t, err, test.ShouldNotBeNil)
+			gStatus, ok = status.FromError(err)
+			test.That(t, ok, test.ShouldBeTrue)
+			test.That(t, gStatus.Code(), test.ShouldEqual, codes.PermissionDenied)
+			test.That(t, gStatus.Message(), test.ShouldContainSubstring, "wrong secret")
+
 			// explicit signaling server with external auth plus auth to extension but bad ent
 			_, err = Dial(context.Background(), host, logger,
 				WithDialDebug(),
 				WithWebRTCOptions(DialWebRTCOptions{
 					SignalingServerAddress:        httpListener.Addr().String(),
 					SignalingInsecure:             true,
-					SignalingCreds:                Credentials{Type: "fakeExtWithKey"},
+					SignalingCreds:                Credentials{Type: "fakeExtWithKey", Payload: "sosecret"},
 					SignalingExternalAuthAddress:  httpListenerExternal.Addr().String(),
 					SignalingExternalAuthInsecure: true,
 					SignalingExternalAuthToEntity: "something",
@@ -329,7 +349,7 @@ func TestDial(t *testing.T) {
 				WithWebRTCOptions(DialWebRTCOptions{
 					SignalingServerAddress:        httpListener.Addr().String(),
 					SignalingInsecure:             true,
-					SignalingCreds:                Credentials{Type: "fakeExtWithKey"},
+					SignalingCreds:                Credentials{Type: "fakeExtWithKey", Payload: "sosecret"},
 					SignalingExternalAuthAddress:  httpListenerExternal.Addr().String(),
 					SignalingExternalAuthInsecure: true,
 					SignalingExternalAuthToEntity: "someent",
@@ -403,7 +423,7 @@ func TestDialExternalAuth(t *testing.T) {
 		WithAuthHandler("fake", MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) (map[string]string, error) {
 			return map[string]string{}, nil
 		}, func(ctx context.Context, entity string) (interface{}, error) {
-			return 1, nil
+			return entity, nil
 		})),
 		WithAuthHandler("inter-node", WithPublicKeyProvider(
 			funcAuthHandler{
@@ -411,7 +431,7 @@ func TestDialExternalAuth(t *testing.T) {
 					return map[string]string{}, errors.New("go auth externally")
 				},
 				verify: func(ctx context.Context, entity string) (interface{}, error) {
-					return 1, nil
+					return entity, nil
 				},
 			},
 			&privKeyExternal.PublicKey,
@@ -439,7 +459,7 @@ func TestDialExternalAuth(t *testing.T) {
 		WithAuthHandler("fake", MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) (map[string]string, error) {
 			return map[string]string{}, nil
 		}, func(ctx context.Context, entity string) (interface{}, error) {
-			return 1, nil
+			return entity, nil
 		})),
 		WithAuthHandler("fakeWithKey", MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) (map[string]string, error) {
 			var found bool
@@ -452,9 +472,12 @@ func TestDialExternalAuth(t *testing.T) {
 			if !found {
 				return nil, errors.Errorf("wrong entity %q; wanted %v", entity, acceptedFakeWithKeyEnts)
 			}
+			if payload != "sosecret" {
+				return nil, errors.New("wrong secret")
+			}
 			return map[string]string{}, nil
 		}, func(ctx context.Context, entity string) (interface{}, error) {
-			return 1, nil
+			return entity, nil
 		})),
 		WithAuthRSAPrivateKey(privKeyExternal),
 	)
@@ -478,12 +501,12 @@ func TestDialExternalAuth(t *testing.T) {
 		WithAuthHandler("fake", MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) (map[string]string, error) {
 			return map[string]string{}, nil
 		}, func(ctx context.Context, entity string) (interface{}, error) {
-			return 1, nil
+			return entity, nil
 		})),
 		WithAuthHandler("fakeWithKey", MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) (map[string]string, error) {
 			return map[string]string{}, nil
 		}, func(ctx context.Context, entity string) (interface{}, error) {
-			return 1, nil
+			return entity, nil
 		})),
 		WithAuthRSAPrivateKey(privKeyExternal2),
 	)
@@ -520,7 +543,7 @@ func TestDialExternalAuth(t *testing.T) {
 	t.Run("with external auth should work", func(t *testing.T) {
 		conn, err := Dial(context.Background(), httpListenerInternal.Addr().String(), logger,
 			WithInsecure(),
-			WithCredentials(Credentials{Type: "fakeWithKey"}),
+			WithCredentials(Credentials{Type: "fakeWithKey", Payload: "sosecret"}),
 			WithExternalAuth(httpListenerExternal.Addr().String(), "someent"),
 			WithExternalAuthInsecure(),
 		)
@@ -535,11 +558,32 @@ func TestDialExternalAuth(t *testing.T) {
 		test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
 	})
 
+	t.Run("with external auth bad secret should fail", func(t *testing.T) {
+		conn, err := Dial(context.Background(), httpListenerInternal.Addr().String(), logger,
+			WithInsecure(),
+			WithCredentials(Credentials{Type: "fakeWithKey", Payload: "notsosecret"}),
+			WithExternalAuth(httpListenerExternal.Addr().String(), "someent"),
+			WithExternalAuthInsecure(),
+		)
+		test.That(t, err, test.ShouldBeNil)
+		defer func() {
+			test.That(t, conn.Close(), test.ShouldBeNil)
+		}()
+
+		client := pb.NewEchoServiceClient(conn)
+		_, err = client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
+		test.That(t, err, test.ShouldNotBeNil)
+		gStatus, ok := status.FromError(err)
+		test.That(t, ok, test.ShouldBeTrue)
+		test.That(t, gStatus.Code(), test.ShouldEqual, codes.PermissionDenied)
+		test.That(t, gStatus.Message(), test.ShouldContainSubstring, "wrong secret")
+	})
+
 	//nolint:dupl
 	t.Run("with no external auth entity provided should fail", func(t *testing.T) {
 		conn, err := Dial(context.Background(), httpListenerInternal.Addr().String(), logger,
 			WithInsecure(),
-			WithCredentials(Credentials{Type: "fakeWithKey"}),
+			WithCredentials(Credentials{Type: "fakeWithKey", Payload: "sosecret"}),
 			WithExternalAuth(httpListenerExternal.Addr().String(), ""),
 			WithExternalAuthInsecure(),
 		)
@@ -561,7 +605,7 @@ func TestDialExternalAuth(t *testing.T) {
 	t.Run("with unknown external entity should fail", func(t *testing.T) {
 		conn, err := Dial(context.Background(), httpListenerInternal.Addr().String(), logger,
 			WithInsecure(),
-			WithCredentials(Credentials{Type: "fakeWithKey"}),
+			WithCredentials(Credentials{Type: "fakeWithKey", Payload: "sosecret"}),
 			WithExternalAuth(httpListenerExternal.Addr().String(), "who"),
 			WithExternalAuthInsecure(),
 		)
@@ -582,7 +626,7 @@ func TestDialExternalAuth(t *testing.T) {
 	t.Run("with expected external entity should work", func(t *testing.T) {
 		conn, err := Dial(context.Background(), httpListenerInternal.Addr().String(), logger,
 			WithInsecure(),
-			WithEntityCredentials("someotherthing", Credentials{Type: "fakeWithKey"}),
+			WithEntityCredentials("someotherthing", Credentials{Type: "fakeWithKey", Payload: "sosecret"}),
 			WithExternalAuth(httpListenerExternal.Addr().String(), "someent"),
 			WithExternalAuthInsecure(),
 		)
@@ -626,7 +670,7 @@ func TestDialExternalAuth(t *testing.T) {
 		}()
 		conn, err := Dial(context.Background(), httpListenerInternal.Addr().String(), logger,
 			WithInsecure(),
-			WithCredentials(Credentials{Type: "fakeWithKey"}),
+			WithCredentials(Credentials{Type: "fakeWithKey", Payload: "sosecret"}),
 			WithExternalAuth(httpListenerExternal.Addr().String(), "someent"),
 			WithExternalAuthInsecure(),
 		)

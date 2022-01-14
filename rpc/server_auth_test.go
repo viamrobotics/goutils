@@ -470,7 +470,7 @@ func TestServerAuthKeyFunc(t *testing.T) {
 					return map[string]string{}, nil
 				},
 				verify: func(ctx context.Context, entity string) (interface{}, error) {
-					return 1, nil
+					return entity, nil
 				},
 			},
 			func(token *jwt.Token) (interface{}, error) {

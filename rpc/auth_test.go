@@ -25,7 +25,7 @@ func TestMakeFuncAuthHandler(t *testing.T) {
 		},
 		func(ctx context.Context, entity string) (interface{}, error) {
 			if entity == expectedEntity {
-				return 1, nil
+				return entity, nil
 			}
 			return nil, err2
 		},
@@ -43,7 +43,7 @@ func TestMakeFuncAuthHandler(t *testing.T) {
 	test.That(t, err, test.ShouldBeError, err2)
 	authEntity, err := handler.VerifyEntity(context.Background(), expectedEntity)
 	test.That(t, err, test.ShouldBeNil)
-	test.That(t, authEntity, test.ShouldResemble, 1)
+	test.That(t, authEntity, test.ShouldResemble, "foo")
 }
 
 func TestMakeSimpleAuthHandler(t *testing.T) {
