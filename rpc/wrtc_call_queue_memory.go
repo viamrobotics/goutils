@@ -48,7 +48,7 @@ func newMemoryWebRTCCallQueue(uuidDeterministic bool) *memoryWebRTCCallQueue {
 		uuidDeterministic: uuidDeterministic,
 	}
 	queue.activeBackgroundWorkers.Add(1)
-	ticker := time.NewTicker(1 * time.Microsecond)
+	ticker := time.NewTicker(5 * time.Second)
 	utils.ManagedGo(func() {
 		for {
 			if cancelCtx.Err() != nil {
