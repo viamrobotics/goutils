@@ -8,9 +8,7 @@ import (
 	"github.com/edaniels/golog"
 	"go.viam.com/test"
 	"google.golang.org/grpc"
-
-	pb "go.viam.com/utils/proto/rpc/examples/echo/v1"
-	echoserver "go.viam.com/utils/rpc/examples/echo/server"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 func TestCachedDialer(t *testing.T) {
@@ -18,22 +16,6 @@ func TestCachedDialer(t *testing.T) {
 	rpcServer1, err := NewServer(logger)
 	test.That(t, err, test.ShouldBeNil)
 	rpcServer2, err := NewServer(logger)
-	test.That(t, err, test.ShouldBeNil)
-
-	es := echoserver.Server{}
-	err = rpcServer1.RegisterServiceServer(
-		context.Background(),
-		&pb.EchoService_ServiceDesc,
-		&es,
-		pb.RegisterEchoServiceHandlerFromEndpoint,
-	)
-	test.That(t, err, test.ShouldBeNil)
-	err = rpcServer2.RegisterServiceServer(
-		context.Background(),
-		&pb.EchoService_ServiceDesc,
-		&es,
-		pb.RegisterEchoServiceHandlerFromEndpoint,
-	)
 	test.That(t, err, test.ShouldBeNil)
 
 	httpListener1, err := net.Listen("tcp", "localhost:0")
@@ -67,19 +49,39 @@ func TestCachedDialer(t *testing.T) {
 	}
 	cachedDialer := NewCachedDialer()
 	conn1, cached, err := cachedDialer.DialDirect(
-		context.Background(), httpListener1.Addr().String(), "", closeChecker, grpc.WithInsecure(), grpc.WithBlock())
+		context.Background(),
+		httpListener1.Addr().String(),
+		"",
+		closeChecker,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithBlock())
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, cached, test.ShouldBeFalse)
 	conn2, cached, err := cachedDialer.DialDirect(
-		context.Background(), httpListener1.Addr().String(), "", closeChecker, grpc.WithInsecure(), grpc.WithBlock())
+		context.Background(),
+		httpListener1.Addr().String(),
+		"",
+		closeChecker,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithBlock())
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, cached, test.ShouldBeTrue)
 	conn3, cached, err := cachedDialer.DialDirect(
-		context.Background(), httpListener1.Addr().String(), "more", closeChecker2, grpc.WithInsecure(), grpc.WithBlock())
+		context.Background(),
+		httpListener1.Addr().String(),
+		"more",
+		closeChecker2,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithBlock())
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, cached, test.ShouldBeFalse)
 	conn4, cached, err := cachedDialer.DialDirect(
-		context.Background(), httpListener2.Addr().String(), "", closeChecker3, grpc.WithInsecure(), grpc.WithBlock())
+		context.Background(),
+		httpListener2.Addr().String(),
+		"",
+		closeChecker3,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithBlock())
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, cached, test.ShouldBeFalse)
 	test.That(t, conn1.(*reffedConn).ClientConn, test.ShouldEqual, conn2.(*reffedConn).ClientConn)
@@ -115,7 +117,12 @@ func TestCachedDialer(t *testing.T) {
 	test.That(t, closeCount3, test.ShouldEqual, 1)
 
 	conn1New, cached, err := cachedDialer.DialDirect(
-		context.Background(), httpListener1.Addr().String(), "", closeChecker, grpc.WithInsecure(), grpc.WithBlock())
+		context.Background(),
+		httpListener1.Addr().String(),
+		"",
+		closeChecker,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithBlock())
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, cached, test.ShouldBeFalse)
 	test.That(t, conn1New.(*reffedConn).ClientConn, test.ShouldNotEqual, conn1.(*reffedConn).ClientConn)
@@ -149,6 +156,64 @@ func TestReffedConn(t *testing.T) {
 	test.That(t, tracking.closeCalled, test.ShouldEqual, 1)
 	test.That(t, conn2.Close(), test.ShouldBeNil)
 	test.That(t, tracking.closeCalled, test.ShouldEqual, 1)
+}
+
+func TestDialAllowInsecure(t *testing.T) {
+	logger := golog.NewTestLogger(t)
+	rpcServer, err := NewServer(
+		logger,
+		WithAuthHandler(CredentialsTypeAPIKey, MakeSimpleAuthHandler([]string{"foo"}, "bar")),
+	)
+	test.That(t, err, test.ShouldBeNil)
+
+	httpListener, err := net.Listen("tcp", "localhost:0")
+	test.That(t, err, test.ShouldBeNil)
+
+	errChan := make(chan error)
+	go func() {
+		errChan <- rpcServer.Serve(httpListener)
+	}()
+
+	conn, err := Dial(
+		context.Background(),
+		httpListener.Addr().String(),
+		logger,
+		WithAllowInsecureDowngrade(),
+	)
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, conn.Close(), test.ShouldBeNil)
+
+	conn, err = Dial(
+		context.Background(),
+		httpListener.Addr().String(),
+		logger,
+		WithAllowInsecureWithCredentialsDowngrade(),
+	)
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, conn.Close(), test.ShouldBeNil)
+
+	_, err = Dial(
+		context.Background(),
+		httpListener.Addr().String(),
+		logger,
+		WithAllowInsecureDowngrade(),
+		WithEntityCredentials("foo", Credentials{Type: CredentialsTypeAPIKey, Payload: "bar"}),
+	)
+	test.That(t, err, test.ShouldEqual, ErrInsecureWithCredentials)
+
+	conn, err = Dial(
+		context.Background(),
+		httpListener.Addr().String(),
+		logger,
+		WithAllowInsecureWithCredentialsDowngrade(),
+		WithEntityCredentials("foo", Credentials{Type: CredentialsTypeAPIKey, Payload: "bar"}),
+	)
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, conn.Close(), test.ShouldBeNil)
+
+	test.That(t, rpcServer.Stop(), test.ShouldBeNil)
+	err = <-errChan
+	test.That(t, err, test.ShouldBeNil)
 }
 
 type closeReffedConn struct {

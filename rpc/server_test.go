@@ -15,6 +15,7 @@ import (
 	"go.viam.com/test"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
@@ -91,7 +92,7 @@ func TestServer(t *testing.T) {
 									grpc.WithTransportCredentials(credentials.NewTLS(tlsConf)),
 								)
 							} else {
-								grpcOpts = append(grpcOpts, grpc.WithInsecure())
+								grpcOpts = append(grpcOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 							}
 							conn, err := grpc.DialContext(context.Background(), listener.Addr().String(), grpcOpts...)
 							test.That(t, err, test.ShouldBeNil)

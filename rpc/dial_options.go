@@ -11,6 +11,16 @@ type dialOptions struct {
 	// tlsConfig is the TLS config to use for any secured connections.
 	tlsConfig *tls.Config
 
+	// allowInsecureDowngrade determines if it is acceptable to downgrade
+	// an insecure connection if detected. This is only used when credentials
+	// are not present.
+	allowInsecureDowngrade bool
+
+	// allowInsecureWithCredsDowngrade determines if it is acceptable to downgrade
+	// an insecure connection if detected when using credentials. This is generally
+	// unsafe to use but can be requested.
+	allowInsecureWithCredsDowngrade bool
+
 	authEntity string
 
 	// creds are used to authenticate the request. These are orthogonal to insecure,
@@ -129,5 +139,24 @@ func WithWebRTCOptions(webrtcOpts DialWebRTCOptions) DialOption {
 func WithDialDebug() DialOption {
 	return newFuncDialOption(func(o *dialOptions) {
 		o.debug = true
+	})
+}
+
+// WithAllowInsecureDowngrade returns a DialOption which allows connections
+// to be downgraded to plaintext if TLS cannot be detected properly. This
+// is not used when there are credentials present. For that, use the
+// more explicit WithAllowInsecureWithCredsDowngrade.
+func WithAllowInsecureDowngrade() DialOption {
+	return newFuncDialOption(func(o *dialOptions) {
+		o.allowInsecureDowngrade = true
+	})
+}
+
+// WithAllowInsecureWithCredentialsDowngrade returns a DialOption which allows
+// connections to be downgraded to plaintext if TLS cannot be detected properly while
+// using credentials. This is generally unsafe to use but can be requested.
+func WithAllowInsecureWithCredentialsDowngrade() DialOption {
+	return newFuncDialOption(func(o *dialOptions) {
+		o.allowInsecureWithCredsDowngrade = true
 	})
 }

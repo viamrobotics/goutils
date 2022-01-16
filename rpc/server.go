@@ -24,6 +24,7 @@ import (
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/net/http2/h2c"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
@@ -554,7 +555,10 @@ func (ss *simpleServer) RegisterServiceServer(
 	}
 	if len(svcHandlers) != 0 {
 		addr := ss.grpcListener.Addr().String()
-		opts := []grpc.DialOption{grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(maxMessageSize)), grpc.WithInsecure()}
+		opts := []grpc.DialOption{
+			grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(maxMessageSize)),
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+		}
 		for _, h := range svcHandlers {
 			if err := h(stopCtx, ss.grpcGatewayHandler, addr, opts); err != nil {
 				return err

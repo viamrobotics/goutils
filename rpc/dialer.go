@@ -13,12 +13,14 @@ import (
 	"github.com/edaniels/golog"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
+	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -179,6 +181,10 @@ func (rc *reffedConn) Close() error {
 	return err
 }
 
+// ErrInsecureWithCredentials is sent when a dial attempt is made to an address where either the insecure
+// option or insecure downgrade with credentials options are not set.
+var ErrInsecureWithCredentials = errors.New("requested address is insecure and will not send credentials")
+
 // dialDirectGRPC dials a gRPC server directly.
 func dialDirectGRPC(ctx context.Context, address string, dOpts *dialOptions, logger golog.Logger) (ClientConn, bool, error) {
 	dialOpts := []grpc.DialOption{
@@ -189,13 +195,32 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts *dialOptions, log
 		}),
 	}
 	if dOpts.insecure {
-		dialOpts = append(dialOpts, grpc.WithInsecure())
+		dialOpts = append(dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	} else {
 		tlsConfig := dOpts.tlsConfig
 		if tlsConfig == nil {
 			tlsConfig = &tls.Config{MinVersion: tls.VersionTLS12}
 		}
-		dialOpts = append(dialOpts, grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)))
+
+		if dOpts.allowInsecureDowngrade || dOpts.allowInsecureWithCredsDowngrade {
+			var dialer tls.Dialer
+			conn, err := dialer.DialContext(ctx, "tcp", address)
+			if err == nil {
+				// will use TLS
+				utils.UncheckedError(conn.Close())
+				dialOpts = append(dialOpts, grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)))
+			} else if strings.Contains(err.Error(), "tls: first record does not look like a TLS handshake") {
+				// unfortunately there's no explicit error value for this, so we do a string check
+				if dOpts.creds.Type == "" || dOpts.allowInsecureWithCredsDowngrade {
+					logger.Warnw("downgrading from TLS to plaintext", "address", address, "with_credentials", dOpts.creds.Type != "")
+					dialOpts = append(dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+				} else if dOpts.creds.Type != "" {
+					return nil, false, ErrInsecureWithCredentials
+				}
+			}
+		} else {
+			dialOpts = append(dialOpts, grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)))
+		}
 	}
 
 	grpcLogger := logger.Desugar()

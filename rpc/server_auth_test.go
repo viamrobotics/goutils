@@ -20,6 +20,7 @@ import (
 	"go.viam.com/test"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
@@ -78,7 +79,12 @@ func TestServerAuth(t *testing.T) {
 
 	// standard grpc
 	t.Run("standard grpc", func(t *testing.T) {
-		conn, err := grpc.DialContext(context.Background(), httpListener.Addr().String(), grpc.WithInsecure(), grpc.WithBlock())
+		conn, err := grpc.DialContext(
+			context.Background(),
+			httpListener.Addr().String(),
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithBlock(),
+		)
 		test.That(t, err, test.ShouldBeNil)
 		defer func() {
 			test.That(t, conn.Close(), test.ShouldBeNil)
@@ -192,7 +198,12 @@ func TestServerAuth(t *testing.T) {
 		test.That(t, string(rd), test.ShouldResemble, "")
 
 		// works from here
-		conn, err := grpc.DialContext(context.Background(), httpListener.Addr().String(), grpc.WithInsecure(), grpc.WithBlock())
+		conn, err := grpc.DialContext(
+			context.Background(),
+			httpListener.Addr().String(),
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithBlock(),
+		)
 		test.That(t, err, test.ShouldBeNil)
 		defer func() {
 			test.That(t, conn.Close(), test.ShouldBeNil)
@@ -250,7 +261,12 @@ func TestServerAuth(t *testing.T) {
 		test.That(t, httpResp3.StatusCode, test.ShouldEqual, 401)
 
 		// works from here
-		conn, err := grpc.DialContext(context.Background(), httpListener.Addr().String(), grpc.WithInsecure(), grpc.WithBlock())
+		conn, err := grpc.DialContext(
+			context.Background(),
+			httpListener.Addr().String(),
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithBlock(),
+		)
 		test.That(t, err, test.ShouldBeNil)
 		defer func() {
 			test.That(t, conn.Close(), test.ShouldBeNil)
@@ -321,7 +337,12 @@ func TestServerAuthJWTExpiration(t *testing.T) {
 		errChan <- rpcServer.Serve(httpListener)
 	}()
 
-	conn, err := grpc.DialContext(context.Background(), httpListener.Addr().String(), grpc.WithInsecure(), grpc.WithBlock())
+	conn, err := grpc.DialContext(
+		context.Background(),
+		httpListener.Addr().String(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithBlock(),
+	)
 	test.That(t, err, test.ShouldBeNil)
 	defer func() {
 		test.That(t, conn.Close(), test.ShouldBeNil)
@@ -398,7 +419,12 @@ func TestServerAuthJWTAudience(t *testing.T) {
 		errChan <- rpcServer.Serve(httpListener)
 	}()
 
-	conn, err := grpc.DialContext(context.Background(), httpListener.Addr().String(), grpc.WithInsecure(), grpc.WithBlock())
+	conn, err := grpc.DialContext(
+		context.Background(),
+		httpListener.Addr().String(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithBlock(),
+	)
 	test.That(t, err, test.ShouldBeNil)
 	defer func() {
 		test.That(t, conn.Close(), test.ShouldBeNil)
@@ -503,7 +529,12 @@ func TestServerAuthKeyFunc(t *testing.T) {
 		errChan <- rpcServer.Serve(httpListener)
 	}()
 
-	conn, err := grpc.DialContext(context.Background(), httpListener.Addr().String(), grpc.WithInsecure(), grpc.WithBlock())
+	conn, err := grpc.DialContext(
+		context.Background(),
+		httpListener.Addr().String(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithBlock(),
+	)
 	test.That(t, err, test.ShouldBeNil)
 	defer func() {
 		test.That(t, conn.Close(), test.ShouldBeNil)
