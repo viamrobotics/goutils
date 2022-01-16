@@ -43,6 +43,11 @@ type WebRTCServerOptions struct {
 	// an answerer for itself.
 	ExternalSignalingAddress string
 
+	// EnableInternalSignaling specifies whether an internal signaling answerer
+	// should be started up. This is useful if you want to have a fallback
+	// server if the external cannot be reached.
+	EnableInternalSignaling bool
+
 	// SignalingHosts specifies what hosts are being listened for.
 	SignalingHosts []string
 
@@ -132,6 +137,9 @@ func WithDebug() ServerOption {
 // to the given type to use for authentication requests.
 func WithAuthHandler(forType CredentialsType, handler AuthHandler) ServerOption {
 	return newFuncServerOption(func(o *serverOptions) error {
+		if forType == credentialsTypeInternal {
+			return errors.Errorf("cannot use %q externally", forType)
+		}
 		if _, ok := o.authHandlers[forType]; ok {
 			return errors.Errorf("%q already has a registered handler", forType)
 		}

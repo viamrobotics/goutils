@@ -558,6 +558,7 @@ func TestDialExternalAuth(t *testing.T) {
 		test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
 	})
 
+	//nolint:dupl
 	t.Run("with external auth bad secret should fail", func(t *testing.T) {
 		conn, err := Dial(context.Background(), httpListenerInternal.Addr().String(), logger,
 			WithInsecure(),
@@ -688,7 +689,6 @@ func TestDialExternalAuth(t *testing.T) {
 		test.That(t, gStatus.Message(), test.ShouldContainSubstring, "darn")
 	})
 
-	//nolint:dupl
 	t.Run("with external auth but mismatched keys should fail", func(t *testing.T) {
 		conn, err := Dial(context.Background(), httpListenerInternal.Addr().String(), logger,
 			WithInsecure(),
