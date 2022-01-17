@@ -201,14 +201,6 @@ export async function dialWebRTC(signalingAddress: string, host: string, opts?: 
 		transport: directTransport,
 	});
 
-	if (opts?.externalAuthAddress) {
-		// TODO(https://github.com/viamrobotics/goutils/issues/12): prepare AuthenticateTo here
-		// for client channel.
-	} else if (opts?.credentials?.type) {
-		// TODO(https://github.com/viamrobotics/goutils/issues/12): prepare Authenticate here
-		// for client channel
-	}
-
 	let uuid = '';
 	// only send once since exchange may end or ICE may end
 	let sentDoneOrErrorOnce = false;
@@ -389,6 +381,15 @@ export async function dialWebRTC(signalingAddress: string, host: string, opts?: 
 	await cc.ready;
 	exchangeDone = true;
 	sendDone();
+
+	if (opts?.externalAuthAddress) {
+		// TODO(https://github.com/viamrobotics/goutils/issues/12): prepare AuthenticateTo here
+		// for client channel.
+	} else if (opts?.credentials?.type) {
+		// TODO(https://github.com/viamrobotics/goutils/issues/12): prepare Authenticate here
+		// for client channel
+	}
+	
 	return { transportFactory: cc.transportFactory(), peerConnection: pc };
 }
 

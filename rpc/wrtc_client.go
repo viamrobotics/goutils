@@ -127,14 +127,6 @@ func dialWebRTC(ctx context.Context, address string, dOpts *dialOptions, logger 
 
 	logger.Debug("connected")
 
-	if dOpts.externalAuthAddr != "" {
-		// TODO(https://github.com/viamrobotics/goutils/issues/12): prepare AuthenticateTo here
-		// for client channel.
-	} else if dOpts.creds.Type != "" { // nolint:staticcheck
-		// TODO(https://github.com/viamrobotics/goutils/issues/12): prepare Authenticate here
-		// for client channel
-	}
-
 	md := metadata.New(map[string]string{RPCHostMetadataField: host})
 	signalCtx := metadata.NewOutgoingContext(dialCtx, md)
 
@@ -244,6 +236,14 @@ func dialWebRTC(ctx context.Context, address string, dOpts *dialOptions, logger 
 	}
 
 	// TODO(https://github.com/viamrobotics/goutils/issues/12): do separate auth here
+	if dOpts.externalAuthAddr != "" {
+		// TODO(https://github.com/viamrobotics/goutils/issues/12): prepare AuthenticateTo here
+		// for client channel.
+	} else if dOpts.creds.Type != "" { // nolint:staticcheck
+		// TODO(https://github.com/viamrobotics/goutils/issues/12): prepare Authenticate here
+		// for client channel
+	}
+
 	//nolint:contextcheck
 	clientCh := newWebRTCClientChannel(pc, dc, logger)
 

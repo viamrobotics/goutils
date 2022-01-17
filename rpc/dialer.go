@@ -253,8 +253,6 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts *dialOptions, log
 			logger.Debugw("authenticating as entity", "entity", dOpts.authEntity)
 		}
 		if dOpts.externalAuthAddr != "" {
-			// we assume the same insecure/secure setting from the options. could always
-			// add an options specifically for external auth.
 			if dOpts.debug {
 				logger.Debugw("dialing direct for external auth", "address", dOpts.externalAuthAddr)
 			}
