@@ -202,22 +202,25 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts *dialOptions, log
 			tlsConfig = &tls.Config{MinVersion: tls.VersionTLS12}
 		}
 
+		var downgrade bool
 		if dOpts.allowInsecureDowngrade || dOpts.allowInsecureWithCredsDowngrade {
 			var dialer tls.Dialer
 			conn, err := dialer.DialContext(ctx, "tcp", address)
 			if err == nil {
 				// will use TLS
 				utils.UncheckedError(conn.Close())
-				dialOpts = append(dialOpts, grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)))
 			} else if strings.Contains(err.Error(), "tls: first record does not look like a TLS handshake") {
 				// unfortunately there's no explicit error value for this, so we do a string check
 				if dOpts.creds.Type == "" || dOpts.allowInsecureWithCredsDowngrade {
 					logger.Warnw("downgrading from TLS to plaintext", "address", address, "with_credentials", dOpts.creds.Type != "")
-					dialOpts = append(dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+					downgrade = true
 				} else if dOpts.creds.Type != "" {
 					return nil, false, ErrInsecureWithCredentials
 				}
 			}
+		}
+		if downgrade {
+			dialOpts = append(dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		} else {
 			dialOpts = append(dialOpts, grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)))
 		}
