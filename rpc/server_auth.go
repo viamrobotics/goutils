@@ -79,13 +79,17 @@ func (ss *simpleServer) Authenticate(ctx context.Context, req *rpcpb.Authenticat
 }
 
 func (ss *simpleServer) AuthenticateTo(ctx context.Context, req *rpcpb.AuthenticateToRequest) (*rpcpb.AuthenticateToResponse, error) {
-	if err := ss.authToHandler(ctx, req.Entity); err != nil {
+	audience, err := ss.authToHandler(ctx, req.Entity)
+	if err != nil {
 		return nil, err
+	}
+	if audience == "" {
+		audience = req.Entity
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, JWTClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
-			Audience: jwt.ClaimStrings{req.Entity},
+			Audience: jwt.ClaimStrings{audience},
 		},
 		CredentialsType: ss.authToType,
 		// TODO(https://github.com/viamrobotics/goutils/issues/10): expiration

@@ -153,14 +153,14 @@ func TestDial(t *testing.T) {
 					return entity, nil
 				})),
 				WithAuthRSAPrivateKey(privKeyExternal),
-				WithAuthenticateToHandler(CredentialsType("inter-node"), func(ctx context.Context, entity string) error {
+				WithAuthenticateToHandler(CredentialsType("inter-node"), func(ctx context.Context, entity string) (string, error) {
 					if authToFail {
-						return errors.New("darn")
+						return "", errors.New("darn")
 					}
 					if entity != "someent" {
-						return errors.New("nope")
+						return "", errors.New("nope")
 					}
-					return nil
+					return entity, nil
 				}),
 			)
 			test.That(t, err, test.ShouldBeNil)
@@ -453,6 +453,7 @@ func TestDialExternalAuth(t *testing.T) {
 	test.That(t, err, test.ShouldBeNil)
 
 	var authToFail bool
+	var authToEntity string
 	acceptedFakeWithKeyEnts := []string{"someotherthing", httpListenerExternal.Addr().String()}
 	rpcServerExternal, err := NewServer(
 		logger,
@@ -484,14 +485,17 @@ func TestDialExternalAuth(t *testing.T) {
 			return entity, nil
 		})),
 		WithAuthRSAPrivateKey(privKeyExternal),
-		WithAuthenticateToHandler(CredentialsType("inter-node"), func(ctx context.Context, entity string) error {
+		WithAuthenticateToHandler(CredentialsType("inter-node"), func(ctx context.Context, entity string) (string, error) {
 			if authToFail {
-				return errors.New("darn")
+				return "", errors.New("darn")
 			}
 			if entity != "someent" {
-				return errors.New("nope")
+				return "", errors.New("nope")
 			}
-			return nil
+			if authToEntity != "" {
+				return authToEntity, nil
+			}
+			return entity, nil
 		}),
 	)
 	test.That(t, err, test.ShouldBeNil)
@@ -513,14 +517,14 @@ func TestDialExternalAuth(t *testing.T) {
 			return entity, nil
 		})),
 		WithAuthRSAPrivateKey(privKeyExternal2),
-		WithAuthenticateToHandler(CredentialsType("inter-node"), func(ctx context.Context, entity string) error {
+		WithAuthenticateToHandler(CredentialsType("inter-node"), func(ctx context.Context, entity string) (string, error) {
 			if MustContextAuthEntity(ctx) != httpListenerExternal2.Addr().String() {
-				return errors.New("bad authed external entity")
+				return "", errors.New("bad authed external entity")
 			}
 			if entity != "someent" {
-				return errors.New("nope")
+				return "", errors.New("nope")
 			}
-			return nil
+			return entity, nil
 		}),
 	)
 	test.That(t, err, test.ShouldBeNil)
@@ -737,7 +741,7 @@ func TestDialExternalAuth(t *testing.T) {
 		test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
 	})
 
-	t.Run("with external auth set assuming wrong entity should fail", func(t *testing.T) {
+	t.Run("with external auth set authenticating to wrong entity should fail", func(t *testing.T) {
 		prevFail := internalExternalAuthSrv.fail
 		prevEnt := internalExternalAuthSrv.expectedEnt
 		internalExternalAuthSrv.fail = false
@@ -759,6 +763,32 @@ func TestDialExternalAuth(t *testing.T) {
 
 		client := pb.NewEchoServiceClient(conn)
 		_, err = client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
+		gStatus, ok := status.FromError(err)
+		test.That(t, ok, test.ShouldBeTrue)
+		test.That(t, gStatus.Code(), test.ShouldEqual, codes.Unknown)
+		test.That(t, gStatus.Message(), test.ShouldContainSubstring, "bad authed ent")
+	})
+
+	t.Run("with auto to handler set authenticating to wrong entity should fail", func(t *testing.T) {
+		prevAuthToEntity := authToEntity
+		authToEntity = "somethingwrong"
+		defer func() {
+			authToEntity = prevAuthToEntity
+		}()
+		conn, err := Dial(context.Background(), httpListenerInternal.Addr().String(), logger,
+			WithInsecure(),
+			WithCredentials(Credentials{Type: "fakeWithKey", Payload: "sosecret"}),
+			WithExternalAuth(httpListenerExternal.Addr().String(), "someent"),
+			WithExternalAuthInsecure(),
+		)
+		test.That(t, err, test.ShouldBeNil)
+		defer func() {
+			test.That(t, conn.Close(), test.ShouldBeNil)
+		}()
+
+		client := pb.NewEchoServiceClient(conn)
+		_, err = client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
+		test.That(t, err, test.ShouldNotBeNil)
 		gStatus, ok := status.FromError(err)
 		test.That(t, ok, test.ShouldBeTrue)
 		test.That(t, gStatus.Code(), test.ShouldEqual, codes.Unknown)

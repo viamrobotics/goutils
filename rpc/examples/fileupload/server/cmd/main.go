@@ -181,8 +181,8 @@ func runServer(
 		}
 		serverOpts = append(serverOpts, rpc.WithAuthenticateToHandler(
 			rpc.CredentialsType("inter-node"),
-			func(ctx context.Context, entity string) error {
-				return nil
+			func(ctx context.Context, entity string) (string, error) {
+				return entity, nil
 			},
 		))
 	}

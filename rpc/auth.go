@@ -29,7 +29,9 @@ type AuthHandler interface {
 
 // An AuthenticateToHandler determines if the given entity should be allowed to be
 // authenticated to by the calling entity, accessible via MustContextAuthEntity.
-type AuthenticateToHandler func(ctx context.Context, entity string) error
+// The returned entity, if not empty, will be used as the audience; otherwise the
+// audience will be the original entity argument.
+type AuthenticateToHandler func(ctx context.Context, entity string) (string, error)
 
 // TokenVerificationKeyProvider allows an AuthHandler to supply a key needed to peform
 // verification of a JWT. This is helpful when the server itself is not responsible
