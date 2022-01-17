@@ -30,14 +30,9 @@ func TestDial(t *testing.T) {
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
 
-	// pure failure cases
-	_, err := Dial(context.Background(), "::", logger, WithInsecure())
-	test.That(t, err, test.ShouldNotBeNil)
-	test.That(t, err.Error(), test.ShouldContainSubstring, "too many")
-
 	ctx1, cancel1 := context.WithTimeout(context.Background(), time.Second*2)
 	defer cancel1()
-	_, err = Dial(ctx1, "127.0.0.1:1", logger, WithInsecure())
+	_, err := Dial(ctx1, "127.0.0.1:1", logger, WithInsecure())
 	test.That(t, err, test.ShouldResemble, context.DeadlineExceeded)
 	cancel1()
 
@@ -68,13 +63,25 @@ func TestDial(t *testing.T) {
 			var testMu sync.Mutex
 			fakeAuthWorks := false
 
+			httpListener, err = net.Listen("tcp", "localhost:0")
+			test.That(t, err, test.ShouldBeNil)
+
+			httpListenerExternal, err := net.Listen("tcp", "localhost:0")
+			test.That(t, err, test.ShouldBeNil)
+
 			privKeyExternal, err := rsa.GenerateKey(rand.Reader, generatedRSAKeyBits)
 			test.That(t, err, test.ShouldBeNil)
 			rpcServer, err = NewServer(
 				logger,
 				WithWebRTCServerOptions(WebRTCServerOptions{
-					Enable:         true,
-					SignalingHosts: hosts,
+					Enable:                   true,
+					SignalingHosts:           hosts,
+					EnableInternalSignaling:  true,
+					ExternalSignalingAddress: httpListenerExternal.Addr().String(),
+					ExternalSignalingDialOpts: []DialOption{
+						WithInsecure(),
+						WithCredentials(Credentials{Type: "fakeExtWithKey", Payload: "sosecret"}),
+					},
 				}),
 				WithAuthHandler("fake", MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) (map[string]string, error) {
 					testMu.Lock()
@@ -117,10 +124,12 @@ func TestDial(t *testing.T) {
 			)
 			test.That(t, err, test.ShouldBeNil)
 
-			httpListener, err = net.Listen("tcp", "localhost:0")
-			test.That(t, err, test.ShouldBeNil)
-
-			httpListenerExternal, err := net.Listen("tcp", "localhost:0")
+			err = rpcServer.RegisterServiceServer(
+				context.Background(),
+				&pb.EchoService_ServiceDesc,
+				&echoserver.Server{},
+				pb.RegisterEchoServiceHandlerFromEndpoint,
+			)
 			test.That(t, err, test.ShouldBeNil)
 
 			var authToFail bool
@@ -203,9 +212,9 @@ func TestDial(t *testing.T) {
 			test.That(t, err, test.ShouldBeNil)
 			mux := dns.NewServeMux()
 			httpIP := httpListener.Addr().(*net.TCPAddr).IP
-			httpPort := httpListener.Addr().(*net.TCPAddr).Port
+			// httpPort := httpListener.Addr().(*net.TCPAddr).Port
+			externalHTTPPort := httpListenerExternal.Addr().(*net.TCPAddr).Port
 
-			var noAnswer bool
 			mux.HandleFunc(host, func(rw dns.ResponseWriter, r *dns.Msg) {
 				m := &dns.Msg{Compress: false}
 				m.SetReply(r)
@@ -229,31 +238,6 @@ func TestDial(t *testing.T) {
 
 				utils.UncheckedError(rw.WriteMsg(m))
 			})
-			mux.HandleFunc("local.something.", func(rw dns.ResponseWriter, r *dns.Msg) {
-				m := &dns.Msg{Compress: false}
-				m.SetReply(r)
-
-				if !noAnswer {
-					if r.Opcode == dns.OpcodeQuery {
-						for _, q := range m.Question {
-							if q.Qtype == dns.TypeA {
-								rr := &dns.A{
-									Hdr: dns.RR_Header{
-										Name:   q.Name,
-										Rrtype: dns.TypeA,
-										Class:  dns.ClassINET,
-										Ttl:    60,
-									},
-									A: httpIP,
-								}
-								m.Answer = append(m.Answer, rr)
-							}
-						}
-					}
-				}
-
-				utils.UncheckedError(rw.WriteMsg(m))
-			})
 			dnsServer := &dns.Server{
 				Addr:    fmt.Sprintf(":%d", port),
 				Net:     "udp",
@@ -269,13 +253,6 @@ func TestDial(t *testing.T) {
 			}
 			ctx := contextWithResolver(context.Background(), resolver)
 			ctx = ContextWithDialer(ctx, &staticDialer{httpListener.Addr().String()})
-			conn, err = Dial(ctx, fmt.Sprintf("something:%d", httpPort), logger, WithInsecure())
-			test.That(t, err, test.ShouldBeNil)
-			test.That(t, conn.Close(), test.ShouldBeNil)
-
-			conn, err = Dial(ctx, fmt.Sprintf("something:%d", httpPort), logger, WithInsecure())
-			test.That(t, err, test.ShouldBeNil)
-			test.That(t, conn.Close(), test.ShouldBeNil)
 
 			// explicit signaling server
 			conn, err = Dial(context.Background(), host, logger,
@@ -286,6 +263,11 @@ func TestDial(t *testing.T) {
 				}),
 			)
 			test.That(t, err, test.ShouldBeNil)
+
+			client := pb.NewEchoServiceClient(conn)
+			echoResp, err := client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
+			test.That(t, err, test.ShouldBeNil)
+			test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
 			test.That(t, conn.Close(), test.ShouldBeNil)
 
 			// explicit signaling server with external auth
@@ -300,6 +282,10 @@ func TestDial(t *testing.T) {
 				}),
 			)
 			test.That(t, err, test.ShouldBeNil)
+			client = pb.NewEchoServiceClient(conn)
+			echoResp, err = client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
+			test.That(t, err, test.ShouldBeNil)
+			test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
 			test.That(t, conn.Close(), test.ShouldBeNil)
 
 			// explicit signaling server with external auth but bad secret
@@ -350,9 +336,12 @@ func TestDial(t *testing.T) {
 				}),
 			)
 			test.That(t, err, test.ShouldBeNil)
+			client = pb.NewEchoServiceClient(conn)
+			echoResp, err = client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
+			test.That(t, err, test.ShouldBeNil)
+			test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
 			test.That(t, conn.Close(), test.ShouldBeNil)
 
-			noAnswer = true
 			mux.HandleFunc(fmt.Sprintf("_webrtc._tcp.%s.", host), func(rw dns.ResponseWriter, r *dns.Msg) {
 				m := &dns.Msg{Compress: false}
 				m.SetReply(r)
@@ -368,7 +357,7 @@ func TestDial(t *testing.T) {
 									Ttl:    60,
 								},
 								Target: "localhost.",
-								Port:   uint16(httpPort),
+								Port:   uint16(externalHTTPPort),
 							}
 							m.Answer = append(m.Answer, rr)
 						}
@@ -379,6 +368,11 @@ func TestDial(t *testing.T) {
 			})
 			conn, err = Dial(ctx, host, logger, WithInsecure(), WithCredentials(Credentials{Type: "fake"}))
 			test.That(t, err, test.ShouldBeNil)
+
+			client = pb.NewEchoServiceClient(conn)
+			echoResp, err = client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
+			test.That(t, err, test.ShouldBeNil)
+			test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
 			test.That(t, conn.Close(), test.ShouldBeNil)
 
 			test.That(t, rpcServer.Stop(), test.ShouldBeNil)
@@ -809,8 +803,13 @@ func (sd *staticDialer) DialDirect(
 	onClose func() error,
 	opts ...grpc.DialOption,
 ) (ClientConn, bool, error) {
-	conn, err := grpc.DialContext(ctx, sd.address, opts...)
-	return conn, false, err
+	return sd.DialFunc("grpc", target, keyExtra, func() (ClientConn, func() error, error) {
+		conn, err := grpc.DialContext(ctx, sd.address, opts...)
+		if err != nil {
+			return nil, nil, err
+		}
+		return conn, onClose, nil
+	})
 }
 
 func (sd *staticDialer) DialFunc(
@@ -819,7 +818,8 @@ func (sd *staticDialer) DialFunc(
 	keyExtra string,
 	dialNew func() (ClientConn, func() error, error),
 ) (ClientConn, bool, error) {
-	conn, _, err := dialNew()
+	conn, onClose, err := dialNew()
+	conn = wrapClientConnWithCloseFunc(conn, onClose)
 	return conn, false, err
 }
 

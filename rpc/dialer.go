@@ -211,10 +211,11 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts *dialOptions, log
 				utils.UncheckedError(conn.Close())
 			} else if strings.Contains(err.Error(), "tls: first record does not look like a TLS handshake") {
 				// unfortunately there's no explicit error value for this, so we do a string check
-				if dOpts.creds.Type == "" || dOpts.allowInsecureWithCredsDowngrade {
-					logger.Warnw("downgrading from TLS to plaintext", "address", address, "with_credentials", dOpts.creds.Type != "")
+				hasLocalCreds := dOpts.creds.Type != "" && dOpts.externalAuthAddr == ""
+				if dOpts.creds.Type == "" || !hasLocalCreds || dOpts.allowInsecureWithCredsDowngrade {
+					logger.Warnw("downgrading from TLS to plaintext", "address", address, "with_credentials", hasLocalCreds)
 					downgrade = true
-				} else if dOpts.creds.Type != "" {
+				} else if hasLocalCreds {
 					return nil, false, ErrInsecureWithCredentials
 				}
 			}
@@ -250,9 +251,12 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts *dialOptions, log
 			logger: logger,
 		}
 		if dOpts.debug {
-			logger.Debugw("authenticating as entity", "entity", dOpts.authEntity)
+			logger.Debugw("will eventually authenticate as entity", "entity", dOpts.authEntity)
 		}
 		if dOpts.externalAuthAddr != "" {
+			if dOpts.debug && dOpts.externalAuthToEntity != "" {
+				logger.Debugw("will eventually externally authenticate to entity", "entity", dOpts.externalAuthToEntity)
+			}
 			if dOpts.debug {
 				logger.Debugw("dialing direct for external auth", "address", dOpts.externalAuthAddr)
 			}
@@ -260,9 +264,12 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts *dialOptions, log
 			dialOptsCopy.insecure = dOpts.externalAuthInsecure
 			dialOptsCopy.externalAuthAddr = ""
 			dialOptsCopy.creds = Credentials{}
-			externalConn, _, err := dialDirectGRPC(ctx, dOpts.externalAuthAddr, &dialOptsCopy, logger)
+			externalConn, externalCached, err := dialDirectGRPC(ctx, dOpts.externalAuthAddr, &dialOptsCopy, logger)
 			if err != nil {
 				return nil, false, err
+			}
+			if dOpts.debug && externalCached {
+				logger.Debugw("connected direct for external (cached)", "address", dOpts.externalAuthAddr)
 			}
 			closeCredsFunc = externalConn.Close
 			rpcCreds.conn = externalConn
@@ -400,7 +407,7 @@ func (creds *perRPCJWTCredentials) GetRequestMetadata(ctx context.Context, uri .
 		accessToken = creds.accessToken
 		if accessToken == "" {
 			if creds.debug {
-				creds.logger.Debug("authenticating")
+				creds.logger.Debugw("authenticating as entity", "entity", creds.entity)
 			}
 			authClient := rpcpb.NewAuthServiceClient(creds.conn)
 			resp, err := authClient.Authenticate(ctx, &rpcpb.AuthenticateRequest{
@@ -423,7 +430,7 @@ func (creds *perRPCJWTCredentials) GetRequestMetadata(ctx context.Context, uri .
 				creds.accessToken = accessToken
 			} else {
 				if creds.debug {
-					creds.logger.Debugw("external auth", "auth_to", creds.externalAuthToEntity)
+					creds.logger.Debugw("authenticating to external entity", "entity", creds.externalAuthToEntity)
 				}
 				// now perform external auth
 				md := make(metadata.MD)

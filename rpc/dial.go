@@ -5,21 +5,24 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"strings"
 	"time"
 
 	"github.com/edaniels/golog"
 )
 
-// Dial attempts to make the most convenient connection to the given address. It first tries a direct
-// connection if the address is an IP. It next tries to connect to the local version of the host followed
-// by a WebRTC brokered connection.
+// Dial attempts to make the most convenient connection to the given address. It attempts to connect
+// via WebRTC if a signaling server is detected or provided. Otherwise it attempts to connect directly.
 // TODO(https://github.com/viamrobotics/goutils/issues/19): figure out decent way to handle reconnect on connection termination.
 func Dial(ctx context.Context, address string, logger golog.Logger, opts ...DialOption) (ClientConn, error) {
 	var dOpts dialOptions
 	for _, opt := range opts {
 		opt.apply(&dOpts)
 	}
+
+	if dOpts.debug {
+		logger.Debugw("starting to dial", "address", address)
+	}
+
 	if dOpts.authEntity == "" {
 		if dOpts.externalAuthAddr == "" {
 			// if we are not doing external auth, then the entity is assumed to be the actual address.
@@ -36,55 +39,10 @@ func Dial(ctx context.Context, address string, logger golog.Logger, opts ...Dial
 		}
 	}
 
-	var host string
-	var port string
-	if strings.ContainsRune(address, ':') {
-		var err error
-		host, port, err = net.SplitHostPort(address)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		host = address
-	}
-
-	if dOpts.debug {
-		logger.Debugw("starting to dial", "address", address, "host", host)
-	}
-
-	if addr := net.ParseIP(host); addr == nil && false {
-		localHost := fmt.Sprintf("local.%s", host)
-		if _, err := lookupHost(ctx, localHost); err == nil {
-			if dOpts.debug {
-				logger.Debugw("trying local", "address", localHost)
-			}
-			var localAddress string
-			if port == "" {
-				localAddress = fmt.Sprintf("%s:80", localHost)
-			} else {
-				localAddress = fmt.Sprintf("%s:%s", localHost, port)
-			}
-			// TODO(https://github.com/viamrobotics/goutils/issues/18): This needs to authenticate the server so we don't have a confused
-			// deputy.
-			localCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-			defer cancel()
-			if conn, cached, err := dialDirectGRPC(localCtx, localAddress, &dOpts, logger); err == nil {
-				if !cached {
-					logger.Debugw("connected directly via local host", "address", localAddress)
-				}
-				return conn, nil
-			} else if ctx.Err() != nil { // do not care about local timeout
-				return nil, ctx.Err()
-			}
-		} else if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-	}
-
 	if dOpts.webrtcOpts.SignalingServerAddress == "" {
 		srvTimeoutCtx, srvTimeoutCtxCancel := context.WithTimeout(ctx, 5*time.Second)
 		defer srvTimeoutCtxCancel()
-		if target, port, err := lookupSRV(srvTimeoutCtx, host); err == nil {
+		if target, port, err := lookupSRV(srvTimeoutCtx, address); err == nil {
 			if dOpts.debug {
 				logger.Debugw("found SRV record for address", "target", target, "port", port)
 			}
@@ -135,13 +93,6 @@ func Dial(ctx context.Context, address string, logger golog.Logger, opts ...Dial
 		logger.Debugw("connected directly", "address", address)
 	}
 	return conn, nil
-}
-
-func lookupHost(ctx context.Context, host string) (addrs []string, err error) {
-	if ctxResolver := contextResolver(ctx); ctxResolver != nil {
-		return ctxResolver.LookupHost(ctx, host)
-	}
-	return net.DefaultResolver.LookupHost(ctx, host)
 }
 
 func lookupSRV(ctx context.Context, host string) (string, uint16, error) {

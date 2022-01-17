@@ -530,9 +530,9 @@ func (ss *simpleServer) Stop() error {
 	}
 	ss.logger.Info("service servers closed")
 	for idx, answerer := range ss.webrtcAnswerers {
-		ss.logger.Info("stopping WebRTC answerer", "num", idx)
+		ss.logger.Infow("stopping WebRTC answerer", "num", idx)
 		answerer.Stop()
-		ss.logger.Info("WebRTC answerer stopped", "num", idx)
+		ss.logger.Infow("WebRTC answerer stopped", "num", idx)
 	}
 	if ss.webrtcServer != nil {
 		ss.logger.Info("stopping WebRTC server")
