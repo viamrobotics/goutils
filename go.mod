@@ -21,6 +21,7 @@ require (
 	github.com/grpc-ecosystem/go-grpc-middleware v1.2.2
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.5.0
 	github.com/improbable-eng/grpc-web v0.14.0
+	github.com/jacobsa/go-serial v0.0.0-20180131005756-15cf729a72d4
 	github.com/miekg/dns v1.1.35
 	github.com/pion/interceptor v0.1.0
 	github.com/pion/logging v0.2.2
@@ -41,6 +42,7 @@ require (
 	google.golang.org/grpc v1.41.0-dev.0.20210907181116-2f3355d2244e
 	google.golang.org/grpc/cmd/protoc-gen-go-grpc v1.1.0
 	google.golang.org/protobuf v1.27.1
+	howett.net/plist v1.0.0
 )
 
 require (
