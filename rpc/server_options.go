@@ -25,6 +25,9 @@ type serverOptions struct {
 	debug bool
 
 	authHandlers map[CredentialsType]AuthHandler
+
+	authToType    CredentialsType
+	authToHandler AuthenticateToHandler
 }
 
 // WebRTCServerOptions control how WebRTC is utilized in a server.
@@ -140,6 +143,9 @@ func WithAuthHandler(forType CredentialsType, handler AuthHandler) ServerOption 
 		if forType == credentialsTypeInternal {
 			return errors.Errorf("cannot use %q externally", forType)
 		}
+		if forType == "" {
+			return errors.New("type cannot be empty")
+		}
 		if _, ok := o.authHandlers[forType]; ok {
 			return errors.Errorf("%q already has a registered handler", forType)
 		}
@@ -147,6 +153,28 @@ func WithAuthHandler(forType CredentialsType, handler AuthHandler) ServerOption 
 			o.authHandlers = make(map[CredentialsType]AuthHandler)
 		}
 		o.authHandlers[forType] = handler
+
+		return nil
+	})
+}
+
+// WithAuthenticateToHandler returns a ServerOption which adds an authentication
+// handler designed to allow the caller to authenticate itself to some other entity.
+// This is useful when externally authenticating as one entity for the purpose of
+// getting access to another entity. Only one handler can exist and the forType
+// parameter will be the type associated with the JWT made for the authenticated to entity.
+// This can technically be used internal to the same server to "assume" the identity of
+// another entity but is not intended for such usage.
+func WithAuthenticateToHandler(forType CredentialsType, handler AuthenticateToHandler) ServerOption {
+	return newFuncServerOption(func(o *serverOptions) error {
+		if forType == credentialsTypeInternal {
+			return errors.Errorf("cannot use %q externally", forType)
+		}
+		if forType == "" {
+			return errors.New("type cannot be empty")
+		}
+		o.authToType = forType
+		o.authToHandler = handler
 
 		return nil
 	})

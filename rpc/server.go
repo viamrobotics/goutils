@@ -84,6 +84,7 @@ type Server interface {
 
 type simpleServer struct {
 	rpcpb.UnimplementedAuthServiceServer
+	rpcpb.UnimplementedExternalAuthServiceServer
 	mu                   sync.RWMutex
 	grpcListener         net.Listener
 	grpcServer           *grpc.Server
@@ -99,6 +100,8 @@ type simpleServer struct {
 	internalUUID         string
 	internalCreds        Credentials
 	authHandlers         map[CredentialsType]AuthHandler
+	authToType           CredentialsType
+	authToHandler        AuthenticateToHandler
 	exemptMethods        map[string]bool
 	stopped              bool
 	logger               golog.Logger
@@ -160,6 +163,8 @@ func newWithListener(
 			Payload: base64.StdEncoding.EncodeToString(internalCredsKey),
 		},
 		authHandlers:  sOpts.authHandlers,
+		authToType:    sOpts.authToType,
+		authToHandler: sOpts.authToHandler,
 		exemptMethods: make(map[string]bool),
 		logger:        logger,
 	}
@@ -264,6 +269,17 @@ func newWithListener(
 			[]string{server.internalUUID}, server.internalCreds.Payload)
 		// Update this if the proto method or path changes
 		server.exemptMethods["/proto.rpc.v1.AuthService/Authenticate"] = true
+	}
+
+	if sOpts.authToHandler != nil {
+		if err := server.RegisterServiceServer(
+			context.Background(),
+			&rpcpb.ExternalAuthService_ServiceDesc,
+			server,
+			rpcpb.RegisterExternalAuthServiceHandlerFromEndpoint,
+		); err != nil {
+			return nil, err
+		}
 	}
 
 	if sOpts.webrtcOpts.Enable {

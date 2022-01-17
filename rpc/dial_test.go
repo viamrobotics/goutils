@@ -130,6 +130,7 @@ func TestDial(t *testing.T) {
 			httpListenerExternal, err := net.Listen("tcp", "localhost:0")
 			test.That(t, err, test.ShouldBeNil)
 
+			var authToFail bool
 			acceptedFakeWithKeyEnts := []string{"someotherthing", httpListenerExternal.Addr().String()}
 			rpcServerExternal, err := NewServer(
 				logger,
@@ -152,15 +153,15 @@ func TestDial(t *testing.T) {
 					return entity, nil
 				})),
 				WithAuthRSAPrivateKey(privKeyExternal),
-			)
-			test.That(t, err, test.ShouldBeNil)
-
-			externalAuthSrv := &externalAuthServer{privKey: privKeyExternal}
-			err = rpcServerExternal.RegisterServiceServer(
-				context.Background(),
-				&rpcpb.ExternalAuthService_ServiceDesc,
-				externalAuthSrv,
-				rpcpb.RegisterExternalAuthServiceHandlerFromEndpoint,
+				WithAuthenticateToHandler(CredentialsType("inter-node"), func(ctx context.Context, entity string) error {
+					if authToFail {
+						return errors.New("darn")
+					}
+					if entity != "someent" {
+						return errors.New("nope")
+					}
+					return nil
+				}),
 			)
 			test.That(t, err, test.ShouldBeNil)
 
@@ -431,6 +432,9 @@ func TestDialExternalAuth(t *testing.T) {
 					return map[string]string{}, errors.New("go auth externally")
 				},
 				verify: func(ctx context.Context, entity string) (interface{}, error) {
+					if entity != "someent" {
+						return nil, errors.New("bad authed ent")
+					}
 					return entity, nil
 				},
 			},
@@ -438,7 +442,6 @@ func TestDialExternalAuth(t *testing.T) {
 		)),
 	)
 	test.That(t, err, test.ShouldBeNil)
-
 	internalExternalAuthSrv := &externalAuthServer{privKey: privKeyExternal}
 	internalExternalAuthSrv.fail = true
 	err = rpcServerInternal.RegisterServiceServer(
@@ -449,6 +452,7 @@ func TestDialExternalAuth(t *testing.T) {
 	)
 	test.That(t, err, test.ShouldBeNil)
 
+	var authToFail bool
 	acceptedFakeWithKeyEnts := []string{"someotherthing", httpListenerExternal.Addr().String()}
 	rpcServerExternal, err := NewServer(
 		logger,
@@ -480,15 +484,15 @@ func TestDialExternalAuth(t *testing.T) {
 			return entity, nil
 		})),
 		WithAuthRSAPrivateKey(privKeyExternal),
-	)
-	test.That(t, err, test.ShouldBeNil)
-
-	externalAuthSrv := &externalAuthServer{privKey: privKeyExternal}
-	err = rpcServerExternal.RegisterServiceServer(
-		context.Background(),
-		&rpcpb.ExternalAuthService_ServiceDesc,
-		externalAuthSrv,
-		rpcpb.RegisterExternalAuthServiceHandlerFromEndpoint,
+		WithAuthenticateToHandler(CredentialsType("inter-node"), func(ctx context.Context, entity string) error {
+			if authToFail {
+				return errors.New("darn")
+			}
+			if entity != "someent" {
+				return errors.New("nope")
+			}
+			return nil
+		}),
 	)
 	test.That(t, err, test.ShouldBeNil)
 
@@ -509,15 +513,15 @@ func TestDialExternalAuth(t *testing.T) {
 			return entity, nil
 		})),
 		WithAuthRSAPrivateKey(privKeyExternal2),
-	)
-	test.That(t, err, test.ShouldBeNil)
-
-	externalAuthSrv2 := &externalAuthServer{privKey: privKeyExternal2}
-	err = rpcServerExternal2.RegisterServiceServer(
-		context.Background(),
-		&rpcpb.ExternalAuthService_ServiceDesc,
-		externalAuthSrv2,
-		rpcpb.RegisterExternalAuthServiceHandlerFromEndpoint,
+		WithAuthenticateToHandler(CredentialsType("inter-node"), func(ctx context.Context, entity string) error {
+			if MustContextAuthEntity(ctx) != httpListenerExternal2.Addr().String() {
+				return errors.New("bad authed external entity")
+			}
+			if entity != "someent" {
+				return errors.New("nope")
+			}
+			return nil
+		}),
 	)
 	test.That(t, err, test.ShouldBeNil)
 
@@ -664,10 +668,10 @@ func TestDialExternalAuth(t *testing.T) {
 	})
 
 	t.Run("with external auth where service fails", func(t *testing.T) {
-		prevFail := externalAuthSrv.fail
-		externalAuthSrv.fail = true
+		prevFail := authToFail
+		authToFail = true
 		defer func() {
-			externalAuthSrv.fail = prevFail
+			authToFail = prevFail
 		}()
 		conn, err := Dial(context.Background(), httpListenerInternal.Addr().String(), logger,
 			WithInsecure(),
@@ -733,6 +737,34 @@ func TestDialExternalAuth(t *testing.T) {
 		test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
 	})
 
+	t.Run("with external auth set assuming wrong entity should fail", func(t *testing.T) {
+		prevFail := internalExternalAuthSrv.fail
+		prevEnt := internalExternalAuthSrv.expectedEnt
+		internalExternalAuthSrv.fail = false
+		internalExternalAuthSrv.expectedEnt = "somethingwrong"
+		defer func() {
+			internalExternalAuthSrv.fail = prevFail
+			internalExternalAuthSrv.expectedEnt = prevEnt
+		}()
+		conn, err := Dial(context.Background(), httpListenerInternal.Addr().String(), logger,
+			WithInsecure(),
+			WithCredentials(Credentials{Type: "fake"}),
+			WithExternalAuth(httpListenerInternal.Addr().String(), internalExternalAuthSrv.expectedEnt),
+			WithExternalAuthInsecure(),
+		)
+		test.That(t, err, test.ShouldBeNil)
+		defer func() {
+			test.That(t, conn.Close(), test.ShouldBeNil)
+		}()
+
+		client := pb.NewEchoServiceClient(conn)
+		_, err = client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
+		gStatus, ok := status.FromError(err)
+		test.That(t, ok, test.ShouldBeTrue)
+		test.That(t, gStatus.Code(), test.ShouldEqual, codes.Unknown)
+		test.That(t, gStatus.Message(), test.ShouldContainSubstring, "bad authed ent")
+	})
+
 	test.That(t, rpcServerInternal.Stop(), test.ShouldBeNil)
 	test.That(t, rpcServerExternal.Stop(), test.ShouldBeNil)
 	test.That(t, rpcServerExternal2.Stop(), test.ShouldBeNil)
@@ -775,8 +807,9 @@ func (sd *staticDialer) Close() error {
 
 type externalAuthServer struct {
 	rpcpb.ExternalAuthServiceServer
-	fail    bool
-	privKey *rsa.PrivateKey
+	fail        bool
+	expectedEnt string
+	privKey     *rsa.PrivateKey
 }
 
 func (svc *externalAuthServer) AuthenticateTo(
@@ -786,7 +819,11 @@ func (svc *externalAuthServer) AuthenticateTo(
 	if svc.fail {
 		return nil, errors.New("darn")
 	}
-	if req.Entity != "someent" {
+	if svc.expectedEnt != "" {
+		if svc.expectedEnt != req.Entity {
+			return nil, errors.New("nope unexpected")
+		}
+	} else if req.Entity != "someent" {
 		return nil, errors.New("nope")
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, JWTClaims{

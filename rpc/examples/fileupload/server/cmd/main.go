@@ -15,7 +15,6 @@ import (
 
 	"github.com/Masterminds/sprig"
 	"github.com/edaniels/golog"
-	"github.com/golang-jwt/jwt/v4"
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 	"goji.io"
@@ -24,7 +23,6 @@ import (
 	"go.viam.com/utils"
 	"go.viam.com/utils/internal"
 	fupb "go.viam.com/utils/proto/rpc/examples/fileupload/v1"
-	rpcpb "go.viam.com/utils/proto/rpc/v1"
 	"go.viam.com/utils/rpc"
 	"go.viam.com/utils/rpc/examples/fileupload/server"
 )
@@ -177,6 +175,18 @@ func runServer(
 		}
 	}
 
+	if externalAuth {
+		if authPrivKey == nil {
+			return errors.New("expected auth_private_key")
+		}
+		serverOpts = append(serverOpts, rpc.WithAuthenticateToHandler(
+			rpc.CredentialsType("inter-node"),
+			func(ctx context.Context, entity string) error {
+				return nil
+			},
+		))
+	}
+
 	rpcServer, err := rpc.NewServer(logger, serverOpts...)
 	if err != nil {
 		return err
@@ -192,19 +202,6 @@ func runServer(
 		fupb.RegisterFileUploadServiceHandlerFromEndpoint,
 	); err != nil {
 		return err
-	}
-
-	if externalAuth {
-		if authPrivKey == nil {
-			return errors.New("expected auth_private_key")
-		}
-		externalAuthSrv := &externalAuthServer{privKey: authPrivKey}
-		err = rpcServer.RegisterServiceServer(
-			ctx,
-			&rpcpb.ExternalAuthService_ServiceDesc,
-			externalAuthSrv,
-			rpcpb.RegisterExternalAuthServiceHandlerFromEndpoint,
-		)
 	}
 
 	t := template.New("foo").Funcs(template.FuncMap{
@@ -288,30 +285,4 @@ func runServer(
 		return err
 	}
 	return nil
-}
-
-type externalAuthServer struct {
-	rpcpb.ExternalAuthServiceServer
-	privKey *rsa.PrivateKey
-}
-
-func (svc *externalAuthServer) AuthenticateTo(
-	_ context.Context,
-	req *rpcpb.AuthenticateToRequest,
-) (*rpcpb.AuthenticateToResponse, error) {
-	token := jwt.NewWithClaims(jwt.SigningMethodRS256, rpc.JWTClaims{
-		RegisteredClaims: jwt.RegisteredClaims{
-			Audience: jwt.ClaimStrings{req.Entity},
-		},
-		CredentialsType: rpc.CredentialsType("inter-node"),
-	})
-
-	tokenString, err := token.SignedString(svc.privKey)
-	if err != nil {
-		return nil, err
-	}
-
-	return &rpcpb.AuthenticateToResponse{
-		AccessToken: tokenString,
-	}, nil
 }

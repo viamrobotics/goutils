@@ -78,6 +78,32 @@ func (ss *simpleServer) Authenticate(ctx context.Context, req *rpcpb.Authenticat
 	}, nil
 }
 
+func (ss *simpleServer) AuthenticateTo(ctx context.Context, req *rpcpb.AuthenticateToRequest) (*rpcpb.AuthenticateToResponse, error) {
+	if err := ss.authToHandler(ctx, req.Entity); err != nil {
+		return nil, err
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, JWTClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Audience: jwt.ClaimStrings{req.Entity},
+		},
+		CredentialsType: ss.authToType,
+		// TODO(https://github.com/viamrobotics/goutils/issues/10): expiration
+		// TODO(https://github.com/viamrobotics/goutils/issues/11): refresh token
+		// TODO(https://github.com/viamrobotics/goutils/issues/14): more complete info
+	})
+
+	tokenString, err := token.SignedString(ss.authRSAPrivKey)
+	if err != nil {
+		ss.logger.Errorw("failed to sign JWT", "error", err)
+		return nil, status.Error(codes.PermissionDenied, "failed to authenticate")
+	}
+
+	return &rpcpb.AuthenticateToResponse{
+		AccessToken: tokenString,
+	}, nil
+}
+
 func (ss *simpleServer) authUnaryInterceptor(
 	ctx context.Context,
 	req interface{},
