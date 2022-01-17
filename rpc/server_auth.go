@@ -44,7 +44,8 @@ func (ss *simpleServer) Authenticate(ctx context.Context, req *rpcpb.Authenticat
 	if len(md[metadataFieldAuthorization]) != 0 {
 		return nil, status.Error(codes.InvalidArgument, "already authenticated; cannot re-authenticate")
 	}
-	handler, err := ss.authHandler(CredentialsType(req.Credentials.Type))
+	forType := CredentialsType(req.Credentials.Type)
+	handler, err := ss.authHandler(forType)
 	if err != nil {
 		return nil, err
 	}
@@ -56,11 +57,42 @@ func (ss *simpleServer) Authenticate(ctx context.Context, req *rpcpb.Authenticat
 		return nil, status.Errorf(codes.PermissionDenied, "failed to authenticate: %s", err.Error())
 	}
 
+	token, err := ss.signAccessTokenForEntity(forType, req.Entity, authMD)
+	if err != nil {
+		return nil, err
+	}
+
+	return &rpcpb.AuthenticateResponse{
+		AccessToken: token,
+	}, nil
+}
+
+func (ss *simpleServer) AuthenticateTo(ctx context.Context, req *rpcpb.AuthenticateToRequest) (*rpcpb.AuthenticateToResponse, error) {
+	authMD, err := ss.authToHandler(ctx, req.Entity)
+	if err != nil {
+		return nil, err
+	}
+
+	token, err := ss.signAccessTokenForEntity(ss.authToType, req.Entity, authMD)
+	if err != nil {
+		return nil, err
+	}
+
+	return &rpcpb.AuthenticateToResponse{
+		AccessToken: token,
+	}, nil
+}
+
+func (ss *simpleServer) signAccessTokenForEntity(
+	forType CredentialsType,
+	entity string,
+	authMD map[string]string,
+) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, JWTClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
-			Audience: jwt.ClaimStrings{req.Entity},
+			Audience: jwt.ClaimStrings{entity},
 		},
-		CredentialsType: CredentialsType(req.Credentials.Type),
+		CredentialsType: forType,
 		AuthMetadata:    authMD,
 		// TODO(https://github.com/viamrobotics/goutils/issues/10): expiration
 		// TODO(https://github.com/viamrobotics/goutils/issues/11): refresh token
@@ -70,42 +102,10 @@ func (ss *simpleServer) Authenticate(ctx context.Context, req *rpcpb.Authenticat
 	tokenString, err := token.SignedString(ss.authRSAPrivKey)
 	if err != nil {
 		ss.logger.Errorw("failed to sign JWT", "error", err)
-		return nil, status.Error(codes.PermissionDenied, "failed to authenticate")
+		return "", status.Error(codes.PermissionDenied, "failed to authenticate")
 	}
 
-	return &rpcpb.AuthenticateResponse{
-		AccessToken: tokenString,
-	}, nil
-}
-
-func (ss *simpleServer) AuthenticateTo(ctx context.Context, req *rpcpb.AuthenticateToRequest) (*rpcpb.AuthenticateToResponse, error) {
-	audience, err := ss.authToHandler(ctx, req.Entity)
-	if err != nil {
-		return nil, err
-	}
-	if audience == "" {
-		audience = req.Entity
-	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodRS256, JWTClaims{
-		RegisteredClaims: jwt.RegisteredClaims{
-			Audience: jwt.ClaimStrings{audience},
-		},
-		CredentialsType: ss.authToType,
-		// TODO(https://github.com/viamrobotics/goutils/issues/10): expiration
-		// TODO(https://github.com/viamrobotics/goutils/issues/11): refresh token
-		// TODO(https://github.com/viamrobotics/goutils/issues/14): more complete info
-	})
-
-	tokenString, err := token.SignedString(ss.authRSAPrivKey)
-	if err != nil {
-		ss.logger.Errorw("failed to sign JWT", "error", err)
-		return nil, status.Error(codes.PermissionDenied, "failed to authenticate")
-	}
-
-	return &rpcpb.AuthenticateToResponse{
-		AccessToken: tokenString,
-	}, nil
+	return tokenString, nil
 }
 
 func (ss *simpleServer) authUnaryInterceptor(

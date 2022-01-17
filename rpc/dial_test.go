@@ -97,27 +97,20 @@ func TestDial(t *testing.T) {
 					return entity, nil
 				})),
 				WithAuthHandler("fakeExtWithKey", WithPublicKeyProvider(
-					funcAuthHandler{
-						auth: func(ctx context.Context, entity, payload string) (map[string]string, error) {
-							return map[string]string{}, errors.New("go auth externally")
-						},
-						verify: func(ctx context.Context, entity string) (interface{}, error) {
-							return entity, nil
-						},
+					func(ctx context.Context, entity string) (interface{}, error) {
+						return entity, nil
 					},
 					&privKeyExternal.PublicKey,
 				)),
 				WithAuthHandler("inter-node", WithPublicKeyProvider(
-					funcAuthHandler{
-						auth: func(ctx context.Context, entity, payload string) (map[string]string, error) {
-							return map[string]string{}, errors.New("go auth externally")
-						},
-						verify: func(ctx context.Context, entity string) (interface{}, error) {
-							if entity != "someent" {
-								return nil, errors.New("not someent")
-							}
-							return entity, nil
-						},
+					func(ctx context.Context, entity string) (interface{}, error) {
+						if entity != "someent" {
+							return nil, errors.New("not someent")
+						}
+						if ContextAuthMetadata(ctx)["some"] != "data" {
+							return nil, errors.New("bad authed data")
+						}
+						return entity, nil
 					},
 					&privKeyExternal.PublicKey,
 				)),
@@ -153,14 +146,14 @@ func TestDial(t *testing.T) {
 					return entity, nil
 				})),
 				WithAuthRSAPrivateKey(privKeyExternal),
-				WithAuthenticateToHandler(CredentialsType("inter-node"), func(ctx context.Context, entity string) (string, error) {
+				WithAuthenticateToHandler(CredentialsType("inter-node"), func(ctx context.Context, entity string) (map[string]string, error) {
 					if authToFail {
-						return "", errors.New("darn")
+						return nil, errors.New("darn")
 					}
 					if entity != "someent" {
-						return "", errors.New("nope")
+						return nil, errors.New("nope")
 					}
-					return entity, nil
+					return map[string]string{"some": "data"}, nil
 				}),
 			)
 			test.That(t, err, test.ShouldBeNil)
@@ -427,16 +420,14 @@ func TestDialExternalAuth(t *testing.T) {
 			return entity, nil
 		})),
 		WithAuthHandler("inter-node", WithPublicKeyProvider(
-			funcAuthHandler{
-				auth: func(ctx context.Context, entity, payload string) (map[string]string, error) {
-					return map[string]string{}, errors.New("go auth externally")
-				},
-				verify: func(ctx context.Context, entity string) (interface{}, error) {
-					if entity != "someent" {
-						return nil, errors.New("bad authed ent")
-					}
-					return entity, nil
-				},
+			func(ctx context.Context, entity string) (interface{}, error) {
+				if entity != "someent" {
+					return nil, errors.New("bad authed ent")
+				}
+				if ContextAuthMetadata(ctx)["some"] != "data" {
+					return nil, errors.New("bad authed data")
+				}
+				return entity, nil
 			},
 			&privKeyExternal.PublicKey,
 		)),
@@ -453,7 +444,6 @@ func TestDialExternalAuth(t *testing.T) {
 	test.That(t, err, test.ShouldBeNil)
 
 	var authToFail bool
-	var authToEntity string
 	acceptedFakeWithKeyEnts := []string{"someotherthing", httpListenerExternal.Addr().String()}
 	rpcServerExternal, err := NewServer(
 		logger,
@@ -485,17 +475,14 @@ func TestDialExternalAuth(t *testing.T) {
 			return entity, nil
 		})),
 		WithAuthRSAPrivateKey(privKeyExternal),
-		WithAuthenticateToHandler(CredentialsType("inter-node"), func(ctx context.Context, entity string) (string, error) {
+		WithAuthenticateToHandler(CredentialsType("inter-node"), func(ctx context.Context, entity string) (map[string]string, error) {
 			if authToFail {
-				return "", errors.New("darn")
+				return nil, errors.New("darn")
 			}
 			if entity != "someent" {
-				return "", errors.New("nope")
+				return nil, errors.New("nope")
 			}
-			if authToEntity != "" {
-				return authToEntity, nil
-			}
-			return entity, nil
+			return map[string]string{"some": "data"}, nil
 		}),
 	)
 	test.That(t, err, test.ShouldBeNil)
@@ -517,14 +504,14 @@ func TestDialExternalAuth(t *testing.T) {
 			return entity, nil
 		})),
 		WithAuthRSAPrivateKey(privKeyExternal2),
-		WithAuthenticateToHandler(CredentialsType("inter-node"), func(ctx context.Context, entity string) (string, error) {
+		WithAuthenticateToHandler(CredentialsType("inter-node"), func(ctx context.Context, entity string) (map[string]string, error) {
 			if MustContextAuthEntity(ctx) != httpListenerExternal2.Addr().String() {
-				return "", errors.New("bad authed external entity")
+				return nil, errors.New("bad authed external entity")
 			}
 			if entity != "someent" {
-				return "", errors.New("nope")
+				return nil, errors.New("nope")
 			}
-			return entity, nil
+			return map[string]string{}, nil
 		}),
 	)
 	test.That(t, err, test.ShouldBeNil)
@@ -769,16 +756,22 @@ func TestDialExternalAuth(t *testing.T) {
 		test.That(t, gStatus.Message(), test.ShouldContainSubstring, "bad authed ent")
 	})
 
-	t.Run("with auto to handler set authenticating to wrong entity should fail", func(t *testing.T) {
-		prevAuthToEntity := authToEntity
-		authToEntity = "somethingwrong"
+	t.Run("with external auth setting wrong metadata should fail", func(t *testing.T) {
+		prevFail := internalExternalAuthSrv.fail
+		prevNoMetadata := internalExternalAuthSrv.noMetadata
+		prevEnt := internalExternalAuthSrv.expectedEnt
+		internalExternalAuthSrv.fail = false
+		internalExternalAuthSrv.noMetadata = true
+		internalExternalAuthSrv.expectedEnt = ""
 		defer func() {
-			authToEntity = prevAuthToEntity
+			internalExternalAuthSrv.fail = prevFail
+			internalExternalAuthSrv.noMetadata = prevNoMetadata
+			internalExternalAuthSrv.expectedEnt = prevEnt
 		}()
 		conn, err := Dial(context.Background(), httpListenerInternal.Addr().String(), logger,
 			WithInsecure(),
-			WithCredentials(Credentials{Type: "fakeWithKey", Payload: "sosecret"}),
-			WithExternalAuth(httpListenerExternal.Addr().String(), "someent"),
+			WithCredentials(Credentials{Type: "fake"}),
+			WithExternalAuth(httpListenerInternal.Addr().String(), "someent"),
 			WithExternalAuthInsecure(),
 		)
 		test.That(t, err, test.ShouldBeNil)
@@ -788,11 +781,10 @@ func TestDialExternalAuth(t *testing.T) {
 
 		client := pb.NewEchoServiceClient(conn)
 		_, err = client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
-		test.That(t, err, test.ShouldNotBeNil)
 		gStatus, ok := status.FromError(err)
 		test.That(t, ok, test.ShouldBeTrue)
 		test.That(t, gStatus.Code(), test.ShouldEqual, codes.Unknown)
-		test.That(t, gStatus.Message(), test.ShouldContainSubstring, "bad authed ent")
+		test.That(t, gStatus.Message(), test.ShouldContainSubstring, "bad authed data")
 	})
 
 	test.That(t, rpcServerInternal.Stop(), test.ShouldBeNil)
@@ -839,6 +831,7 @@ type externalAuthServer struct {
 	rpcpb.ExternalAuthServiceServer
 	fail        bool
 	expectedEnt string
+	noMetadata  bool
 	privKey     *rsa.PrivateKey
 }
 
@@ -856,11 +849,16 @@ func (svc *externalAuthServer) AuthenticateTo(
 	} else if req.Entity != "someent" {
 		return nil, errors.New("nope")
 	}
+	authMetadata := map[string]string{"some": "data"}
+	if svc.noMetadata {
+		authMetadata = nil
+	}
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, JWTClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			Audience: jwt.ClaimStrings{req.Entity},
 		},
 		CredentialsType: CredentialsType("inter-node"),
+		AuthMetadata:    authMetadata,
 	})
 
 	tokenString, err := token.SignedString(svc.privKey)

@@ -9,6 +9,8 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/pkg/errors"
 	"go.viam.com/test"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func TestMakeFuncAuthHandler(t *testing.T) {
@@ -95,13 +97,16 @@ func TestWithTokenVerificationKeyProvider(t *testing.T) {
 }
 
 func TestWithPublicKeyProvider(t *testing.T) {
-	handler := MakeSimpleAuthHandler([]string{"one"}, "key")
 	privKey, err := rsa.GenerateKey(rand.Reader, generatedRSAKeyBits)
 	test.That(t, err, test.ShouldBeNil)
 	pubKey := &privKey.PublicKey
-	wrappedHandler := WithPublicKeyProvider(handler, pubKey)
+	wrappedHandler := WithPublicKeyProvider(MakeSimpleVerifyEntity([]string{"one"}), pubKey)
 	_, err = wrappedHandler.Authenticate(context.Background(), "one", "key")
-	test.That(t, err, test.ShouldBeNil)
+	test.That(t, err, test.ShouldNotBeNil)
+	gStatus, ok := status.FromError(err)
+	test.That(t, ok, test.ShouldBeTrue)
+	test.That(t, gStatus.Code(), test.ShouldEqual, codes.InvalidArgument)
+	test.That(t, gStatus.Message(), test.ShouldContainSubstring, "go auth externally")
 	_, err = wrappedHandler.VerifyEntity(context.Background(), "one")
 	test.That(t, err, test.ShouldBeNil)
 

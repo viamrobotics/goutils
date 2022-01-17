@@ -160,16 +160,8 @@ func runServer(
 		serverOpts = append(serverOpts, rpc.WithAuthHandler(rpc.CredentialsTypeAPIKey, handler))
 
 		if authPublicKey != nil {
-			entityChecker := rpc.MakeEntitiesChecker(authEntities)
 			serverOpts = append(serverOpts, rpc.WithAuthHandler("inter-node", rpc.WithPublicKeyProvider(
-				rpc.MakeFuncAuthHandler(
-					func(ctx context.Context, entity, payload string) (map[string]string, error) {
-						return map[string]string{}, errors.New("go auth externally")
-					},
-					func(ctx context.Context, entity string) (interface{}, error) {
-						return 1, entityChecker(ctx, entity)
-					},
-				),
+				rpc.MakeSimpleVerifyEntity(authEntities),
 				authPublicKey,
 			)))
 		}
@@ -181,8 +173,8 @@ func runServer(
 		}
 		serverOpts = append(serverOpts, rpc.WithAuthenticateToHandler(
 			rpc.CredentialsType("inter-node"),
-			func(ctx context.Context, entity string) (string, error) {
-				return entity, nil
+			func(ctx context.Context, entity string) (map[string]string, error) {
+				return map[string]string{}, nil
 			},
 		))
 	}

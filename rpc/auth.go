@@ -29,9 +29,8 @@ type AuthHandler interface {
 
 // An AuthenticateToHandler determines if the given entity should be allowed to be
 // authenticated to by the calling entity, accessible via MustContextAuthEntity.
-// The returned entity, if not empty, will be used as the audience; otherwise the
-// audience will be the original entity argument.
-type AuthenticateToHandler func(ctx context.Context, entity string) (string, error)
+// The returned auth metadata will be present in ContextAuthMetadata.
+type AuthenticateToHandler func(ctx context.Context, entity string) (map[string]string, error)
 
 // TokenVerificationKeyProvider allows an AuthHandler to supply a key needed to peform
 // verification of a JWT. This is helpful when the server itself is not responsible
@@ -86,15 +85,38 @@ func (h keyFuncAuthHandler) TokenVerificationKey(token *jwt.Token) (interface{},
 	return h.keyFunc(token)
 }
 
-// WithPublicKeyProvider returns an AuthHandler that provides a public key for JWT verification.
-func WithPublicKeyProvider(handler AuthHandler, pubKey *rsa.PublicKey) AuthHandler {
-	return WithTokenVerificationKeyProvider(handler, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
-			return nil, fmt.Errorf("unexpected signing method %q", token.Method.Alg())
-		}
+// MakeSimpleVerifyEntity returns a VerifyEntity function to be used in an AuthHandler that
+// only verifies a list of entities for a single match and the returned auth entity is the
+// entity name itself.
+func MakeSimpleVerifyEntity(forEntities []string) func(ctx context.Context, entity string) (interface{}, error) {
+	entityChecker := MakeEntitiesChecker(forEntities)
+	return func(ctx context.Context, entity string) (interface{}, error) {
+		return entity, entityChecker(ctx, entity)
+	}
+}
 
-		return pubKey, nil
-	})
+// WithPublicKeyProvider returns an AuthHandler that provides a public key for JWT verification
+// that only can verify entities.
+func WithPublicKeyProvider(
+	verifyEntity func(ctx context.Context, entity string) (interface{}, error),
+	pubKey *rsa.PublicKey,
+) AuthHandler {
+	handler := MakeFuncAuthHandler(
+		func(ctx context.Context, entity, payload string) (map[string]string, error) {
+			return nil, status.Error(codes.InvalidArgument, "go auth externally")
+		},
+		verifyEntity,
+	)
+	return WithTokenVerificationKeyProvider(
+		handler,
+		func(token *jwt.Token) (interface{}, error) {
+			if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
+				return nil, fmt.Errorf("unexpected signing method %q", token.Method.Alg())
+			}
+
+			return pubKey, nil
+		},
+	)
 }
 
 // MakeSimpleAuthHandler returns a simple auth handler that handles multiple entities
