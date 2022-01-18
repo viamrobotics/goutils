@@ -3,8 +3,9 @@ package web
 import (
 	"bytes"
 	"errors"
-	"log"
 	"net/http"
+
+	"github.com/edaniels/golog"
 
 	"go.viam.com/utils"
 )
@@ -31,12 +32,12 @@ func (s responseStatusError) Status() int {
 }
 
 // HandleError returns true if there was an error and you should stop.
-func HandleError(w http.ResponseWriter, err error, context ...string) bool {
+func HandleError(w http.ResponseWriter, err error, logger golog.Logger, context ...string) bool {
 	if err == nil {
 		return false
 	}
 
-	log.Println(err)
+	logger.Info(err)
 
 	var er ErrorResponse
 	if errors.As(err, &er) {

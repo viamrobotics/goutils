@@ -23,6 +23,7 @@ import (
 // and many answerers. The callers provide an SDP to the service which asks a corresponding
 // waiting answerer to provide an SDP in exchange in order to establish a P2P connection between
 // the two parties.
+// Note: authorization should happen by something wrapping this service server.
 type WebRTCSignalingServer struct {
 	webrtcpb.UnimplementedSignalingServiceServer
 	mu                   sync.RWMutex
@@ -44,8 +45,9 @@ func NewWebRTCSignalingServer(callQueue WebRTCCallQueue, webrtcConfigProvider We
 // RPCHostMetadataField is the identifier of a host.
 const RPCHostMetadataField = "rpc-host"
 
-func hostFromCtx(ctx context.Context) (string, error) {
-	hosts, err := hostsFromCtx(ctx)
+// HostFromCtx gets the host being called/answered for from the context.
+func HostFromCtx(ctx context.Context) (string, error) {
+	hosts, err := HostsFromCtx(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -57,7 +59,8 @@ func hostFromCtx(ctx context.Context) (string, error) {
 
 const maxHostsInMetadata = 2
 
-func hostsFromCtx(ctx context.Context) ([]string, error) {
+// HostsFromCtx gets the hosts being called/answered for from the context.
+func HostsFromCtx(ctx context.Context) ([]string, error) {
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok || len(md[RPCHostMetadataField]) == 0 {
 		return nil, fmt.Errorf("expected %s to be set in metadata", RPCHostMetadataField)
@@ -81,7 +84,7 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 	ctx := server.Context()
 	ctx, cancel := context.WithTimeout(ctx, getDefaultOfferDeadline())
 	defer cancel()
-	host, err := hostFromCtx(ctx)
+	host, err := HostFromCtx(ctx)
 	if err != nil {
 		return err
 	}
@@ -149,7 +152,7 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 func (srv *WebRTCSignalingServer) CallUpdate(ctx context.Context, req *webrtcpb.CallUpdateRequest) (*webrtcpb.CallUpdateResponse, error) {
 	ctx, cancel := context.WithTimeout(ctx, getDefaultOfferDeadline())
 	defer cancel()
-	host, err := hostFromCtx(ctx)
+	host, err := HostFromCtx(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -211,11 +214,10 @@ func (srv *WebRTCSignalingServer) clearAdditionalICEServers(hosts []string) {
 }
 
 // Answer listens on call/offer queue forever responding with SDPs to agreed to calls.
-// TODO(https://github.com/viamrobotics/core/issues/104): This should be authorized for robots only.
 // Note: See SinalingAnswer.answer for the complementary side of this process.
 func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_AnswerServer) error {
 	ctx := server.Context()
-	hosts, err := hostsFromCtx(ctx)
+	hosts, err := HostsFromCtx(ctx)
 	if err != nil {
 		return err
 	}
@@ -385,7 +387,7 @@ func (srv *WebRTCSignalingServer) OptionalWebRTCConfig(
 ) (*webrtcpb.OptionalWebRTCConfigResponse, error) {
 	ctx, cancel := context.WithTimeout(ctx, getDefaultOfferDeadline())
 	defer cancel()
-	hosts, err := hostsFromCtx(ctx)
+	hosts, err := HostsFromCtx(ctx)
 	if err != nil {
 		return nil, err
 	}

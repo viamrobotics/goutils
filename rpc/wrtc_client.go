@@ -29,9 +29,32 @@ type DialWebRTCOptions struct {
 	// SignalingInsecure determines if the signaling connection is insecure.
 	SignalingInsecure bool
 
-	// Signaling server specifies the signaling server to
+	// SignalingServerAddress specifies the signaling server to
 	// contact on behalf of this client for WebRTC communications.
-	SignalingServer string
+	SignalingServerAddress string
+
+	// SignalingAuthEntity is the entity to authenticate as to the signaler.
+	SignalingAuthEntity string
+
+	// SignalingExternalAuthAddress is the address to perform external auth yet.
+	// This is unlikely to be needed since the signaler is typically in the same
+	// place where authentication happens.
+	SignalingExternalAuthAddress string
+
+	// SignalingExternalAuthToEntity is the entity to authenticate for after
+	// externally authenticating.
+	// This is unlikely to be needed since the signaler is typically in the same
+	// place where authentication happens.
+	SignalingExternalAuthToEntity string
+
+	// SignalingExternalAuthInsecure is whether or not the external auth server
+	// is insecure.
+	// This is unlikely to be needed since the signaler is typically in the same
+	// place where authentication happens.
+	SignalingExternalAuthInsecure bool
+
+	// SignalingCreds are used to authenticate the request to the signaling server.
+	SignalingCreds Credentials
 
 	// DisableTrickleICE controls whether to disable Trickle ICE or not.
 	// Disabling Trickle ICE can slow down connection establishment.
@@ -71,6 +94,29 @@ func dialWebRTC(ctx context.Context, address string, dOpts *dialOptions, logger 
 	} else {
 		dOptsCopy.insecure = false
 	}
+
+	// replace auth entity and creds
+	dOptsCopy.authEntity = dOpts.webrtcOpts.SignalingAuthEntity
+	dOptsCopy.creds = dOpts.webrtcOpts.SignalingCreds
+	dOptsCopy.externalAuthAddr = dOpts.webrtcOpts.SignalingExternalAuthAddress
+	dOptsCopy.externalAuthToEntity = dOpts.webrtcOpts.SignalingExternalAuthToEntity
+	dOptsCopy.externalAuthInsecure = dOpts.webrtcOpts.SignalingExternalAuthInsecure
+	if dOptsCopy.authEntity == "" {
+		if dOptsCopy.externalAuthAddr == "" {
+			// if we are not doing external auth, then the entity is assumed to be the actual address.
+			if dOpts.debug {
+				logger.Debugw("auth entity empty; setting to address", "address", address)
+			}
+			dOptsCopy.authEntity = address
+		} else {
+			// otherwise it's the external auth address.
+			if dOpts.debug {
+				logger.Debugw("auth entity empty; setting to external auth address", "address", dOptsCopy.externalAuthAddr)
+			}
+			dOptsCopy.authEntity = dOptsCopy.externalAuthAddr
+		}
+	}
+
 	conn, _, err := dialDirectGRPC(dialCtx, address, &dOptsCopy, logger)
 	if err != nil {
 		return nil, err
@@ -190,6 +236,14 @@ func dialWebRTC(ctx context.Context, address string, dOpts *dialOptions, logger 
 	}
 
 	// TODO(https://github.com/viamrobotics/goutils/issues/12): do separate auth here
+	if dOpts.externalAuthAddr != "" {
+		// TODO(https://github.com/viamrobotics/goutils/issues/12): prepare AuthenticateTo here
+		// for client channel.
+	} else if dOpts.creds.Type != "" { // nolint:staticcheck
+		// TODO(https://github.com/viamrobotics/goutils/issues/12): prepare Authenticate here
+		// for client channel
+	}
+
 	//nolint:contextcheck
 	clientCh := newWebRTCClientChannel(pc, dc, logger)
 

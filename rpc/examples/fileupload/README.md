@@ -15,7 +15,6 @@ Note: For the web, `grpc-web` (Direct) will not work until https://github.com/gr
 ### With auth
 
 1. `make run_server_auth`
-1. `make run_client_auth`
 
 ### With an external auth source
 

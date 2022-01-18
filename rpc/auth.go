@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rsa"
 	"crypto/subtle"
+	"errors"
 	"fmt"
 
 	"github.com/golang-jwt/jwt/v4"
@@ -16,11 +17,20 @@ import (
 // this is not a suitable abstraction to use.
 type AuthHandler interface {
 	// Authenticate returns nil if the given payload is valid authentication material.
-	Authenticate(ctx context.Context, entity, payload string) error
+	// Optional authentication metadata can be returned to be used in future requests
+	// via ContextAuthMetadata.
+	Authenticate(ctx context.Context, entity, payload string) (map[string]string, error)
 
 	// VerifyEntity verifies that this handler is allowed to authenticate the given entity.
-	VerifyEntity(ctx context.Context, entity string) error
+	// The handler can optionally return opaque info about the entity that will be bound to the
+	// context accessible via ContextAuthEntity.
+	VerifyEntity(ctx context.Context, entity string) (interface{}, error)
 }
+
+// An AuthenticateToHandler determines if the given entity should be allowed to be
+// authenticated to by the calling entity, accessible via MustContextAuthEntity.
+// The returned auth metadata will be present in ContextAuthMetadata.
+type AuthenticateToHandler func(ctx context.Context, entity string) (map[string]string, error)
 
 // TokenVerificationKeyProvider allows an AuthHandler to supply a key needed to peform
 // verification of a JWT. This is helpful when the server itself is not responsible
@@ -32,31 +42,31 @@ type TokenVerificationKeyProvider interface {
 }
 
 var (
-	errInvalidCredentials           = status.Error(codes.Unauthenticated, "invalid credentials")
-	errSessionEntityHandlerMismatch = status.Error(codes.Unauthenticated, "session entity/auth handler mismatch")
+	errInvalidCredentials = status.Error(codes.Unauthenticated, "invalid credentials")
+	errCannotAuthEntity   = status.Error(codes.Unauthenticated, "cannot authenticate entity")
 )
 
 // MakeFuncAuthHandler encapsulates AuthHandler functionality to a set of functions.
 func MakeFuncAuthHandler(
-	auth func(ctx context.Context, entity, payload string) error,
-	verify func(ctx context.Context, entity string) error,
+	auth func(ctx context.Context, entity, payload string) (map[string]string, error),
+	verify func(ctx context.Context, entity string) (interface{}, error),
 ) AuthHandler {
 	return funcAuthHandler{auth: auth, verify: verify}
 }
 
 type funcAuthHandler struct {
-	auth   func(ctx context.Context, entity, payload string) error
-	verify func(ctx context.Context, entity string) error
+	auth   func(ctx context.Context, entity, payload string) (map[string]string, error)
+	verify func(ctx context.Context, entity string) (interface{}, error)
 }
 
 // Authenticate checks if the given entity and payload are what it expects. It returns
 // an error otherwise.
-func (h funcAuthHandler) Authenticate(ctx context.Context, entity, payload string) error {
+func (h funcAuthHandler) Authenticate(ctx context.Context, entity, payload string) (map[string]string, error) {
 	return h.auth(ctx, entity, payload)
 }
 
 // VerifyEntity checks if the given entity is handled by this handler.
-func (h funcAuthHandler) VerifyEntity(ctx context.Context, entity string) error {
+func (h funcAuthHandler) VerifyEntity(ctx context.Context, entity string) (interface{}, error) {
 	return h.verify(ctx, entity)
 }
 
@@ -75,15 +85,38 @@ func (h keyFuncAuthHandler) TokenVerificationKey(token *jwt.Token) (interface{},
 	return h.keyFunc(token)
 }
 
-// WithPublicKeyProvider returns an AuthHandler that provides a public key for JWT verification.
-func WithPublicKeyProvider(handler AuthHandler, pubKey *rsa.PublicKey) AuthHandler {
-	return WithTokenVerificationKeyProvider(handler, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
-			return nil, fmt.Errorf("unexpected signing method %q", token.Method.Alg())
-		}
+// MakeSimpleVerifyEntity returns a VerifyEntity function to be used in an AuthHandler that
+// only verifies a list of entities for a single match and the returned auth entity is the
+// entity name itself.
+func MakeSimpleVerifyEntity(forEntities []string) func(ctx context.Context, entity string) (interface{}, error) {
+	entityChecker := MakeEntitiesChecker(forEntities)
+	return func(ctx context.Context, entity string) (interface{}, error) {
+		return entity, entityChecker(ctx, entity)
+	}
+}
 
-		return pubKey, nil
-	})
+// WithPublicKeyProvider returns an AuthHandler that provides a public key for JWT verification
+// that only can verify entities.
+func WithPublicKeyProvider(
+	verifyEntity func(ctx context.Context, entity string) (interface{}, error),
+	pubKey *rsa.PublicKey,
+) AuthHandler {
+	handler := MakeFuncAuthHandler(
+		func(ctx context.Context, entity, payload string) (map[string]string, error) {
+			return nil, status.Error(codes.InvalidArgument, "go auth externally")
+		},
+		verifyEntity,
+	)
+	return WithTokenVerificationKeyProvider(
+		handler,
+		func(token *jwt.Token) (interface{}, error) {
+			if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
+				return nil, fmt.Errorf("unexpected signing method %q", token.Method.Alg())
+			}
+
+			return pubKey, nil
+		},
+	)
 }
 
 // MakeSimpleAuthHandler returns a simple auth handler that handles multiple entities
@@ -91,26 +124,33 @@ func WithPublicKeyProvider(handler AuthHandler, pubKey *rsa.PublicKey) AuthHandl
 // shared key. This is NOT secure for usage over networks exposed to the public internet.
 // For that, use a more sophisticated handler with at least one key per entity.
 func MakeSimpleAuthHandler(forEntities []string, expectedPayload string) AuthHandler {
-	return MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) error {
-		var entityChecked bool
-		for _, checkEntity := range forEntities {
-			if subtle.ConstantTimeCompare([]byte(entity), []byte(checkEntity)) == 1 {
-				entityChecked = true
-				break
+	entityChecker := MakeEntitiesChecker(forEntities)
+	return MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) (map[string]string, error) {
+		if err := entityChecker(ctx, entity); err != nil {
+			if errors.Is(err, errCannotAuthEntity) {
+				return nil, errInvalidCredentials
 			}
+			return nil, err
 		}
-		if entityChecked && subtle.ConstantTimeCompare([]byte(payload), []byte(expectedPayload)) == 1 {
-			return nil
+		if subtle.ConstantTimeCompare([]byte(payload), []byte(expectedPayload)) == 1 {
+			return map[string]string{}, nil
 		}
-		return errInvalidCredentials
-	}, func(ctx context.Context, entity string) error {
+		return nil, errInvalidCredentials
+	}, func(ctx context.Context, entity string) (interface{}, error) {
+		return entity, entityChecker(ctx, entity)
+	})
+}
+
+// MakeEntitiesChecker checks a list of entities against a given one for use in VerifyEntity.
+func MakeEntitiesChecker(forEntities []string) func(ctx context.Context, entity string) error {
+	return func(ctx context.Context, entity string) error {
 		for _, checkEntity := range forEntities {
 			if subtle.ConstantTimeCompare([]byte(entity), []byte(checkEntity)) == 1 {
 				return nil
 			}
 		}
-		return errSessionEntityHandlerMismatch
-	})
+		return errCannotAuthEntity
+	}
 }
 
 // CredentialsType signifies a means of representing a credential. For example,

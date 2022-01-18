@@ -10,6 +10,7 @@ import (
 	"github.com/pion/webrtc/v3"
 	"go.viam.com/test"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 
 	echopb "go.viam.com/utils/proto/rpc/examples/echo/v1"
@@ -52,7 +53,7 @@ func TestWebRTCSignaling(t *testing.T) {
 
 	for _, host := range hosts {
 		t.Run(host, func(t *testing.T) {
-			cc, err := grpc.Dial(grpcListener.Addr().String(), grpc.WithBlock(), grpc.WithInsecure())
+			cc, err := grpc.Dial(grpcListener.Addr().String(), grpc.WithBlock(), grpc.WithTransportCredentials(insecure.NewCredentials()))
 			test.That(t, err, test.ShouldBeNil)
 			defer func() {
 				test.That(t, cc.Close(), test.ShouldBeNil)

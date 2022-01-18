@@ -4,10 +4,12 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
 
+	"github.com/edaniels/golog"
 	"go.opencensus.io/trace"
 
 	"go.viam.com/utils"
@@ -23,22 +25,23 @@ type APIHandler interface {
 // APIMiddleware simple layer between http.Handler interface that does json marshalling and error handling.
 type APIMiddleware struct {
 	Handler APIHandler
+	Logger  golog.Logger
 }
 
-func handleAPIError(w http.ResponseWriter, err error, extra interface{}) bool {
+func handleAPIError(w http.ResponseWriter, err error, logger golog.Logger, extra interface{}) bool {
 	if err == nil {
 		return false
 	}
 
-	utils.Logger.Debugw("api issue", "error", err, "extra", extra)
+	logger.Debugw("api issue", "error", err, "extra", extra)
 
 	data := map[string]interface{}{"err": err.Error()}
 	if extra != nil {
 		data["extra"] = extra
 	}
 
-	js, err := json.Marshal(data)
-	if err != nil {
+	js, marshalErr := json.Marshal(data)
+	if marshalErr != nil {
 		temp := fmt.Sprintf("err not able to be converted to json (%s) (%s)", data, err)
 		w.WriteHeader(500)
 		_, err = w.Write([]byte(temp))
@@ -48,7 +51,12 @@ func handleAPIError(w http.ResponseWriter, err error, extra interface{}) bool {
 		}
 	} else {
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(500)
+		var er ErrorResponse
+		if errors.As(err, &er) {
+			w.WriteHeader(er.Status())
+		} else {
+			w.WriteHeader(500)
+		}
 		_, err = w.Write(js)
 		if err != nil {
 			// hack for linter
@@ -70,7 +78,7 @@ func (am *APIMiddleware) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r = r.WithContext(ctx)
 
 	data, err := am.Handler.ServeAPI(w, r)
-	if handleAPIError(w, err, data) {
+	if handleAPIError(w, err, am.Logger, data) {
 		return
 	}
 
@@ -79,7 +87,7 @@ func (am *APIMiddleware) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	js, err := json.Marshal(data)
-	if handleAPIError(w, err, nil) {
+	if handleAPIError(w, err, am.Logger, nil) {
 		return
 	}
 

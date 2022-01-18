@@ -105,3 +105,97 @@ var AuthService_ServiceDesc = grpc.ServiceDesc{
 	Streams:  []grpc.StreamDesc{},
 	Metadata: "proto/rpc/v1/auth.proto",
 }
+
+// ExternalAuthServiceClient is the client API for ExternalAuthService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type ExternalAuthServiceClient interface {
+	// AuthenticateTo attempts to authenticate the caller on behalf of an entity.
+	// The resulting response contains an access token that should be used for future
+	// requests. This assumes that the caller is already authenticated to the
+	// server implementing this service.
+	AuthenticateTo(ctx context.Context, in *AuthenticateToRequest, opts ...grpc.CallOption) (*AuthenticateToResponse, error)
+}
+
+type externalAuthServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewExternalAuthServiceClient(cc grpc.ClientConnInterface) ExternalAuthServiceClient {
+	return &externalAuthServiceClient{cc}
+}
+
+func (c *externalAuthServiceClient) AuthenticateTo(ctx context.Context, in *AuthenticateToRequest, opts ...grpc.CallOption) (*AuthenticateToResponse, error) {
+	out := new(AuthenticateToResponse)
+	err := c.cc.Invoke(ctx, "/proto.rpc.v1.ExternalAuthService/AuthenticateTo", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// ExternalAuthServiceServer is the server API for ExternalAuthService service.
+// All implementations must embed UnimplementedExternalAuthServiceServer
+// for forward compatibility
+type ExternalAuthServiceServer interface {
+	// AuthenticateTo attempts to authenticate the caller on behalf of an entity.
+	// The resulting response contains an access token that should be used for future
+	// requests. This assumes that the caller is already authenticated to the
+	// server implementing this service.
+	AuthenticateTo(context.Context, *AuthenticateToRequest) (*AuthenticateToResponse, error)
+	mustEmbedUnimplementedExternalAuthServiceServer()
+}
+
+// UnimplementedExternalAuthServiceServer must be embedded to have forward compatible implementations.
+type UnimplementedExternalAuthServiceServer struct {
+}
+
+func (UnimplementedExternalAuthServiceServer) AuthenticateTo(context.Context, *AuthenticateToRequest) (*AuthenticateToResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method AuthenticateTo not implemented")
+}
+func (UnimplementedExternalAuthServiceServer) mustEmbedUnimplementedExternalAuthServiceServer() {}
+
+// UnsafeExternalAuthServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to ExternalAuthServiceServer will
+// result in compilation errors.
+type UnsafeExternalAuthServiceServer interface {
+	mustEmbedUnimplementedExternalAuthServiceServer()
+}
+
+func RegisterExternalAuthServiceServer(s grpc.ServiceRegistrar, srv ExternalAuthServiceServer) {
+	s.RegisterService(&ExternalAuthService_ServiceDesc, srv)
+}
+
+func _ExternalAuthService_AuthenticateTo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AuthenticateToRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ExternalAuthServiceServer).AuthenticateTo(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/proto.rpc.v1.ExternalAuthService/AuthenticateTo",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ExternalAuthServiceServer).AuthenticateTo(ctx, req.(*AuthenticateToRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// ExternalAuthService_ServiceDesc is the grpc.ServiceDesc for ExternalAuthService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var ExternalAuthService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "proto.rpc.v1.ExternalAuthService",
+	HandlerType: (*ExternalAuthServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "AuthenticateTo",
+			Handler:    _ExternalAuthService_AuthenticateTo_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "proto/rpc/v1/auth.proto",
+}

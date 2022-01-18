@@ -15,6 +15,7 @@ import (
 	"go.viam.com/test"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
@@ -42,10 +43,10 @@ func TestServer(t *testing.T) {
 							}
 							if withAuthentication {
 								serverOpts = append(serverOpts,
-									WithAuthHandler("fake", MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) error {
-										return nil
-									}, func(ctx context.Context, entity string) error {
-										return nil
+									WithAuthHandler("fake", MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) (map[string]string, error) {
+										return map[string]string{}, nil
+									}, func(ctx context.Context, entity string) (interface{}, error) {
+										return entity, nil
 									})))
 							} else {
 								serverOpts = append(serverOpts, WithUnauthenticated())
@@ -91,7 +92,7 @@ func TestServer(t *testing.T) {
 									grpc.WithTransportCredentials(credentials.NewTLS(tlsConf)),
 								)
 							} else {
-								grpcOpts = append(grpcOpts, grpc.WithInsecure())
+								grpcOpts = append(grpcOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 							}
 							conn, err := grpc.DialContext(context.Background(), listener.Addr().String(), grpcOpts...)
 							test.That(t, err, test.ShouldBeNil)
@@ -112,7 +113,7 @@ func TestServer(t *testing.T) {
 									Payload: "something",
 								}})
 								test.That(t, err, test.ShouldNotBeNil)
-								test.That(t, err.Error(), test.ShouldContainSubstring, "no way to")
+								test.That(t, err.Error(), test.ShouldContainSubstring, "no auth handler")
 
 								authResp, err := authClient.Authenticate(
 									context.Background(), &rpcpb.AuthenticateRequest{Entity: "foo", Credentials: &rpcpb.Credentials{
@@ -256,10 +257,10 @@ func TestServer(t *testing.T) {
 							if withAuthentication {
 								test.That(t, err.Error(), test.ShouldContainSubstring, "authentication required")
 								rtcConn, err = dialWebRTC(context.Background(), HostURI(listener.Addr().String(), host), &dialOptions{
-									creds:     Credentials{Type: "fake"},
 									tlsConfig: tlsConf,
 									webrtcOpts: DialWebRTCOptions{
 										SignalingInsecure: !secure,
+										SignalingCreds:    Credentials{Type: "fake"},
 									},
 								}, logger)
 							}

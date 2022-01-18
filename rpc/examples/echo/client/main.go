@@ -39,9 +39,25 @@ func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) (err 
 	if argsParsed.Insecure {
 		dialOpts = append(dialOpts, rpc.WithInsecure())
 	}
-	dialOpts = append(dialOpts, rpc.WithWebRTCOptions(rpc.DialWebRTCOptions{
-		SignalingServer: argsParsed.SignalingServer,
-	}))
+	if argsParsed.SignalingServer != "" {
+		webRTCOpts := rpc.DialWebRTCOptions{
+			SignalingServerAddress: argsParsed.SignalingServer,
+		}
+		if argsParsed.Insecure {
+			webRTCOpts.SignalingInsecure = true
+		}
+		if argsParsed.APIKey != "" {
+			webRTCOpts.SignalingCreds = rpc.Credentials{
+				Type:    rpc.CredentialsTypeAPIKey,
+				Payload: argsParsed.APIKey,
+			}
+		}
+		if argsParsed.ExternalAuthAddress != "" {
+			webRTCOpts.SignalingExternalAuthAddress = argsParsed.ExternalAuthAddress
+			webRTCOpts.SignalingExternalAuthToEntity = argsParsed.Host
+		}
+		dialOpts = append(dialOpts, rpc.WithWebRTCOptions(webRTCOpts))
+	}
 	if argsParsed.APIKey != "" {
 		dialOpts = append(dialOpts, rpc.WithCredentials(rpc.Credentials{
 			Type:    rpc.CredentialsTypeAPIKey,
@@ -49,7 +65,10 @@ func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) (err 
 		}))
 	}
 	if argsParsed.ExternalAuthAddress != "" {
-		dialOpts = append(dialOpts, rpc.WithExternalAuth(argsParsed.ExternalAuthAddress))
+		dialOpts = append(dialOpts, rpc.WithExternalAuth(
+			argsParsed.ExternalAuthAddress,
+			argsParsed.Host,
+		))
 	}
 	cc, err := rpc.Dial(ctx, argsParsed.Host, logger, dialOpts...)
 	if err != nil {

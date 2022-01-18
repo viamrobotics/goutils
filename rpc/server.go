@@ -24,6 +24,7 @@ import (
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/net/http2/h2c"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
@@ -79,16 +80,11 @@ type Server interface {
 	// This is useful in a scenario where all gRPC is served from the root path due to
 	// limitations of normal gRPC being served from a non-root path.
 	http.Handler
-
-	// SignalingAddr returns the WebRTC signaling address in use.
-	SignalingAddr() string
-
-	// SignalingHosts returns the hosts WebRTC communications are happening on behalf of.
-	SignalingHosts() []string
 }
 
 type simpleServer struct {
 	rpcpb.UnimplementedAuthServiceServer
+	rpcpb.UnimplementedExternalAuthServiceServer
 	mu                   sync.RWMutex
 	grpcListener         net.Listener
 	grpcServer           *grpc.Server
@@ -96,9 +92,7 @@ type simpleServer struct {
 	grpcGatewayHandler   *runtime.ServeMux
 	httpServer           *http.Server
 	webrtcServer         *webrtcServer
-	webrtcAnswerer       *webrtcSignalingAnswerer
-	signalingAddr        string
-	signalingHosts       []string
+	webrtcAnswerers      []*webrtcSignalingAnswerer
 	serviceServerCancels []func()
 	serviceServers       []interface{}
 	signalingCallQueue   WebRTCCallQueue
@@ -106,6 +100,8 @@ type simpleServer struct {
 	internalUUID         string
 	internalCreds        Credentials
 	authHandlers         map[CredentialsType]AuthHandler
+	authToType           CredentialsType
+	authToHandler        AuthenticateToHandler
 	exemptMethods        map[string]bool
 	stopped              bool
 	logger               golog.Logger
@@ -167,6 +163,8 @@ func newWithListener(
 			Payload: base64.StdEncoding.EncodeToString(internalCredsKey),
 		},
 		authHandlers:  sOpts.authHandlers,
+		authToType:    sOpts.authToType,
+		authToHandler: sOpts.authToHandler,
 		exemptMethods: make(map[string]bool),
 		logger:        logger,
 	}
@@ -187,7 +185,17 @@ func newWithListener(
 		unaryAuthIntPos = len(unaryInterceptors) - 1
 	}
 	if sOpts.unaryInterceptor != nil {
-		unaryInterceptors = append(unaryInterceptors, sOpts.unaryInterceptor)
+		unaryInterceptors = append(unaryInterceptors, func(
+			ctx context.Context,
+			req interface{},
+			info *grpc.UnaryServerInfo,
+			handler grpc.UnaryHandler,
+		) (interface{}, error) {
+			if server.exemptMethods[info.FullMethod] {
+				return handler(ctx, req)
+			}
+			return sOpts.unaryInterceptor(ctx, req, info, handler)
+		})
 	}
 	unaryInterceptor := grpc_middleware.ChainUnaryServer(unaryInterceptors...)
 	serverOpts = append(serverOpts, grpc.UnaryInterceptor(unaryInterceptor))
@@ -204,7 +212,17 @@ func newWithListener(
 		streamAuthIntPos = len(streamInterceptors) - 1
 	}
 	if sOpts.streamInterceptor != nil {
-		streamInterceptors = append(streamInterceptors, sOpts.streamInterceptor)
+		streamInterceptors = append(streamInterceptors, func(
+			srv interface{},
+			serverStream grpc.ServerStream,
+			info *grpc.StreamServerInfo,
+			handler grpc.StreamHandler,
+		) error {
+			if server.exemptMethods[info.FullMethod] {
+				return handler(srv, serverStream)
+			}
+			return sOpts.streamInterceptor(srv, serverStream, info, handler)
+		})
 	}
 	streamInterceptor := grpc_middleware.ChainStreamServer(streamInterceptors...)
 	serverOpts = append(serverOpts, grpc.StreamInterceptor(streamInterceptor))
@@ -217,10 +235,14 @@ func newWithListener(
 		return true
 	}))
 
+	if sOpts.webrtcOpts.ExternalSignalingAddress == "" {
+		sOpts.webrtcOpts.EnableInternalSignaling = true
+	}
+
 	server.grpcServer = grpcServer
 	server.grpcWebServer = grpcWebServer
 
-	if sOpts.webrtcOpts.Enable && sOpts.webrtcOpts.ExternalSignalingAddress == "" {
+	if sOpts.webrtcOpts.Enable && sOpts.webrtcOpts.EnableInternalSignaling {
 		logger.Info("will run internal signaling service")
 		signalingCallQueue := NewMemoryWebRTCCallQueue()
 		server.signalingCallQueue = signalingCallQueue
@@ -249,6 +271,17 @@ func newWithListener(
 		server.exemptMethods["/proto.rpc.v1.AuthService/Authenticate"] = true
 	}
 
+	if sOpts.authToHandler != nil {
+		if err := server.RegisterServiceServer(
+			context.Background(),
+			&rpcpb.ExternalAuthService_ServiceDesc,
+			server,
+			rpcpb.RegisterExternalAuthServiceHandlerFromEndpoint,
+		); err != nil {
+			return nil, err
+		}
+	}
+
 	if sOpts.webrtcOpts.Enable {
 		// TODO(https://github.com/viamrobotics/goutils/issues/12): Handle auth; right now we assume
 		// successful auth to the signaler implies that auth should be allowed here, which is not 100%
@@ -275,39 +308,53 @@ func newWithListener(
 			unaryInterceptor,
 			streamInterceptor,
 		)
-		address := sOpts.webrtcOpts.ExternalSignalingAddress
-		answererDialOptsCopy := make([]DialOption, len(sOpts.webrtcOpts.ExternalSignalingDialOpts))
-		copy(answererDialOptsCopy, sOpts.webrtcOpts.ExternalSignalingDialOpts)
-		if address == "" {
-			//nolint:makezero
-			answererDialOptsCopy = append(answererDialOptsCopy, WithInsecure())
-			address = grpcListener.Addr().String()
-			if !sOpts.unauthenticated {
-				//nolint:makezero
-				answererDialOptsCopy = append(answererDialOptsCopy, WithEntityCredentials(server.internalUUID, server.internalCreds))
-			}
-		}
-		server.signalingAddr = address
 		signalingHosts := sOpts.webrtcOpts.SignalingHosts
 		if len(signalingHosts) == 0 {
 			signalingHosts = []string{"local"}
 		}
-		server.signalingHosts = signalingHosts
-		logger.Infow("will run signaling answerer", "signaling_address", address, "for_hosts", signalingHosts)
 
 		config := DefaultWebRTCConfiguration
 		if sOpts.webrtcOpts.Config != nil {
 			config = *sOpts.webrtcOpts.Config
 		}
 
-		server.webrtcAnswerer = newWebRTCSignalingAnswerer(
-			address,
-			signalingHosts,
-			server.webrtcServer,
-			answererDialOptsCopy,
-			config,
-			logger,
-		)
+		if sOpts.webrtcOpts.ExternalSignalingAddress != "" {
+			logger.Infow(
+				"will run signaling answerer",
+				"signaling_address", sOpts.webrtcOpts.ExternalSignalingAddress,
+				"for_hosts", signalingHosts,
+			)
+			server.webrtcAnswerers = append(server.webrtcAnswerers, newWebRTCSignalingAnswerer(
+				sOpts.webrtcOpts.ExternalSignalingAddress,
+				signalingHosts,
+				server.webrtcServer,
+				sOpts.webrtcOpts.ExternalSignalingDialOpts,
+				config,
+				logger,
+			))
+		}
+
+		if sOpts.webrtcOpts.EnableInternalSignaling {
+			address := grpcListener.Addr().String()
+			logger.Infow(
+				"will run intenral signaling answerer",
+				"signaling_address", address,
+				"for_hosts", signalingHosts,
+			)
+			var answererDialOpts []DialOption
+			answererDialOpts = append(answererDialOpts, WithInsecure())
+			if !sOpts.unauthenticated {
+				answererDialOpts = append(answererDialOpts, WithEntityCredentials(server.internalUUID, server.internalCreds))
+			}
+			server.webrtcAnswerers = append(server.webrtcAnswerers, newWebRTCSignalingAnswerer(
+				address,
+				signalingHosts,
+				server.webrtcServer,
+				answererDialOpts,
+				config,
+				logger,
+			))
+		}
 	}
 
 	return server, nil
@@ -403,11 +450,9 @@ func (ss *simpleServer) Start() error {
 		}
 	})
 
-	if ss.webrtcAnswerer == nil {
-		return nil
+	for _, answerer := range ss.webrtcAnswerers {
+		answerer.Start()
 	}
-
-	ss.webrtcAnswerer.Start()
 
 	errMu.Lock()
 	defer errMu.Unlock()
@@ -460,14 +505,6 @@ func (ss *simpleServer) serveTLS(listener net.Listener, certFile, keyFile string
 	return err
 }
 
-func (ss *simpleServer) SignalingAddr() string {
-	return ss.signalingAddr
-}
-
-func (ss *simpleServer) SignalingHosts() []string {
-	return ss.signalingHosts
-}
-
 func (ss *simpleServer) Stop() error {
 	ss.mu.Lock()
 	if ss.stopped {
@@ -492,10 +529,10 @@ func (ss *simpleServer) Stop() error {
 		err = multierr.Combine(err, utils.TryClose(context.Background(), srv))
 	}
 	ss.logger.Info("service servers closed")
-	if ss.webrtcAnswerer != nil {
-		ss.logger.Info("stopping WebRTC answerer")
-		ss.webrtcAnswerer.Stop()
-		ss.logger.Info("WebRTC answerer stopped")
+	for idx, answerer := range ss.webrtcAnswerers {
+		ss.logger.Infow("stopping WebRTC answerer", "num", idx)
+		answerer.Stop()
+		ss.logger.Infow("WebRTC answerer stopped", "num", idx)
 	}
 	if ss.webrtcServer != nil {
 		ss.logger.Info("stopping WebRTC server")
@@ -534,7 +571,10 @@ func (ss *simpleServer) RegisterServiceServer(
 	}
 	if len(svcHandlers) != 0 {
 		addr := ss.grpcListener.Addr().String()
-		opts := []grpc.DialOption{grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(maxMessageSize)), grpc.WithInsecure()}
+		opts := []grpc.DialOption{
+			grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(maxMessageSize)),
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+		}
 		for _, h := range svcHandlers {
 			if err := h(stopCtx, ss.grpcGatewayHandler, addr, opts); err != nil {
 				return err

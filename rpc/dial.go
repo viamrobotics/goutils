@@ -5,77 +5,67 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"strings"
 	"time"
 
 	"github.com/edaniels/golog"
 )
 
-// Dial attempts to make the most convenient connection to the given address. It first tries a direct
-// connection if the address is an IP. It next tries to connect to the local version of the host followed
-// by a WebRTC brokered connection.
-// TODO(https://github.com/viamrobotics/core/issues/111): figure out decent way to handle reconnect on connection termination.
+// Dial attempts to make the most convenient connection to the given address. It attempts to connect
+// via WebRTC if a signaling server is detected or provided. Otherwise it attempts to connect directly.
+// TODO(https://github.com/viamrobotics/goutils/issues/19): figure out decent way to handle reconnect on connection termination.
 func Dial(ctx context.Context, address string, logger golog.Logger, opts ...DialOption) (ClientConn, error) {
 	var dOpts dialOptions
 	for _, opt := range opts {
 		opt.apply(&dOpts)
 	}
+
+	if dOpts.debug {
+		logger.Debugw("starting to dial", "address", address)
+	}
+
 	if dOpts.authEntity == "" {
-		dOpts.authEntity = address
-	}
-
-	var host string
-	var port string
-	if strings.ContainsRune(address, ':') {
-		var err error
-		host, port, err = net.SplitHostPort(address)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		host = address
-	}
-
-	if addr := net.ParseIP(host); addr == nil && false {
-		localHost := fmt.Sprintf("local.%s", host)
-		if _, err := lookupHost(ctx, localHost); err == nil {
-			var localAddress string
-			if port == "" {
-				localAddress = fmt.Sprintf("%s:80", localHost)
-			} else {
-				localAddress = fmt.Sprintf("%s:%s", localHost, port)
+		if dOpts.externalAuthAddr == "" {
+			// if we are not doing external auth, then the entity is assumed to be the actual address.
+			if dOpts.debug {
+				logger.Debugw("auth entity empty; setting to address", "address", address)
 			}
-			// TODO(https://github.com/viamrobotics/core/issues/103): This needs to authenticate the server so we don't have a confused
-			// deputy.
-			localCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-			defer cancel()
-			if conn, cached, err := dialDirectGRPC(localCtx, localAddress, &dOpts, logger); err == nil {
-				if !cached {
-					logger.Debugw("connected directly via local host", "address", localAddress)
-				}
-				return conn, nil
-			} else if ctx.Err() != nil { // do not care about local timeout
-				return nil, ctx.Err()
+			dOpts.authEntity = address
+		} else {
+			// otherwise it's the external auth address.
+			if dOpts.debug {
+				logger.Debugw("auth entity empty; setting to external auth address", "address", dOpts.externalAuthAddr)
 			}
-		} else if ctx.Err() != nil {
-			return nil, ctx.Err()
+			dOpts.authEntity = dOpts.externalAuthAddr
 		}
 	}
 
-	srvTimeoutCtx, srvTimeoutCtxCancel := context.WithTimeout(ctx, 5*time.Second)
-	defer srvTimeoutCtxCancel()
-	dOpts.webrtcOpts.SignalingInsecure = dOpts.insecure
-	if target, port, err := lookupSRV(srvTimeoutCtx, host); err == nil {
-		dOpts.webrtcOpts.SignalingInsecure = port != 443
-		dOpts.webrtcOpts.SignalingServer = fmt.Sprintf("%s:%d", target, port)
-	} else if srvTimeoutCtx.Err() != nil && !errors.Is(srvTimeoutCtx.Err(), context.DeadlineExceeded) {
-		return nil, srvTimeoutCtx.Err()
+	if dOpts.webrtcOpts.SignalingServerAddress == "" {
+		srvTimeoutCtx, srvTimeoutCtxCancel := context.WithTimeout(ctx, 5*time.Second)
+		defer srvTimeoutCtxCancel()
+		if target, port, err := lookupSRV(srvTimeoutCtx, address); err == nil {
+			if dOpts.debug {
+				logger.Debugw("found SRV record for address", "target", target, "port", port)
+			}
+			dOpts.webrtcOpts.SignalingInsecure = port != 443
+			dOpts.webrtcOpts.SignalingServerAddress = fmt.Sprintf("%s:%d", target, port)
+			dOpts.webrtcOpts.SignalingAuthEntity = dOpts.authEntity
+			dOpts.webrtcOpts.SignalingCreds = dOpts.creds
+			dOpts.webrtcOpts.SignalingExternalAuthAddress = ""
+			dOpts.webrtcOpts.SignalingExternalAuthToEntity = ""
+			dOpts.webrtcOpts.SignalingExternalAuthInsecure = false
+		} else if srvTimeoutCtx.Err() != nil && !errors.Is(srvTimeoutCtx.Err(), context.DeadlineExceeded) {
+			return nil, srvTimeoutCtx.Err()
+		}
 	}
 
-	if dOpts.webrtcOpts.SignalingServer != "" {
-		webrtcAddress := HostURI(dOpts.webrtcOpts.SignalingServer, address)
+	if dOpts.webrtcOpts.SignalingServerAddress != "" {
+		webrtcAddress := HostURI(dOpts.webrtcOpts.SignalingServerAddress, address)
 
-		conn, cached, err := dialFunc(ctx, "webrtc", webrtcAddress, func() (ClientConn, error) {
+		if dOpts.debug {
+			logger.Debugw("trying WebRTC", "address", webrtcAddress)
+		}
+
+		conn, cached, err := dialFunc(ctx, "webrtc", webrtcAddress, buildKeyExtra(&dOpts), func() (ClientConn, error) {
 			return dialWebRTC(ctx, webrtcAddress, &dOpts, logger)
 		})
 		if err == nil {
@@ -92,6 +82,9 @@ func Dial(ctx context.Context, address string, logger golog.Logger, opts ...Dial
 		}
 	}
 
+	if dOpts.debug {
+		logger.Debugw("trying direct", "address", address)
+	}
 	conn, cached, err := dialDirectGRPC(ctx, address, &dOpts, logger)
 	if err != nil {
 		return nil, err
@@ -100,13 +93,6 @@ func Dial(ctx context.Context, address string, logger golog.Logger, opts ...Dial
 		logger.Debugw("connected directly", "address", address)
 	}
 	return conn, nil
-}
-
-func lookupHost(ctx context.Context, host string) (addrs []string, err error) {
-	if ctxResolver := contextResolver(ctx); ctxResolver != nil {
-		return ctxResolver.LookupHost(ctx, host)
-	}
-	return net.DefaultResolver.LookupHost(ctx, host)
 }
 
 func lookupSRV(ctx context.Context, host string) (string, uint16, error) {

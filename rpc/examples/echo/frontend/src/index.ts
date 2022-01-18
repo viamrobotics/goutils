@@ -1,28 +1,47 @@
 import { grpc } from "@improbable-eng/grpc-web";
+import { Credentials, dialDirect, dialWebRTC } from "@viamrobotics/rpc";
+import { DialOptions } from "@viamrobotics/rpc/src/dial";
 import { EchoBiDiRequest, EchoMultipleRequest, EchoMultipleResponse, EchoRequest, EchoResponse } from "./gen/proto/rpc/examples/echo/v1/echo_pb";
 import { EchoServiceClient, ServiceError } from "./gen/proto/rpc/examples/echo/v1/echo_pb_service";
-import { dialDirect, dialWebRTC, Credentials } from "@viamrobotics/rpc";
 
-const signalingAddress = `${window.location.protocol}//${window.location.host}`;
+const thisHost = `${window.location.protocol}//${window.location.host}`;
 const host = "local";
 
 declare global {
 	interface Window {
 		creds?: Credentials;
 		externalAuthAddr?: string;
+		externalAuthToEntity?: string;
 	}
 }
 
 async function getClients() {
-	const opts = { credentials: window.creds, externalAuthAddress: window.externalAuthAddr };
+	const opts: DialOptions = {
+		credentials: window.creds,
+		externalAuthAddress: window.externalAuthAddr,
+		externalAuthToEntity: window.externalAuthToEntity,
+		webrtcOptions: {
+			disableTrickleICE: false,
+			signalingCredentials: window.creds,
+		}
+	};
+	if (opts.externalAuthAddress) {
+		// we are authenticating against the external address and then
+		// we will authenticate for externalAuthToEntity.
+		opts.authEntity = opts.externalAuthAddress.replace(/^(.*:\/\/)/, '');
+
+		// do similar for WebRTC
+		opts.webrtcOptions!.signalingExternalAuthAddress = opts.externalAuthAddress;
+		opts.webrtcOptions!.signalingExternalAuthToEntity = opts.externalAuthToEntity;
+	}
 	console.log("WebRTC")
-	const webRTCConn = await dialWebRTC(signalingAddress, host, opts);
+	const webRTCConn = await dialWebRTC(thisHost, host, opts);
 	const webrtcClient = new EchoServiceClient(host, { transport: webRTCConn.transportFactory });
 	await doEchos(webrtcClient);
 
 	console.log("Direct") // bi-di may not work
-	const directTransport = await dialDirect(signalingAddress, opts);
-	const directClient = new EchoServiceClient(signalingAddress, { transport: directTransport });
+	const directTransport = await dialDirect(thisHost, opts);
+	const directClient = new EchoServiceClient(thisHost, { transport: directTransport });
 	await doEchos(directClient);
 }
 getClients().catch(e => {

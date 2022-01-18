@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Masterminds/sprig"
+	"github.com/edaniels/golog"
 )
 
 // TemplateManager responsible for managing, caching, finding templates.
@@ -111,6 +112,7 @@ func DirectTemplate(t *template.Template) *Template {
 type TemplateMiddleware struct {
 	Templates TemplateManager
 	Handler   TemplateHandler
+	Logger    golog.Logger
 }
 
 func (tm *TemplateMiddleware) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -120,19 +122,19 @@ func (tm *TemplateMiddleware) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 	r = r.WithContext(ctx)
 
 	t, data, err := tm.Handler.Serve(w, r)
-	if HandleError(w, err) {
+	if HandleError(w, err, tm.Logger) {
 		return
 	}
 
 	gt := t.direct
 	if gt == nil {
 		gt, err = tm.Templates.LookupTemplate(t.named)
-		if HandleError(w, err) {
+		if HandleError(w, err, tm.Logger) {
 			return
 		}
 	}
 
-	HandleError(w, gt.Execute(w, data))
+	HandleError(w, gt.Execute(w, data), tm.Logger)
 }
 
 func fixFiles(files []fs.DirEntry, root string) []string {

@@ -20,6 +20,7 @@ import (
 	"go.viam.com/test"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
@@ -41,23 +42,29 @@ func TestServerAuth(t *testing.T) {
 			Enable:         true,
 			SignalingHosts: []string{"yeehaw"},
 		}),
-		WithAuthHandler("fake", MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) error {
+		WithAuthHandler("fake", MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) (map[string]string, error) {
 			testMu.Lock()
 			defer testMu.Unlock()
 			if fakeAuthWorks {
-				return nil
+				return map[string]string{"please persist": "need this value"}, nil
 			}
-			return errors.New("this auth does not work yet")
-		}, func(ctx context.Context, entity string) error {
-			return nil
+			return nil, errors.New("this auth does not work yet")
+		}, func(ctx context.Context, entity string) (interface{}, error) {
+			md := ContextAuthMetadata(ctx)
+			if md["please persist"] != "need this value" {
+				return nil, errors.New("bad metadata")
+			}
+			return "somespecialinterface", nil
 		})),
 	)
 	test.That(t, err, test.ShouldBeNil)
 
+	echoServer := &echoserver.Server{ContextAuthEntity: MustContextAuthEntity}
+	echoServer.SetAuthorized(true)
 	err = rpcServer.RegisterServiceServer(
 		context.Background(),
 		&pb.EchoService_ServiceDesc,
-		&echoserver.Server{},
+		echoServer,
 		pb.RegisterEchoServiceHandlerFromEndpoint,
 	)
 	test.That(t, err, test.ShouldBeNil)
@@ -72,7 +79,12 @@ func TestServerAuth(t *testing.T) {
 
 	// standard grpc
 	t.Run("standard grpc", func(t *testing.T) {
-		conn, err := grpc.DialContext(context.Background(), httpListener.Addr().String(), grpc.WithInsecure(), grpc.WithBlock())
+		conn, err := grpc.DialContext(
+			context.Background(),
+			httpListener.Addr().String(),
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithBlock(),
+		)
 		test.That(t, err, test.ShouldBeNil)
 		defer func() {
 			test.That(t, conn.Close(), test.ShouldBeNil)
@@ -113,7 +125,7 @@ func TestServerAuth(t *testing.T) {
 			Payload: "something",
 		}})
 		test.That(t, err, test.ShouldNotBeNil)
-		test.That(t, err.Error(), test.ShouldContainSubstring, "no way to")
+		test.That(t, err.Error(), test.ShouldContainSubstring, "no auth handler")
 
 		_, err = authClient.Authenticate(context.Background(), &rpcpb.AuthenticateRequest{Entity: "foo", Credentials: &rpcpb.Credentials{
 			Type: "fake",
@@ -186,7 +198,12 @@ func TestServerAuth(t *testing.T) {
 		test.That(t, string(rd), test.ShouldResemble, "")
 
 		// works from here
-		conn, err := grpc.DialContext(context.Background(), httpListener.Addr().String(), grpc.WithInsecure(), grpc.WithBlock())
+		conn, err := grpc.DialContext(
+			context.Background(),
+			httpListener.Addr().String(),
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithBlock(),
+		)
 		test.That(t, err, test.ShouldBeNil)
 		defer func() {
 			test.That(t, conn.Close(), test.ShouldBeNil)
@@ -244,7 +261,12 @@ func TestServerAuth(t *testing.T) {
 		test.That(t, httpResp3.StatusCode, test.ShouldEqual, 401)
 
 		// works from here
-		conn, err := grpc.DialContext(context.Background(), httpListener.Addr().String(), grpc.WithInsecure(), grpc.WithBlock())
+		conn, err := grpc.DialContext(
+			context.Background(),
+			httpListener.Addr().String(),
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithBlock(),
+		)
 		test.That(t, err, test.ShouldBeNil)
 		defer func() {
 			test.That(t, conn.Close(), test.ShouldBeNil)
@@ -290,10 +312,10 @@ func TestServerAuthJWTExpiration(t *testing.T) {
 			Enable:         true,
 			SignalingHosts: []string{"yeehaw"},
 		}),
-		WithAuthHandler("fake", MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) error {
-			return nil
-		}, func(ctx context.Context, entity string) error {
-			return nil
+		WithAuthHandler("fake", MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) (map[string]string, error) {
+			return map[string]string{}, nil
+		}, func(ctx context.Context, entity string) (interface{}, error) {
+			return map[string]string{}, nil
 		})),
 		WithAuthRSAPrivateKey(privKey),
 	)
@@ -315,14 +337,19 @@ func TestServerAuthJWTExpiration(t *testing.T) {
 		errChan <- rpcServer.Serve(httpListener)
 	}()
 
-	conn, err := grpc.DialContext(context.Background(), httpListener.Addr().String(), grpc.WithInsecure(), grpc.WithBlock())
+	conn, err := grpc.DialContext(
+		context.Background(),
+		httpListener.Addr().String(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithBlock(),
+	)
 	test.That(t, err, test.ShouldBeNil)
 	defer func() {
 		test.That(t, conn.Close(), test.ShouldBeNil)
 	}()
 	client := pb.NewEchoServiceClient(conn)
 
-	token := jwt.NewWithClaims(jwt.SigningMethodRS256, rpcClaims{
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, JWTClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			Audience:  jwt.ClaimStrings{"does not matter"},
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(-time.Minute)),
@@ -364,13 +391,13 @@ func TestServerAuthJWTAudience(t *testing.T) {
 			Enable:         true,
 			SignalingHosts: []string{"yeehaw"},
 		}),
-		WithAuthHandler("fake", MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) error {
-			return nil
-		}, func(ctx context.Context, entity string) error {
+		WithAuthHandler("fake", MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) (map[string]string, error) {
+			return map[string]string{}, nil
+		}, func(ctx context.Context, entity string) (interface{}, error) {
 			if entity == expectedEntity {
-				return nil
+				return map[string]string{}, nil
 			}
-			return errSessionEntityHandlerMismatch
+			return nil, errCannotAuthEntity
 		})),
 		WithAuthRSAPrivateKey(privKey),
 	)
@@ -392,7 +419,12 @@ func TestServerAuthJWTAudience(t *testing.T) {
 		errChan <- rpcServer.Serve(httpListener)
 	}()
 
-	conn, err := grpc.DialContext(context.Background(), httpListener.Addr().String(), grpc.WithInsecure(), grpc.WithBlock())
+	conn, err := grpc.DialContext(
+		context.Background(),
+		httpListener.Addr().String(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithBlock(),
+	)
 	test.That(t, err, test.ShouldBeNil)
 	defer func() {
 		test.That(t, conn.Close(), test.ShouldBeNil)
@@ -413,7 +445,7 @@ func TestServerAuthJWTAudience(t *testing.T) {
 			} else {
 				aud = "actually matters"
 			}
-			token := jwt.NewWithClaims(jwt.SigningMethodRS256, rpcClaims{
+			token := jwt.NewWithClaims(jwt.SigningMethodRS256, JWTClaims{
 				RegisteredClaims: jwt.RegisteredClaims{
 					Audience: jwt.ClaimStrings{aud},
 				},
@@ -437,7 +469,7 @@ func TestServerAuthJWTAudience(t *testing.T) {
 				gStatus, ok := status.FromError(err)
 				test.That(t, ok, test.ShouldBeTrue)
 				test.That(t, gStatus.Code(), test.ShouldEqual, codes.Unauthenticated)
-				test.That(t, gStatus.Message(), test.ShouldContainSubstring, "mismatch")
+				test.That(t, gStatus.Message(), test.ShouldContainSubstring, "cannot authenticate")
 			}
 		})
 	}
@@ -460,11 +492,11 @@ func TestServerAuthKeyFunc(t *testing.T) {
 		}),
 		WithAuthHandler("fake", WithTokenVerificationKeyProvider(
 			funcAuthHandler{
-				auth: func(ctx context.Context, entity, payload string) error {
-					return nil
+				auth: func(ctx context.Context, entity, payload string) (map[string]string, error) {
+					return map[string]string{}, nil
 				},
-				verify: func(ctx context.Context, entity string) error {
-					return nil
+				verify: func(ctx context.Context, entity string) (interface{}, error) {
+					return entity, nil
 				},
 			},
 			func(token *jwt.Token) (interface{}, error) {
@@ -497,7 +529,12 @@ func TestServerAuthKeyFunc(t *testing.T) {
 		errChan <- rpcServer.Serve(httpListener)
 	}()
 
-	conn, err := grpc.DialContext(context.Background(), httpListener.Addr().String(), grpc.WithInsecure(), grpc.WithBlock())
+	conn, err := grpc.DialContext(
+		context.Background(),
+		httpListener.Addr().String(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithBlock(),
+	)
 	test.That(t, err, test.ShouldBeNil)
 	defer func() {
 		test.That(t, conn.Close(), test.ShouldBeNil)

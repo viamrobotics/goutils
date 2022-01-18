@@ -67,6 +67,42 @@ func local_request_AuthService_Authenticate_0(ctx context.Context, marshaler run
 
 }
 
+var (
+	filter_ExternalAuthService_AuthenticateTo_0 = &utilities.DoubleArray{Encoding: map[string]int{}, Base: []int(nil), Check: []int(nil)}
+)
+
+func request_ExternalAuthService_AuthenticateTo_0(ctx context.Context, marshaler runtime.Marshaler, client ExternalAuthServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq AuthenticateToRequest
+	var metadata runtime.ServerMetadata
+
+	if err := req.ParseForm(); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_ExternalAuthService_AuthenticateTo_0); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+
+	msg, err := client.AuthenticateTo(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	return msg, metadata, err
+
+}
+
+func local_request_ExternalAuthService_AuthenticateTo_0(ctx context.Context, marshaler runtime.Marshaler, server ExternalAuthServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq AuthenticateToRequest
+	var metadata runtime.ServerMetadata
+
+	if err := req.ParseForm(); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_ExternalAuthService_AuthenticateTo_0); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+
+	msg, err := server.AuthenticateTo(ctx, &protoReq)
+	return msg, metadata, err
+
+}
+
 // RegisterAuthServiceHandlerServer registers the http handlers for service AuthService to "mux".
 // UnaryRPC     :call AuthServiceServer directly.
 // StreamingRPC :currently unsupported pending https://github.com/grpc/grpc-go/issues/906.
@@ -93,6 +129,38 @@ func RegisterAuthServiceHandlerServer(ctx context.Context, mux *runtime.ServeMux
 		}
 
 		forward_AuthService_Authenticate_0(ctx, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+
+	})
+
+	return nil
+}
+
+// RegisterExternalAuthServiceHandlerServer registers the http handlers for service ExternalAuthService to "mux".
+// UnaryRPC     :call ExternalAuthServiceServer directly.
+// StreamingRPC :currently unsupported pending https://github.com/grpc/grpc-go/issues/906.
+// Note that using this registration option will cause many gRPC library features to stop working. Consider using RegisterExternalAuthServiceHandlerFromEndpoint instead.
+func RegisterExternalAuthServiceHandlerServer(ctx context.Context, mux *runtime.ServeMux, server ExternalAuthServiceServer) error {
+
+	mux.Handle("POST", pattern_ExternalAuthService_AuthenticateTo_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		var stream runtime.ServerTransportStream
+		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		rctx, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/proto.rpc.v1.ExternalAuthService/AuthenticateTo", runtime.WithHTTPPathPattern("/rpc/v1/authenticate_to"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := local_request_ExternalAuthService_AuthenticateTo_0(rctx, inboundMarshaler, server, req, pathParams)
+		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
+		ctx = runtime.NewServerMetadataContext(ctx, md)
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+
+		forward_ExternalAuthService_AuthenticateTo_0(ctx, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 
 	})
 
@@ -166,4 +234,73 @@ var (
 
 var (
 	forward_AuthService_Authenticate_0 = runtime.ForwardResponseMessage
+)
+
+// RegisterExternalAuthServiceHandlerFromEndpoint is same as RegisterExternalAuthServiceHandler but
+// automatically dials to "endpoint" and closes the connection when "ctx" gets done.
+func RegisterExternalAuthServiceHandlerFromEndpoint(ctx context.Context, mux *runtime.ServeMux, endpoint string, opts []grpc.DialOption) (err error) {
+	conn, err := grpc.Dial(endpoint, opts...)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			if cerr := conn.Close(); cerr != nil {
+				grpclog.Infof("Failed to close conn to %s: %v", endpoint, cerr)
+			}
+			return
+		}
+		go func() {
+			<-ctx.Done()
+			if cerr := conn.Close(); cerr != nil {
+				grpclog.Infof("Failed to close conn to %s: %v", endpoint, cerr)
+			}
+		}()
+	}()
+
+	return RegisterExternalAuthServiceHandler(ctx, mux, conn)
+}
+
+// RegisterExternalAuthServiceHandler registers the http handlers for service ExternalAuthService to "mux".
+// The handlers forward requests to the grpc endpoint over "conn".
+func RegisterExternalAuthServiceHandler(ctx context.Context, mux *runtime.ServeMux, conn *grpc.ClientConn) error {
+	return RegisterExternalAuthServiceHandlerClient(ctx, mux, NewExternalAuthServiceClient(conn))
+}
+
+// RegisterExternalAuthServiceHandlerClient registers the http handlers for service ExternalAuthService
+// to "mux". The handlers forward requests to the grpc endpoint over the given implementation of "ExternalAuthServiceClient".
+// Note: the gRPC framework executes interceptors within the gRPC handler. If the passed in "ExternalAuthServiceClient"
+// doesn't go through the normal gRPC flow (creating a gRPC client etc.) then it will be up to the passed in
+// "ExternalAuthServiceClient" to call the correct interceptors.
+func RegisterExternalAuthServiceHandlerClient(ctx context.Context, mux *runtime.ServeMux, client ExternalAuthServiceClient) error {
+
+	mux.Handle("POST", pattern_ExternalAuthService_AuthenticateTo_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		rctx, err := runtime.AnnotateContext(ctx, mux, req, "/proto.rpc.v1.ExternalAuthService/AuthenticateTo", runtime.WithHTTPPathPattern("/rpc/v1/authenticate_to"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := request_ExternalAuthService_AuthenticateTo_0(rctx, inboundMarshaler, client, req, pathParams)
+		ctx = runtime.NewServerMetadataContext(ctx, md)
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+
+		forward_ExternalAuthService_AuthenticateTo_0(ctx, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+
+	})
+
+	return nil
+}
+
+var (
+	pattern_ExternalAuthService_AuthenticateTo_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"rpc", "v1", "authenticate_to"}, ""))
+)
+
+var (
+	forward_ExternalAuthService_AuthenticateTo_0 = runtime.ForwardResponseMessage
 )

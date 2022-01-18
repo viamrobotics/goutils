@@ -3,7 +3,9 @@ package rpc
 import (
 	"context"
 	"crypto/tls"
+	"encoding/hex"
 	"fmt"
+	"hash/fnv"
 	"strings"
 	"sync"
 	"time"
@@ -11,13 +13,16 @@ import (
 	"github.com/edaniels/golog"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
+	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
 	"go.viam.com/utils"
@@ -27,10 +32,21 @@ import (
 // A Dialer is responsible for making connections to gRPC endpoints.
 type Dialer interface {
 	// DialDirect makes a connection to the given target over standard gRPC with the supplied options.
-	DialDirect(ctx context.Context, target string, onClose func() error, opts ...grpc.DialOption) (conn ClientConn, cached bool, err error)
+	DialDirect(
+		ctx context.Context,
+		target string,
+		keyExtra string,
+		onClose func() error,
+		opts ...grpc.DialOption,
+	) (conn ClientConn, cached bool, err error)
 
 	// DialFunc makes a connection to the given target for the given proto using the given dial function.
-	DialFunc(proto string, target string, f func() (ClientConn, func() error, error)) (conn ClientConn, cached bool, err error)
+	DialFunc(
+		proto string,
+		target string,
+		keyExtra string,
+		dialNew func() (ClientConn, func() error, error),
+	) (conn ClientConn, cached bool, err error)
 
 	// Close ensures all connections made are cleanly closed.
 	Close() error
@@ -58,10 +74,11 @@ func NewCachedDialer() Dialer {
 func (cd *cachedDialer) DialDirect(
 	ctx context.Context,
 	target string,
+	keyExtra string,
 	onClose func() error,
 	opts ...grpc.DialOption,
 ) (ClientConn, bool, error) {
-	return cd.DialFunc("grpc", target, func() (ClientConn, func() error, error) {
+	return cd.DialFunc("grpc", target, keyExtra, func() (ClientConn, func() error, error) {
 		conn, err := grpc.DialContext(ctx, target, opts...)
 		if err != nil {
 			return nil, nil, err
@@ -70,8 +87,13 @@ func (cd *cachedDialer) DialDirect(
 	})
 }
 
-func (cd *cachedDialer) DialFunc(proto string, target string, f func() (ClientConn, func() error, error)) (ClientConn, bool, error) {
-	key := fmt.Sprintf("%s:%s", proto, target)
+func (cd *cachedDialer) DialFunc(
+	proto string,
+	target string,
+	keyExtra string,
+	dialNew func() (ClientConn, func() error, error),
+) (ClientConn, bool, error) {
+	key := fmt.Sprintf("%s:%s:%s", proto, target, keyExtra)
 	cd.mu.Lock()
 	c, ok := cd.conns[key]
 	cd.mu.Unlock()
@@ -80,7 +102,7 @@ func (cd *cachedDialer) DialFunc(proto string, target string, f func() (ClientCo
 	}
 
 	// assume any difference in opts does not matter
-	conn, onClose, err := f()
+	conn, onClose, err := dialNew()
 	if err != nil {
 		return nil, false, err
 	}
@@ -159,6 +181,10 @@ func (rc *reffedConn) Close() error {
 	return err
 }
 
+// ErrInsecureWithCredentials is sent when a dial attempt is made to an address where either the insecure
+// option or insecure downgrade with credentials options are not set.
+var ErrInsecureWithCredentials = errors.New("requested address is insecure and will not send credentials")
+
 // dialDirectGRPC dials a gRPC server directly.
 func dialDirectGRPC(ctx context.Context, address string, dOpts *dialOptions, logger golog.Logger) (ClientConn, bool, error) {
 	dialOpts := []grpc.DialOption{
@@ -169,13 +195,36 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts *dialOptions, log
 		}),
 	}
 	if dOpts.insecure {
-		dialOpts = append(dialOpts, grpc.WithInsecure())
+		dialOpts = append(dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	} else {
 		tlsConfig := dOpts.tlsConfig
 		if tlsConfig == nil {
 			tlsConfig = &tls.Config{MinVersion: tls.VersionTLS12}
 		}
-		dialOpts = append(dialOpts, grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)))
+
+		var downgrade bool
+		if dOpts.allowInsecureDowngrade || dOpts.allowInsecureWithCredsDowngrade {
+			var dialer tls.Dialer
+			conn, err := dialer.DialContext(ctx, "tcp", address)
+			if err == nil {
+				// will use TLS
+				utils.UncheckedError(conn.Close())
+			} else if strings.Contains(err.Error(), "tls: first record does not look like a TLS handshake") {
+				// unfortunately there's no explicit error value for this, so we do a string check
+				hasLocalCreds := dOpts.creds.Type != "" && dOpts.externalAuthAddr == ""
+				if dOpts.creds.Type == "" || !hasLocalCreds || dOpts.allowInsecureWithCredsDowngrade {
+					logger.Warnw("downgrading from TLS to plaintext", "address", address, "with_credentials", hasLocalCreds)
+					downgrade = true
+				} else if hasLocalCreds {
+					return nil, false, ErrInsecureWithCredentials
+				}
+			}
+		}
+		if downgrade {
+			dialOpts = append(dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		} else {
+			dialOpts = append(dialOpts, grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)))
+		}
 	}
 
 	grpcLogger := logger.Desugar()
@@ -198,17 +247,33 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts *dialOptions, log
 		rpcCreds := &perRPCJWTCredentials{
 			entity: dOpts.authEntity,
 			creds:  dOpts.creds,
+			debug:  dOpts.debug,
+			logger: logger,
+		}
+		if dOpts.debug {
+			logger.Debugw("will eventually authenticate as entity", "entity", dOpts.authEntity)
 		}
 		if dOpts.externalAuthAddr != "" {
+			if dOpts.debug && dOpts.externalAuthToEntity != "" {
+				logger.Debugw("will eventually externally authenticate to entity", "entity", dOpts.externalAuthToEntity)
+			}
+			if dOpts.debug {
+				logger.Debugw("dialing direct for external auth", "address", dOpts.externalAuthAddr)
+			}
 			dialOptsCopy := *dOpts
+			dialOptsCopy.insecure = dOpts.externalAuthInsecure
 			dialOptsCopy.externalAuthAddr = ""
 			dialOptsCopy.creds = Credentials{}
-			externalConn, _, err := dialDirectGRPC(ctx, dOpts.externalAuthAddr, &dialOptsCopy, logger)
+			externalConn, externalCached, err := dialDirectGRPC(ctx, dOpts.externalAuthAddr, &dialOptsCopy, logger)
 			if err != nil {
 				return nil, false, err
 			}
+			if dOpts.debug && externalCached {
+				logger.Debugw("connected direct for external (cached)", "address", dOpts.externalAuthAddr)
+			}
 			closeCredsFunc = externalConn.Close
 			rpcCreds.conn = externalConn
+			rpcCreds.externalAuthToEntity = dOpts.externalAuthToEntity
 		} else {
 			connPtr = &rpcCreds.conn
 		}
@@ -218,7 +283,7 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts *dialOptions, log
 	var cached bool
 	var err error
 	if ctxDialer := contextDialer(ctx); ctxDialer != nil {
-		conn, cached, err = ctxDialer.DialDirect(ctx, address, closeCredsFunc, dialOpts...)
+		conn, cached, err = ctxDialer.DialDirect(ctx, address, buildKeyExtra(dOpts), closeCredsFunc, dialOpts...)
 	} else {
 		conn, err = grpc.DialContext(ctx, address, dialOpts...)
 		if err == nil && closeCredsFunc != nil {
@@ -235,6 +300,45 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts *dialOptions, log
 		*connPtr = conn
 	}
 	return conn, cached, err
+}
+
+// buildKeyExtra hashes options to only cache when authentication material
+// is the same between dials. That means any time a new way that differs
+// authentication based on options is introduced, this function should
+// also be updated.
+func buildKeyExtra(opts *dialOptions) string {
+	hasher := fnv.New128a()
+	if opts.authEntity != "" {
+		hasher.Write([]byte(opts.authEntity))
+	}
+	if opts.creds.Type != "" {
+		hasher.Write([]byte(opts.creds.Type))
+	}
+	if opts.creds.Payload != "" {
+		hasher.Write([]byte(opts.creds.Payload))
+	}
+	if opts.externalAuthAddr != "" {
+		hasher.Write([]byte(opts.externalAuthAddr))
+	}
+	if opts.externalAuthToEntity != "" {
+		hasher.Write([]byte(opts.externalAuthToEntity))
+	}
+	if opts.webrtcOpts.SignalingServerAddress != "" {
+		hasher.Write([]byte(opts.webrtcOpts.SignalingServerAddress))
+	}
+	if opts.webrtcOpts.SignalingExternalAuthAddress != "" {
+		hasher.Write([]byte(opts.webrtcOpts.SignalingExternalAuthAddress))
+	}
+	if opts.webrtcOpts.SignalingExternalAuthToEntity != "" {
+		hasher.Write([]byte(opts.webrtcOpts.SignalingExternalAuthToEntity))
+	}
+	if opts.webrtcOpts.SignalingCreds.Type != "" {
+		hasher.Write([]byte(opts.webrtcOpts.SignalingCreds.Type))
+	}
+	if opts.webrtcOpts.SignalingCreds.Payload != "" {
+		hasher.Write([]byte(opts.webrtcOpts.SignalingCreds.Payload))
+	}
+	return hex.EncodeToString(hasher.Sum(nil))
 }
 
 func wrapClientConnWithCloseFunc(conn ClientConn, closeFunc func() error) ClientConn {
@@ -257,9 +361,15 @@ func (cc *clientConnWithCloseFunc) Close() (err error) {
 }
 
 // dialFunc dials an address for a particular protocol and dial function.
-func dialFunc(ctx context.Context, proto string, target string, f func() (ClientConn, error)) (ClientConn, bool, error) {
+func dialFunc(
+	ctx context.Context,
+	proto string,
+	target string,
+	keyExtra string,
+	f func() (ClientConn, error),
+) (ClientConn, bool, error) {
 	if ctxDialer := contextDialer(ctx); ctxDialer != nil {
-		return ctxDialer.DialFunc(proto, target, func() (ClientConn, func() error, error) {
+		return ctxDialer.DialFunc(proto, target, keyExtra, func() (ClientConn, func() error, error) {
 			conn, err := f()
 			return conn, nil, err
 		})
@@ -269,11 +379,15 @@ func dialFunc(ctx context.Context, proto string, target string, f func() (Client
 }
 
 type perRPCJWTCredentials struct {
-	mu          sync.RWMutex
-	conn        ClientConn
-	entity      string
-	creds       Credentials
-	accessToken string
+	mu                   sync.RWMutex
+	conn                 ClientConn
+	entity               string
+	externalAuthToEntity string
+	creds                Credentials
+	accessToken          string
+
+	debug  bool
+	logger golog.Logger
 }
 
 // TODO(https://github.com/viamrobotics/goutils/issues/13): handle expiration.
@@ -292,6 +406,9 @@ func (creds *perRPCJWTCredentials) GetRequestMetadata(ctx context.Context, uri .
 		defer creds.mu.Unlock()
 		accessToken = creds.accessToken
 		if accessToken == "" {
+			if creds.debug {
+				creds.logger.Debugw("authenticating as entity", "entity", creds.entity)
+			}
 			authClient := rpcpb.NewAuthServiceClient(creds.conn)
 			resp, err := authClient.Authenticate(ctx, &rpcpb.AuthenticateRequest{
 				Entity: creds.entity,
@@ -304,7 +421,38 @@ func (creds *perRPCJWTCredentials) GetRequestMetadata(ctx context.Context, uri .
 				return nil, err
 			}
 			accessToken = resp.AccessToken
-			creds.accessToken = accessToken
+
+			// now perform external auth
+			if creds.externalAuthToEntity == "" {
+				if creds.debug {
+					creds.logger.Debug("not external auth for an entity; done")
+				}
+				creds.accessToken = accessToken
+			} else {
+				if creds.debug {
+					creds.logger.Debugw("authenticating to external entity", "entity", creds.externalAuthToEntity)
+				}
+				// now perform external auth
+				md := make(metadata.MD)
+				bearer := fmt.Sprintf("Bearer %s", accessToken)
+				md.Set("authorization", bearer)
+				externalCtx := metadata.NewOutgoingContext(ctx, md)
+
+				externalAuthClient := rpcpb.NewExternalAuthServiceClient(creds.conn)
+				externalResp, err := externalAuthClient.AuthenticateTo(externalCtx, &rpcpb.AuthenticateToRequest{
+					Entity: creds.externalAuthToEntity,
+				})
+				if err != nil {
+					return nil, err
+				}
+
+				if creds.debug {
+					creds.logger.Debugw("external auth done", "auth_to", creds.externalAuthToEntity)
+				}
+
+				accessToken = externalResp.AccessToken
+				creds.accessToken = externalResp.AccessToken
+			}
 		}
 	}
 

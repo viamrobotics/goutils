@@ -19,6 +19,24 @@ service AuthService {
 	}
 }
 
+// An ExternalAuthService is intended to be used as a means to perform application level
+// authentication but for an external entity that it is responsible for handling auth for.
+// An example of its use would be for a entity that only trusts an external source to
+// perform authentication for it.
+// Its sole AuthenticateTo method should be used prior to any other services that the external
+// entity's gRPC server has to offer.
+service ExternalAuthService {
+	// AuthenticateTo attempts to authenticate the caller on behalf of an entity.
+	// The resulting response contains an access token that should be used for future
+	// requests. This assumes that the caller is already authenticated to the
+	// server implementing this service.
+	rpc AuthenticateTo(AuthenticateToRequest) returns (AuthenticateToResponse) {
+		option (google.api.http) = {
+			post: "/rpc/v1/authenticate_to"
+		};
+	}
+}
+
 message Credentials {
 	// type is the type of credentials being used.
 	string type = 1;
@@ -39,3 +57,17 @@ message AuthenticateResponse {
 	string access_token = 1;
 	// Future(erd): maybe a refresh_token
 }
+
+// An AuthenticateToRequest contains the entity to authenticate to.
+message AuthenticateToRequest {
+	string entity = 1;
+}
+
+// An AuthenticateResponse is returned after successful authentication.
+message AuthenticateToResponse {
+	// access_token is a JWT where only the expiration should be deemed
+	// important.
+	string access_token = 1;
+	// Future(erd): maybe a refresh_token
+}
+

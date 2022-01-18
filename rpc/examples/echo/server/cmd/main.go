@@ -47,6 +47,7 @@ type Arguments struct {
 	AuthPublicKeyFile  string            `flag:"auth_public_key"`
 	APIKey             string            `flag:"api_key"`
 	ExternalAuthAddr   string            `flag:"external_auth_addr"`
+	ExternalAuth       bool              `flag:"external_auth"`
 }
 
 func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) error {
@@ -60,9 +61,6 @@ func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) error
 	if (argsParsed.TLSCertFile == "") != (argsParsed.TLSKeyFile == "") {
 		return errors.New("must provide both tls_cert and tls_key")
 	}
-	if (argsParsed.AuthPrivateKeyFile != "") && (argsParsed.AuthPublicKeyFile != "") {
-		return errors.New("must provide only either auth private or public key")
-	}
 
 	return runServer(
 		ctx,
@@ -75,6 +73,7 @@ func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) error
 		argsParsed.AuthPublicKeyFile,
 		argsParsed.APIKey,
 		argsParsed.ExternalAuthAddr,
+		argsParsed.ExternalAuth,
 		logger,
 	)
 }
@@ -90,9 +89,11 @@ func runServer(
 	authPublicKeyFile string,
 	apiKey string,
 	externalAuthAddr string,
+	externalAuth bool,
 	logger golog.Logger,
 ) (err error) {
 	var serverOpts []rpc.ServerOption
+	var authPrivKey *rsa.PrivateKey
 	if authPrivateKeyFile != "" {
 		//nolint:gosec
 		rd, err := ioutil.ReadFile(authPrivateKeyFile)
@@ -104,7 +105,12 @@ func runServer(
 		if err != nil {
 			return err
 		}
-		serverOpts = append(serverOpts, rpc.WithAuthRSAPrivateKey(authPrivateKey.(*rsa.PrivateKey)))
+		var ok bool
+		authPrivKey, ok = authPrivateKey.(*rsa.PrivateKey)
+		if !ok {
+			return errors.Errorf("expected private key to be RSA but got %T", authPrivateKey)
+		}
+		serverOpts = append(serverOpts, rpc.WithAuthRSAPrivateKey(authPrivKey))
 	}
 	var authPublicKey *rsa.PublicKey
 	if authPublicKeyFile != "" {
@@ -145,19 +151,32 @@ func runServer(
 	if apiKey == "" && authPublicKey == nil {
 		serverOpts = append(serverOpts, rpc.WithUnauthenticated())
 	} else {
-		handler := rpc.MakeSimpleAuthHandler(
-			[]string{
-				signalingHost,
-				listenerAddr,
-				bindAddress,
-			},
-			apiKey,
-		)
-		if authPublicKey != nil {
-			handler = rpc.WithPublicKeyProvider(handler, authPublicKey)
+		authEntities := []string{
+			signalingHost,
+			listenerAddr,
+			bindAddress,
 		}
-
+		handler := rpc.MakeSimpleAuthHandler(authEntities, apiKey)
 		serverOpts = append(serverOpts, rpc.WithAuthHandler(rpc.CredentialsTypeAPIKey, handler))
+
+		if authPublicKey != nil {
+			serverOpts = append(serverOpts, rpc.WithAuthHandler("inter-node", rpc.WithPublicKeyProvider(
+				rpc.MakeSimpleVerifyEntity(authEntities),
+				authPublicKey,
+			)))
+		}
+	}
+
+	if externalAuth {
+		if authPrivKey == nil {
+			return errors.New("expected auth_private_key")
+		}
+		serverOpts = append(serverOpts, rpc.WithAuthenticateToHandler(
+			rpc.CredentialsType("inter-node"),
+			func(ctx context.Context, entity string) (map[string]string, error) {
+				return map[string]string{}, nil
+			},
+		))
 	}
 
 	rpcServer, err := rpc.NewServer(logger, serverOpts...)
@@ -196,11 +215,13 @@ func runServer(
 	mux := goji.NewMux()
 	mux.Handle(pat.Get("/"), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		type Temp struct {
-			ExternalAuthAddr string
-			Credentials      map[string]interface{}
+			ExternalAuthAddr     string
+			ExternalAuthToEntity string
+			Credentials          map[string]interface{}
 		}
 		temp := Temp{
-			ExternalAuthAddr: externalAuthAddr,
+			ExternalAuthAddr:     externalAuthAddr,
+			ExternalAuthToEntity: signalingHost,
 		}
 		if apiKey != "" {
 			temp.Credentials = map[string]interface{}{
