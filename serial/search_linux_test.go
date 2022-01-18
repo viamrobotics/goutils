@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"go.viam.com/test"
-	"go.viam.com/utils/testutils"
 
+	"go.viam.com/utils/testutils"
 	"go.viam.com/utils/usb"
 )
 

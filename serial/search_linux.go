@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"go.viam.com/utils"
-
 	"go.viam.com/utils/usb"
 )
 
