@@ -1,5 +1,5 @@
 version: v1beta1
-name: buf.build/viam/utils
+name: buf.build/viamrobotics/goutils
 build:
   roots:
     - .
@@ -24,4 +24,3 @@ breaking:
     - FILE
 deps:
   - buf.build/googleapis/googleapis:c33c435046f2f4db5e8d6db52bd6c662f50f60d8
-  
