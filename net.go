@@ -97,6 +97,36 @@ func NewPossiblySecureTCPListenerFromFile(address string, tlsCertFile, tlsKeyFil
 	if err != nil {
 		return nil, false, err
 	}
+	return newTLSListener(address, cert)
+}
+
+// NewPossiblySecureTCPListenerFromMemory returns a TCP listener at the given address that is
+// either insecure or TLS based listener depending on presence of the tlsCertPEM and tlsKeyPEM
+// which are expected to be an X509 key pair. If no address is specified, the listener will bind
+// to localhost IPV4 on a random port.
+func NewPossiblySecureTCPListenerFromMemory(address string, tlsCertPEM, tlsKeyPEM []byte) (net.Listener, bool, error) {
+	if (len(tlsCertPEM) == 0) != (len(tlsKeyPEM) == 0) {
+		return nil, false, ErrInsufficientX509KeyPair
+	}
+
+	if address == "" {
+		address = "localhost:"
+	}
+	if len(tlsCertPEM) == 0 || len(tlsKeyPEM) == 0 {
+		insecureListener, err := net.Listen("tcp", address)
+		if err != nil {
+			return nil, false, err
+		}
+		return insecureListener, false, nil
+	}
+	cert, err := tls.X509KeyPair(tlsCertPEM, tlsKeyPEM)
+	if err != nil {
+		return nil, false, err
+	}
+	return newTLSListener(address, cert)
+}
+
+func newTLSListener(address string, cert tls.Certificate) (net.Listener, bool, error) {
 	secureListener, err := tls.Listen("tcp", address, &tls.Config{
 		Certificates: []tls.Certificate{cert},
 		MinVersion:   tls.VersionTLS12,
