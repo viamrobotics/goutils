@@ -5,10 +5,10 @@ import { EchoBiDiRequest, EchoMultipleRequest, EchoMultipleResponse, EchoRequest
 import { EchoServiceClient, ServiceError } from "./gen/proto/rpc/examples/echo/v1/echo_pb_service";
 
 const thisHost = `${window.location.protocol}//${window.location.host}`;
-const host = "local";
 
 declare global {
 	interface Window {
+		webrtcHost: string;
 		creds?: Credentials;
 		externalAuthAddr?: string;
 		externalAuthToEntity?: string;
@@ -16,6 +16,7 @@ declare global {
 }
 
 async function getClients() {
+	const webrtcHost = window.webrtcHost;
 	const opts: DialOptions = {
 		credentials: window.creds,
 		externalAuthAddress: window.externalAuthAddr,
@@ -35,8 +36,8 @@ async function getClients() {
 		opts.webrtcOptions!.signalingExternalAuthToEntity = opts.externalAuthToEntity;
 	}
 	console.log("WebRTC")
-	const webRTCConn = await dialWebRTC(thisHost, host, opts);
-	const webrtcClient = new EchoServiceClient(host, { transport: webRTCConn.transportFactory });
+	const webRTCConn = await dialWebRTC(thisHost, webrtcHost, opts);
+	const webrtcClient = new EchoServiceClient(webrtcHost, { transport: webRTCConn.transportFactory });
 	await doEchos(webrtcClient);
 
 	console.log("Direct") // bi-di may not work

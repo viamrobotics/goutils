@@ -10,16 +10,16 @@ Note: For the web, `grpc-web` (Direct) will not work until https://github.com/gr
 
 ## Run
 
-1. `make run_server`
+1. `make run-server`
 
 ### With auth
 
-1. `make run_server_auth`
+1. `make run-server-auth`
 
 ### With an external auth source
 
-1. `make run_server_auth_internal` # Use the UI on this one
-1. `make run_server_auth_external`
+1. `make run-server-auth-internal` # Use the UI on this one
+1. `make run-server-auth-external`
 
 ## Using
 

@@ -4,15 +4,19 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/edaniels/golog"
 	"github.com/google/uuid"
+	"github.com/grandcat/zeroconf"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
 	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/recovery"
@@ -24,6 +28,7 @@ import (
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/net/http2/h2c"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/reflection"
@@ -44,6 +49,10 @@ type Server interface {
 	// was constructed with.
 	InternalAddr() net.Addr
 
+	// InstanceNames are the instance names this server claims to be. Typically
+	// set via options.
+	InstanceNames() []string
+
 	// Start only starts up the internal gRPC server.
 	Start() error
 
@@ -52,8 +61,11 @@ type Server interface {
 	Serve(listener net.Listener) error
 
 	// ServeTLS will externally serve, using the given cert/key, the
-	// all in one handler described by http.Handler.
-	ServeTLS(listener net.Listener, certFile, keyFile string) error
+	// all in one handler described by http.Handler. The provided tlsConfig
+	// will be used for any extra TLS settings. If using mutual TLS authentication
+	// (see WithTLSAuthHandler), then the tls.Config should have ClientAuth,
+	// at a minimum, set to tls.VerifyClientCertIfGiven.
+	ServeTLS(listener net.Listener, certFile, keyFile string, tlsConfig *tls.Config) error
 
 	// Stop stops the internal gRPC and the HTTP server if it
 	// was started.
@@ -85,51 +97,97 @@ type Server interface {
 type simpleServer struct {
 	rpcpb.UnimplementedAuthServiceServer
 	rpcpb.UnimplementedExternalAuthServiceServer
-	mu                   sync.RWMutex
-	grpcListener         net.Listener
-	grpcServer           *grpc.Server
-	grpcWebServer        *grpcweb.WrappedGrpcServer
-	grpcGatewayHandler   *runtime.ServeMux
-	httpServer           *http.Server
-	webrtcServer         *webrtcServer
-	webrtcAnswerers      []*webrtcSignalingAnswerer
-	serviceServerCancels []func()
-	serviceServers       []interface{}
-	signalingCallQueue   WebRTCCallQueue
-	authRSAPrivKey       *rsa.PrivateKey
-	internalUUID         string
-	internalCreds        Credentials
-	authHandlers         map[CredentialsType]AuthHandler
-	authToType           CredentialsType
-	authToHandler        AuthenticateToHandler
-	exemptMethods        map[string]bool
-	stopped              bool
-	logger               golog.Logger
+	mu                      sync.RWMutex
+	activeBackgroundWorkers sync.WaitGroup
+	grpcListener            net.Listener
+	grpcServer              *grpc.Server
+	grpcWebServer           *grpcweb.WrappedGrpcServer
+	grpcGatewayHandler      *runtime.ServeMux
+	httpServer              *http.Server
+	instanceNames           []string
+	webrtcServer            *webrtcServer
+	webrtcAnswerers         []*webrtcSignalingAnswerer
+	serviceServerCancels    []func()
+	serviceServers          []interface{}
+	signalingCallQueue      WebRTCCallQueue
+	authRSAPrivKey          *rsa.PrivateKey
+	internalUUID            string
+	internalCreds           Credentials
+	tlsAuthHandler          func(ctx context.Context, entities ...string) (interface{}, error)
+	authHandlers            map[CredentialsType]AuthHandler
+	authToType              CredentialsType
+	authToHandler           AuthenticateToHandler
+	mdnsServers             []*zeroconf.Server
+	exemptMethods           map[string]bool
+	tlsConfig               *tls.Config
+	firstSeenTLSCertLeaf    *x509.Certificate
+	stopped                 bool
+	logger                  golog.Logger
 }
 
-// newWithListener returns a new server ready to be started that
-// will listen on the given listener.
-func newWithListener(
-	grpcListener net.Listener,
-	logger golog.Logger,
-	opts ...ServerOption,
-) (Server, error) {
+var errMixedUnauthAndAuth = errors.New("cannot use unauthenticated and auth handlers at same time")
+
+// NewServer returns a new server ready to be started that
+// will listen on localhost on a random port unless TLS is turned
+// on and authentication is enabled in which case the server will
+// listen on all interfaces.
+func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 	var sOpts serverOptions
 	for _, opt := range opts {
 		if err := opt.apply(&sOpts); err != nil {
 			return nil, err
 		}
 	}
+	if sOpts.unauthenticated && (len(sOpts.authHandlers) != 0 || sOpts.tlsAuthHandler != nil) {
+		return nil, errMixedUnauthAndAuth
+	}
+
+	grpcBindAddr := sOpts.bindAddress
+	if grpcBindAddr == "" {
+		if sOpts.tlsConfig == nil || sOpts.unauthenticated {
+			grpcBindAddr = "localhost:0"
+		} else {
+			grpcBindAddr = ":0"
+		}
+	}
+
+	grpcListener, err := net.Listen("tcp", grpcBindAddr)
+	if err != nil {
+		return nil, err
+	}
+
 	serverOpts := []grpc.ServerOption{
 		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
 			MinTime: keepAliveTime,
 		}),
 	}
 
+	var firstSeenTLSCert *tls.Certificate
+	if sOpts.tlsConfig != nil {
+		if len(sOpts.tlsConfig.Certificates) == 0 {
+			if cert, err := sOpts.tlsConfig.GetCertificate(&tls.ClientHelloInfo{}); err == nil {
+				firstSeenTLSCert = cert
+			} else {
+				return nil, errors.New("invalid *tls.Config; expected at least 1 certificate")
+			}
+		} else {
+			firstSeenTLSCert = &sOpts.tlsConfig.Certificates[0]
+		}
+		serverOpts = append(serverOpts, grpc.Creds(credentials.NewTLS(sOpts.tlsConfig)))
+	}
+
+	var firstSeenTLSCertLeaf *x509.Certificate
+	if firstSeenTLSCert != nil {
+		leaf, err := x509.ParseCertificate(firstSeenTLSCert.Certificate[0])
+		if err != nil {
+			return nil, err
+		}
+		firstSeenTLSCertLeaf = leaf
+	}
+
 	httpServer := &http.Server{
 		ReadTimeout:    10 * time.Second,
-		WriteTimeout:   10 * time.Second,
-		MaxHeaderBytes: maxMessageSize,
+		MaxHeaderBytes: MaxMessageSize,
 	}
 
 	authRSAPrivKey := sOpts.authRSAPrivateKey
@@ -142,7 +200,7 @@ func newWithListener(
 	}
 
 	internalCredsKey := make([]byte, 64)
-	_, err := rand.Read(internalCredsKey)
+	_, err = rand.Read(internalCredsKey)
 	if err != nil {
 		return nil, err
 	}
@@ -162,11 +220,14 @@ func newWithListener(
 			Type:    credentialsTypeInternal,
 			Payload: base64.StdEncoding.EncodeToString(internalCredsKey),
 		},
-		authHandlers:  sOpts.authHandlers,
-		authToType:    sOpts.authToType,
-		authToHandler: sOpts.authToHandler,
-		exemptMethods: make(map[string]bool),
-		logger:        logger,
+		tlsAuthHandler:       sOpts.tlsAuthHandler,
+		authHandlers:         sOpts.authHandlers,
+		authToType:           sOpts.authToType,
+		authToHandler:        sOpts.authToHandler,
+		exemptMethods:        make(map[string]bool),
+		tlsConfig:            sOpts.tlsConfig,
+		firstSeenTLSCertLeaf: firstSeenTLSCertLeaf,
+		logger:               logger,
 	}
 
 	grpcLogger := logger.Desugar()
@@ -235,26 +296,8 @@ func newWithListener(
 		return true
 	}))
 
-	if sOpts.webrtcOpts.ExternalSignalingAddress == "" {
-		sOpts.webrtcOpts.EnableInternalSignaling = true
-	}
-
 	server.grpcServer = grpcServer
 	server.grpcWebServer = grpcWebServer
-
-	if sOpts.webrtcOpts.Enable && sOpts.webrtcOpts.EnableInternalSignaling {
-		logger.Info("will run internal signaling service")
-		signalingCallQueue := NewMemoryWebRTCCallQueue()
-		server.signalingCallQueue = signalingCallQueue
-		if err := server.RegisterServiceServer(
-			context.Background(),
-			&webrtcpb.SignalingService_ServiceDesc,
-			NewWebRTCSignalingServer(signalingCallQueue, nil),
-			webrtcpb.RegisterSignalingServiceHandlerFromEndpoint,
-		); err != nil {
-			return nil, err
-		}
-	}
 
 	if !sOpts.unauthenticated {
 		if err := server.RegisterServiceServer(
@@ -279,6 +322,84 @@ func newWithListener(
 			rpcpb.RegisterExternalAuthServiceHandlerFromEndpoint,
 		); err != nil {
 			return nil, err
+		}
+	}
+
+	var mDNSAddress *net.TCPAddr
+	if sOpts.listenerAddress != nil {
+		mDNSAddress = sOpts.listenerAddress
+	} else {
+		var ok bool
+		mDNSAddress, ok = grpcListener.Addr().(*net.TCPAddr)
+		if !ok {
+			return nil, errors.Errorf("expected *net.TCPAddr but got %T", grpcListener.Addr())
+		}
+	}
+
+	supportedServices := []string{"grpc"}
+	if sOpts.webrtcOpts.Enable {
+		supportedServices = append(supportedServices, "webrtc")
+	}
+	instanceNames := sOpts.instanceNames
+	if len(instanceNames) == 0 {
+		instanceName, err := InstanceNameFromAddress(mDNSAddress.String())
+		if err != nil {
+			return nil, err
+		}
+		instanceNames = []string{instanceName}
+	}
+	server.instanceNames = instanceNames
+	if !sOpts.disableMDNS {
+		if mDNSAddress.IP.IsLoopback() {
+			hostname, err := os.Hostname()
+			if err != nil {
+				return nil, err
+			}
+			ifcs, err := net.Interfaces()
+			if err != nil {
+				return nil, err
+			}
+			var loopbackIfc net.Interface
+			for _, ifc := range ifcs {
+				if (ifc.Flags&net.FlagUp) == 0 ||
+					(ifc.Flags&net.FlagLoopback) == 0 ||
+					(ifc.Flags&net.FlagMulticast) == 0 {
+					continue
+				}
+				loopbackIfc = ifc
+				break
+			}
+			for _, host := range instanceNames {
+				mdnsServer, err := zeroconf.RegisterProxy(
+					host,
+					"_rpc._tcp",
+					"local.",
+					mDNSAddress.Port,
+					hostname,
+					[]string{"127.0.0.1"},
+					supportedServices,
+					[]net.Interface{loopbackIfc},
+				)
+				if err != nil {
+					return nil, err
+				}
+				server.mdnsServers = append(server.mdnsServers, mdnsServer)
+			}
+		} else {
+			for _, host := range instanceNames {
+				mdnsServer, err := zeroconf.RegisterDynamic(
+					host,
+					"_rpc._tcp",
+					"local.",
+					mDNSAddress.Port,
+					supportedServices,
+					nil,
+				)
+				if err != nil {
+					return nil, err
+				}
+				server.mdnsServers = append(server.mdnsServers, mdnsServer)
+			}
 		}
 	}
 
@@ -308,51 +429,76 @@ func newWithListener(
 			unaryInterceptor,
 			streamInterceptor,
 		)
-		signalingHosts := sOpts.webrtcOpts.SignalingHosts
-		if len(signalingHosts) == 0 {
-			signalingHosts = []string{"local"}
-		}
 
 		config := DefaultWebRTCConfiguration
 		if sOpts.webrtcOpts.Config != nil {
 			config = *sOpts.webrtcOpts.Config
 		}
 
+		externalSignalingHosts := sOpts.webrtcOpts.ExternalSignalingHosts
+		internalSignalingHosts := sOpts.webrtcOpts.InternalSignalingHosts
+		if len(externalSignalingHosts) == 0 {
+			externalSignalingHosts = instanceNames
+		}
+		if len(internalSignalingHosts) == 0 {
+			internalSignalingHosts = instanceNames
+		}
+
 		if sOpts.webrtcOpts.ExternalSignalingAddress != "" {
 			logger.Infow(
-				"will run signaling answerer",
+				"will run external signaling answerer",
 				"signaling_address", sOpts.webrtcOpts.ExternalSignalingAddress,
-				"for_hosts", signalingHosts,
+				"for_hosts", externalSignalingHosts,
 			)
 			server.webrtcAnswerers = append(server.webrtcAnswerers, newWebRTCSignalingAnswerer(
 				sOpts.webrtcOpts.ExternalSignalingAddress,
-				signalingHosts,
+				externalSignalingHosts,
 				server.webrtcServer,
 				sOpts.webrtcOpts.ExternalSignalingDialOpts,
 				config,
-				logger,
+				logger.Named("external_signaler"),
 			))
+		} else {
+			sOpts.webrtcOpts.EnableInternalSignaling = true
 		}
 
 		if sOpts.webrtcOpts.EnableInternalSignaling {
+			logger.Info("will run internal signaling service")
+			signalingCallQueue := NewMemoryWebRTCCallQueue()
+			server.signalingCallQueue = signalingCallQueue
+			if err := server.RegisterServiceServer(
+				context.Background(),
+				&webrtcpb.SignalingService_ServiceDesc,
+				NewWebRTCSignalingServer(signalingCallQueue, nil, internalSignalingHosts...),
+				webrtcpb.RegisterSignalingServiceHandlerFromEndpoint,
+			); err != nil {
+				return nil, err
+			}
+
 			address := grpcListener.Addr().String()
 			logger.Infow(
-				"will run intenral signaling answerer",
+				"will run internal signaling answerer",
 				"signaling_address", address,
-				"for_hosts", signalingHosts,
+				"for_hosts", internalSignalingHosts,
 			)
 			var answererDialOpts []DialOption
-			answererDialOpts = append(answererDialOpts, WithInsecure())
+			if sOpts.tlsConfig != nil {
+				tlsConfig := sOpts.tlsConfig.Clone()
+				tlsConfig.ServerName = server.firstSeenTLSCertLeaf.Subject.CommonName
+				answererDialOpts = append(answererDialOpts, WithTLSConfig(tlsConfig))
+			} else {
+				answererDialOpts = append(answererDialOpts, WithInsecure())
+			}
 			if !sOpts.unauthenticated {
 				answererDialOpts = append(answererDialOpts, WithEntityCredentials(server.internalUUID, server.internalCreds))
 			}
 			server.webrtcAnswerers = append(server.webrtcAnswerers, newWebRTCSignalingAnswerer(
 				address,
-				signalingHosts,
+				internalSignalingHosts,
 				server.webrtcServer,
 				answererDialOpts,
 				config,
-				logger,
+				logger.Named("internal_signaler"),
 			))
 		}
 	}
@@ -360,15 +506,8 @@ func newWithListener(
 	return server, nil
 }
 
-// NewServer returns a new server ready to be started that
-// will listen on some random port bound to localhost.
-func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
-	grpcListener, err := net.Listen("tcp", "localhost:0")
-	if err != nil {
-		return nil, err
-	}
-
-	return newWithListener(grpcListener, logger, opts...)
+func (ss *simpleServer) InstanceNames() []string {
+	return ss.instanceNames
 }
 
 type requestType int
@@ -460,14 +599,14 @@ func (ss *simpleServer) Start() error {
 }
 
 func (ss *simpleServer) Serve(listener net.Listener) error {
-	return ss.serveTLS(listener, "", "")
+	return ss.serveTLS(listener, "", "", nil)
 }
 
-func (ss *simpleServer) ServeTLS(listener net.Listener, certFile, keyFile string) error {
-	return ss.serveTLS(listener, certFile, keyFile)
+func (ss *simpleServer) ServeTLS(listener net.Listener, certFile, keyFile string, tlsConfig *tls.Config) error {
+	return ss.serveTLS(listener, certFile, keyFile, tlsConfig)
 }
 
-func (ss *simpleServer) serveTLS(listener net.Listener, certFile, keyFile string) error {
+func (ss *simpleServer) serveTLS(listener net.Listener, certFile, keyFile string, tlsConfig *tls.Config) error {
 	ss.httpServer.Addr = listener.Addr().String()
 	ss.httpServer.Handler = ss
 	secure := true
@@ -485,9 +624,13 @@ func (ss *simpleServer) serveTLS(listener net.Listener, certFile, keyFile string
 
 	var err error
 	var errMu sync.Mutex
+	ss.activeBackgroundWorkers.Add(1)
 	utils.ManagedGo(func() {
 		var serveErr error
 		if secure {
+			if tlsConfig != nil {
+				ss.httpServer.TLSConfig = tlsConfig.Clone()
+			}
 			serveErr = ss.httpServer.ServeTLS(listener, certFile, keyFile)
 		} else {
 			serveErr = ss.httpServer.Serve(listener)
@@ -497,7 +640,7 @@ func (ss *simpleServer) serveTLS(listener net.Listener, certFile, keyFile string
 			err = multierr.Combine(err, serveErr)
 			errMu.Unlock()
 		}
-	}, nil)
+	}, ss.activeBackgroundWorkers.Done)
 	startErr := ss.Start()
 	errMu.Lock()
 	err = multierr.Combine(err, startErr)
@@ -539,9 +682,13 @@ func (ss *simpleServer) Stop() error {
 		ss.webrtcServer.Stop()
 		ss.logger.Info("WebRTC server stopped")
 	}
+	for _, mdnsServer := range ss.mdnsServers {
+		mdnsServer.Shutdown()
+	}
 	ss.logger.Info("shutting down HTTP server")
 	err = multierr.Combine(err, ss.httpServer.Shutdown(context.Background()))
 	ss.logger.Info("HTTP server shut down")
+	ss.activeBackgroundWorkers.Wait()
 	ss.logger.Info("stopped cleanly")
 	return err
 }
@@ -571,9 +718,13 @@ func (ss *simpleServer) RegisterServiceServer(
 	}
 	if len(svcHandlers) != 0 {
 		addr := ss.grpcListener.Addr().String()
-		opts := []grpc.DialOption{
-			grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(maxMessageSize)),
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
+		opts := []grpc.DialOption{grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(MaxMessageSize))}
+		if ss.tlsConfig == nil {
+			opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		} else {
+			tlsConfig := ss.tlsConfig.Clone()
+			tlsConfig.ServerName = ss.firstSeenTLSCertLeaf.DNSNames[0]
+			opts = append(opts, grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)))
 		}
 		for _, h := range svcHandlers {
 			if err := h(stopCtx, ss.grpcGatewayHandler, addr, opts); err != nil {
@@ -614,4 +765,21 @@ func streamServerCodeInterceptor() grpc.StreamServerInterceptor {
 		}
 		return err
 	}
+}
+
+// InstanceNameFromAddress returns a suitable instance name given an address.
+// If it's empty or an IP address, a new UUID is returned.
+func InstanceNameFromAddress(addr string) (string, error) {
+	if strings.Contains(addr, ":") {
+		host, _, err := net.SplitHostPort(addr)
+		if err != nil {
+			return "", err
+		}
+		addr = host
+	}
+	if net.ParseIP(addr) == nil {
+		return addr, nil
+	}
+	// will use a UUID since we have no better choice
+	return uuid.NewString(), nil
 }

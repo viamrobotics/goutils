@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"net/url"
 	"strings"
 	"sync"
 
@@ -21,11 +20,14 @@ import (
 )
 
 // ErrNoWebRTCSignaler happens if a gRPC request is made on a server that does not support
-// signaling for WebRTC.
+// signaling for WebRTC or explicitly not the host requested.
 var ErrNoWebRTCSignaler = errors.New("no signaler present")
 
 // DialWebRTCOptions control how WebRTC is utilized in a dial attempt.
 type DialWebRTCOptions struct {
+	// Disable prevents a WebRTC connection attempt.
+	Disable bool
+
 	// SignalingInsecure determines if the signaling connection is insecure.
 	SignalingInsecure bool
 
@@ -68,25 +70,38 @@ type DialWebRTCOptions struct {
 // a WebRTC connection with the corresponding peer reflected in the address.
 // It provider client/server functionality for gRPC serviced over
 // WebRTC data channels. The work is adapted from https://github.com/jsmouret/grpc-over-webrtc.
-func DialWebRTC(ctx context.Context, address string, logger golog.Logger, opts ...DialOption) (conn ClientConn, err error) {
+func DialWebRTC(
+	ctx context.Context,
+	signalingServer string,
+	host string,
+	logger golog.Logger,
+	opts ...DialOption,
+) (conn ClientConn, err error) {
 	var dOpts dialOptions
 	for _, opt := range opts {
 		opt.apply(&dOpts)
 	}
-	return dialWebRTC(ctx, address, &dOpts, logger)
+	dOpts.webrtcOpts.Disable = false
+	dOpts.webrtcOpts.SignalingServerAddress = signalingServer
+	return dialInner(ctx, host, logger, &dOpts)
 }
 
-func dialWebRTC(ctx context.Context, address string, dOpts *dialOptions, logger golog.Logger) (ch *webrtcClientChannel, err error) {
+func dialWebRTC(
+	ctx context.Context,
+	signalingServer string,
+	host string,
+	dOpts *dialOptions,
+	logger golog.Logger,
+) (ch *webrtcClientChannel, err error) {
 	logger = logger.Named("webrtc")
-	var host string
-	if u, err := url.Parse(address); err == nil {
-		address = u.Host
-		host = u.Query().Get("host")
-	}
 	dialCtx, timeoutCancel := context.WithTimeout(ctx, getDefaultOfferDeadline())
 	defer timeoutCancel()
 
-	logger.Debugw("connecting to signaling server", "address", address)
+	logger.Debugw(
+		"connecting to signaling server",
+		"signaling_server", signalingServer,
+		"host", host,
+	)
 
 	dOptsCopy := *dOpts
 	if dOpts.webrtcOpts.SignalingInsecure {
@@ -103,11 +118,11 @@ func dialWebRTC(ctx context.Context, address string, dOpts *dialOptions, logger 
 	dOptsCopy.externalAuthInsecure = dOpts.webrtcOpts.SignalingExternalAuthInsecure
 	if dOptsCopy.authEntity == "" {
 		if dOptsCopy.externalAuthAddr == "" {
-			// if we are not doing external auth, then the entity is assumed to be the actual address.
+			// if we are not doing external auth, then the entity is assumed to be the actual host.
 			if dOpts.debug {
-				logger.Debugw("auth entity empty; setting to address", "address", address)
+				logger.Debugw("auth entity empty; setting to host", "host", host)
 			}
-			dOptsCopy.authEntity = address
+			dOptsCopy.authEntity = host
 		} else {
 			// otherwise it's the external auth address.
 			if dOpts.debug {
@@ -117,7 +132,7 @@ func dialWebRTC(ctx context.Context, address string, dOpts *dialOptions, logger 
 		}
 	}
 
-	conn, _, err := dialDirectGRPC(dialCtx, address, &dOptsCopy, logger)
+	conn, _, err := dialDirectGRPC(dialCtx, signalingServer, &dOptsCopy, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -133,6 +148,11 @@ func dialWebRTC(ctx context.Context, address string, dOpts *dialOptions, logger 
 	signalingClient := webrtcpb.NewSignalingServiceClient(conn)
 	configResp, err := signalingClient.OptionalWebRTCConfig(signalCtx, &webrtcpb.OptionalWebRTCConfigRequest{})
 	if err != nil {
+		// this would be where we would hit an unimplemented signaler error first.
+		if s, ok := status.FromError(err); ok && (s.Code() == codes.Unimplemented ||
+			(s.Code() == codes.InvalidArgument && s.Message() == hostNotAllowedMsg)) {
+			return nil, ErrNoWebRTCSignaler
+		}
 		return nil, err
 	}
 
@@ -188,10 +208,15 @@ func dialWebRTC(ctx context.Context, address string, dOpts *dialOptions, logger 
 			return nil, err
 		}
 
+		var callFlowWG sync.WaitGroup
 		pc.OnICECandidate(func(i *webrtc.ICECandidate) {
 			if exchangeCtx.Err() != nil {
 				return
 			}
+			if i != nil {
+				callFlowWG.Add(1)
+			}
+			// must spin off to unblock the ICE gatherer
 			utils.PanicCapturingGo(func() {
 				select {
 				case <-remoteDescSet:
@@ -199,11 +224,13 @@ func dialWebRTC(ctx context.Context, address string, dOpts *dialOptions, logger 
 					return
 				}
 				if i == nil {
+					callFlowWG.Wait()
 					if err := sendDone(); err != nil {
 						sendErr(err)
 					}
 					return
 				}
+				defer callFlowWG.Done()
 				iProto := iceCandidateToProto(i)
 				if _, err := signalingClient.CallUpdate(exchangeCtx, &webrtcpb.CallUpdateRequest{
 					Uuid: uuid,
@@ -229,9 +256,6 @@ func dialWebRTC(ctx context.Context, address string, dOpts *dialOptions, logger 
 
 	callClient, err := signalingClient.Call(signalCtx, &webrtcpb.CallRequest{Sdp: encodedSDP})
 	if err != nil {
-		if s, ok := status.FromError(err); ok && s.Code() == codes.Unimplemented {
-			return nil, ErrNoWebRTCSignaler
-		}
 		return nil, err
 	}
 

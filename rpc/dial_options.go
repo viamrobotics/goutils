@@ -29,7 +29,8 @@ type dialOptions struct {
 	creds Credentials
 
 	// webrtcOpts control how WebRTC is utilized in a dial attempt.
-	webrtcOpts DialWebRTCOptions
+	webrtcOpts    DialWebRTCOptions
+	webrtcOptsSet bool
 
 	externalAuthAddr     string
 	externalAuthToEntity string
@@ -38,6 +39,22 @@ type dialOptions struct {
 	// debug is helpful to turn on when the library isn't working quite right.
 	// It will output much more logs.
 	debug bool
+
+	mdnsOptions DialMulticastDNSOptions
+
+	disableDirect bool
+}
+
+// DialMulticastDNSOptions dictate any special settings to apply while dialing via mDNS.
+type DialMulticastDNSOptions struct {
+	// Disable disables mDNS service discovery for other robots. You may want to use this
+	// if you do not trust the network you're in to to truthfully advertise services. That
+	// being said, if this is a concern, you should use TLS server verification.
+	Disable bool
+
+	// RemoveAuthCredentials will remove any and all authentication credentials when dialing.
+	// This is particularly helpful in managed environments that do inter-robot TLS authN/Z.
+	RemoveAuthCredentials bool
 }
 
 // DialOption configures how we set up the connection.
@@ -131,6 +148,7 @@ func WithTLSConfig(config *tls.Config) DialOption {
 func WithWebRTCOptions(webrtcOpts DialWebRTCOptions) DialOption {
 	return newFuncDialOption(func(o *dialOptions) {
 		o.webrtcOpts = webrtcOpts
+		o.webrtcOptsSet = true
 	})
 }
 
@@ -158,5 +176,22 @@ func WithAllowInsecureDowngrade() DialOption {
 func WithAllowInsecureWithCredentialsDowngrade() DialOption {
 	return newFuncDialOption(func(o *dialOptions) {
 		o.allowInsecureWithCredsDowngrade = true
+	})
+}
+
+// WithDialMulticastDNSOptions returns a DialOption which allows setting
+// options to specifically be used while doing a dial based off mDNS
+// discovery.
+func WithDialMulticastDNSOptions(opts DialMulticastDNSOptions) DialOption {
+	return newFuncDialOption(func(o *dialOptions) {
+		o.mdnsOptions = opts
+	})
+}
+
+// WithDisableDirectGRPC returns a DialOption which disables directly dialing a gRPC server.
+// There's not really a good reason to use this unless it's for testing.
+func WithDisableDirectGRPC() DialOption {
+	return newFuncDialOption(func(o *dialOptions) {
+		o.disableDirect = true
 	})
 }

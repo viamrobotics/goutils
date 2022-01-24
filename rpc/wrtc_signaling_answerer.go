@@ -47,12 +47,15 @@ func newWebRTCSignalingAnswerer(
 	webrtcConfig webrtc.Configuration,
 	logger golog.Logger,
 ) *webrtcSignalingAnswerer {
+	dialOptsCopy := make([]DialOption, len(dialOpts))
+	copy(dialOptsCopy, dialOpts)
+	dialOptsCopy = append(dialOptsCopy, WithWebRTCOptions(DialWebRTCOptions{Disable: true}))
 	closeCtx, cancel := context.WithCancel(context.Background())
 	return &webrtcSignalingAnswerer{
 		address:                 address,
 		hosts:                   hosts,
 		server:                  server,
-		dialOpts:                dialOpts,
+		dialOpts:                dialOptsCopy,
 		webrtcConfig:            webrtcConfig,
 		cancelBackgroundWorkers: cancel,
 		closeCtx:                closeCtx,
@@ -273,9 +276,13 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 			return err
 		}
 
+		var callFlowWG sync.WaitGroup
 		pc.OnICECandidate(func(i *webrtc.ICECandidate) {
 			if exchangeCtx.Err() != nil {
 				return
+			}
+			if i != nil {
+				callFlowWG.Add(1)
 			}
 			// must spin off to unblock the ICE gatherer
 			utils.PanicCapturingGo(func() {
@@ -285,11 +292,13 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 					return
 				}
 				if i == nil {
+					callFlowWG.Wait()
 					if err := sendDone(); err != nil {
 						sendErr(err)
 					}
 					return
 				}
+				defer callFlowWG.Done()
 				iProto := iceCandidateToProto(i)
 				if err := client.Send(&webrtcpb.AnswerResponse{
 					Uuid: uuid,

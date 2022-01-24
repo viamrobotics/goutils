@@ -142,9 +142,9 @@ func (s *webrtcBaseStream) processMessage(msg *webrtcpb.PacketMessage) ([]byte, 
 	if len(msg.Data) == 0 && msg.Eom {
 		return nil, true
 	}
-	if len(msg.Data)+s.packetBuf.Len() > maxMessageSize {
+	if len(msg.Data)+s.packetBuf.Len() > MaxMessageSize {
 		s.packetBuf.Reset()
-		s.logger.Errorf("message size larger than max %d; discarding", maxMessageSize)
+		s.logger.Errorf("message size larger than max %d; discarding", MaxMessageSize)
 		return nil, false
 	}
 	s.packetBuf.Write(msg.Data)

@@ -142,11 +142,13 @@ func MakeSimpleAuthHandler(forEntities []string, expectedPayload string) AuthHan
 }
 
 // MakeEntitiesChecker checks a list of entities against a given one for use in VerifyEntity.
-func MakeEntitiesChecker(forEntities []string) func(ctx context.Context, entity string) error {
-	return func(ctx context.Context, entity string) error {
-		for _, checkEntity := range forEntities {
-			if subtle.ConstantTimeCompare([]byte(entity), []byte(checkEntity)) == 1 {
-				return nil
+func MakeEntitiesChecker(forEntities []string) func(ctx context.Context, entities ...string) error {
+	return func(ctx context.Context, entities ...string) error {
+		for _, recvEntity := range entities {
+			for _, checkEntity := range forEntities {
+				if subtle.ConstantTimeCompare([]byte(recvEntity), []byte(checkEntity)) == 1 {
+					return nil
+				}
 			}
 		}
 		return errCannotAuthEntity

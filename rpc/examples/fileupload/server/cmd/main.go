@@ -11,7 +11,9 @@ import (
 	"fmt"
 	"html/template"
 	"io/ioutil"
+	"net"
 	"net/http"
+	"strings"
 
 	"github.com/Masterminds/sprig"
 	"github.com/edaniels/golog"
@@ -39,15 +41,16 @@ var (
 // Arguments for the command.
 type Arguments struct {
 	Port               utils.NetPortFlag `flag:"0"`
-	SignalingAddress   string            `flag:"signaling_address,default="`
-	SignalingHost      string            `flag:"signaling_host,default=local"`
-	TLSCertFile        string            `flag:"tls_cert"`
-	TLSKeyFile         string            `flag:"tls_key"`
-	AuthPrivateKeyFile string            `flag:"auth_private_key"`
-	AuthPublicKeyFile  string            `flag:"auth_public_key"`
-	APIKey             string            `flag:"api_key"`
-	ExternalAuthAddr   string            `flag:"external_auth_addr"`
-	ExternalAuth       bool              `flag:"external_auth"`
+	BindAddress        string            `flag:"bind-address"`
+	InstanceName       string            `flag:"instance-name"`
+	SignalingAddress   string            `flag:"signaling-address"`
+	TLSCertFile        string            `flag:"tls-cert"`
+	TLSKeyFile         string            `flag:"tls-key"`
+	AuthPrivateKeyFile string            `flag:"auth-private-key"`
+	AuthPublicKeyFile  string            `flag:"auth-public-key"`
+	APIKey             string            `flag:"api-key"`
+	ExternalAuthAddr   string            `flag:"external-auth-addr"`
+	ExternalAuth       bool              `flag:"external-auth"`
 }
 
 func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) error {
@@ -59,14 +62,15 @@ func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) error
 		argsParsed.Port = utils.NetPortFlag(defaultPort)
 	}
 	if (argsParsed.TLSCertFile == "") != (argsParsed.TLSKeyFile == "") {
-		return errors.New("must provide both tls_cert and tls_key")
+		return errors.New("must provide both tls-cert and tls-key")
 	}
 
 	return runServer(
 		ctx,
 		int(argsParsed.Port),
+		argsParsed.BindAddress,
+		argsParsed.InstanceName,
 		argsParsed.SignalingAddress,
-		argsParsed.SignalingHost,
 		argsParsed.TLSCertFile,
 		argsParsed.TLSKeyFile,
 		argsParsed.AuthPrivateKeyFile,
@@ -81,8 +85,9 @@ func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) error
 func runServer(
 	ctx context.Context,
 	port int,
+	bindAddress string,
+	instanceName string,
 	signalingAddress string,
-	signalingHost string,
 	tlsCertFile string,
 	tlsKeyFile string,
 	authPrivateKeyFile string,
@@ -131,30 +136,43 @@ func runServer(
 		}
 	}
 
-	bindAddress := fmt.Sprintf("localhost:%d", port)
+	if bindAddress == "" {
+		bindAddress = fmt.Sprintf("localhost:%d", port)
+	}
+
 	listener, secure, err := utils.NewPossiblySecureTCPListenerFromFile(bindAddress, tlsCertFile, tlsKeyFile)
 	if err != nil {
 		return err
 	}
-	listenerAddr := listener.Addr().String()
+	listenerTCPAddr, ok := listener.Addr().(*net.TCPAddr)
+	if !ok {
+		return errors.Errorf("expected *net.TCPAddr but got %T", listener.Addr())
+	}
+	listenerAddr := listenerTCPAddr.String()
+	listenerPort := listenerTCPAddr.Port
 	var signalingOpts []rpc.DialOption
 	if signalingAddress != "" && !secure {
 		signalingOpts = append(signalingOpts, rpc.WithInsecure())
 	}
+	serverOpts = append(serverOpts, rpc.WithExternalListenerAddress(listener.Addr().(*net.TCPAddr)))
 	serverOpts = append(serverOpts, rpc.WithWebRTCServerOptions(rpc.WebRTCServerOptions{
 		Enable:                    true,
 		ExternalSignalingDialOpts: signalingOpts,
 		ExternalSignalingAddress:  signalingAddress,
-		SignalingHosts:            []string{signalingHost},
 	}))
+	if instanceName != "" {
+		serverOpts = append(serverOpts, rpc.WithInstanceNames(instanceName))
+	}
 
 	if apiKey == "" && authPublicKey == nil {
 		serverOpts = append(serverOpts, rpc.WithUnauthenticated())
 	} else {
 		authEntities := []string{
-			signalingHost,
 			listenerAddr,
 			bindAddress,
+		}
+		if instanceName != "" {
+			authEntities = append(authEntities, instanceName)
 		}
 		handler := rpc.MakeSimpleAuthHandler(authEntities, apiKey)
 		serverOpts = append(serverOpts, rpc.WithAuthHandler(rpc.CredentialsTypeAPIKey, handler))
@@ -169,7 +187,7 @@ func runServer(
 
 	if externalAuth {
 		if authPrivKey == nil {
-			return errors.New("expected auth_private_key")
+			return errors.New("expected auth-private-key")
 		}
 		serverOpts = append(serverOpts, rpc.WithAuthenticateToHandler(
 			rpc.CredentialsType("inter-node"),
@@ -215,13 +233,15 @@ func runServer(
 	mux := goji.NewMux()
 	mux.Handle(pat.Get("/"), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		type Temp struct {
+			WebRTCHost           string
 			ExternalAuthAddr     string
 			ExternalAuthToEntity string
 			Credentials          map[string]interface{}
 		}
 		temp := Temp{
+			WebRTCHost:           rpcServer.InstanceNames()[0],
 			ExternalAuthAddr:     externalAuthAddr,
-			ExternalAuthToEntity: signalingHost,
+			ExternalAuthToEntity: rpcServer.InstanceNames()[0],
 		}
 		if apiKey != "" {
 			temp.Credentials = map[string]interface{}{
@@ -271,6 +291,12 @@ func runServer(
 		scheme = "https"
 	} else {
 		scheme = "http"
+	}
+	if strings.HasPrefix(listenerAddr, "[::]") {
+		listenerAddr = fmt.Sprintf("0.0.0.0:%d", listenerPort)
+	}
+	if listenerTCPAddr.IP.IsLoopback() {
+		listenerAddr = fmt.Sprintf("localhost:%d", listenerPort)
 	}
 	logger.Infow("serving", "url", fmt.Sprintf("%s://%s", scheme, listenerAddr))
 	if err := httpServer.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {

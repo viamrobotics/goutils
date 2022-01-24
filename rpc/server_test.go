@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/edaniels/golog"
 	"go.viam.com/test"
@@ -19,14 +20,19 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	"go.viam.com/utils/internal"
+	"go.viam.com/utils"
 	pb "go.viam.com/utils/proto/rpc/examples/echo/v1"
 	rpcpb "go.viam.com/utils/proto/rpc/v1"
 	echoserver "go.viam.com/utils/rpc/examples/echo/server"
+	"go.viam.com/utils/testutils"
 )
 
 func TestServer(t *testing.T) {
+	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
+
+	_, certFile, keyFile, certPool, err := testutils.GenerateSelfSignedCertificate("localhost")
+	test.That(t, err, test.ShouldBeNil)
 
 	hosts := []string{"yeehaw", "woahthere"}
 	for _, secure := range []bool{false, true} {
@@ -37,8 +43,8 @@ func TestServer(t *testing.T) {
 						t.Run(fmt.Sprintf("with authentication=%t", withAuthentication), func(t *testing.T) {
 							serverOpts := []ServerOption{
 								WithWebRTCServerOptions(WebRTCServerOptions{
-									Enable:         true,
-									SignalingHosts: hosts,
+									Enable:                 true,
+									InternalSignalingHosts: hosts,
 								}),
 							}
 							if withAuthentication {
@@ -72,9 +78,10 @@ func TestServer(t *testing.T) {
 							errChan := make(chan error)
 							go func() {
 								if secure {
-									tlsCertFile := internal.ResolveFile("testdata/cert.pem")
-									tlsKeyFile := internal.ResolveFile("testdata/key.pem")
-									errChan <- rpcServer.ServeTLS(listener, tlsCertFile, tlsKeyFile)
+									errChan <- rpcServer.ServeTLS(listener, certFile, keyFile, &tls.Config{
+										MinVersion: tls.VersionTLS12,
+										RootCAs:    certPool,
+									})
 								} else {
 									errChan <- rpcServer.Serve(listener)
 								}
@@ -82,8 +89,9 @@ func TestServer(t *testing.T) {
 
 							// standard grpc
 							tlsConf := &tls.Config{
-								MinVersion:         tls.VersionTLS12,
-								InsecureSkipVerify: true,
+								MinVersion: tls.VersionTLS12,
+								RootCAs:    certPool,
+								ServerName: "localhost",
 							}
 							grpcOpts := []grpc.DialOption{grpc.WithBlock()}
 							if secure {
@@ -235,11 +243,12 @@ func TestServer(t *testing.T) {
 							es.SetFail(false)
 
 							// WebRTC
-							_, err = dialWebRTC(context.Background(), listener.Addr().String(), &dialOptions{
+							_, err = dialWebRTC(context.Background(), listener.Addr().String(), "", &dialOptions{
 								tlsConfig: tlsConf,
 								webrtcOpts: DialWebRTCOptions{
 									SignalingInsecure: !secure,
 								},
+								webrtcOptsSet: true,
 							}, logger)
 							test.That(t, err, test.ShouldNotBeNil)
 							if withAuthentication {
@@ -248,20 +257,22 @@ func TestServer(t *testing.T) {
 								test.That(t, err.Error(), test.ShouldContainSubstring, "non-empty rpc-host")
 							}
 
-							rtcConn, err := dialWebRTC(context.Background(), HostURI(listener.Addr().String(), host), &dialOptions{
+							rtcConn, err := dialWebRTC(context.Background(), listener.Addr().String(), host, &dialOptions{
 								tlsConfig: tlsConf,
 								webrtcOpts: DialWebRTCOptions{
 									SignalingInsecure: !secure,
 								},
+								webrtcOptsSet: true,
 							}, logger)
 							if withAuthentication {
 								test.That(t, err.Error(), test.ShouldContainSubstring, "authentication required")
-								rtcConn, err = dialWebRTC(context.Background(), HostURI(listener.Addr().String(), host), &dialOptions{
+								rtcConn, err = dialWebRTC(context.Background(), listener.Addr().String(), host, &dialOptions{
 									tlsConfig: tlsConf,
 									webrtcOpts: DialWebRTCOptions{
 										SignalingInsecure: !secure,
 										SignalingCreds:    Credentials{Type: "fake"},
 									},
+									webrtcOptsSet: true,
 								}, logger)
 							}
 							test.That(t, err, test.ShouldBeNil)
@@ -289,4 +300,139 @@ func TestServer(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestServerWithInternalBindAddress(t *testing.T) {
+	testutils.SkipUnlessInternet(t)
+	logger := golog.NewTestLogger(t)
+	port, err := utils.TryReserveRandomPort()
+	test.That(t, err, test.ShouldBeNil)
+
+	bindAddr := fmt.Sprintf("127.0.0.1:%d", port)
+	rpcServer, err := NewServer(logger, WithUnauthenticated(), WithInternalBindAddress(bindAddr))
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, rpcServer.Start(), test.ShouldBeNil)
+	test.That(t, rpcServer.InternalAddr().String(), test.ShouldEqual, bindAddr)
+
+	conn, err := Dial(context.Background(), bindAddr, logger, WithInsecure())
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, conn.Close(), test.ShouldBeNil)
+
+	test.That(t, rpcServer.Stop(), test.ShouldBeNil)
+}
+
+func TestServerWithExternalListenerAddress(t *testing.T) {
+	testutils.SkipUnlessInternet(t)
+	logger := golog.NewTestLogger(t)
+
+	listener, err := net.Listen("tcp", "localhost:0")
+	test.That(t, err, test.ShouldBeNil)
+
+	listenerAddr, ok := listener.Addr().(*net.TCPAddr)
+	test.That(t, ok, test.ShouldBeTrue)
+	rpcServer, err := NewServer(
+		logger,
+		WithUnauthenticated(),
+		WithExternalListenerAddress(listenerAddr),
+	)
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, rpcServer.InternalAddr().String(), test.ShouldNotEqual, listener.Addr().String())
+
+	errChan := make(chan error)
+	go func() {
+		errChan <- rpcServer.Serve(listener)
+	}()
+
+	// prove mDNS is broadcasting our listener address
+	conn, err := Dial(
+		context.Background(),
+		rpcServer.InstanceNames()[0],
+		logger,
+		WithInsecure(),
+		WithDialDebug(),
+	)
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, conn.(*grpc.ClientConn).Target(), test.ShouldEqual, listener.Addr().String())
+	test.That(t, conn.Close(), test.ShouldBeNil)
+
+	test.That(t, rpcServer.Stop(), test.ShouldBeNil)
+	err = <-errChan
+	test.That(t, err, test.ShouldBeNil)
+}
+
+func TestServerMutlicastDNS(t *testing.T) {
+	testutils.SkipUnlessInternet(t)
+	logger := golog.NewTestLogger(t)
+
+	rpcServer, err := NewServer(
+		logger,
+		WithUnauthenticated(),
+	)
+	test.That(t, err, test.ShouldBeNil)
+
+	test.That(t, rpcServer.Start(), test.ShouldBeNil)
+
+	conn, err := Dial(
+		context.Background(),
+		rpcServer.InstanceNames()[0],
+		logger,
+		WithInsecure(),
+		WithDialDebug(),
+	)
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, conn.Close(), test.ShouldBeNil)
+
+	test.That(t, rpcServer.Stop(), test.ShouldBeNil)
+}
+
+func TestServerWithDisableMulticastDNS(t *testing.T) {
+	testutils.SkipUnlessInternet(t)
+	logger := golog.NewTestLogger(t)
+
+	rpcServer, err := NewServer(
+		logger,
+		WithUnauthenticated(),
+		WithDisableMulticastDNS(),
+	)
+	test.That(t, err, test.ShouldBeNil)
+
+	test.That(t, rpcServer.Start(), test.ShouldBeNil)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	_, err = Dial(
+		ctx,
+		rpcServer.InstanceNames()[0],
+		logger,
+		WithInsecure(),
+		WithDialDebug(),
+	)
+	test.That(t, err, test.ShouldResemble, context.DeadlineExceeded)
+
+	conn, err := Dial(
+		context.Background(),
+		rpcServer.InternalAddr().String(),
+		logger,
+		WithInsecure(),
+		WithDialDebug(),
+	)
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, conn.Close(), test.ShouldBeNil)
+
+	test.That(t, rpcServer.Stop(), test.ShouldBeNil)
+}
+
+func TestServerUnauthenticatedOption(t *testing.T) {
+	logger := golog.NewTestLogger(t)
+
+	_, err := NewServer(
+		logger,
+		WithUnauthenticated(),
+		WithAuthHandler("fake", MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) (map[string]string, error) {
+			return map[string]string{}, nil
+		}, func(ctx context.Context, entity string) (interface{}, error) {
+			return entity, nil
+		})),
+	)
+	test.That(t, err, test.ShouldEqual, errMixedUnauthAndAuth)
 }

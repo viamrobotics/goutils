@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"io"
 
 	"github.com/edaniels/golog"
@@ -22,11 +23,13 @@ var logger = golog.Global.Named("client")
 
 // Arguments for the command.
 type Arguments struct {
-	Host                string `flag:"host,default=local"`
-	SignalingServer     string `flag:"signaling_server,default=localhost:8080"`
-	Insecure            bool   `flag:"insecure"`
-	APIKey              string `flag:"api_key"`
-	ExternalAuthAddress string `flag:"external_auth_addr"`
+	Host                string `flag:"host,default=localhost"`
+	SignalingServer     string `flag:"signaling-server"`
+	APIKey              string `flag:"api-key"`
+	TLSCertFile         string `flag:"tls-cert"`
+	TLSKeyFile          string `flag:"tls-key"`
+	ExternalAuthAddress string `flag:"external-auth-addr"`
+	Debug               bool   `flag:"debug"`
 }
 
 func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) (err error) {
@@ -35,29 +38,42 @@ func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) (err 
 		return err
 	}
 
-	var dialOpts []rpc.DialOption
-	if argsParsed.Insecure {
-		dialOpts = append(dialOpts, rpc.WithInsecure())
+	if (argsParsed.TLSCertFile == "") != (argsParsed.TLSKeyFile == "") {
+		return errors.New("must provide both tls-cert and tls-key")
 	}
+	if argsParsed.TLSCertFile != "" && argsParsed.APIKey != "" {
+		return errors.New("must provide only tls-cert or api-key")
+	}
+
+	dialOpts := []rpc.DialOption{rpc.WithAllowInsecureDowngrade()}
+	if argsParsed.Debug {
+		dialOpts = append(dialOpts, rpc.WithDialDebug())
+	}
+	webRTCOpts := rpc.DialWebRTCOptions{}
 	if argsParsed.SignalingServer != "" {
-		webRTCOpts := rpc.DialWebRTCOptions{
-			SignalingServerAddress: argsParsed.SignalingServer,
-		}
-		if argsParsed.Insecure {
-			webRTCOpts.SignalingInsecure = true
-		}
-		if argsParsed.APIKey != "" {
-			webRTCOpts.SignalingCreds = rpc.Credentials{
-				Type:    rpc.CredentialsTypeAPIKey,
-				Payload: argsParsed.APIKey,
-			}
-		}
-		if argsParsed.ExternalAuthAddress != "" {
-			webRTCOpts.SignalingExternalAuthAddress = argsParsed.ExternalAuthAddress
-			webRTCOpts.SignalingExternalAuthToEntity = argsParsed.Host
-		}
-		dialOpts = append(dialOpts, rpc.WithWebRTCOptions(webRTCOpts))
+		webRTCOpts.SignalingServerAddress = argsParsed.SignalingServer
 	}
+	if argsParsed.APIKey != "" {
+		webRTCOpts.SignalingCreds = rpc.Credentials{
+			Type:    rpc.CredentialsTypeAPIKey,
+			Payload: argsParsed.APIKey,
+		}
+	}
+	if argsParsed.TLSCertFile != "" {
+		cert, err := tls.LoadX509KeyPair(argsParsed.TLSCertFile, argsParsed.TLSKeyFile)
+		if err != nil {
+			return err
+		}
+		dialOpts = append(dialOpts, rpc.WithTLSConfig(&tls.Config{
+			Certificates: []tls.Certificate{cert},
+			MinVersion:   tls.VersionTLS12,
+		}))
+	}
+	if argsParsed.ExternalAuthAddress != "" {
+		webRTCOpts.SignalingExternalAuthAddress = argsParsed.ExternalAuthAddress
+		webRTCOpts.SignalingExternalAuthToEntity = argsParsed.Host
+	}
+	dialOpts = append(dialOpts, rpc.WithWebRTCOptions(webRTCOpts))
 	if argsParsed.APIKey != "" {
 		dialOpts = append(dialOpts, rpc.WithCredentials(rpc.Credentials{
 			Type:    rpc.CredentialsTypeAPIKey,

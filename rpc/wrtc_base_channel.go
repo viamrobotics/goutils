@@ -50,42 +50,51 @@ func newBaseChannel(
 	var connID string
 	var connIDMu sync.Mutex
 	var peerDoneOnce bool
+	doPeerDone := func() {
+		if !peerDoneOnce && onPeerDone != nil {
+			peerDoneOnce = true
+			onPeerDone()
+		}
+	}
 	connStateChanged := func(connectionState webrtc.ICEConnectionState) {
 		ch.mu.Lock()
-		defer ch.mu.Unlock()
 		if ch.closed {
-			if !peerDoneOnce && onPeerDone != nil {
-				peerDoneOnce = true
-				onPeerDone()
-			}
+			doPeerDone()
+			ch.mu.Unlock()
 			return
 		}
+		ch.activeBackgroundWorkers.Add(1)
+		ch.mu.Unlock()
 
-		switch connectionState {
-		case webrtc.ICEConnectionStateDisconnected,
-			webrtc.ICEConnectionStateFailed,
-			webrtc.ICEConnectionStateClosed:
-			connIDMu.Lock()
-			currConnID := connID
-			connIDMu.Unlock()
-			if currConnID == "" { // make sure we've gathered information before
+		utils.PanicCapturingGo(func() {
+			defer ch.activeBackgroundWorkers.Done()
+
+			ch.mu.Lock()
+			defer ch.mu.Unlock()
+			if ch.closed {
+				doPeerDone()
 				return
 			}
-			logger.Debugw("connection state changed",
-				"conn_id", currConnID,
-				"conn_state", connectionState.String(),
-			)
-			if !peerDoneOnce && onPeerDone != nil {
-				peerDoneOnce = true
-				onPeerDone()
-			}
-		case webrtc.ICEConnectionStateChecking, webrtc.ICEConnectionStateCompleted,
-			webrtc.ICEConnectionStateConnected, webrtc.ICEConnectionStateNew:
-			fallthrough
-		default:
-			ch.activeBackgroundWorkers.Add(1)
-			utils.PanicCapturingGo(func() {
-				defer ch.activeBackgroundWorkers.Done()
+
+			switch connectionState {
+			case webrtc.ICEConnectionStateDisconnected,
+				webrtc.ICEConnectionStateFailed,
+				webrtc.ICEConnectionStateClosed:
+				connIDMu.Lock()
+				currConnID := connID
+				connIDMu.Unlock()
+				if currConnID == "" { // make sure we've gathered information before
+					return
+				}
+				logger.Debugw("connection state changed",
+					"conn_id", currConnID,
+					"conn_state", connectionState.String(),
+				)
+				doPeerDone()
+			case webrtc.ICEConnectionStateChecking, webrtc.ICEConnectionStateCompleted,
+				webrtc.ICEConnectionStateConnected, webrtc.ICEConnectionStateNew:
+				fallthrough
+			default:
 				connInfo := getWebRTCPeerConnectionStats(peerConn)
 				connIDMu.Lock()
 				connID = connInfo.ID
@@ -95,8 +104,8 @@ func newBaseChannel(
 					"conn_state", connectionState.String(),
 					"conn_remote_candidates", connInfo.RemoteCandidates,
 				)
-			})
-		}
+			}
+		})
 	}
 	peerConn.OnICEConnectionStateChange(connStateChanged)
 
