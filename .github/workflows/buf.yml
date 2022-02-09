@@ -1,0 +1,19 @@
+name: buf-push
+
+on:
+  # Triggers the workflow on pushes or pull requests for the main branch
+  push:
+    branches: [ main ]
+
+  # Allow running this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: bufbuild/buf-setup-action@v0.7.0
+      - uses: bufbuild/buf-push-action@v1
+        with:
+          buf_token: ${{ secrets.BUF_TOKEN }}
