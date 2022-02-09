@@ -4,24 +4,27 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"net"
+	"net/http"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/edaniels/golog"
 	"github.com/golang-jwt/jwt/v4"
-	"github.com/miekg/dns"
 	"github.com/pkg/errors"
+	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.uber.org/multierr"
 	"go.viam.com/test"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"go.viam.com/utils"
 	pb "go.viam.com/utils/proto/rpc/examples/echo/v1"
 	rpcpb "go.viam.com/utils/proto/rpc/v1"
+	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
 	echoserver "go.viam.com/utils/rpc/examples/echo/server"
 	"go.viam.com/utils/testutils"
 )
@@ -36,26 +39,30 @@ func TestDial(t *testing.T) {
 	test.That(t, err, test.ShouldResemble, context.DeadlineExceeded)
 	cancel1()
 
-	// working and fallbacks
+	t.Run("unauthenticated", func(t *testing.T) {
+		rpcServer, err := NewServer(logger)
+		test.That(t, err, test.ShouldBeNil)
 
-	rpcServer, err := NewServer(logger)
-	test.That(t, err, test.ShouldBeNil)
+		httpListener, err := net.Listen("tcp", "localhost:0")
+		test.That(t, err, test.ShouldBeNil)
 
-	httpListener, err := net.Listen("tcp", "localhost:0")
-	test.That(t, err, test.ShouldBeNil)
+		errChan := make(chan error)
+		go func() {
+			errChan <- rpcServer.Serve(httpListener)
+		}()
 
-	errChan := make(chan error)
-	go func() {
-		errChan <- rpcServer.Serve(httpListener)
-	}()
+		conn, err := Dial(context.Background(), httpListener.Addr().String(), logger, WithInsecure())
+		test.That(t, err, test.ShouldBeNil)
+		test.That(t, conn.Close(), test.ShouldBeNil)
 
-	conn, err := Dial(context.Background(), httpListener.Addr().String(), logger, WithInsecure())
-	test.That(t, err, test.ShouldBeNil)
-	test.That(t, conn.Close(), test.ShouldBeNil)
+		conn, err = DialDirectGRPC(context.Background(), httpListener.Addr().String(), logger, WithInsecure())
+		test.That(t, err, test.ShouldBeNil)
+		test.That(t, conn.Close(), test.ShouldBeNil)
 
-	test.That(t, rpcServer.Stop(), test.ShouldBeNil)
-	err = <-errChan
-	test.That(t, err, test.ShouldBeNil)
+		test.That(t, rpcServer.Stop(), test.ShouldBeNil)
+		err = <-errChan
+		test.That(t, err, test.ShouldBeNil)
+	})
 
 	hosts := []string{"yeehaw", "woahthere"}
 	for _, host := range hosts {
@@ -63,7 +70,7 @@ func TestDial(t *testing.T) {
 			var testMu sync.Mutex
 			fakeAuthWorks := false
 
-			httpListener, err = net.Listen("tcp", "localhost:0")
+			httpListener, err := net.Listen("tcp", "localhost:0")
 			test.That(t, err, test.ShouldBeNil)
 
 			httpListenerExternal, err := net.Listen("tcp", "localhost:0")
@@ -71,11 +78,21 @@ func TestDial(t *testing.T) {
 
 			privKeyExternal, err := rsa.GenerateKey(rand.Reader, generatedRSAKeyBits)
 			test.That(t, err, test.ShouldBeNil)
-			rpcServer, err = NewServer(
+
+			externalSignalingHosts := make([]string, len(hosts))
+			copy(externalSignalingHosts, hosts)
+			externalSignalingHosts = append(externalSignalingHosts, "ext-only")
+
+			internalSignalingHosts := make([]string, len(hosts))
+			copy(internalSignalingHosts, hosts)
+			internalSignalingHosts = append(internalSignalingHosts, "int-only")
+
+			rpcServer, err := NewServer(
 				logger,
 				WithWebRTCServerOptions(WebRTCServerOptions{
 					Enable:                   true,
-					SignalingHosts:           hosts,
+					ExternalSignalingHosts:   externalSignalingHosts,
+					InternalSignalingHosts:   internalSignalingHosts,
 					EnableInternalSignaling:  true,
 					ExternalSignalingAddress: httpListenerExternal.Addr().String(),
 					ExternalSignalingDialOpts: []DialOption{
@@ -167,7 +184,15 @@ func TestDial(t *testing.T) {
 			)
 			test.That(t, err, test.ShouldBeNil)
 
-			errChan = make(chan error)
+			signalingCallQueue := NewMemoryWebRTCCallQueue()
+			test.That(t, rpcServerExternal.RegisterServiceServer(
+				context.Background(),
+				&webrtcpb.SignalingService_ServiceDesc,
+				NewWebRTCSignalingServer(signalingCallQueue, nil, externalSignalingHosts...),
+				webrtcpb.RegisterSignalingServiceHandlerFromEndpoint,
+			), test.ShouldBeNil)
+
+			errChan := make(chan error)
 			go func() {
 				errChan <- rpcServer.Serve(httpListener)
 			}()
@@ -175,205 +200,251 @@ func TestDial(t *testing.T) {
 				errChan <- rpcServerExternal.Serve(httpListenerExternal)
 			}()
 
-			// unauthenticated
+			t.Run("no credentials provided", func(t *testing.T) {
+				// this fails because WebRTC does some RPC.
+				_, err = Dial(
+					context.Background(),
+					httpListener.Addr().String(),
+					logger,
+					WithDialDebug(),
+					WithInsecure(),
+				)
+				test.That(t, err, test.ShouldNotBeNil)
+				gStatus, ok := status.FromError(err)
+				test.That(t, ok, test.ShouldBeTrue)
+				test.That(t, gStatus.Code(), test.ShouldEqual, codes.Unauthenticated)
 
-			// will not fail because dialing is okay to do pre-rpc
-			conn, err = Dial(context.Background(), httpListener.Addr().String(), logger, WithInsecure())
-			test.That(t, err, test.ShouldBeNil)
-			test.That(t, conn.Close(), test.ShouldBeNil)
+				// this fails for the same reason.
+				_, err = Dial(context.Background(), host, logger,
+					WithDialDebug(),
+					WithWebRTCOptions(DialWebRTCOptions{
+						SignalingServerAddress: httpListener.Addr().String(),
+						SignalingInsecure:      true,
+					}))
+				test.That(t, err, test.ShouldNotBeNil)
+				gStatus, ok = status.FromError(err)
+				test.That(t, ok, test.ShouldBeTrue)
+				test.That(t, gStatus.Code(), test.ShouldEqual, codes.Unauthenticated)
+			})
 
 			testMu.Lock()
 			fakeAuthWorks = true
 			testMu.Unlock()
 
-			// this fails because WebRTC does some RPC
-			_, err = Dial(context.Background(), host, logger,
-				WithWebRTCOptions(DialWebRTCOptions{
-					SignalingServerAddress: httpListener.Addr().String(),
-					SignalingInsecure:      true,
-				}))
-			test.That(t, err, test.ShouldNotBeNil)
-			gStatus, ok := status.FromError(err)
-			test.That(t, ok, test.ShouldBeTrue)
-			test.That(t, gStatus.Code(), test.ShouldEqual, codes.Unauthenticated)
+			t.Run("with credentials provided", func(t *testing.T) {
+				conn, err := DialDirectGRPC(context.Background(), httpListener.Addr().String(), logger,
+					WithDialDebug(),
+					WithInsecure(),
+					WithCredentials(Credentials{Type: "fake"}),
+				)
+				test.That(t, err, test.ShouldBeNil)
 
-			conn, err = Dial(context.Background(), host, logger,
-				WithInsecure(),
-				WithWebRTCOptions(DialWebRTCOptions{
-					SignalingServerAddress: httpListener.Addr().String(),
-					SignalingInsecure:      true,
-					SignalingCreds:         Credentials{Type: "fake"},
-				}),
-			)
-			test.That(t, err, test.ShouldBeNil)
-			test.That(t, conn.Close(), test.ShouldBeNil)
+				client := pb.NewEchoServiceClient(conn)
+				echoResp, err := client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
+				test.That(t, err, test.ShouldBeNil)
+				test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
+				test.That(t, conn.Close(), test.ShouldBeNil)
 
-			port, err := utils.TryReserveRandomPort()
-			test.That(t, err, test.ShouldBeNil)
-			mux := dns.NewServeMux()
-			httpIP := httpListener.Addr().(*net.TCPAddr).IP
-			// httpPort := httpListener.Addr().(*net.TCPAddr).Port
-			externalHTTPPort := httpListenerExternal.Addr().(*net.TCPAddr).Port
+				conn, err = Dial(context.Background(), host, logger,
+					WithDialDebug(),
+					WithInsecure(),
+					WithWebRTCOptions(DialWebRTCOptions{
+						SignalingServerAddress: httpListener.Addr().String(),
+						SignalingInsecure:      true,
+						SignalingCreds:         Credentials{Type: "fake"},
+					}),
+				)
+				test.That(t, err, test.ShouldBeNil)
 
-			mux.HandleFunc(host, func(rw dns.ResponseWriter, r *dns.Msg) {
-				m := &dns.Msg{Compress: false}
-				m.SetReply(r)
-
-				if r.Opcode == dns.OpcodeQuery {
-					for _, q := range m.Question {
-						if q.Qtype == dns.TypeA {
-							rr := &dns.A{
-								Hdr: dns.RR_Header{
-									Name:   q.Name,
-									Rrtype: dns.TypeA,
-									Class:  dns.ClassINET,
-									Ttl:    60,
-								},
-								A: httpIP,
-							}
-							m.Answer = append(m.Answer, rr)
-						}
-					}
-				}
-
-				utils.UncheckedError(rw.WriteMsg(m))
+				client = pb.NewEchoServiceClient(conn)
+				echoResp, err = client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
+				test.That(t, err, test.ShouldBeNil)
+				test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
+				test.That(t, conn.Close(), test.ShouldBeNil)
 			})
-			dnsServer := &dns.Server{
-				Addr:    fmt.Sprintf(":%d", port),
-				Net:     "udp",
-				Handler: mux,
-			}
-			go dnsServer.ListenAndServe()
 
-			resolver := &net.Resolver{
-				PreferGo: true,
-				Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-					return net.Dial("udp", dnsServer.Addr)
-				},
-			}
-			ctx := contextWithResolver(context.Background(), resolver)
-			ctx = ContextWithDialer(ctx, &staticDialer{httpListener.Addr().String()})
+			t.Run("explicit signaling server", func(t *testing.T) {
+				conn, err := Dial(context.Background(), host, logger,
+					WithDialDebug(),
+					WithDialMulticastDNSOptions(DialMulticastDNSOptions{Disable: true}),
+					WithWebRTCOptions(DialWebRTCOptions{
+						SignalingServerAddress: httpListener.Addr().String(),
+						SignalingInsecure:      true,
+						SignalingCreds:         Credentials{Type: "fake"},
+					}),
+				)
+				test.That(t, err, test.ShouldBeNil)
 
-			// explicit signaling server
-			conn, err = Dial(context.Background(), host, logger,
-				WithWebRTCOptions(DialWebRTCOptions{
-					SignalingServerAddress: httpListener.Addr().String(),
-					SignalingInsecure:      true,
-					SignalingCreds:         Credentials{Type: "fake"},
-				}),
-			)
-			test.That(t, err, test.ShouldBeNil)
-
-			client := pb.NewEchoServiceClient(conn)
-			echoResp, err := client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
-			test.That(t, err, test.ShouldBeNil)
-			test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
-			test.That(t, conn.Close(), test.ShouldBeNil)
-
-			// explicit signaling server with external auth
-			conn, err = Dial(context.Background(), host, logger,
-				WithDialDebug(),
-				WithWebRTCOptions(DialWebRTCOptions{
-					SignalingServerAddress:        httpListener.Addr().String(),
-					SignalingInsecure:             true,
-					SignalingCreds:                Credentials{Type: "fakeExtWithKey", Payload: "sosecret"},
-					SignalingExternalAuthAddress:  httpListenerExternal.Addr().String(),
-					SignalingExternalAuthInsecure: true,
-				}),
-			)
-			test.That(t, err, test.ShouldBeNil)
-			client = pb.NewEchoServiceClient(conn)
-			echoResp, err = client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
-			test.That(t, err, test.ShouldBeNil)
-			test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
-			test.That(t, conn.Close(), test.ShouldBeNil)
-
-			// explicit signaling server with external auth but bad secret
-			_, err = Dial(context.Background(), host, logger,
-				WithDialDebug(),
-				WithWebRTCOptions(DialWebRTCOptions{
-					SignalingServerAddress:        httpListener.Addr().String(),
-					SignalingInsecure:             true,
-					SignalingCreds:                Credentials{Type: "fakeExtWithKey", Payload: "notsosecret"},
-					SignalingExternalAuthAddress:  httpListenerExternal.Addr().String(),
-					SignalingExternalAuthInsecure: true,
-				}),
-			)
-			test.That(t, err, test.ShouldNotBeNil)
-			gStatus, ok = status.FromError(err)
-			test.That(t, ok, test.ShouldBeTrue)
-			test.That(t, gStatus.Code(), test.ShouldEqual, codes.PermissionDenied)
-			test.That(t, gStatus.Message(), test.ShouldContainSubstring, "wrong secret")
-
-			// explicit signaling server with external auth plus auth to extension but bad ent
-			_, err = Dial(context.Background(), host, logger,
-				WithDialDebug(),
-				WithWebRTCOptions(DialWebRTCOptions{
-					SignalingServerAddress:        httpListener.Addr().String(),
-					SignalingInsecure:             true,
-					SignalingCreds:                Credentials{Type: "fakeExtWithKey", Payload: "sosecret"},
-					SignalingExternalAuthAddress:  httpListenerExternal.Addr().String(),
-					SignalingExternalAuthInsecure: true,
-					SignalingExternalAuthToEntity: "something",
-				}),
-			)
-			test.That(t, err, test.ShouldNotBeNil)
-			gStatus, ok = status.FromError(err)
-			test.That(t, ok, test.ShouldBeTrue)
-			test.That(t, gStatus.Code(), test.ShouldEqual, codes.Unknown)
-			test.That(t, gStatus.Message(), test.ShouldContainSubstring, "nope")
-
-			// explicit signaling server with external auth plus auth to extension and good ent
-			conn, err = Dial(context.Background(), host, logger,
-				WithDialDebug(),
-				WithWebRTCOptions(DialWebRTCOptions{
-					SignalingServerAddress:        httpListener.Addr().String(),
-					SignalingInsecure:             true,
-					SignalingCreds:                Credentials{Type: "fakeExtWithKey", Payload: "sosecret"},
-					SignalingExternalAuthAddress:  httpListenerExternal.Addr().String(),
-					SignalingExternalAuthInsecure: true,
-					SignalingExternalAuthToEntity: "someent",
-				}),
-			)
-			test.That(t, err, test.ShouldBeNil)
-			client = pb.NewEchoServiceClient(conn)
-			echoResp, err = client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
-			test.That(t, err, test.ShouldBeNil)
-			test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
-			test.That(t, conn.Close(), test.ShouldBeNil)
-
-			mux.HandleFunc(fmt.Sprintf("_webrtc._tcp.%s.", host), func(rw dns.ResponseWriter, r *dns.Msg) {
-				m := &dns.Msg{Compress: false}
-				m.SetReply(r)
-
-				if r.Opcode == dns.OpcodeQuery {
-					for _, q := range m.Question {
-						if q.Qtype == dns.TypeSRV {
-							rr := &dns.SRV{
-								Hdr: dns.RR_Header{
-									Name:   q.Name,
-									Rrtype: dns.TypeSRV,
-									Class:  dns.ClassINET,
-									Ttl:    60,
-								},
-								Target: "localhost.",
-								Port:   uint16(externalHTTPPort),
-							}
-							m.Answer = append(m.Answer, rr)
-						}
-					}
-				}
-
-				utils.UncheckedError(rw.WriteMsg(m))
+				client := pb.NewEchoServiceClient(conn)
+				echoResp, err := client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
+				test.That(t, err, test.ShouldBeNil)
+				test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
+				test.That(t, conn.Close(), test.ShouldBeNil)
 			})
-			conn, err = Dial(ctx, host, logger, WithInsecure(), WithCredentials(Credentials{Type: "fake"}))
-			test.That(t, err, test.ShouldBeNil)
 
-			client = pb.NewEchoServiceClient(conn)
-			echoResp, err = client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
-			test.That(t, err, test.ShouldBeNil)
-			test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
-			test.That(t, conn.Close(), test.ShouldBeNil)
+			t.Run("explicit signaling server with exclusive host", func(t *testing.T) {
+				conn, err := Dial(context.Background(), "int-only", logger,
+					WithDialDebug(),
+					WithDialMulticastDNSOptions(DialMulticastDNSOptions{Disable: true}),
+					WithWebRTCOptions(DialWebRTCOptions{
+						SignalingServerAddress: httpListener.Addr().String(),
+						SignalingInsecure:      true,
+						SignalingCreds:         Credentials{Type: "fake"},
+					}),
+				)
+				test.That(t, err, test.ShouldBeNil)
+				client := pb.NewEchoServiceClient(conn)
+				echoResp, err := client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
+				test.That(t, err, test.ShouldBeNil)
+				test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
+				test.That(t, conn.Close(), test.ShouldBeNil)
+			})
+
+			t.Run("explicit signaling server with unaccepted host", func(t *testing.T) {
+				_, err := Dial(context.Background(), "ext-only", logger,
+					WithDialDebug(),
+					WithDisableDirectGRPC(),
+					WithDialMulticastDNSOptions(DialMulticastDNSOptions{Disable: true}),
+					WithWebRTCOptions(DialWebRTCOptions{
+						SignalingServerAddress: httpListener.Addr().String(),
+						SignalingInsecure:      true,
+						SignalingCreds:         Credentials{Type: "fake"},
+					}),
+				)
+				test.That(t, err, test.ShouldBeError, ErrConnectionOptionsExhausted)
+			})
+
+			t.Run("explicit signaling server with external auth", func(t *testing.T) {
+				conn, err := Dial(context.Background(), host, logger,
+					WithDialDebug(),
+					WithDialMulticastDNSOptions(DialMulticastDNSOptions{Disable: true}),
+					WithWebRTCOptions(DialWebRTCOptions{
+						SignalingServerAddress:        httpListener.Addr().String(),
+						SignalingInsecure:             true,
+						SignalingCreds:                Credentials{Type: "fakeExtWithKey", Payload: "sosecret"},
+						SignalingExternalAuthAddress:  httpListenerExternal.Addr().String(),
+						SignalingExternalAuthInsecure: true,
+					}),
+				)
+				test.That(t, err, test.ShouldBeNil)
+				client := pb.NewEchoServiceClient(conn)
+				echoResp, err := client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
+				test.That(t, err, test.ShouldBeNil)
+				test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
+				test.That(t, conn.Close(), test.ShouldBeNil)
+			})
+
+			t.Run("explicit external signaling server", func(t *testing.T) {
+				conn, err := Dial(context.Background(), host, logger,
+					WithDialDebug(),
+					WithDialMulticastDNSOptions(DialMulticastDNSOptions{Disable: true}),
+					WithWebRTCOptions(DialWebRTCOptions{
+						SignalingServerAddress: httpListenerExternal.Addr().String(),
+						SignalingInsecure:      true,
+						SignalingCreds:         Credentials{Type: "fakeExtWithKey", Payload: "sosecret"},
+						SignalingAuthEntity:    httpListenerExternal.Addr().String(),
+					}),
+				)
+				test.That(t, err, test.ShouldBeNil)
+				client := pb.NewEchoServiceClient(conn)
+				echoResp, err := client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
+				test.That(t, err, test.ShouldBeNil)
+				test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
+				test.That(t, conn.Close(), test.ShouldBeNil)
+			})
+
+			t.Run("explicit external signaling server with exclusive host", func(t *testing.T) {
+				conn, err := Dial(context.Background(), "ext-only", logger,
+					WithDialDebug(),
+					WithDialMulticastDNSOptions(DialMulticastDNSOptions{Disable: true}),
+					WithWebRTCOptions(DialWebRTCOptions{
+						SignalingServerAddress: httpListenerExternal.Addr().String(),
+						SignalingInsecure:      true,
+						SignalingCreds:         Credentials{Type: "fakeExtWithKey", Payload: "sosecret"},
+						SignalingAuthEntity:    httpListenerExternal.Addr().String(),
+					}),
+				)
+				test.That(t, err, test.ShouldBeNil)
+				client := pb.NewEchoServiceClient(conn)
+				echoResp, err := client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
+				test.That(t, err, test.ShouldBeNil)
+				test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
+				test.That(t, conn.Close(), test.ShouldBeNil)
+			})
+
+			t.Run("explicit external signaling server with unaccepted host", func(t *testing.T) {
+				_, err := Dial(context.Background(), "int-only", logger,
+					WithDialDebug(),
+					WithDisableDirectGRPC(),
+					WithDialMulticastDNSOptions(DialMulticastDNSOptions{Disable: true}),
+					WithWebRTCOptions(DialWebRTCOptions{
+						SignalingServerAddress: httpListenerExternal.Addr().String(),
+						SignalingInsecure:      true,
+						SignalingCreds:         Credentials{Type: "fakeExtWithKey", Payload: "sosecret"},
+						SignalingAuthEntity:    httpListenerExternal.Addr().String(),
+					}),
+				)
+				test.That(t, err, test.ShouldBeError, ErrConnectionOptionsExhausted)
+			})
+
+			t.Run("explicit signaling server with external auth but bad secret", func(t *testing.T) {
+				_, err = Dial(context.Background(), host, logger,
+					WithDialDebug(),
+					WithWebRTCOptions(DialWebRTCOptions{
+						SignalingServerAddress:        httpListener.Addr().String(),
+						SignalingInsecure:             true,
+						SignalingCreds:                Credentials{Type: "fakeExtWithKey", Payload: "notsosecret"},
+						SignalingExternalAuthAddress:  httpListenerExternal.Addr().String(),
+						SignalingExternalAuthInsecure: true,
+					}),
+				)
+				test.That(t, err, test.ShouldNotBeNil)
+				gStatus, ok := status.FromError(err)
+				test.That(t, ok, test.ShouldBeTrue)
+				test.That(t, gStatus.Code(), test.ShouldEqual, codes.PermissionDenied)
+				test.That(t, gStatus.Message(), test.ShouldContainSubstring, "wrong secret")
+			})
+
+			t.Run("explicit signaling server with external auth plus auth to extension but bad ent", func(t *testing.T) {
+				_, err = Dial(context.Background(), host, logger,
+					WithDialDebug(),
+					WithDialMulticastDNSOptions(DialMulticastDNSOptions{Disable: true}),
+					WithWebRTCOptions(DialWebRTCOptions{
+						SignalingServerAddress:        httpListener.Addr().String(),
+						SignalingInsecure:             true,
+						SignalingCreds:                Credentials{Type: "fakeExtWithKey", Payload: "sosecret"},
+						SignalingExternalAuthAddress:  httpListenerExternal.Addr().String(),
+						SignalingExternalAuthInsecure: true,
+						SignalingExternalAuthToEntity: "something",
+					}),
+				)
+				test.That(t, err, test.ShouldNotBeNil)
+				gStatus, ok := status.FromError(err)
+				test.That(t, ok, test.ShouldBeTrue)
+				test.That(t, gStatus.Code(), test.ShouldEqual, codes.Unknown)
+				test.That(t, gStatus.Message(), test.ShouldContainSubstring, "nope")
+			})
+
+			t.Run("explicit signaling server with external auth plus auth to extension and good ent", func(t *testing.T) {
+				conn, err := Dial(context.Background(), host, logger,
+					WithDialDebug(),
+					WithDialMulticastDNSOptions(DialMulticastDNSOptions{Disable: true}),
+					WithWebRTCOptions(DialWebRTCOptions{
+						SignalingServerAddress:        httpListener.Addr().String(),
+						SignalingInsecure:             true,
+						SignalingCreds:                Credentials{Type: "fakeExtWithKey", Payload: "sosecret"},
+						SignalingExternalAuthAddress:  httpListenerExternal.Addr().String(),
+						SignalingExternalAuthInsecure: true,
+						SignalingExternalAuthToEntity: "someent",
+					}),
+				)
+				test.That(t, err, test.ShouldBeNil)
+				client := pb.NewEchoServiceClient(conn)
+				echoResp, err := client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
+				test.That(t, err, test.ShouldBeNil)
+				test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
+				test.That(t, conn.Close(), test.ShouldBeNil)
+			})
 
 			test.That(t, rpcServer.Stop(), test.ShouldBeNil)
 			err = <-errChan
@@ -381,7 +452,7 @@ func TestDial(t *testing.T) {
 			test.That(t, rpcServerExternal.Stop(), test.ShouldBeNil)
 			err = <-errChan
 			test.That(t, err, test.ShouldBeNil)
-			test.That(t, dnsServer.Shutdown(), test.ShouldBeNil)
+			test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
 		})
 	}
 }
@@ -392,6 +463,11 @@ func TestDialExternalAuth(t *testing.T) {
 
 	httpListenerInternal, err := net.Listen("tcp", "localhost:0")
 	test.That(t, err, test.ShouldBeNil)
+	listenerInternalTCPAddr, ok := httpListenerInternal.Addr().(*net.TCPAddr)
+	test.That(t, ok, test.ShouldBeTrue)
+	listenerInternalPort := listenerInternalTCPAddr.Port
+	internalAddr := fmt.Sprintf("localhost:%d", listenerInternalPort)
+
 	httpListenerExternal, err := net.Listen("tcp", "localhost:0")
 	test.That(t, err, test.ShouldBeNil)
 	httpListenerExternal2, err := net.Listen("tcp", "localhost:0")
@@ -405,8 +481,8 @@ func TestDialExternalAuth(t *testing.T) {
 	rpcServerInternal, err := NewServer(
 		logger,
 		WithWebRTCServerOptions(WebRTCServerOptions{
-			Enable:         true,
-			SignalingHosts: []string{"yeehaw"},
+			Enable:                 true,
+			InternalSignalingHosts: []string{"yeehaw", internalAddr},
 		}),
 		WithAuthHandler("fake", MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) (map[string]string, error) {
 			return map[string]string{}, nil
@@ -442,8 +518,8 @@ func TestDialExternalAuth(t *testing.T) {
 	rpcServerExternal, err := NewServer(
 		logger,
 		WithWebRTCServerOptions(WebRTCServerOptions{
-			Enable:         true,
-			SignalingHosts: []string{"yeehaw"},
+			Enable:                 true,
+			InternalSignalingHosts: []string{"yeehaw"},
 		}),
 		WithAuthHandler("fake", MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) (map[string]string, error) {
 			return map[string]string{}, nil
@@ -483,10 +559,6 @@ func TestDialExternalAuth(t *testing.T) {
 
 	rpcServerExternal2, err := NewServer(
 		logger,
-		WithWebRTCServerOptions(WebRTCServerOptions{
-			Enable:         true,
-			SignalingHosts: []string{"yeehaw"},
-		}),
 		WithAuthHandler("fake", MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) (map[string]string, error) {
 			return map[string]string{}, nil
 		}, func(ctx context.Context, entity string) (interface{}, error) {
@@ -529,127 +601,143 @@ func TestDialExternalAuth(t *testing.T) {
 		errChan <- rpcServerExternal2.Serve(httpListenerExternal2)
 	}()
 
-	t.Run("with external auth should work", func(t *testing.T) {
-		conn, err := Dial(context.Background(), httpListenerInternal.Addr().String(), logger,
-			WithInsecure(),
-			WithCredentials(Credentials{Type: "fakeWithKey", Payload: "sosecret"}),
-			WithExternalAuth(httpListenerExternal.Addr().String(), "someent"),
-			WithExternalAuthInsecure(),
-		)
+	testExternalAuth := func(
+		t *testing.T,
+		addr string,
+		opts []DialOption,
+		logger golog.Logger,
+		errFunc func(t *testing.T, err error),
+	) {
+		t.Helper()
+
+		opts = append(opts, WithDialDebug())
+
+		conn, err := Dial(context.Background(), addr, logger, opts...)
+		if errFunc == nil {
+			test.That(t, err, test.ShouldBeNil)
+
+			client := pb.NewEchoServiceClient(conn)
+			echoResp, err := client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
+			test.That(t, err, test.ShouldBeNil)
+			test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
+			test.That(t, conn.Close(), test.ShouldBeNil)
+		} else {
+			test.That(t, err, test.ShouldNotBeNil)
+			errFunc(t, err)
+		}
+
+		opts = append(opts, WithWebRTCOptions(DialWebRTCOptions{Disable: true}))
+		conn, err = Dial(context.Background(), addr, logger, opts...)
 		test.That(t, err, test.ShouldBeNil)
+
 		defer func() {
 			test.That(t, conn.Close(), test.ShouldBeNil)
 		}()
 
 		client := pb.NewEchoServiceClient(conn)
 		echoResp, err := client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
-		test.That(t, err, test.ShouldBeNil)
-		test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
+
+		if errFunc == nil {
+			test.That(t, err, test.ShouldBeNil)
+			test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
+		} else {
+			test.That(t, err, test.ShouldNotBeNil)
+			errFunc(t, err)
+		}
+	}
+
+	t.Run("with external auth", func(t *testing.T) {
+		opts := []DialOption{
+			WithInsecure(),
+			WithCredentials(Credentials{Type: "fakeWithKey", Payload: "sosecret"}),
+			WithExternalAuth(httpListenerExternal.Addr().String(), "someent"),
+			WithExternalAuthInsecure(),
+		}
+		testExternalAuth(t, httpListenerInternal.Addr().String(), opts, logger, nil)
 	})
 
-	//nolint:dupl
-	t.Run("with external auth bad secret should fail", func(t *testing.T) {
-		conn, err := Dial(context.Background(), httpListenerInternal.Addr().String(), logger,
+	t.Run("with external auth to localhost", func(t *testing.T) {
+		opts := []DialOption{
+			WithInsecure(),
+			WithCredentials(Credentials{Type: "fakeWithKey", Payload: "sosecret"}),
+			WithExternalAuth(httpListenerExternal.Addr().String(), "someent"),
+			WithExternalAuthInsecure(),
+		}
+		testExternalAuth(t, internalAddr, opts, logger, nil)
+	})
+
+	t.Run("with external auth bad secret", func(t *testing.T) {
+		opts := []DialOption{
 			WithInsecure(),
 			WithCredentials(Credentials{Type: "fakeWithKey", Payload: "notsosecret"}),
 			WithExternalAuth(httpListenerExternal.Addr().String(), "someent"),
 			WithExternalAuthInsecure(),
-		)
-		test.That(t, err, test.ShouldBeNil)
-		defer func() {
-			test.That(t, conn.Close(), test.ShouldBeNil)
-		}()
-
-		client := pb.NewEchoServiceClient(conn)
-		_, err = client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
-		test.That(t, err, test.ShouldNotBeNil)
-		gStatus, ok := status.FromError(err)
-		test.That(t, ok, test.ShouldBeTrue)
-		test.That(t, gStatus.Code(), test.ShouldEqual, codes.PermissionDenied)
-		test.That(t, gStatus.Message(), test.ShouldContainSubstring, "wrong secret")
+		}
+		testExternalAuth(t, httpListenerInternal.Addr().String(), opts, logger, func(t *testing.T, err error) {
+			t.Helper()
+			gStatus, ok := status.FromError(err)
+			test.That(t, ok, test.ShouldBeTrue)
+			test.That(t, gStatus.Code(), test.ShouldEqual, codes.PermissionDenied)
+			test.That(t, gStatus.Message(), test.ShouldContainSubstring, "wrong secret")
+		})
 	})
 
-	//nolint:dupl
-	t.Run("with no external auth entity provided should fail", func(t *testing.T) {
-		conn, err := Dial(context.Background(), httpListenerInternal.Addr().String(), logger,
+	t.Run("with no external auth entity provided", func(t *testing.T) {
+		opts := []DialOption{
 			WithInsecure(),
 			WithCredentials(Credentials{Type: "fakeWithKey", Payload: "sosecret"}),
 			WithExternalAuth(httpListenerExternal.Addr().String(), ""),
 			WithExternalAuthInsecure(),
-		)
-		test.That(t, err, test.ShouldBeNil)
-		defer func() {
-			test.That(t, conn.Close(), test.ShouldBeNil)
-		}()
-
-		client := pb.NewEchoServiceClient(conn)
-		_, err = client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
-		test.That(t, err, test.ShouldNotBeNil)
-		gStatus, ok := status.FromError(err)
-		test.That(t, ok, test.ShouldBeTrue)
-		test.That(t, gStatus.Code(), test.ShouldEqual, codes.Unauthenticated)
-		test.That(t, gStatus.Message(), test.ShouldContainSubstring, "no auth handler")
+		}
+		testExternalAuth(t, httpListenerInternal.Addr().String(), opts, logger, func(t *testing.T, err error) {
+			t.Helper()
+			gStatus, ok := status.FromError(err)
+			test.That(t, ok, test.ShouldBeTrue)
+			test.That(t, gStatus.Code(), test.ShouldEqual, codes.Unauthenticated)
+			test.That(t, gStatus.Message(), test.ShouldContainSubstring, "no auth handler")
+		})
 	})
 
-	//nolint:dupl
-	t.Run("with unknown external entity should fail", func(t *testing.T) {
-		conn, err := Dial(context.Background(), httpListenerInternal.Addr().String(), logger,
+	t.Run("with unknown external entity", func(t *testing.T) {
+		opts := []DialOption{
 			WithInsecure(),
 			WithCredentials(Credentials{Type: "fakeWithKey", Payload: "sosecret"}),
 			WithExternalAuth(httpListenerExternal.Addr().String(), "who"),
 			WithExternalAuthInsecure(),
-		)
-		test.That(t, err, test.ShouldBeNil)
-		defer func() {
-			test.That(t, conn.Close(), test.ShouldBeNil)
-		}()
-
-		client := pb.NewEchoServiceClient(conn)
-		_, err = client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
-		test.That(t, err, test.ShouldNotBeNil)
-		gStatus, ok := status.FromError(err)
-		test.That(t, ok, test.ShouldBeTrue)
-		test.That(t, gStatus.Code(), test.ShouldEqual, codes.Unknown)
-		test.That(t, gStatus.Message(), test.ShouldContainSubstring, "nope")
+		}
+		testExternalAuth(t, httpListenerInternal.Addr().String(), opts, logger, func(t *testing.T, err error) {
+			t.Helper()
+			gStatus, ok := status.FromError(err)
+			test.That(t, ok, test.ShouldBeTrue)
+			test.That(t, gStatus.Code(), test.ShouldEqual, codes.Unknown)
+			test.That(t, gStatus.Message(), test.ShouldContainSubstring, "nope")
+		})
 	})
 
-	t.Run("with expected external entity should work", func(t *testing.T) {
-		conn, err := Dial(context.Background(), httpListenerInternal.Addr().String(), logger,
+	t.Run("with expected external entity", func(t *testing.T) {
+		opts := []DialOption{
 			WithInsecure(),
 			WithEntityCredentials("someotherthing", Credentials{Type: "fakeWithKey", Payload: "sosecret"}),
 			WithExternalAuth(httpListenerExternal.Addr().String(), "someent"),
 			WithExternalAuthInsecure(),
-		)
-		test.That(t, err, test.ShouldBeNil)
-		defer func() {
-			test.That(t, conn.Close(), test.ShouldBeNil)
-		}()
-
-		client := pb.NewEchoServiceClient(conn)
-		echoResp, err := client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
-		test.That(t, err, test.ShouldBeNil)
-		test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
+		}
+		testExternalAuth(t, httpListenerInternal.Addr().String(), opts, logger, nil)
 	})
 
-	t.Run("with unexpected external entity should fail", func(t *testing.T) {
-		conn, err := Dial(context.Background(), httpListenerInternal.Addr().String(), logger,
+	t.Run("with unexpected external entity", func(t *testing.T) {
+		opts := []DialOption{
 			WithInsecure(),
 			WithEntityCredentials("wrongthing", Credentials{Type: "fakeWithKey"}),
 			WithExternalAuth(httpListenerExternal.Addr().String(), "someent"),
 			WithExternalAuthInsecure(),
-		)
-		test.That(t, err, test.ShouldBeNil)
-		defer func() {
-			test.That(t, conn.Close(), test.ShouldBeNil)
-		}()
-
-		client := pb.NewEchoServiceClient(conn)
-		_, err = client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
-		test.That(t, err, test.ShouldNotBeNil)
-		gStatus, ok := status.FromError(err)
-		test.That(t, ok, test.ShouldBeTrue)
-		test.That(t, gStatus.Code(), test.ShouldEqual, codes.PermissionDenied)
-		test.That(t, gStatus.Message(), test.ShouldContainSubstring, "wrong entity")
+		}
+		testExternalAuth(t, httpListenerInternal.Addr().String(), opts, logger, func(t *testing.T, err error) {
+			t.Helper()
+			gStatus, ok := status.FromError(err)
+			test.That(t, ok, test.ShouldBeTrue)
+			test.That(t, gStatus.Code(), test.ShouldEqual, codes.PermissionDenied)
+			test.That(t, gStatus.Message(), test.ShouldContainSubstring, "wrong entity")
+		})
 	})
 
 	t.Run("with external auth where service fails", func(t *testing.T) {
@@ -658,71 +746,53 @@ func TestDialExternalAuth(t *testing.T) {
 		defer func() {
 			authToFail = prevFail
 		}()
-		conn, err := Dial(context.Background(), httpListenerInternal.Addr().String(), logger,
+		opts := []DialOption{
 			WithInsecure(),
 			WithCredentials(Credentials{Type: "fakeWithKey", Payload: "sosecret"}),
 			WithExternalAuth(httpListenerExternal.Addr().String(), "someent"),
 			WithExternalAuthInsecure(),
-		)
-		test.That(t, err, test.ShouldBeNil)
-		defer func() {
-			test.That(t, conn.Close(), test.ShouldBeNil)
-		}()
-
-		client := pb.NewEchoServiceClient(conn)
-		_, err = client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
-		test.That(t, err, test.ShouldNotBeNil)
-		gStatus, ok := status.FromError(err)
-		test.That(t, ok, test.ShouldBeTrue)
-		test.That(t, gStatus.Code(), test.ShouldEqual, codes.Unknown)
-		test.That(t, gStatus.Message(), test.ShouldContainSubstring, "darn")
+		}
+		testExternalAuth(t, httpListenerInternal.Addr().String(), opts, logger, func(t *testing.T, err error) {
+			t.Helper()
+			gStatus, ok := status.FromError(err)
+			test.That(t, ok, test.ShouldBeTrue)
+			test.That(t, gStatus.Code(), test.ShouldEqual, codes.Unknown)
+			test.That(t, gStatus.Message(), test.ShouldContainSubstring, "darn")
+		})
 	})
 
-	t.Run("with external auth but mismatched keys should fail", func(t *testing.T) {
-		conn, err := Dial(context.Background(), httpListenerInternal.Addr().String(), logger,
+	t.Run("with external auth but mismatched keys", func(t *testing.T) {
+		opts := []DialOption{
 			WithInsecure(),
 			WithCredentials(Credentials{Type: "fake"}),
 			WithExternalAuth(httpListenerExternal2.Addr().String(), "someent"),
 			WithExternalAuthInsecure(),
-		)
-		test.That(t, err, test.ShouldBeNil)
-		defer func() {
-			test.That(t, conn.Close(), test.ShouldBeNil)
-		}()
-
-		client := pb.NewEchoServiceClient(conn)
-		_, err = client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
-		test.That(t, err, test.ShouldNotBeNil)
-		gStatus, ok := status.FromError(err)
-		test.That(t, ok, test.ShouldBeTrue)
-		test.That(t, gStatus.Code(), test.ShouldEqual, codes.Unauthenticated)
-		test.That(t, gStatus.Message(), test.ShouldContainSubstring, "verification error")
+		}
+		testExternalAuth(t, httpListenerInternal.Addr().String(), opts, logger, func(t *testing.T, err error) {
+			t.Helper()
+			gStatus, ok := status.FromError(err)
+			test.That(t, ok, test.ShouldBeTrue)
+			test.That(t, gStatus.Code(), test.ShouldEqual, codes.Unauthenticated)
+			test.That(t, gStatus.Message(), test.ShouldContainSubstring, "verification error")
+		})
 	})
 
-	t.Run("with external auth set to same internal should work", func(t *testing.T) {
+	t.Run("with external auth set to same internal", func(t *testing.T) {
 		prevFail := internalExternalAuthSrv.fail
 		internalExternalAuthSrv.fail = false
 		defer func() {
 			internalExternalAuthSrv.fail = prevFail
 		}()
-		conn, err := Dial(context.Background(), httpListenerInternal.Addr().String(), logger,
+		opts := []DialOption{
 			WithInsecure(),
 			WithCredentials(Credentials{Type: "fake"}),
 			WithExternalAuth(httpListenerInternal.Addr().String(), "someent"),
 			WithExternalAuthInsecure(),
-		)
-		test.That(t, err, test.ShouldBeNil)
-		defer func() {
-			test.That(t, conn.Close(), test.ShouldBeNil)
-		}()
-
-		client := pb.NewEchoServiceClient(conn)
-		echoResp, err := client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
-		test.That(t, err, test.ShouldBeNil)
-		test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
+		}
+		testExternalAuth(t, httpListenerInternal.Addr().String(), opts, logger, nil)
 	})
 
-	t.Run("with external auth set authenticating to wrong entity should fail", func(t *testing.T) {
+	t.Run("with external auth set authenticating to wrong entity", func(t *testing.T) {
 		prevFail := internalExternalAuthSrv.fail
 		prevEnt := internalExternalAuthSrv.expectedEnt
 		internalExternalAuthSrv.fail = false
@@ -731,26 +801,22 @@ func TestDialExternalAuth(t *testing.T) {
 			internalExternalAuthSrv.fail = prevFail
 			internalExternalAuthSrv.expectedEnt = prevEnt
 		}()
-		conn, err := Dial(context.Background(), httpListenerInternal.Addr().String(), logger,
+		opts := []DialOption{
 			WithInsecure(),
 			WithCredentials(Credentials{Type: "fake"}),
 			WithExternalAuth(httpListenerInternal.Addr().String(), internalExternalAuthSrv.expectedEnt),
 			WithExternalAuthInsecure(),
-		)
-		test.That(t, err, test.ShouldBeNil)
-		defer func() {
-			test.That(t, conn.Close(), test.ShouldBeNil)
-		}()
-
-		client := pb.NewEchoServiceClient(conn)
-		_, err = client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
-		gStatus, ok := status.FromError(err)
-		test.That(t, ok, test.ShouldBeTrue)
-		test.That(t, gStatus.Code(), test.ShouldEqual, codes.Unknown)
-		test.That(t, gStatus.Message(), test.ShouldContainSubstring, "bad authed ent")
+		}
+		testExternalAuth(t, httpListenerInternal.Addr().String(), opts, logger, func(t *testing.T, err error) {
+			t.Helper()
+			gStatus, ok := status.FromError(err)
+			test.That(t, ok, test.ShouldBeTrue)
+			test.That(t, gStatus.Code(), test.ShouldEqual, codes.Unknown)
+			test.That(t, gStatus.Message(), test.ShouldContainSubstring, "bad authed ent")
+		})
 	})
 
-	t.Run("with external auth setting wrong metadata should fail", func(t *testing.T) {
+	t.Run("with external auth setting wrong metadata", func(t *testing.T) {
 		prevFail := internalExternalAuthSrv.fail
 		prevNoMetadata := internalExternalAuthSrv.noMetadata
 		prevEnt := internalExternalAuthSrv.expectedEnt
@@ -762,23 +828,19 @@ func TestDialExternalAuth(t *testing.T) {
 			internalExternalAuthSrv.noMetadata = prevNoMetadata
 			internalExternalAuthSrv.expectedEnt = prevEnt
 		}()
-		conn, err := Dial(context.Background(), httpListenerInternal.Addr().String(), logger,
+		opts := []DialOption{
 			WithInsecure(),
 			WithCredentials(Credentials{Type: "fake"}),
 			WithExternalAuth(httpListenerInternal.Addr().String(), "someent"),
 			WithExternalAuthInsecure(),
-		)
-		test.That(t, err, test.ShouldBeNil)
-		defer func() {
-			test.That(t, conn.Close(), test.ShouldBeNil)
-		}()
-
-		client := pb.NewEchoServiceClient(conn)
-		_, err = client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
-		gStatus, ok := status.FromError(err)
-		test.That(t, ok, test.ShouldBeTrue)
-		test.That(t, gStatus.Code(), test.ShouldEqual, codes.Unknown)
-		test.That(t, gStatus.Message(), test.ShouldContainSubstring, "bad authed data")
+		}
+		testExternalAuth(t, httpListenerInternal.Addr().String(), opts, logger, func(t *testing.T, err error) {
+			t.Helper()
+			gStatus, ok := status.FromError(err)
+			test.That(t, ok, test.ShouldBeTrue)
+			test.That(t, gStatus.Code(), test.ShouldEqual, codes.Unknown)
+			test.That(t, gStatus.Message(), test.ShouldContainSubstring, "bad authed data")
+		})
 	})
 
 	test.That(t, rpcServerInternal.Stop(), test.ShouldBeNil)
@@ -792,39 +854,483 @@ func TestDialExternalAuth(t *testing.T) {
 	test.That(t, err, test.ShouldBeNil)
 }
 
-type staticDialer struct {
-	address string
+func TestDialNoSignalerPresent(t *testing.T) {
+	testutils.SkipUnlessInternet(t)
+	logger := golog.NewTestLogger(t)
+
+	rpcServer, err := NewServer(logger, WithUnauthenticated())
+	test.That(t, err, test.ShouldBeNil)
+
+	signalingServer := &injectSignalingServer{}
+	test.That(t, rpcServer.RegisterServiceServer(
+		context.Background(),
+		&webrtcpb.SignalingService_ServiceDesc,
+		signalingServer,
+		webrtcpb.RegisterSignalingServiceHandlerFromEndpoint,
+	), test.ShouldBeNil)
+
+	httpListener, err := net.Listen("tcp", "localhost:0")
+	test.That(t, err, test.ShouldBeNil)
+
+	errChan := make(chan error)
+	go func() {
+		errChan <- rpcServer.Serve(httpListener)
+	}()
+
+	conn, err := Dial(context.Background(), httpListener.Addr().String(), logger, WithInsecure())
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, conn.Close(), test.ShouldBeNil)
+	test.That(t, signalingServer.callCount, test.ShouldEqual, 1)
+
+	conn, err = DialDirectGRPC(context.Background(), httpListener.Addr().String(), logger, WithInsecure())
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, conn.Close(), test.ShouldBeNil)
+	test.That(t, signalingServer.callCount, test.ShouldEqual, 1)
+
+	signalingServer.returnHostNotAllowedMsg = true
+
+	conn, err = Dial(context.Background(), httpListener.Addr().String(), logger, WithInsecure())
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, conn.Close(), test.ShouldBeNil)
+	test.That(t, signalingServer.callCount, test.ShouldEqual, 2)
+
+	conn, err = DialDirectGRPC(context.Background(), httpListener.Addr().String(), logger, WithInsecure())
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, conn.Close(), test.ShouldBeNil)
+	test.That(t, signalingServer.callCount, test.ShouldEqual, 2)
+
+	test.That(t, rpcServer.Stop(), test.ShouldBeNil)
+	err = <-errChan
+	test.That(t, err, test.ShouldBeNil)
 }
 
-func (sd *staticDialer) DialDirect(
-	ctx context.Context,
-	target string,
-	keyExtra string,
-	onClose func() error,
-	opts ...grpc.DialOption,
-) (ClientConn, bool, error) {
-	return sd.DialFunc("grpc", target, keyExtra, func() (ClientConn, func() error, error) {
-		conn, err := grpc.DialContext(ctx, sd.address, opts...)
-		if err != nil {
-			return nil, nil, err
+func TestDialFixupWebRTCOptions(t *testing.T) {
+	testutils.SkipUnlessInternet(t)
+	logger := golog.NewTestLogger(t)
+
+	rpcServer, err := NewServer(
+		logger,
+		WithWebRTCServerOptions(WebRTCServerOptions{Enable: true}),
+		WithAuthHandler("fake", MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) (map[string]string, error) {
+			if entity != "passmethrough" {
+				return nil, errors.New("nope")
+			}
+			return map[string]string{}, nil
+		}, func(ctx context.Context, entity string) (interface{}, error) {
+			return entity, nil
+		})),
+	)
+	test.That(t, err, test.ShouldBeNil)
+
+	err = rpcServer.RegisterServiceServer(
+		context.Background(),
+		&pb.EchoService_ServiceDesc,
+		&echoserver.Server{},
+		pb.RegisterEchoServiceHandlerFromEndpoint,
+	)
+	test.That(t, err, test.ShouldBeNil)
+
+	test.That(t, rpcServer.Start(), test.ShouldBeNil)
+
+	conn, err := Dial(
+		context.Background(),
+		rpcServer.InstanceNames()[0],
+		logger,
+		WithInsecure(),
+		WithDialDebug(),
+		WithDisableDirectGRPC(),
+		WithEntityCredentials("passmethrough", Credentials{Type: "fake"}),
+	)
+	test.That(t, err, test.ShouldBeNil)
+	client := pb.NewEchoServiceClient(conn)
+	echoResp, err := client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
+	test.That(t, conn.Close(), test.ShouldBeNil)
+
+	test.That(t, rpcServer.Stop(), test.ShouldBeNil)
+}
+
+func TestDialMulticastDNS(t *testing.T) {
+	testutils.SkipUnlessInternet(t)
+	logger := golog.NewTestLogger(t)
+
+	t.Run("unauthenticated", func(t *testing.T) {
+		rpcServer, err := NewServer(
+			logger,
+			WithUnauthenticated(),
+		)
+		test.That(t, err, test.ShouldBeNil)
+		test.That(t, rpcServer.Start(), test.ShouldBeNil)
+		test.That(t, rpcServer.InstanceNames(), test.ShouldHaveLength, 1)
+
+		conn, err := Dial(
+			context.Background(),
+			rpcServer.InstanceNames()[0],
+			logger,
+			WithInsecure(),
+			WithDialDebug(),
+		)
+		test.That(t, err, test.ShouldBeNil)
+		test.That(t, conn.Close(), test.ShouldBeNil)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		_, err = Dial(
+			ctx,
+			rpcServer.InstanceNames()[0],
+			logger,
+			WithInsecure(),
+			WithDialDebug(),
+			WithDialMulticastDNSOptions(DialMulticastDNSOptions{Disable: true}),
+		)
+		test.That(t, err, test.ShouldResemble, context.DeadlineExceeded)
+
+		test.That(t, rpcServer.Stop(), test.ShouldBeNil)
+
+		rpcServer, err = NewServer(
+			logger,
+			WithUnauthenticated(),
+			WithWebRTCServerOptions(WebRTCServerOptions{Enable: true}),
+		)
+		test.That(t, err, test.ShouldBeNil)
+		test.That(t, rpcServer.Start(), test.ShouldBeNil)
+
+		conn, err = Dial(
+			context.Background(),
+			rpcServer.InstanceNames()[0],
+			logger,
+			WithInsecure(),
+			WithDialDebug(),
+			WithDisableDirectGRPC(),
+		)
+		test.That(t, err, test.ShouldBeNil)
+		test.That(t, conn.Close(), test.ShouldBeNil)
+
+		test.That(t, rpcServer.Stop(), test.ShouldBeNil)
+	})
+
+	t.Run("authenticated", func(t *testing.T) {
+		rpcServer, err := NewServer(
+			logger,
+			WithAuthHandler("fake", MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) (map[string]string, error) {
+				return map[string]string{}, nil
+			}, func(ctx context.Context, entity string) (interface{}, error) {
+				return entity, nil
+			})),
+		)
+		test.That(t, err, test.ShouldBeNil)
+
+		err = rpcServer.RegisterServiceServer(
+			context.Background(),
+			&pb.EchoService_ServiceDesc,
+			&echoserver.Server{},
+			pb.RegisterEchoServiceHandlerFromEndpoint,
+		)
+		test.That(t, err, test.ShouldBeNil)
+
+		test.That(t, rpcServer.Start(), test.ShouldBeNil)
+
+		conn, err := Dial(
+			context.Background(),
+			rpcServer.InstanceNames()[0],
+			logger,
+			WithInsecure(),
+			WithDialDebug(),
+		)
+		test.That(t, err, test.ShouldBeNil)
+		client := pb.NewEchoServiceClient(conn)
+		_, err = client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
+		test.That(t, err, test.ShouldNotBeNil)
+		gStatus, ok := status.FromError(err)
+		test.That(t, ok, test.ShouldBeTrue)
+		test.That(t, gStatus.Code(), test.ShouldEqual, codes.Unauthenticated)
+		test.That(t, conn.Close(), test.ShouldBeNil)
+
+		conn, err = Dial(
+			context.Background(),
+			rpcServer.InstanceNames()[0],
+			logger,
+			WithInsecure(),
+			WithDialDebug(),
+			WithCredentials(Credentials{Type: "fake"}),
+			WithDialMulticastDNSOptions(DialMulticastDNSOptions{RemoveAuthCredentials: true}),
+		)
+		test.That(t, err, test.ShouldBeNil)
+		client = pb.NewEchoServiceClient(conn)
+		_, err = client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
+		test.That(t, err, test.ShouldNotBeNil)
+		gStatus, ok = status.FromError(err)
+		test.That(t, ok, test.ShouldBeTrue)
+		test.That(t, gStatus.Code(), test.ShouldEqual, codes.Unauthenticated)
+		test.That(t, conn.Close(), test.ShouldBeNil)
+
+		conn, err = Dial(
+			context.Background(),
+			rpcServer.InstanceNames()[0],
+			logger,
+			WithInsecure(),
+			WithDialDebug(),
+			WithCredentials(Credentials{Type: "fake"}),
+		)
+		test.That(t, err, test.ShouldBeNil)
+		client = pb.NewEchoServiceClient(conn)
+		echoResp, err := client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
+		test.That(t, err, test.ShouldBeNil)
+		test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
+		test.That(t, conn.Close(), test.ShouldBeNil)
+
+		test.That(t, rpcServer.Stop(), test.ShouldBeNil)
+	})
+
+	t.Run("authenticated with names", func(t *testing.T) {
+		names := []string{primitive.NewObjectID().Hex(), primitive.NewObjectID().Hex()}
+		rpcServer, err := NewServer(
+			logger,
+			WithAuthHandler("fake", MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) (map[string]string, error) {
+				return map[string]string{}, nil
+			}, func(ctx context.Context, entity string) (interface{}, error) {
+				return entity, nil
+			})),
+			WithInstanceNames(names...),
+		)
+		test.That(t, err, test.ShouldBeNil)
+		test.That(t, rpcServer.InstanceNames(), test.ShouldResemble, names)
+
+		err = rpcServer.RegisterServiceServer(
+			context.Background(),
+			&pb.EchoService_ServiceDesc,
+			&echoserver.Server{},
+			pb.RegisterEchoServiceHandlerFromEndpoint,
+		)
+		test.That(t, err, test.ShouldBeNil)
+
+		test.That(t, rpcServer.Start(), test.ShouldBeNil)
+
+		for idx, name := range names {
+			t.Run(fmt.Sprintf("%d", idx), func(t *testing.T) {
+				conn, err := Dial(
+					context.Background(),
+					name,
+					logger,
+					WithInsecure(),
+					WithDialDebug(),
+					WithCredentials(Credentials{Type: "fake"}),
+				)
+				test.That(t, err, test.ShouldBeNil)
+				client := pb.NewEchoServiceClient(conn)
+				echoResp, err := client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
+				test.That(t, err, test.ShouldBeNil)
+				test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
+				test.That(t, conn.Close(), test.ShouldBeNil)
+			})
 		}
-		return conn, onClose, nil
+
+		test.That(t, rpcServer.Stop(), test.ShouldBeNil)
 	})
 }
 
-func (sd *staticDialer) DialFunc(
-	proto string,
-	target string,
-	keyExtra string,
-	dialNew func() (ClientConn, func() error, error),
-) (ClientConn, bool, error) {
-	conn, onClose, err := dialNew()
-	conn = wrapClientConnWithCloseFunc(conn, onClose)
-	return conn, false, err
+func TestDialMutualTLSAuth(t *testing.T) {
+	testutils.SkipUnlessInternet(t)
+	logger := golog.NewTestLogger(t)
+
+	cert, certFile, keyFile, certPool, err := testutils.GenerateSelfSignedCertificate("somename", "altname")
+	test.That(t, err, test.ShouldBeNil)
+
+	leaf, err := x509.ParseCertificate(cert.Certificate[0])
+	test.That(t, err, test.ShouldBeNil)
+
+	tlsConfig := &tls.Config{
+		RootCAs:      certPool,
+		ClientCAs:    certPool,
+		Certificates: []tls.Certificate{cert},
+		MinVersion:   tls.VersionTLS12,
+	}
+
+	for _, viaServerServe := range []bool{false, true} {
+		tcName := "via server start"
+		if viaServerServe {
+			tcName = "via server serve"
+		}
+
+		makeServer := func(differentTLSNames ...string) (string, func() error, error) {
+			tlsNames := leaf.DNSNames
+			if len(differentTLSNames) != 0 {
+				tlsNames = differentTLSNames
+			}
+			var server Server
+			var err error
+			opts := []ServerOption{WithTLSAuthHandler(tlsNames, func(ctx context.Context, ents ...string) (interface{}, error) {
+				return "somespecialinterface", nil
+			})}
+			if viaServerServe {
+				server, err = NewServer(
+					logger,
+					opts...,
+				)
+			} else {
+				opts = append(opts, WithInternalTLSConfig(tlsConfig))
+				server, err = NewServer(
+					logger,
+					opts...,
+				)
+			}
+			if err != nil {
+				return "", nil, err
+			}
+
+			echoServer := &echoserver.Server{ContextAuthEntity: MustContextAuthEntity}
+			echoServer.SetAuthorized(true)
+			server.RegisterServiceServer(
+				context.Background(),
+				&pb.EchoService_ServiceDesc,
+				echoServer,
+				pb.RegisterEchoServiceHandlerFromEndpoint,
+			)
+
+			if viaServerServe {
+				httpListener, err := net.Listen("tcp", "localhost:0")
+				if err != nil {
+					return "", nil, err
+				}
+
+				tlsConfig := tlsConfig.Clone()
+				tlsConfig.ClientAuth = tls.VerifyClientCertIfGiven
+				httpServer := &http.Server{
+					ReadTimeout:    10 * time.Second,
+					MaxHeaderBytes: MaxMessageSize,
+					TLSConfig:      tlsConfig,
+				}
+				httpServer.Addr = httpListener.Addr().String()
+				httpServer.Handler = server.GRPCHandler()
+
+				errChan := make(chan error)
+				go func() {
+					serveErr := httpServer.ServeTLS(httpListener, certFile, keyFile)
+					if serveErr != nil && errors.Is(serveErr, http.ErrServerClosed) {
+						serveErr = nil
+					}
+					errChan <- serveErr
+				}()
+				return httpListener.Addr().String(), func() error {
+					return multierr.Combine(httpServer.Shutdown(context.Background()), <-errChan, server.Stop())
+				}, nil
+			}
+
+			if err := server.Start(); err != nil {
+				return "", nil, err
+			}
+			return server.InternalAddr().String(), server.Stop, nil
+		}
+
+		t.Run(tcName, func(t *testing.T) {
+			t.Run("unauthenticated", func(t *testing.T) {
+				serverAddr, stopServer, err := makeServer()
+				test.That(t, err, test.ShouldBeNil)
+
+				tlsConfig := tlsConfig.Clone()
+				tlsConfig.Certificates = nil
+				tlsConfig.ServerName = "somename"
+				conn, err := Dial(
+					context.Background(),
+					serverAddr,
+					logger,
+					WithDialDebug(),
+					WithTLSConfig(tlsConfig),
+				)
+				test.That(t, err, test.ShouldBeNil)
+				client := pb.NewEchoServiceClient(conn)
+				_, err = client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
+				test.That(t, err, test.ShouldNotBeNil)
+				gStatus, ok := status.FromError(err)
+				test.That(t, ok, test.ShouldBeTrue)
+				test.That(t, gStatus.Code(), test.ShouldEqual, codes.Unauthenticated)
+				test.That(t, conn.Close(), test.ShouldBeNil)
+
+				test.That(t, stopServer(), test.ShouldBeNil)
+			})
+
+			t.Run("authenticated", func(t *testing.T) {
+				serverAddr, stopServer, err := makeServer()
+				test.That(t, err, test.ShouldBeNil)
+
+				tlsConfig := tlsConfig.Clone()
+				tlsConfig.ServerName = "somename"
+				conn, err := Dial(
+					context.Background(),
+					serverAddr,
+					logger,
+					WithDialDebug(),
+					WithTLSConfig(tlsConfig),
+				)
+				test.That(t, err, test.ShouldBeNil)
+				client := pb.NewEchoServiceClient(conn)
+				echoResp, err := client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
+				test.That(t, err, test.ShouldBeNil)
+				test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
+				test.That(t, conn.Close(), test.ShouldBeNil)
+
+				tlsConfig.ServerName = "altname"
+				conn, err = Dial(
+					context.Background(),
+					serverAddr,
+					logger,
+					WithDialDebug(),
+					WithTLSConfig(tlsConfig),
+				)
+				test.That(t, err, test.ShouldBeNil)
+				client = pb.NewEchoServiceClient(conn)
+				echoResp, err = client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
+				test.That(t, err, test.ShouldBeNil)
+				test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
+				test.That(t, conn.Close(), test.ShouldBeNil)
+
+				test.That(t, stopServer(), test.ShouldBeNil)
+			})
+
+			t.Run("verified cert but unaccepted", func(t *testing.T) {
+				serverAddr, stopServer, err := makeServer("unknown-name")
+				test.That(t, err, test.ShouldBeNil)
+
+				tlsConfig := tlsConfig.Clone()
+				tlsConfig.ServerName = "somename"
+				conn, err := Dial(
+					context.Background(),
+					serverAddr,
+					logger,
+					WithDialDebug(),
+					WithTLSConfig(tlsConfig),
+				)
+				test.That(t, err, test.ShouldBeNil)
+				client := pb.NewEchoServiceClient(conn)
+				_, err = client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
+				test.That(t, err, test.ShouldNotBeNil)
+				gStatus, ok := status.FromError(err)
+				test.That(t, ok, test.ShouldBeTrue)
+				test.That(t, gStatus.Code(), test.ShouldEqual, codes.Unauthenticated)
+				test.That(t, conn.Close(), test.ShouldBeNil)
+
+				test.That(t, stopServer(), test.ShouldBeNil)
+			})
+		})
+	}
 }
 
-func (sd *staticDialer) Close() error {
-	return nil
+type injectSignalingServer struct {
+	webrtcpb.UnimplementedSignalingServiceServer
+	callCount               int
+	returnHostNotAllowedMsg bool
+}
+
+func (srv *injectSignalingServer) OptionalWebRTCConfig(
+	ctx context.Context,
+	req *webrtcpb.OptionalWebRTCConfigRequest,
+) (*webrtcpb.OptionalWebRTCConfigResponse, error) {
+	srv.callCount++
+	if srv.returnHostNotAllowedMsg {
+		return nil, status.Error(codes.InvalidArgument, hostNotAllowedMsg)
+	}
+	return srv.UnimplementedSignalingServiceServer.OptionalWebRTCConfig(ctx, req)
 }
 
 type externalAuthServer struct {

@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/edaniels/golog"
+	"github.com/pion/ice/v2"
 	"github.com/pion/interceptor"
 	"github.com/pion/webrtc/v3"
 	"go.uber.org/multierr"
@@ -38,12 +39,14 @@ func newWebRTCAPI(logger golog.Logger) (*webrtc.API, error) {
 		return nil, err
 	}
 
+	var settingEngine webrtc.SettingEngine
+	settingEngine.SetICEMulticastDNSMode(ice.MulticastDNSModeQueryAndGather)
+
 	options := []func(a *webrtc.API){webrtc.WithMediaEngine(&m), webrtc.WithInterceptorRegistry(&i)}
 	if utils.Debug {
-		options = append(options, webrtc.WithSettingEngine(webrtc.SettingEngine{
-			LoggerFactory: WebRTCLoggerFactory{logger},
-		}))
+		settingEngine.LoggerFactory = WebRTCLoggerFactory{logger}
 	}
+	options = append(options, webrtc.WithSettingEngine(settingEngine))
 	return webrtc.NewAPI(options...), nil
 }
 

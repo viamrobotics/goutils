@@ -1,7 +1,10 @@
 package rpc
 
 import (
+	"context"
 	"crypto/rsa"
+	"crypto/tls"
+	"net"
 
 	"github.com/pion/webrtc/v3"
 	"github.com/pkg/errors"
@@ -10,9 +13,16 @@ import (
 
 // serverOptions change the runtime behavior of the server.
 type serverOptions struct {
+	bindAddress       string
+	listenerAddress   *net.TCPAddr
+	tlsConfig         *tls.Config
 	webrtcOpts        WebRTCServerOptions
 	unaryInterceptor  grpc.UnaryServerInterceptor
 	streamInterceptor grpc.StreamServerInterceptor
+
+	// instanceNames are the name of this server and will be used
+	// to report itself over mDNS.
+	instanceNames []string
 
 	// unauthenticated determines if requests should be authenticated.
 	unauthenticated bool
@@ -24,10 +34,12 @@ type serverOptions struct {
 	// It will output much more logs.
 	debug bool
 
-	authHandlers map[CredentialsType]AuthHandler
+	tlsAuthHandler func(ctx context.Context, entities ...string) (interface{}, error)
+	authHandlers   map[CredentialsType]AuthHandler
 
 	authToType    CredentialsType
 	authToHandler AuthenticateToHandler
+	disableMDNS   bool
 }
 
 // WebRTCServerOptions control how WebRTC is utilized in a server.
@@ -48,11 +60,17 @@ type WebRTCServerOptions struct {
 
 	// EnableInternalSignaling specifies whether an internal signaling answerer
 	// should be started up. This is useful if you want to have a fallback
-	// server if the external cannot be reached.
+	// server if the external cannot be reached. It is started up by default
+	// if ExternalSignalingAddress is unset.
 	EnableInternalSignaling bool
 
-	// SignalingHosts specifies what hosts are being listened for.
-	SignalingHosts []string
+	// ExternalSignalingHosts specifies what hosts are being listened for when answering
+	// externally.
+	ExternalSignalingHosts []string
+
+	// InternalSignalingHosts specifies what hosts are being listened for when answering
+	// internally.
+	InternalSignalingHosts []string
 
 	// Config is the WebRTC specific configuration (i.e. ICE settings)
 	Config *webrtc.Configuration
@@ -78,6 +96,45 @@ func newFuncServerOption(f func(*serverOptions) error) *funcServerOption {
 	return &funcServerOption{
 		f: f,
 	}
+}
+
+// WithInternalBindAddress returns a ServerOption which sets the bind address
+// for the gRPC listener. If unset, the address is localhost on a
+// random port unless TLS is turned on and authentication is enabled
+// in which case the server will bind to all interfaces.
+func WithInternalBindAddress(address string) ServerOption {
+	return newFuncServerOption(func(o *serverOptions) error {
+		o.bindAddress = address
+		return nil
+	})
+}
+
+// WithExternalListenerAddress returns a ServerOption which sets the listener address
+// if the server is going to be served via its handlers and not internally.
+// This is only helpful for mDNS broadcasting. If the server has TLS enabled
+// internally (see WithInternalTLSConfig), then the internal listener will
+// bind everywhere and this option may not be needed.
+func WithExternalListenerAddress(address *net.TCPAddr) ServerOption {
+	return newFuncServerOption(func(o *serverOptions) error {
+		o.listenerAddress = address
+		return nil
+	})
+}
+
+// WithInternalTLSConfig returns a ServerOption which sets the TLS config
+// for the internal listener. This is needed to have mutual TLS authentication
+// work (see WithTLSAuthHandler). When using ServeTLS on the server, which serves
+// from an external listener, with mutual TLS authentication, you will want to pass
+// its own tls.Config with ClientAuth, at a minimum, set to tls.VerifyClientCertIfGiven.
+func WithInternalTLSConfig(config *tls.Config) ServerOption {
+	return newFuncServerOption(func(o *serverOptions) error {
+		o.tlsConfig = config.Clone()
+		if o.tlsConfig.ClientAuth == 0 {
+			o.tlsConfig.ClientAuth = tls.VersionTLS12
+		}
+		o.tlsConfig.ClientAuth = tls.VerifyClientCertIfGiven
+		return nil
+	})
 }
 
 // WithWebRTCServerOptions returns a ServerOption which sets the WebRTC options
@@ -109,6 +166,18 @@ func WithStreamServerInterceptor(streamInterceptor grpc.StreamServerInterceptor)
 	})
 }
 
+// WithInstanceNames returns a ServerOption which sets the names for this
+// server instance. These names will be used for mDNS service discovery to
+// report the server itself. If unset the value is the address set by
+// WithExternalListenerAddress, WithInternalBindAddress, or the localhost and random port address,
+// in preference order from left to right.
+func WithInstanceNames(names ...string) ServerOption {
+	return newFuncServerOption(func(o *serverOptions) error {
+		o.instanceNames = names
+		return nil
+	})
+}
+
 // WithUnauthenticated returns a ServerOption which turns off all authentication
 // to the server's endpoints.
 func WithUnauthenticated() ServerOption {
@@ -132,6 +201,27 @@ func WithAuthRSAPrivateKey(authRSAPrivateKey *rsa.PrivateKey) ServerOption {
 func WithDebug() ServerOption {
 	return newFuncServerOption(func(o *serverOptions) error {
 		o.debug = true
+		return nil
+	})
+}
+
+// WithTLSAuthHandler returns a ServerOption which when TLS info is available to a connection, it will
+// authenticate the given entities in the event that no other authentication has been established via
+// the standard auth handler. Optionally, verifyEntity may be specified which can do further entity
+// checking and return return opaque info about the entity that will be bound to the context accessible
+// via ContextAuthEntity.
+func WithTLSAuthHandler(entities []string, verifyEntity func(ctx context.Context, entities ...string) (interface{}, error)) ServerOption {
+	return newFuncServerOption(func(o *serverOptions) error {
+		entityChecker := MakeEntitiesChecker(entities)
+		o.tlsAuthHandler = func(ctx context.Context, recvEntities ...string) (interface{}, error) {
+			if err := entityChecker(ctx, recvEntities...); err != nil {
+				return nil, errNotTLSAuthed
+			}
+			if verifyEntity == nil {
+				return recvEntities, nil
+			}
+			return verifyEntity(ctx, recvEntities...)
+		}
 		return nil
 	})
 }
@@ -176,6 +266,15 @@ func WithAuthenticateToHandler(forType CredentialsType, handler AuthenticateToHa
 		o.authToType = forType
 		o.authToHandler = handler
 
+		return nil
+	})
+}
+
+// WithDisableMulticastDNS returns a ServerOption which disables
+// using mDNS to broadcast how to connect to this host.
+func WithDisableMulticastDNS() ServerOption {
+	return newFuncServerOption(func(o *serverOptions) error {
+		o.disableMDNS = true
 		return nil
 	})
 }

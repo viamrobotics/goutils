@@ -175,7 +175,6 @@ func (queue *memoryWebRTCCallQueue) SendOfferDone(ctx context.Context, host, uui
 		return newInactiveOfferErr(uuid)
 	}
 	offer.callerDoneCancel()
-	delete(hostQueue.activeOffers, uuid)
 	hostQueue.mu.Unlock()
 	return nil
 }

@@ -10,6 +10,7 @@ import (
 
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
@@ -30,15 +31,27 @@ type WebRTCSignalingServer struct {
 	callQueue            WebRTCCallQueue
 	hostICEServers       map[string]hostICEServers
 	webrtcConfigProvider WebRTCConfigProvider
+	forHosts             map[string]struct{}
 }
 
 // NewWebRTCSignalingServer makes a new signaling server that uses the given
-// call queue and looks routes based on a given robot host.
-func NewWebRTCSignalingServer(callQueue WebRTCCallQueue, webrtcConfigProvider WebRTCConfigProvider) *WebRTCSignalingServer {
+// call queue and looks routes based on a given robot host. If forHosts is
+// non-empty, the server will only accept the given hosts and reject all
+// others.
+func NewWebRTCSignalingServer(
+	callQueue WebRTCCallQueue,
+	webrtcConfigProvider WebRTCConfigProvider,
+	forHosts ...string,
+) *WebRTCSignalingServer {
+	forHostsSet := make(map[string]struct{}, len(forHosts))
+	for _, host := range forHosts {
+		forHostsSet[host] = struct{}{}
+	}
 	return &WebRTCSignalingServer{
 		callQueue:            callQueue,
 		hostICEServers:       map[string]hostICEServers{},
 		webrtcConfigProvider: webrtcConfigProvider,
+		forHosts:             forHostsSet,
 	}
 }
 
@@ -57,7 +70,7 @@ func HostFromCtx(ctx context.Context) (string, error) {
 	return hosts[0], nil
 }
 
-const maxHostsInMetadata = 2
+const maxHostsInMetadata = 4
 
 // HostsFromCtx gets the hosts being called/answered for from the context.
 func HostsFromCtx(ctx context.Context) ([]string, error) {
@@ -79,6 +92,24 @@ func HostsFromCtx(ctx context.Context) ([]string, error) {
 	return hostsCopy, nil
 }
 
+const hostNotAllowedMsg = "host not preconfigured"
+
+func (srv *WebRTCSignalingServer) validateHosts(hosts ...string) error {
+	if len(srv.forHosts) == 0 {
+		return nil
+	}
+	if len(hosts) == 0 {
+		return errors.New("at least one host required")
+	}
+	for _, host := range hosts {
+		if _, ok := srv.forHosts[host]; ok {
+			continue
+		}
+		return status.Error(codes.InvalidArgument, hostNotAllowedMsg)
+	}
+	return nil
+}
+
 // Call is a request/offer to start a caller with the connected answerer.
 func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcpb.SignalingService_CallServer) error {
 	ctx := server.Context()
@@ -86,6 +117,9 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 	defer cancel()
 	host, err := HostFromCtx(ctx)
 	if err != nil {
+		return err
+	}
+	if err := srv.validateHosts(host); err != nil {
 		return err
 	}
 	uuid, respCh, respDone, cancel, err := srv.callQueue.SendOfferInit(ctx, host, req.Sdp, req.DisableTrickle)
@@ -156,6 +190,9 @@ func (srv *WebRTCSignalingServer) CallUpdate(ctx context.Context, req *webrtcpb.
 	if err != nil {
 		return nil, err
 	}
+	if err := srv.validateHosts(host); err != nil {
+		return nil, err
+	}
 	switch u := req.Update.(type) {
 	case *webrtcpb.CallUpdateRequest_Candidate:
 		cand := iceCandidateFromProto(u.Candidate)
@@ -219,6 +256,9 @@ func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 	ctx := server.Context()
 	hosts, err := HostsFromCtx(ctx)
 	if err != nil {
+		return err
+	}
+	if err := srv.validateHosts(hosts...); err != nil {
 		return err
 	}
 	defer srv.clearAdditionalICEServers(hosts)
@@ -389,6 +429,9 @@ func (srv *WebRTCSignalingServer) OptionalWebRTCConfig(
 	defer cancel()
 	hosts, err := HostsFromCtx(ctx)
 	if err != nil {
+		return nil, err
+	}
+	if err := srv.validateHosts(hosts...); err != nil {
 		return nil, err
 	}
 	iceServers, err := srv.additionalICEServers(ctx, hosts, false)

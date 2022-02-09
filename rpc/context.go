@@ -3,7 +3,6 @@ package rpc
 import (
 	"context"
 	"errors"
-	"net"
 
 	"github.com/pion/webrtc/v3"
 )
@@ -13,7 +12,6 @@ type ctxKey int
 const (
 	ctxKeyHost = ctxKey(iota)
 	ctxKeyDialer
-	ctxKeyResolver
 	ctxKeyPeerConnection
 	ctxKeyAuthMetadata
 	ctxKeyAuthEntity
@@ -45,20 +43,6 @@ func contextDialer(ctx context.Context) Dialer {
 		return nil
 	}
 	return dialer.(Dialer)
-}
-
-// contextWithResolver attaches a Resolver to the given context.
-func contextWithResolver(ctx context.Context, r *net.Resolver) context.Context {
-	return context.WithValue(ctx, ctxKeyResolver, r)
-}
-
-// contextResolver returns a Resolver. It may be nil if the value was never set.
-func contextResolver(ctx context.Context) *net.Resolver {
-	resolver := ctx.Value(ctxKeyResolver)
-	if resolver == nil {
-		return nil
-	}
-	return resolver.(*net.Resolver)
 }
 
 // contextWithPeerConnection attaches a peer connection to the given context.

@@ -4,11 +4,11 @@ import { DialOptions } from "@viamrobotics/rpc/src/dial";
 import { UploadFileRequest, UploadFileResponse } from "./gen/proto/rpc/examples/fileupload/v1/fileupload_pb";
 import { FileUploadServiceClient } from "./gen/proto/rpc/examples/fileupload/v1/fileupload_pb_service";
 
-const signalingAddress = `${window.location.protocol}//${window.location.host}`;
-const host = "local";
+const thisHost = `${window.location.protocol}//${window.location.host}`;
 
 declare global {
 	interface Window {
+		webrtcHost: string;
 		creds?: Credentials;
 		externalAuthAddr?: string;
 		externalAuthToEntity?: string;
@@ -22,6 +22,7 @@ let clientProm = new Promise<FileUploadServiceClient>((resolve, reject) => {
 	clientReject = reject;
 });
 
+const webrtcHost = window.webrtcHost;
 const opts: DialOptions = {
 	credentials: window.creds,
 	externalAuthAddress: window.externalAuthAddr,
@@ -40,9 +41,9 @@ if (opts.externalAuthAddress) {
 	opts.webrtcOptions!.signalingExternalAuthAddress = opts.externalAuthAddress;
 	opts.webrtcOptions!.signalingExternalAuthToEntity = opts.externalAuthToEntity;
 }
-dialWebRTC(signalingAddress, host, opts).then(async ({ transportFactory }) => {
+dialWebRTC(thisHost, webrtcHost, opts).then(async ({ transportFactory }) => {
 	console.log("WebRTC connection established")
-	const webrtcClient = new FileUploadServiceClient(host, { transport: transportFactory });
+	const webrtcClient = new FileUploadServiceClient(webrtcHost, { transport: transportFactory });
 	clientResolve(webrtcClient);
 }).catch((e: any) => clientReject(e));
 

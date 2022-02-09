@@ -107,7 +107,7 @@ func (cd *cachedDialer) DialFunc(
 		return nil, false, err
 	}
 	conn = wrapClientConnWithCloseFunc(conn, onClose)
-	refConn := newRefCountedConnWrapper(conn, func() {
+	refConn := newRefCountedConnWrapper(proto, conn, func() {
 		cd.mu.Lock()
 		delete(cd.conns, key)
 		cd.mu.Unlock()
@@ -140,12 +140,13 @@ func (cd *cachedDialer) Close() error {
 }
 
 // newRefCountedConnWrapper wraps the given connection to be able to be reference counted.
-func newRefCountedConnWrapper(conn ClientConn, onUnref func()) *refCountedConnWrapper {
-	return &refCountedConnWrapper{utils.NewRefCountedValue(conn), conn, onUnref}
+func newRefCountedConnWrapper(proto string, conn ClientConn, onUnref func()) *refCountedConnWrapper {
+	return &refCountedConnWrapper{proto, utils.NewRefCountedValue(conn), conn, onUnref}
 }
 
 // refCountedConnWrapper wraps a ClientConn to be reference counted.
 type refCountedConnWrapper struct {
+	proto   string
 	ref     utils.RefCountedValue
 	actual  ClientConn
 	onUnref func()
@@ -153,12 +154,13 @@ type refCountedConnWrapper struct {
 
 // Ref returns a new reference to the underlying ClientConn.
 func (w *refCountedConnWrapper) Ref() ClientConn {
-	return &reffedConn{ClientConn: w.ref.Ref().(ClientConn), deref: w.ref.Deref, onUnref: w.onUnref}
+	return &reffedConn{ClientConn: w.ref.Ref().(ClientConn), proto: w.proto, deref: w.ref.Deref, onUnref: w.onUnref}
 }
 
 // A reffedConn reference counts a ClieentConn and closes it on the last dereference.
 type reffedConn struct {
 	ClientConn
+	proto     string
 	derefOnce sync.Once
 	deref     func() bool
 	onUnref   func()
@@ -173,6 +175,9 @@ func (rc *reffedConn) Close() error {
 			if rc.onUnref != nil {
 				defer rc.onUnref()
 			}
+			if utils.Debug {
+				golog.Global.Debugw("close referenced conn", "proto", rc.proto)
+			}
 			if closeErr := rc.ClientConn.Close(); closeErr != nil && status.Convert(closeErr).Code() != codes.Canceled {
 				err = closeErr
 			}
@@ -185,11 +190,23 @@ func (rc *reffedConn) Close() error {
 // option or insecure downgrade with credentials options are not set.
 var ErrInsecureWithCredentials = errors.New("requested address is insecure and will not send credentials")
 
+// DialDirectGRPC dials a gRPC server directly.
+func DialDirectGRPC(ctx context.Context, address string, logger golog.Logger, opts ...DialOption) (ClientConn, error) {
+	var dOpts dialOptions
+	for _, opt := range opts {
+		opt.apply(&dOpts)
+	}
+	dOpts.webrtcOpts.Disable = true
+	dOpts.mdnsOptions.Disable = true
+
+	return dialInner(ctx, address, logger, &dOpts)
+}
+
 // dialDirectGRPC dials a gRPC server directly.
 func dialDirectGRPC(ctx context.Context, address string, dOpts *dialOptions, logger golog.Logger) (ClientConn, bool, error) {
 	dialOpts := []grpc.DialOption{
 		grpc.WithBlock(),
-		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(maxMessageSize)),
+		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(MaxMessageSize)),
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{
 			Time: keepAliveTime + 5*time.Second, // add a little buffer so as to not annoy the server ping strike system
 		}),
@@ -205,6 +222,7 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts *dialOptions, log
 		var downgrade bool
 		if dOpts.allowInsecureDowngrade || dOpts.allowInsecureWithCredsDowngrade {
 			var dialer tls.Dialer
+			dialer.Config = tlsConfig
 			conn, err := dialer.DialContext(ctx, "tcp", address)
 			if err == nil {
 				// will use TLS
@@ -268,8 +286,12 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts *dialOptions, log
 			if err != nil {
 				return nil, false, err
 			}
-			if dOpts.debug && externalCached {
-				logger.Debugw("connected direct for external (cached)", "address", dOpts.externalAuthAddr)
+			if dOpts.debug {
+				if externalCached {
+					logger.Debugw("connected directly for external auth (cached)", "address", dOpts.externalAuthAddr)
+				} else {
+					logger.Debugw("connected directly for external auth", "address", dOpts.externalAuthAddr)
+				}
 			}
 			closeCredsFunc = externalConn.Close
 			rpcCreds.conn = externalConn

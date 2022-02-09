@@ -5,6 +5,7 @@
     <title>File Upload Example</title>
     <link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgo=">
     <script>
+      window.webrtcHost = {{ .WebRTCHost }}
       window.creds = {{ .Credentials }}
       window.externalAuthAddr = {{ .ExternalAuthAddr }}
       window.externalAuthToEntity = {{ .ExternalAuthToEntity }}

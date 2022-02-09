@@ -56,7 +56,8 @@ func TestWebRTCClientServer(t *testing.T) {
 				t.Run(fmt.Sprintf("with trickle disabled %t", tc), func(t *testing.T) {
 					cc, err := DialWebRTC(
 						context.Background(),
-						HostURI(grpcListener.Addr().String(), host),
+						grpcListener.Addr().String(),
+						host,
 						logger,
 						WithWebRTCOptions(DialWebRTCOptions{
 							SignalingInsecure: true,

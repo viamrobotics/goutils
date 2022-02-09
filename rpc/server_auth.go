@@ -2,14 +2,18 @@ package rpc
 
 import (
 	"context"
+	"crypto/x509"
 	"fmt"
 	"strings"
 
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/pkg/errors"
+	"go.uber.org/multierr"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 
 	rpcpb "go.viam.com/utils/proto/rpc/v1"
@@ -165,9 +169,32 @@ func tokenFromContext(ctx context.Context) (string, error) {
 	return strings.TrimPrefix(authHeader[0], authorizationValuePrefixBearer), nil
 }
 
+var errNotTLSAuthed = errors.New("not authenticated via TLS")
+
 func (ss *simpleServer) ensureAuthed(ctx context.Context) (interface{}, error) {
 	tokenString, err := tokenFromContext(ctx)
 	if err != nil {
+		// check TLS state
+		if ss.tlsAuthHandler == nil {
+			return nil, err
+		}
+		var verifiedCert *x509.Certificate
+		if p, ok := peer.FromContext(ctx); ok && p.AuthInfo != nil {
+			if authInfo, ok := p.AuthInfo.(credentials.TLSInfo); ok {
+				verifiedChains := authInfo.State.VerifiedChains
+				if len(verifiedChains) != 0 && len(verifiedChains[0]) != 0 {
+					verifiedCert = verifiedChains[0][0]
+				}
+			}
+		}
+		if verifiedCert == nil {
+			return nil, err
+		}
+		if tlsAuthEntity, tlsErr := ss.tlsAuthHandler(ctx, verifiedCert.DNSNames...); tlsErr == nil {
+			return tlsAuthEntity, nil
+		} else if !errors.Is(tlsErr, errNotTLSAuthed) {
+			return nil, multierr.Combine(err, tlsErr)
+		}
 		return nil, err
 	}
 

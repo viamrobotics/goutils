@@ -1,4 +1,4 @@
-package utils
+package utils_test
 
 import (
 	"context"
@@ -11,34 +11,35 @@ import (
 
 	"go.viam.com/test"
 
-	"go.viam.com/utils/internal"
+	"go.viam.com/utils"
+	"go.viam.com/utils/testutils"
 )
 
 func TestTryReserveRandomPort(t *testing.T) {
-	p, err := TryReserveRandomPort()
+	p, err := utils.TryReserveRandomPort()
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, p, test.ShouldBeGreaterThan, 0)
 }
 
 func TestGetAllLocalIPv4s(t *testing.T) {
-	ips, err := GetAllLocalIPv4s()
+	ips, err := utils.GetAllLocalIPv4s()
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, ips, test.ShouldNotBeEmpty)
 }
 
 func TestNewPossiblySecureTCPListenerFromFile(t *testing.T) {
 	t.Run("providing just cert should fail", func(t *testing.T) {
-		_, _, err := NewPossiblySecureTCPListenerFromFile("", "cert", "")
-		test.That(t, err, test.ShouldBeError, ErrInsufficientX509KeyPair)
+		_, _, err := utils.NewPossiblySecureTCPListenerFromFile("", "cert", "")
+		test.That(t, err, test.ShouldBeError, utils.ErrInsufficientX509KeyPair)
 	})
 
 	t.Run("providing just key should fail", func(t *testing.T) {
-		_, _, err := NewPossiblySecureTCPListenerFromFile("", "", "key")
-		test.That(t, err, test.ShouldBeError, ErrInsufficientX509KeyPair)
+		_, _, err := utils.NewPossiblySecureTCPListenerFromFile("", "", "key")
+		test.That(t, err, test.ShouldBeError, utils.ErrInsufficientX509KeyPair)
 	})
 
 	t.Run("no cert or key should be insecure", func(t *testing.T) {
-		listener, secure, err := NewPossiblySecureTCPListenerFromFile("", "", "")
+		listener, secure, err := utils.NewPossiblySecureTCPListenerFromFile("", "", "")
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, secure, test.ShouldBeFalse)
 		test.That(t, listener, test.ShouldNotBeNil)
@@ -46,7 +47,6 @@ func TestNewPossiblySecureTCPListenerFromFile(t *testing.T) {
 
 		httpServer := &http.Server{
 			ReadTimeout:    10 * time.Second,
-			WriteTimeout:   10 * time.Second,
 			MaxHeaderBytes: 1 << 20,
 		}
 		httpServer.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
@@ -67,10 +67,13 @@ func TestNewPossiblySecureTCPListenerFromFile(t *testing.T) {
 	})
 
 	t.Run("with cert and key should be secure", func(t *testing.T) {
-		listener, secure, err := NewPossiblySecureTCPListenerFromFile(
+		_, certFile, keyFile, _, err := testutils.GenerateSelfSignedCertificate("somename")
+		test.That(t, err, test.ShouldBeNil)
+
+		listener, secure, err := utils.NewPossiblySecureTCPListenerFromFile(
 			"",
-			internal.ResolveFile("testdata/cert.pem"),
-			internal.ResolveFile("testdata/key.pem"),
+			certFile,
+			keyFile,
 		)
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, secure, test.ShouldBeTrue)
@@ -78,7 +81,6 @@ func TestNewPossiblySecureTCPListenerFromFile(t *testing.T) {
 
 		httpServer := &http.Server{
 			ReadTimeout:    10 * time.Second,
-			WriteTimeout:   10 * time.Second,
 			MaxHeaderBytes: 1 << 20,
 		}
 		httpServer.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
@@ -104,17 +106,17 @@ func TestNewPossiblySecureTCPListenerFromFile(t *testing.T) {
 
 func TestNewPossiblySecureTCPListenerFromMemory(t *testing.T) {
 	t.Run("providing just cert should fail", func(t *testing.T) {
-		_, _, err := NewPossiblySecureTCPListenerFromMemory("", []byte("cert"), nil)
-		test.That(t, err, test.ShouldBeError, ErrInsufficientX509KeyPair)
+		_, _, err := utils.NewPossiblySecureTCPListenerFromMemory("", []byte("cert"), nil)
+		test.That(t, err, test.ShouldBeError, utils.ErrInsufficientX509KeyPair)
 	})
 
 	t.Run("providing just key should fail", func(t *testing.T) {
-		_, _, err := NewPossiblySecureTCPListenerFromMemory("", nil, []byte("key"))
-		test.That(t, err, test.ShouldBeError, ErrInsufficientX509KeyPair)
+		_, _, err := utils.NewPossiblySecureTCPListenerFromMemory("", nil, []byte("key"))
+		test.That(t, err, test.ShouldBeError, utils.ErrInsufficientX509KeyPair)
 	})
 
 	t.Run("no cert or key should be insecure", func(t *testing.T) {
-		listener, secure, err := NewPossiblySecureTCPListenerFromMemory("", nil, nil)
+		listener, secure, err := utils.NewPossiblySecureTCPListenerFromMemory("", nil, nil)
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, secure, test.ShouldBeFalse)
 		test.That(t, listener, test.ShouldNotBeNil)
@@ -122,7 +124,6 @@ func TestNewPossiblySecureTCPListenerFromMemory(t *testing.T) {
 
 		httpServer := &http.Server{
 			ReadTimeout:    10 * time.Second,
-			WriteTimeout:   10 * time.Second,
 			MaxHeaderBytes: 1 << 20,
 		}
 		httpServer.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
@@ -143,11 +144,14 @@ func TestNewPossiblySecureTCPListenerFromMemory(t *testing.T) {
 	})
 
 	t.Run("with cert and key should be secure", func(t *testing.T) {
-		certPEM, err := ioutil.ReadFile(internal.ResolveFile("testdata/cert.pem"))
+		_, certFile, keyFile, _, err := testutils.GenerateSelfSignedCertificate("somename")
 		test.That(t, err, test.ShouldBeNil)
-		keyPEM, err := ioutil.ReadFile(internal.ResolveFile("testdata/key.pem"))
+
+		certPEM, err := ioutil.ReadFile(certFile)
 		test.That(t, err, test.ShouldBeNil)
-		listener, secure, err := NewPossiblySecureTCPListenerFromMemory(
+		keyPEM, err := ioutil.ReadFile(keyFile)
+		test.That(t, err, test.ShouldBeNil)
+		listener, secure, err := utils.NewPossiblySecureTCPListenerFromMemory(
 			"",
 			certPEM,
 			keyPEM,
@@ -158,7 +162,6 @@ func TestNewPossiblySecureTCPListenerFromMemory(t *testing.T) {
 
 		httpServer := &http.Server{
 			ReadTimeout:    10 * time.Second,
-			WriteTimeout:   10 * time.Second,
 			MaxHeaderBytes: 1 << 20,
 		}
 		httpServer.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})

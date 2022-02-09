@@ -145,7 +145,7 @@ func TestCachedDialer(t *testing.T) {
 
 func TestReffedConn(t *testing.T) {
 	tracking := &closeReffedConn{}
-	wrapper := newRefCountedConnWrapper(tracking, nil)
+	wrapper := newRefCountedConnWrapper("proto", tracking, nil)
 	conn1 := wrapper.Ref()
 	conn2 := wrapper.Ref()
 	test.That(t, conn1.Close(), test.ShouldBeNil)

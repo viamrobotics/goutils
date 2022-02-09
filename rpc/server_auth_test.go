@@ -38,10 +38,6 @@ func TestServerAuth(t *testing.T) {
 	fakeAuthWorks := false
 	rpcServer, err := NewServer(
 		logger,
-		WithWebRTCServerOptions(WebRTCServerOptions{
-			Enable:         true,
-			SignalingHosts: []string{"yeehaw"},
-		}),
 		WithAuthHandler("fake", MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) (map[string]string, error) {
 			testMu.Lock()
 			defer testMu.Unlock()
@@ -308,10 +304,6 @@ func TestServerAuthJWTExpiration(t *testing.T) {
 
 	rpcServer, err := NewServer(
 		logger,
-		WithWebRTCServerOptions(WebRTCServerOptions{
-			Enable:         true,
-			SignalingHosts: []string{"yeehaw"},
-		}),
 		WithAuthHandler("fake", MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) (map[string]string, error) {
 			return map[string]string{}, nil
 		}, func(ctx context.Context, entity string) (interface{}, error) {
@@ -387,10 +379,6 @@ func TestServerAuthJWTAudience(t *testing.T) {
 	expectedEntity := "someent"
 	rpcServer, err := NewServer(
 		logger,
-		WithWebRTCServerOptions(WebRTCServerOptions{
-			Enable:         true,
-			SignalingHosts: []string{"yeehaw"},
-		}),
 		WithAuthHandler("fake", MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) (map[string]string, error) {
 			return map[string]string{}, nil
 		}, func(ctx context.Context, entity string) (interface{}, error) {
@@ -486,10 +474,6 @@ func TestServerAuthKeyFunc(t *testing.T) {
 	var key interface{}
 	rpcServer, err := NewServer(
 		logger,
-		WithWebRTCServerOptions(WebRTCServerOptions{
-			Enable:         true,
-			SignalingHosts: []string{"yeehaw"},
-		}),
 		WithAuthHandler("fake", WithTokenVerificationKeyProvider(
 			funcAuthHandler{
 				auth: func(ctx context.Context, entity, payload string) (map[string]string, error) {

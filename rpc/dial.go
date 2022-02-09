@@ -2,12 +2,16 @@ package rpc
 
 import (
 	"context"
-	"errors"
+	"crypto/tls"
 	"fmt"
 	"net"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/edaniels/golog"
+	"github.com/grandcat/zeroconf"
+	"github.com/pkg/errors"
 )
 
 // Dial attempts to make the most convenient connection to the given address. It attempts to connect
@@ -19,95 +23,282 @@ func Dial(ctx context.Context, address string, logger golog.Logger, opts ...Dial
 		opt.apply(&dOpts)
 	}
 
-	if dOpts.debug {
-		logger.Debugw("starting to dial", "address", address)
+	return dialInner(ctx, address, logger, &dOpts)
+}
+
+func dialInner(
+	ctx context.Context,
+	address string,
+	logger golog.Logger,
+	dOpts *dialOptions,
+) (ClientConn, error) {
+	if address == "" {
+		return nil, errors.New("address empty")
 	}
 
-	if dOpts.authEntity == "" {
-		if dOpts.externalAuthAddr == "" {
-			// if we are not doing external auth, then the entity is assumed to be the actual address.
+	conn, cached, err := dialFunc(
+		ctx,
+		"multi",
+		address,
+		buildKeyExtra(dOpts),
+		func() (ClientConn, error) {
 			if dOpts.debug {
-				logger.Debugw("auth entity empty; setting to address", "address", address)
+				logger.Debugw("starting to dial", "address", address)
 			}
-			dOpts.authEntity = address
-		} else {
-			// otherwise it's the external auth address.
-			if dOpts.debug {
-				logger.Debugw("auth entity empty; setting to external auth address", "address", dOpts.externalAuthAddr)
+
+			if dOpts.authEntity == "" {
+				if dOpts.externalAuthAddr == "" {
+					// if we are not doing external auth, then the entity is assumed to be the actual address.
+					if dOpts.debug {
+						logger.Debugw("auth entity empty; setting to address", "address", address)
+					}
+					dOpts.authEntity = address
+				} else {
+					// otherwise it's the external auth address.
+					if dOpts.debug {
+						logger.Debugw("auth entity empty; setting to external auth address", "address", dOpts.externalAuthAddr)
+					}
+					dOpts.authEntity = dOpts.externalAuthAddr
+				}
 			}
-			dOpts.authEntity = dOpts.externalAuthAddr
-		}
-	}
 
-	if dOpts.webrtcOpts.SignalingServerAddress == "" {
-		srvTimeoutCtx, srvTimeoutCtxCancel := context.WithTimeout(ctx, 5*time.Second)
-		defer srvTimeoutCtxCancel()
-		if target, port, err := lookupSRV(srvTimeoutCtx, address); err == nil {
-			if dOpts.debug {
-				logger.Debugw("found SRV record for address", "target", target, "port", port)
-			}
-			dOpts.webrtcOpts.SignalingInsecure = port != 443
-			dOpts.webrtcOpts.SignalingServerAddress = fmt.Sprintf("%s:%d", target, port)
-			dOpts.webrtcOpts.SignalingAuthEntity = dOpts.authEntity
-			dOpts.webrtcOpts.SignalingCreds = dOpts.creds
-			dOpts.webrtcOpts.SignalingExternalAuthAddress = ""
-			dOpts.webrtcOpts.SignalingExternalAuthToEntity = ""
-			dOpts.webrtcOpts.SignalingExternalAuthInsecure = false
-		} else if srvTimeoutCtx.Err() != nil && !errors.Is(srvTimeoutCtx.Err(), context.DeadlineExceeded) {
-			return nil, srvTimeoutCtx.Err()
-		}
-	}
-
-	if dOpts.webrtcOpts.SignalingServerAddress != "" {
-		webrtcAddress := HostURI(dOpts.webrtcOpts.SignalingServerAddress, address)
-
-		if dOpts.debug {
-			logger.Debugw("trying WebRTC", "address", webrtcAddress)
-		}
-
-		conn, cached, err := dialFunc(ctx, "webrtc", webrtcAddress, buildKeyExtra(&dOpts), func() (ClientConn, error) {
-			return dialWebRTC(ctx, webrtcAddress, &dOpts, logger)
+			conn, _, err := dial(ctx, address, address, logger, dOpts, true)
+			return conn, err
 		})
-		if err == nil {
-			if !cached {
-				logger.Debug("connected via WebRTC")
-			}
-			return conn, nil
-		}
-		if err != nil && !errors.Is(err, ErrNoWebRTCSignaler) {
-			return nil, err
-		}
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-	}
-
-	if dOpts.debug {
-		logger.Debugw("trying direct", "address", address)
-	}
-	conn, cached, err := dialDirectGRPC(ctx, address, &dOpts, logger)
 	if err != nil {
 		return nil, err
 	}
-	if !cached {
-		logger.Debugw("connected directly", "address", address)
+	if cached {
+		if dOpts.debug {
+			logger.Debugw("connected (cached)", "address", address)
+		}
 	}
 	return conn, nil
 }
 
-func lookupSRV(ctx context.Context, host string) (string, uint16, error) {
-	var records []*net.SRV
-	var err error
-	if ctxResolver := contextResolver(ctx); ctxResolver != nil {
-		_, records, err = ctxResolver.LookupSRV(ctx, "webrtc", "tcp", host)
+// ErrConnectionOptionsExhausted is returned in cases where the given options have all been used up with
+// no way to connect on any of them.
+var ErrConnectionOptionsExhausted = errors.New("exhausted all connection options with no way to connect")
+
+func dial(
+	ctx context.Context,
+	address string,
+	originalAddress string,
+	logger golog.Logger,
+	dOpts *dialOptions,
+	tryLocal bool,
+) (ClientConn, bool, error) {
+	var isJustDomain bool
+	if strings.ContainsRune(address, ':') {
+		isJustDomain = false
 	} else {
-		_, records, err = net.DefaultResolver.LookupSRV(ctx, "webrtc", "tcp", host)
+		isJustDomain = net.ParseIP(address) == nil
 	}
+
+	if !dOpts.mdnsOptions.Disable && tryLocal && isJustDomain {
+		conn, cached, err := dialMulticastDNS(ctx, address, logger, dOpts)
+		if err != nil || conn != nil {
+			return conn, cached, err
+		}
+	}
+
+	if !dOpts.webrtcOpts.Disable {
+		if dOpts.webrtcOpts.SignalingServerAddress == "" {
+			if dOpts.webrtcOpts.SignalingServerAddress == "" {
+				// try WebRTC at same address
+				var target string
+				var port uint16
+				if strings.Contains(address, ":") {
+					host, portStr, err := net.SplitHostPort(address)
+					if err != nil {
+						return nil, false, err
+					}
+					if strings.Contains(host, ":") {
+						host = fmt.Sprintf("[%s]", host)
+					}
+					target = host
+					portParsed, err := strconv.ParseUint(portStr, 10, 16)
+					if err != nil {
+						return nil, false, err
+					}
+					port = uint16(portParsed)
+				} else {
+					target = address
+					port = 443
+				}
+				fixupWebRTCOptions(dOpts, target, port)
+			}
+		}
+
+		if dOpts.debug {
+			logger.Debugw(
+				"trying WebRTC",
+				"signaling_server", dOpts.webrtcOpts.SignalingServerAddress,
+				"host", originalAddress,
+			)
+		}
+
+		conn, cached, err := dialFunc(
+			ctx,
+			"webrtc",
+			fmt.Sprintf("%s->%s", dOpts.webrtcOpts.SignalingServerAddress, originalAddress),
+			buildKeyExtra(dOpts),
+			func() (ClientConn, error) {
+				return dialWebRTC(
+					ctx,
+					dOpts.webrtcOpts.SignalingServerAddress,
+					originalAddress,
+					dOpts,
+					logger,
+				)
+			})
+		if err == nil {
+			if !cached {
+				logger.Debug("connected via WebRTC")
+			} else if dOpts.debug {
+				logger.Debug("connected via WebRTC (cached)")
+			}
+			return conn, cached, nil
+		}
+		if err != nil && !errors.Is(err, ErrNoWebRTCSignaler) {
+			return nil, false, err
+		}
+		if ctx.Err() != nil {
+			return nil, false, ctx.Err()
+		}
+	}
+
+	if dOpts.disableDirect {
+		return nil, false, ErrConnectionOptionsExhausted
+	}
+	if dOpts.debug {
+		logger.Debugw("trying direct", "address", address)
+	}
+	conn, cached, err := dialDirectGRPC(ctx, address, dOpts, logger)
 	if err != nil {
-		return "", 0, err
+		return nil, false, err
 	}
-	if len(records) == 0 {
-		return "", 0, errors.New("expected at least one SRV record")
+	if !cached {
+		logger.Debugw("connected via gRPC", "address", address)
+	} else if dOpts.debug {
+		logger.Debugw("connected via gRPC (cached)", "address", address)
 	}
-	return records[0].Target, records[0].Port, nil
+	return conn, cached, nil
+}
+
+func dialMulticastDNS(
+	ctx context.Context,
+	address string,
+	logger golog.Logger,
+	dOpts *dialOptions,
+) (ClientConn, bool, error) {
+	resolver, err := zeroconf.NewResolver(zeroconf.SelectIPRecordType(zeroconf.IPv4))
+	if err != nil {
+		return nil, false, err
+	}
+	defer resolver.Shutdown()
+	entries := make(chan *zeroconf.ServiceEntry)
+	lookupCtx, cancel := context.WithTimeout(ctx, 1*time.Second)
+	defer cancel()
+
+	if err := resolver.Lookup(lookupCtx, address, "_rpc._tcp", "local.", entries); err != nil {
+		logger.Errorw("error performing mDNS query", "error", err)
+		return nil, false, nil
+	}
+
+	// entries gets closed after lookupCtx expires or there is a real entry
+	entry := <-entries
+	if entry == nil {
+		return nil, false, ctx.Err()
+	}
+	var hasGRPC, hasWebRTC bool
+	for _, field := range entry.Text {
+		if field == "grpc" {
+			hasGRPC = true
+		}
+		if field == "webrtc" {
+			hasWebRTC = true
+		}
+	}
+
+	// IPv6 with scope does not work with grpc-go which we would want here.
+	if !(hasGRPC || hasWebRTC) || len(entry.AddrIPv4) == 0 {
+		return nil, false, nil
+	}
+
+	localAddress := fmt.Sprintf("%s:%d", entry.AddrIPv4[0], entry.Port)
+	if dOpts.debug {
+		logger.Debugw("found address via mDNS", "address", localAddress)
+	}
+
+	dOptsCopy := *dOpts
+	if dOptsCopy.mdnsOptions.RemoveAuthCredentials {
+		dOptsCopy.creds = Credentials{}
+		dOptsCopy.authEntity = ""
+		dOptsCopy.externalAuthToEntity = ""
+	}
+
+	if hasWebRTC {
+		fixupWebRTCOptions(&dOptsCopy, entry.AddrIPv4[0].String(), uint16(entry.Port))
+		if dOptsCopy.mdnsOptions.RemoveAuthCredentials {
+			dOptsCopy.webrtcOpts.SignalingAuthEntity = ""
+			dOptsCopy.webrtcOpts.SignalingCreds = Credentials{}
+		}
+	} else {
+		dOptsCopy.webrtcOpts.Disable = true
+	}
+	var tlsConfig *tls.Config
+	if dOptsCopy.tlsConfig == nil {
+		tlsConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+	} else {
+		tlsConfig = dOptsCopy.tlsConfig.Clone()
+	}
+	tlsConfig.ServerName = address
+	dOptsCopy.tlsConfig = tlsConfig
+
+	conn, cached, err := dial(ctx, localAddress, address, logger, &dOptsCopy, false)
+	if err == nil {
+		if !cached {
+			logger.Debugw("connected via mDNS", "address", localAddress)
+		} else if dOptsCopy.debug {
+			logger.Debugw("connected via mDNS (cached)", "address", localAddress)
+		}
+		return conn, cached, nil
+	}
+	return nil, false, err
+}
+
+// fixupWebRTCOptions sets sensible and secure settings for WebRTC dial options based on
+// auto detection / connection attempts as well as what settings are not set and can be interpreted
+// from non WebRTC dial options (e.g. credentials becoming signaling credentials).
+func fixupWebRTCOptions(dOpts *dialOptions, target string, port uint16) {
+	dOpts.webrtcOpts.SignalingServerAddress = fmt.Sprintf("%s:%d", target, port)
+
+	if !dOpts.webrtcOptsSet {
+		dOpts.webrtcOpts.SignalingInsecure = dOpts.insecure
+		dOpts.webrtcOpts.SignalingExternalAuthInsecure = dOpts.externalAuthInsecure
+	}
+
+	if dOpts.webrtcOpts.SignalingExternalAuthAddress == "" {
+		dOpts.webrtcOpts.SignalingExternalAuthAddress = dOpts.externalAuthAddr
+	}
+	if dOpts.webrtcOpts.SignalingExternalAuthToEntity == "" {
+		dOpts.webrtcOpts.SignalingExternalAuthToEntity = dOpts.externalAuthToEntity
+	}
+
+	// It's always okay to pass over entity and credentials since next section
+	// will assume secure settings based on public internet or not.
+	// The security considerations are as follows:
+	// 1. from mDNS - follows insecure downgrade rules and server name TLS check
+	// stays in tact, so we are transferring credentials to the same host or
+	// user says they do not care.
+	// 2. from trying WebRTC when signaling address not explicitly set - follows
+	// insecure downgrade rules and host/target stays in tact, so we are transferring
+	// credentials to the same host or user says they do not care.
+	if dOpts.webrtcOpts.SignalingAuthEntity == "" {
+		dOpts.webrtcOpts.SignalingAuthEntity = dOpts.authEntity
+	}
+	if dOpts.webrtcOpts.SignalingCreds.Type == "" {
+		dOpts.webrtcOpts.SignalingCreds = dOpts.creds
+	}
 }
