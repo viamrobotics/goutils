@@ -9,7 +9,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  buf-push:
+    if: github.repository_owner == 'viamrobotics'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
