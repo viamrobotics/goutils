@@ -70,7 +70,7 @@ func HostFromCtx(ctx context.Context) (string, error) {
 	return hosts[0], nil
 }
 
-const maxHostsInMetadata = 4
+const maxHostsInMetadata = 5
 
 // HostsFromCtx gets the hosts being called/answered for from the context.
 func HostsFromCtx(ctx context.Context) ([]string, error) {
