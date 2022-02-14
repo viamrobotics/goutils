@@ -3,7 +3,7 @@ name: buf-push
 on:
   # Triggers the workflow on pushes or pull requests for the main branch
   push:
-    branches: [ main ]
+    branches: [ buf-build ]
 
   # Allow running this workflow manually from the Actions tab
   workflow_dispatch:
