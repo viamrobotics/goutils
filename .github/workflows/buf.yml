@@ -1,9 +1,12 @@
-name: buf-push
+name: Buf Push
 
 on:
   # Triggers the workflow on pushes to the main branch
   push:
-    branches: [ main ]
+    paths:
+      - 'proto/**'
+    branches:
+      - main
 
   # Allow running this workflow manually from the Actions tab
   workflow_dispatch:
