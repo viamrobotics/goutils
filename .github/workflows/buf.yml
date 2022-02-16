@@ -16,10 +16,29 @@ jobs:
     if: github.repository_owner == 'viamrobotics'
     runs-on: [self-hosted, x64]
     container:
-      image: ghcr.io/viamrobotics/test:latest
+      image: ghcr.io/viamrobotics/canon:amd64
     steps:
       - uses: actions/checkout@v2
       - uses: bufbuild/buf-setup-action@v0.7.0
       - uses: bufbuild/buf-push-action@v1
         with:
           buf_token: ${{ secrets.BUF_TOKEN }}
+
+  dispatch:
+    needs: buf-push
+    if: github.repository_owner == 'viamrobotics'
+    runs-on: [self-hosted, x64]
+    container:
+      image: ghcr.io/viamrobotics/canon:amd64
+    strategy:
+      matrix:
+        repo:
+          - 'viamrobotics/python-sdk'
+    steps:
+      - name: Notify Proto Watchers
+        uses: peter-evans/repository-dispatch@v1
+        with:
+          token: ${{ secrets.GIT_ACCESS_TOKEN }}
+          repository: ${{ matrix.repo }}
+          event-type: protos-updated
+          client-payload: '{"repo_name": "${{github.repository}}", "sha": "${{github.sha}}"}'
