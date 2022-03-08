@@ -59,7 +59,7 @@ jobs:
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
 
-  build_and_test_from_pr: # TODO(https://github.com/viamrobotics/goutils/issues/8): reuse above
+  build_and_test_from_pr: # TODO(GOUT-15): reuse above
     name: Build and Test (PR)
     runs-on: [self-hosted, x64]
     if: contains(github.event.pull_request.labels.*.name, 'safe to test')

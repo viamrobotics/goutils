@@ -56,7 +56,7 @@ export async function dialDirect(address: string, opts?: DialOptions): Promise<g
 async function makeAuthenticatedTransportFactory(address: string, defaultFactory: grpc.TransportFactory, opts?: DialOptions): Promise<grpc.TransportFactory> {
 	let accessToken = "";
 	const getExtraMetadata = async (): Promise<grpc.Metadata> => {
-		// TODO(https://github.com/viamrobotics/goutils/issues/13): handle expiration
+		// TODO(GOUT-10): handle expiration
 		if (accessToken == "") {
 			const request = new AuthenticateRequest();
 			request.setEntity(opts?.authEntity ? opts.authEntity : address.replace(/^(.*:\/\/)/, ''));
@@ -172,7 +172,7 @@ interface WebRTCConnection {
 // upon successful connection that contains a transport factory to use with gRPC client as well as the WebRTC
 // PeerConnection itself. Care should be taken with the PeerConnection and is currently returned for experimental
 // use.
-// TODO(https://github.com/viamrobotics/goutils/issues/19): figure out decent way to handle reconnect on connection termination
+// TODO(GOUT-7): figure out decent way to handle reconnect on connection termination
 export async function dialWebRTC(signalingAddress: string, host: string, opts?: DialOptions): Promise<WebRTCConnection> {
 	const webrtcOpts = opts?.webrtcOptions;
 	const { pc, dc } = await newPeerConnectionForClient(webrtcOpts !== undefined && webrtcOpts.disableTrickleICE, webrtcOpts?.rtcConfig);
@@ -383,10 +383,10 @@ export async function dialWebRTC(signalingAddress: string, host: string, opts?: 
 	sendDone();
 
 	if (opts?.externalAuthAddress) {
-		// TODO(https://github.com/viamrobotics/goutils/issues/12): prepare AuthenticateTo here
+		// TODO(GOUT-11): prepare AuthenticateTo here
 		// for client channel.
 	} else if (opts?.credentials?.type) {
-		// TODO(https://github.com/viamrobotics/goutils/issues/12): prepare Authenticate here
+		// TODO(GOUT-11): prepare Authenticate here
 		// for client channel
 	}
 	

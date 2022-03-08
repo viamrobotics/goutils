@@ -16,7 +16,7 @@ import (
 
 // Dial attempts to make the most convenient connection to the given address. It attempts to connect
 // via WebRTC if a signaling server is detected or provided. Otherwise it attempts to connect directly.
-// TODO(https://github.com/viamrobotics/goutils/issues/19): figure out decent way to handle reconnect on connection termination.
+// TODO(GOUT-7): figure out decent way to handle reconnect on connection termination.
 func Dial(ctx context.Context, address string, logger golog.Logger, opts ...DialOption) (ClientConn, error) {
 	var dOpts dialOptions
 	for _, opt := range opts {

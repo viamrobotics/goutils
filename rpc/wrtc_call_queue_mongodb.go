@@ -55,9 +55,9 @@ var (
 
 // NewMongoDBWebRTCCallQueue returns a new MongoDB based call queue where calls are transferred
 // through the given client.
-// TODO(https://github.com/viamrobotics/goutils/issues/20): more efficient, multiplexed change streams;
+// TODO(GOUT-6): more efficient, multiplexed change streams;
 // uniquely identify host ephemerally
-// TODO(https://github.com/viamrobotics/goutils/issues/21): max queue size.
+// TODO(GOUT-5): max queue size.
 func NewMongoDBWebRTCCallQueue(client *mongo.Client) (WebRTCCallQueue, error) {
 	coll := client.Database(mongodbWebRTCCallQueueDBName).Collection(mongodbWebRTCCallQueueCollName)
 	if err := mongoutils.EnsureIndexes(coll, mongodbWebRTCCallQueueIndexes...); err != nil {

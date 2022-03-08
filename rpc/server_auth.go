@@ -98,9 +98,9 @@ func (ss *simpleServer) signAccessTokenForEntity(
 		},
 		CredentialsType: forType,
 		AuthMetadata:    authMD,
-		// TODO(https://github.com/viamrobotics/goutils/issues/10): expiration
-		// TODO(https://github.com/viamrobotics/goutils/issues/11): refresh token
-		// TODO(https://github.com/viamrobotics/goutils/issues/14): more complete info
+		// TODO(GOUT-13): expiration
+		// TODO(GOUT-12): refresh token
+		// TODO(GOUT-9): more complete info
 	})
 
 	tokenString, err := token.SignedString(ss.authRSAPrivKey)

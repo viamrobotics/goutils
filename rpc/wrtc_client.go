@@ -259,12 +259,12 @@ func dialWebRTC(
 		return nil, err
 	}
 
-	// TODO(https://github.com/viamrobotics/goutils/issues/12): do separate auth here
+	// TODO(GOUT-11): do separate auth here
 	if dOpts.externalAuthAddr != "" {
-		// TODO(https://github.com/viamrobotics/goutils/issues/12): prepare AuthenticateTo here
+		// TODO(GOUT-11): prepare AuthenticateTo here
 		// for client channel.
 	} else if dOpts.creds.Type != "" { // nolint:staticcheck
-		// TODO(https://github.com/viamrobotics/goutils/issues/12): prepare Authenticate here
+		// TODO(GOUT-11): prepare Authenticate here
 		// for client channel
 	}
 

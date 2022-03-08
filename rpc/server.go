@@ -404,7 +404,7 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 	}
 
 	if sOpts.webrtcOpts.Enable {
-		// TODO(https://github.com/viamrobotics/goutils/issues/12): Handle auth; right now we assume
+		// TODO(GOUT-11): Handle auth; right now we assume
 		// successful auth to the signaler implies that auth should be allowed here, which is not 100%
 		// true.
 		webrtcUnaryInterceptors := make([]grpc.UnaryServerInterceptor, 0, len(unaryInterceptors))

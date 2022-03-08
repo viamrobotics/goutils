@@ -412,7 +412,7 @@ type perRPCJWTCredentials struct {
 	logger golog.Logger
 }
 
-// TODO(https://github.com/viamrobotics/goutils/issues/13): handle expiration.
+// TODO(GOUT-10): handle expiration.
 func (creds *perRPCJWTCredentials) GetRequestMetadata(ctx context.Context, uri ...string) (map[string]string, error) {
 	for _, uriVal := range uri {
 		if strings.HasSuffix(uriVal, "/proto.rpc.v1.AuthService") {
