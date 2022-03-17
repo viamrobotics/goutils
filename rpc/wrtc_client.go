@@ -331,7 +331,7 @@ func dialWebRTC(
 			sendErr(err)
 		}
 	}, func(err interface{}) {
-		sendErr(fmt.Errorf("%w", err))
+		sendErr(fmt.Errorf("%v", err))
 	})
 
 	doCall := func() error {
