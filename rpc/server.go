@@ -28,6 +28,7 @@ import (
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/net/http2/h2c"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
@@ -236,7 +237,12 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 	}
 	var unaryInterceptors []grpc.UnaryServerInterceptor
 	unaryInterceptors = append(unaryInterceptors,
-		grpc_recovery.UnaryServerInterceptor(),
+		grpc_recovery.UnaryServerInterceptor(grpc_recovery.WithRecoveryHandler(
+			grpc_recovery.RecoveryHandlerFunc(func(p interface{}) error {
+				err := status.Errorf(codes.Internal, "%s", p)
+				logger.Errorw("panicked while calling unary server method", "error", errors.WithStack(err))
+				return err
+			}))),
 		grpc_zap.UnaryServerInterceptor(grpcLogger),
 		unaryServerCodeInterceptor(),
 	)
@@ -263,7 +269,12 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 
 	var streamInterceptors []grpc.StreamServerInterceptor
 	streamInterceptors = append(streamInterceptors,
-		grpc_recovery.StreamServerInterceptor(),
+		grpc_recovery.StreamServerInterceptor(grpc_recovery.WithRecoveryHandler(
+			grpc_recovery.RecoveryHandlerFunc(func(p interface{}) error {
+				err := status.Errorf(codes.Internal, "%s", p)
+				logger.Errorw("panicked while calling stream server method", "error", errors.WithStack(err))
+				return err
+			}))),
 		grpc_zap.StreamServerInterceptor(grpcLogger),
 		streamServerCodeInterceptor(),
 	)
