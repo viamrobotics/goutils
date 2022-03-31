@@ -59,6 +59,12 @@ type ClientConn interface {
 	Close() error
 }
 
+// A ClientConnAuthenticator supports instructing a connection to authenticate now.
+type ClientConnAuthenticator interface {
+	ClientConn
+	Authenticate(ctx context.Context) (string, error)
+}
+
 type cachedDialer struct {
 	mu    sync.Mutex // Note(erd): not suitable for highly concurrent usage
 	conns map[string]*refCountedConnWrapper
@@ -265,8 +271,9 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts *dialOptions, log
 
 	var connPtr *ClientConn
 	var closeCredsFunc func() error
+	var rpcCreds *perRPCJWTCredentials
 	if dOpts.creds.Type != "" {
-		rpcCreds := &perRPCJWTCredentials{
+		rpcCreds = &perRPCJWTCredentials{
 			entity: dOpts.authEntity,
 			creds:  dOpts.creds,
 			debug:  dOpts.debug,
@@ -305,6 +312,9 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts *dialOptions, log
 		}
 		dialOpts = append(dialOpts, grpc.WithPerRPCCredentials(rpcCreds))
 	}
+	if dOpts.authMaterial != "" {
+		dialOpts = append(dialOpts, grpc.WithPerRPCCredentials(&staticPerRPCJWTCredentials{dOpts.authMaterial}))
+	}
 	var conn ClientConn
 	var cached bool
 	var err error
@@ -324,6 +334,9 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts *dialOptions, log
 	}
 	if connPtr != nil {
 		*connPtr = conn
+	}
+	if rpcCreds != nil {
+		conn = clientConnRPCAuthenticator{conn, rpcCreds}
 	}
 	return conn, cached, err
 }
@@ -404,6 +417,34 @@ func dialFunc(
 	return conn, false, err
 }
 
+type clientConnRPCAuthenticator struct {
+	ClientConn
+	rpcCreds *perRPCJWTCredentials
+}
+
+func (cc clientConnRPCAuthenticator) Authenticate(ctx context.Context) (string, error) {
+	return cc.rpcCreds.authenticate(ctx)
+}
+
+type staticPerRPCJWTCredentials struct {
+	authMaterial string
+}
+
+func (creds *staticPerRPCJWTCredentials) GetRequestMetadata(ctx context.Context, uri ...string) (map[string]string, error) {
+	for _, uriVal := range uri {
+		if strings.HasSuffix(uriVal, "/proto.rpc.v1.AuthService") {
+			//nolint:nilnil
+			return nil, nil
+		}
+	}
+
+	return map[string]string{"Authorization": "Bearer " + creds.authMaterial}, nil
+}
+
+func (creds *staticPerRPCJWTCredentials) RequireTransportSecurity() bool {
+	return false
+}
+
 type perRPCJWTCredentials struct {
 	mu                   sync.RWMutex
 	conn                 ClientConn
@@ -424,6 +465,15 @@ func (creds *perRPCJWTCredentials) GetRequestMetadata(ctx context.Context, uri .
 			return nil, nil
 		}
 	}
+	accessToken, err := creds.authenticate(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]string{"Authorization": "Bearer " + accessToken}, nil
+}
+
+func (creds *perRPCJWTCredentials) authenticate(ctx context.Context) (string, error) {
 	creds.mu.RLock()
 	accessToken := creds.accessToken
 	creds.mu.RUnlock()
@@ -444,7 +494,7 @@ func (creds *perRPCJWTCredentials) GetRequestMetadata(ctx context.Context, uri .
 				},
 			})
 			if err != nil {
-				return nil, err
+				return "", err
 			}
 			accessToken = resp.AccessToken
 
@@ -469,7 +519,7 @@ func (creds *perRPCJWTCredentials) GetRequestMetadata(ctx context.Context, uri .
 					Entity: creds.externalAuthToEntity,
 				})
 				if err != nil {
-					return nil, err
+					return "", err
 				}
 
 				if creds.debug {
@@ -482,7 +532,7 @@ func (creds *perRPCJWTCredentials) GetRequestMetadata(ctx context.Context, uri .
 		}
 	}
 
-	return map[string]string{"Authorization": "Bearer " + accessToken}, nil
+	return accessToken, nil
 }
 
 func (creds *perRPCJWTCredentials) RequireTransportSecurity() bool {

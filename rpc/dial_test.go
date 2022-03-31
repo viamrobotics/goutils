@@ -908,6 +908,113 @@ func TestDialFixupWebRTCOptions(t *testing.T) {
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
 
+	listener, err := net.Listen("tcp", "localhost:0")
+	test.That(t, err, test.ShouldBeNil)
+
+	listenerAddr, ok := listener.Addr().(*net.TCPAddr)
+	test.That(t, ok, test.ShouldBeTrue)
+
+	rpcServer, err := NewServer(
+		logger,
+		WithExternalListenerAddress(listenerAddr),
+		WithDisableMulticastDNS(),
+		WithWebRTCServerOptions(WebRTCServerOptions{
+			Enable:                 true,
+			InternalSignalingHosts: []string{listenerAddr.String()},
+		}),
+		WithAuthHandler("fake", MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) (map[string]string, error) {
+			if entity != "passmethrough" {
+				return nil, errors.New("nope")
+			}
+			return map[string]string{}, nil
+		}, func(ctx context.Context, entity string) (interface{}, error) {
+			return entity, nil
+		})),
+	)
+	test.That(t, err, test.ShouldBeNil)
+
+	err = rpcServer.RegisterServiceServer(
+		context.Background(),
+		&pb.EchoService_ServiceDesc,
+		&echoserver.Server{},
+		pb.RegisterEchoServiceHandlerFromEndpoint,
+	)
+	test.That(t, err, test.ShouldBeNil)
+
+	errChan := make(chan error)
+	go func() {
+		errChan <- rpcServer.Serve(listener)
+	}()
+	test.That(t, rpcServer.Start(), test.ShouldBeNil)
+
+	t.Run("auto detect with no signaling server address", func(t *testing.T) {
+		conn, err := Dial(
+			context.Background(),
+			listenerAddr.String(),
+			logger,
+			WithInsecure(),
+			WithDialDebug(),
+			WithDisableDirectGRPC(),
+			WithEntityCredentials("passmethrough", Credentials{Type: "fake"}),
+		)
+		test.That(t, err, test.ShouldBeNil)
+		client := pb.NewEchoServiceClient(conn)
+		echoResp, err := client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
+		test.That(t, err, test.ShouldBeNil)
+		test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
+		test.That(t, conn.Close(), test.ShouldBeNil)
+	})
+
+	t.Run("auto detect with a signaling server address", func(t *testing.T) {
+		conn, err := Dial(
+			context.Background(),
+			listenerAddr.String(),
+			logger,
+			WithInsecure(),
+			WithDialDebug(),
+			WithDisableDirectGRPC(),
+			WithEntityCredentials("passmethrough", Credentials{Type: "fake"}),
+			WithWebRTCOptions(DialWebRTCOptions{
+				SignalingServerAddress:     listenerAddr.String(),
+				AllowAutoDetectAuthOptions: true,
+				SignalingInsecure:          true,
+			}),
+		)
+		test.That(t, err, test.ShouldBeNil)
+		client := pb.NewEchoServiceClient(conn)
+		echoResp, err := client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
+		test.That(t, err, test.ShouldBeNil)
+		test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
+		test.That(t, conn.Close(), test.ShouldBeNil)
+	})
+
+	t.Run("no auto detect with a signaling server address", func(t *testing.T) {
+		_, err := Dial(
+			context.Background(),
+			listenerAddr.String(),
+			logger,
+			WithInsecure(),
+			WithDialDebug(),
+			WithDisableDirectGRPC(),
+			WithEntityCredentials("passmethrough", Credentials{Type: "fake"}),
+			WithWebRTCOptions(DialWebRTCOptions{
+				SignalingServerAddress: listenerAddr.String(),
+				SignalingInsecure:      true,
+			}),
+		)
+		test.That(t, err, test.ShouldNotBeNil)
+		test.That(t, err.Error(), test.ShouldContainSubstring, "authentication required")
+	})
+
+	test.That(t, rpcServer.Stop(), test.ShouldBeNil)
+	err = <-errChan
+	test.That(t, err, test.ShouldBeNil)
+}
+
+func TestDialFixupWebRTCOptionsMDNS(t *testing.T) {
+	testutils.SkipUnlessInternet(t)
+	logger := golog.NewTestLogger(t)
+
 	rpcServer, err := NewServer(
 		logger,
 		WithWebRTCServerOptions(WebRTCServerOptions{Enable: true}),

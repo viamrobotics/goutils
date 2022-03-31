@@ -36,6 +36,8 @@ type dialOptions struct {
 	externalAuthToEntity string
 	externalAuthInsecure bool
 
+	authMaterial string
+
 	// debug is helpful to turn on when the library isn't working quite right.
 	// It will output much more logs.
 	debug bool
@@ -133,6 +135,17 @@ func WithExternalAuth(addr, toEntity string) DialOption {
 func WithExternalAuthInsecure() DialOption {
 	return newFuncDialOption(func(o *dialOptions) {
 		o.externalAuthInsecure = true
+	})
+}
+
+// WithStaticAuthenticationMaterial returns a DialOption which sets the already authenticated
+// material (opaque) to use for authenticated requests. This is mutually exclusive with
+// auth and external auth options.
+func WithStaticAuthenticationMaterial(authMaterial string) DialOption {
+	return newFuncDialOption(func(o *dialOptions) {
+		o.authEntity = ""
+		o.creds = Credentials{}
+		o.authMaterial = authMaterial
 	})
 }
 

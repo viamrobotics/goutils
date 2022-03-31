@@ -64,6 +64,10 @@ type DialWebRTCOptions struct {
 
 	// Config is the WebRTC specific configuration (i.e. ICE settings)
 	Config *webrtc.Configuration
+
+	// AllowAutoDetectAuthOptions allows authentication options to be automatically
+	// detected. Only use this if you trust the signaling server.
+	AllowAutoDetectAuthOptions bool
 }
 
 // DialWebRTC connects to the signaling service at the given address and attempts to establish

@@ -108,31 +108,34 @@ func dial(
 	}
 
 	if !dOpts.webrtcOpts.Disable {
-		if dOpts.webrtcOpts.SignalingServerAddress == "" {
-			if dOpts.webrtcOpts.SignalingServerAddress == "" {
+		signalingAddress := dOpts.webrtcOpts.SignalingServerAddress
+		if signalingAddress == "" || dOpts.webrtcOpts.AllowAutoDetectAuthOptions {
+			if signalingAddress == "" {
 				// try WebRTC at same address
-				var target string
-				var port uint16
-				if strings.Contains(address, ":") {
-					host, portStr, err := net.SplitHostPort(address)
-					if err != nil {
-						return nil, false, err
-					}
-					if strings.Contains(host, ":") {
-						host = fmt.Sprintf("[%s]", host)
-					}
-					target = host
-					portParsed, err := strconv.ParseUint(portStr, 10, 16)
-					if err != nil {
-						return nil, false, err
-					}
-					port = uint16(portParsed)
-				} else {
-					target = address
-					port = 443
-				}
-				fixupWebRTCOptions(dOpts, target, port)
+				signalingAddress = address
 			}
+
+			var target string
+			var port uint16
+			if strings.Contains(signalingAddress, ":") {
+				host, portStr, err := net.SplitHostPort(signalingAddress)
+				if err != nil {
+					return nil, false, err
+				}
+				if strings.Contains(host, ":") {
+					host = fmt.Sprintf("[%s]", host)
+				}
+				target = host
+				portParsed, err := strconv.ParseUint(portStr, 10, 16)
+				if err != nil {
+					return nil, false, err
+				}
+				port = uint16(portParsed)
+			} else {
+				target = signalingAddress
+				port = 443
+			}
+			fixupWebRTCOptions(dOpts, target, port)
 		}
 
 		if dOpts.debug {
@@ -300,6 +303,7 @@ func fixupWebRTCOptions(dOpts *dialOptions, target string, port uint16) {
 	// 2. from trying WebRTC when signaling address not explicitly set - follows
 	// insecure downgrade rules and host/target stays in tact, so we are transferring
 	// credentials to the same host or user says they do not care.
+	// 3. form user explicitly allowing this.
 	if dOpts.webrtcOpts.SignalingAuthEntity == "" {
 		dOpts.webrtcOpts.SignalingAuthEntity = dOpts.authEntity
 	}
