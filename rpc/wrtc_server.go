@@ -22,6 +22,7 @@ type webrtcServer struct {
 	ctx      context.Context
 	cancel   context.CancelFunc
 	handlers map[string]handlerFunc
+	services map[string]*serviceInfo
 	logger   golog.Logger
 
 	peerConns               map[*webrtc.PeerConnection]struct{}
@@ -30,6 +31,13 @@ type webrtcServer struct {
 
 	unaryInt  grpc.UnaryServerInterceptor
 	streamInt grpc.StreamServerInterceptor
+}
+
+// from grpc.
+type serviceInfo struct {
+	methods  map[string]*grpc.MethodDesc
+	streams  map[string]*grpc.StreamDesc
+	metadata interface{}
 }
 
 // newWebRTCServer makes a new server with no registered services.
@@ -46,6 +54,7 @@ func newWebRTCServerWithInterceptors(
 ) *webrtcServer {
 	srv := &webrtcServer{
 		handlers:    map[string]handlerFunc{},
+		services:    map[string]*serviceInfo{},
 		logger:      logger,
 		peerConns:   map[*webrtc.PeerConnection]struct{}{},
 		callTickets: make(chan struct{}, DefaultWebRTCMaxGRPCCalls),
@@ -78,14 +87,61 @@ func (srv *webrtcServer) Stop() {
 // WebRTC data channels. It extracts the unary and stream methods from a service description
 // and calls the methods on the implementation when requested via a data channel.
 func (srv *webrtcServer) RegisterService(sd *grpc.ServiceDesc, ss interface{}) {
-	for _, desc := range sd.Methods {
+	info := &serviceInfo{
+		methods:  make(map[string]*grpc.MethodDesc, len(sd.Methods)),
+		streams:  make(map[string]*grpc.StreamDesc, len(sd.Streams)),
+		metadata: sd.Metadata,
+	}
+	for i := range sd.Methods {
+		d := &sd.Methods[i]
+		info.methods[d.MethodName] = d
+	}
+	for i := range sd.Streams {
+		d := &sd.Streams[i]
+		info.streams[d.StreamName] = d
+	}
+
+	for i := range sd.Methods {
+		desc := &sd.Methods[i]
+		info.methods[desc.MethodName] = desc
 		path := fmt.Sprintf("/%v/%v", sd.ServiceName, desc.MethodName)
 		srv.handlers[path] = srv.unaryHandler(ss, methodHandler(desc.Handler))
 	}
-	for _, desc := range sd.Streams {
+	for i := range sd.Streams {
+		desc := &sd.Streams[i]
+		info.streams[desc.StreamName] = desc
 		path := fmt.Sprintf("/%v/%v", sd.ServiceName, desc.StreamName)
-		srv.handlers[path] = srv.streamHandler(ss, path, desc)
+		srv.handlers[path] = srv.streamHandler(ss, path, *desc)
 	}
+
+	srv.services[sd.ServiceName] = info
+}
+
+func (srv *webrtcServer) GetServiceInfo() map[string]grpc.ServiceInfo {
+	info := make(map[string]grpc.ServiceInfo, len(srv.services))
+	for name, svcInfo := range srv.services {
+		methods := make([]grpc.MethodInfo, 0, len(svcInfo.methods)+len(svcInfo.streams))
+		for m := range svcInfo.methods {
+			methods = append(methods, grpc.MethodInfo{
+				Name:           m,
+				IsClientStream: false,
+				IsServerStream: false,
+			})
+		}
+		for m, d := range svcInfo.streams {
+			methods = append(methods, grpc.MethodInfo{
+				Name:           m,
+				IsClientStream: d.ClientStreams,
+				IsServerStream: d.ServerStreams,
+			})
+		}
+
+		info[name] = grpc.ServiceInfo{
+			Methods:  methods,
+			Metadata: svcInfo.metadata,
+		}
+	}
+	return info
 }
 
 func (srv *webrtcServer) handler(path string) (handlerFunc, bool) {

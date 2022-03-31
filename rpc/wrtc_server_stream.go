@@ -6,6 +6,9 @@ import (
 	"io"
 
 	"github.com/edaniels/golog"
+
+	//nolint:staticcheck // need this for old v1 messages
+	protov1 "github.com/golang/protobuf/proto"
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc"
@@ -135,6 +138,9 @@ func (s *webrtcServerStream) SendMsg(m interface{}) (err error) {
 
 	if err := s.writeHeaders(); err != nil {
 		return err
+	}
+	if v1Msg, ok := m.(protov1.Message); ok {
+		m = protov1.MessageV2(v1Msg)
 	}
 	data, err := proto.Marshal(m.(proto.Message))
 	if err != nil {

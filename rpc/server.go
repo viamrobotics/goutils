@@ -440,6 +440,7 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 			unaryInterceptor,
 			streamInterceptor,
 		)
+		reflection.Register(server.webrtcServer)
 
 		config := DefaultWebRTCConfiguration
 		if sOpts.webrtcOpts.Config != nil {

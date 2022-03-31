@@ -6,6 +6,9 @@ import (
 	"sync"
 
 	"github.com/edaniels/golog"
+
+	//nolint:staticcheck // need this for old v1 messages
+	protov1 "github.com/golang/protobuf/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -144,6 +147,9 @@ func (s *webrtcClientStream) writeMessage(m interface{}, eos bool) (err error) {
 
 	var data []byte
 	if m != nil {
+		if v1Msg, ok := m.(protov1.Message); ok {
+			m = protov1.MessageV2(v1Msg)
+		}
 		data, err = proto.Marshal(m.(proto.Message))
 		if err != nil {
 			return

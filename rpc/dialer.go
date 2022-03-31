@@ -199,6 +199,10 @@ func DialDirectGRPC(ctx context.Context, address string, logger golog.Logger, op
 	dOpts.webrtcOpts.Disable = true
 	dOpts.mdnsOptions.Disable = true
 
+	if logger == nil {
+		logger = zap.NewNop().Sugar()
+	}
+
 	return dialInner(ctx, address, logger, &dOpts)
 }
 

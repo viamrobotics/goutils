@@ -7,6 +7,9 @@ import (
 	"sync"
 
 	"github.com/edaniels/golog"
+
+	//nolint:staticcheck // need this for old v1 messages
+	protov1 "github.com/golang/protobuf/proto"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/proto"
 
@@ -63,6 +66,10 @@ func (s *webrtcBaseStream) Context() context.Context {
 // calling RecvMsg on the same stream at the same time, but it is not
 // safe to call RecvMsg on the same stream in different goroutines.
 func (s *webrtcBaseStream) RecvMsg(m interface{}) error {
+	if v1Msg, ok := m.(protov1.Message); ok {
+		m = protov1.MessageV2(v1Msg)
+	}
+
 	checkLastOrErr := func() ([]byte, error) {
 		select {
 		case msgBytes, ok := <-s.msgCh:

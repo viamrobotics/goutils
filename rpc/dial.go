@@ -12,6 +12,7 @@ import (
 	"github.com/edaniels/golog"
 	"github.com/grandcat/zeroconf"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 // Dial attempts to make the most convenient connection to the given address. It attempts to connect
@@ -21,6 +22,10 @@ func Dial(ctx context.Context, address string, logger golog.Logger, opts ...Dial
 	var dOpts dialOptions
 	for _, opt := range opts {
 		opt.apply(&dOpts)
+	}
+
+	if logger == nil {
+		logger = zap.NewNop().Sugar()
 	}
 
 	return dialInner(ctx, address, logger, &dOpts)
