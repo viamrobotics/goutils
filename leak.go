@@ -7,6 +7,7 @@ import "go.uber.org/goleak"
 func FindGoroutineLeaks() error {
 	return goleak.Find(
 		goleak.IgnoreTopFunction("go.opencensus.io/stats/view.(*worker).start"),
-		goleak.IgnoreTopFunction("github.com/desertbit/timer.timerRoutine"), // gRPC uses this
+		goleak.IgnoreTopFunction("github.com/desertbit/timer.timerRoutine"),              // gRPC uses this
+		goleak.IgnoreTopFunction("github.com/letsencrypt/pebble/va.VAImpl.processTasks"), // no way to stop it
 	)
 }
