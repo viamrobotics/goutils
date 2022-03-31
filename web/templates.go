@@ -115,14 +115,29 @@ type TemplateMiddleware struct {
 	Logger    golog.Logger
 }
 
+type responseWriterCapturer struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (w *responseWriterCapturer) WriteHeader(code int) {
+	w.statusCode = code
+	w.ResponseWriter.WriteHeader(code)
+}
+
 func (tm *TemplateMiddleware) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
 	r = r.WithContext(ctx)
 
-	t, data, err := tm.Handler.Serve(w, r)
+	capW := responseWriterCapturer{ResponseWriter: w}
+	t, data, err := tm.Handler.Serve(&capW, r)
 	if HandleError(w, err, tm.Logger) {
+		return
+	}
+	if capW.statusCode != 0 {
+		// user decided to do something else
 		return
 	}
 
