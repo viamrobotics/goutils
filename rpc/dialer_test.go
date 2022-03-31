@@ -8,7 +8,12 @@ import (
 	"github.com/edaniels/golog"
 	"go.viam.com/test"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
+
+	pb "go.viam.com/utils/proto/rpc/examples/echo/v1"
+	echoserver "go.viam.com/utils/rpc/examples/echo/server"
 )
 
 func TestCachedDialer(t *testing.T) {
@@ -209,6 +214,102 @@ func TestDialAllowInsecure(t *testing.T) {
 		WithEntityCredentials("foo", Credentials{Type: CredentialsTypeAPIKey, Payload: "bar"}),
 	)
 	test.That(t, err, test.ShouldBeNil)
+	test.That(t, conn.Close(), test.ShouldBeNil)
+
+	test.That(t, rpcServer.Stop(), test.ShouldBeNil)
+	err = <-errChan
+	test.That(t, err, test.ShouldBeNil)
+}
+
+func TestClientConnAuthenticator(t *testing.T) {
+	logger := golog.NewTestLogger(t)
+	rpcServer, err := NewServer(
+		logger,
+		WithAuthHandler(CredentialsTypeAPIKey, MakeSimpleAuthHandler([]string{"foo"}, "bar")),
+	)
+	test.That(t, err, test.ShouldBeNil)
+
+	err = rpcServer.RegisterServiceServer(
+		context.Background(),
+		&pb.EchoService_ServiceDesc,
+		&echoserver.Server{},
+		pb.RegisterEchoServiceHandlerFromEndpoint,
+	)
+	test.That(t, err, test.ShouldBeNil)
+
+	httpListener, err := net.Listen("tcp", "localhost:0")
+	test.That(t, err, test.ShouldBeNil)
+
+	errChan := make(chan error)
+	go func() {
+		errChan <- rpcServer.Serve(httpListener)
+	}()
+
+	conn, err := Dial(
+		context.Background(),
+		httpListener.Addr().String(),
+		logger,
+		WithInsecure(),
+		WithDialDebug(),
+		WithEntityCredentials("foo", Credentials{Type: CredentialsTypeAPIKey, Payload: "bar"}),
+	)
+	test.That(t, err, test.ShouldBeNil)
+
+	connAuther, ok := conn.(ClientConnAuthenticator)
+	test.That(t, ok, test.ShouldBeTrue)
+
+	authMaterial, err := connAuther.Authenticate(context.Background())
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, authMaterial, test.ShouldNotBeEmpty)
+
+	client := pb.NewEchoServiceClient(conn)
+	echoResp, err := client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
+
+	test.That(t, conn.Close(), test.ShouldBeNil)
+
+	// reuse
+	conn, err = Dial(
+		context.Background(),
+		httpListener.Addr().String(),
+		logger,
+		WithInsecure(),
+		WithDialDebug(),
+		WithStaticAuthenticationMaterial(authMaterial),
+	)
+	test.That(t, err, test.ShouldBeNil)
+
+	_, ok = conn.(ClientConnAuthenticator)
+	test.That(t, ok, test.ShouldBeFalse)
+
+	client = pb.NewEchoServiceClient(conn)
+	echoResp, err = client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
+
+	test.That(t, conn.Close(), test.ShouldBeNil)
+
+	// reuse poorly
+	conn, err = Dial(
+		context.Background(),
+		httpListener.Addr().String(),
+		logger,
+		WithInsecure(),
+		WithDialDebug(),
+		WithStaticAuthenticationMaterial(authMaterial+"ah"),
+	)
+	test.That(t, err, test.ShouldBeNil)
+
+	_, ok = conn.(ClientConnAuthenticator)
+	test.That(t, ok, test.ShouldBeFalse)
+
+	client = pb.NewEchoServiceClient(conn)
+	_, err = client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
+	gStatus, ok := status.FromError(err)
+	test.That(t, ok, test.ShouldBeTrue)
+	test.That(t, gStatus.Code(), test.ShouldEqual, codes.Unauthenticated)
+
 	test.That(t, conn.Close(), test.ShouldBeNil)
 
 	test.That(t, rpcServer.Stop(), test.ShouldBeNil)
