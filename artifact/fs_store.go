@@ -55,13 +55,14 @@ func (s *fileSystemStore) Load(hash string) (io.ReadCloser, error) {
 	return os.Open(s.pathToHashFile(hash))
 }
 
-func (s *fileSystemStore) Store(hash string, r io.Reader) (err error) {
-	path := s.pathToHashFile(hash)
-
+// AtomicStore writes reader contents to a temp file and then renames to
+// path, ensuring safer, atomic file writes.
+func AtomicStore(path string, r io.Reader, hash string) (err error) {
 	tempFile, err := ioutil.TempFile(filepath.Dir(path), hash)
 	if err != nil {
 		return err
 	}
+
 	var successful bool
 	defer func() {
 		if !successful {
@@ -82,4 +83,10 @@ func (s *fileSystemStore) Store(hash string, r io.Reader) (err error) {
 	}
 	successful = true
 	return nil
+}
+
+func (s *fileSystemStore) Store(hash string, r io.Reader) (err error) {
+	path := s.pathToHashFile(hash)
+
+	return AtomicStore(path, r, hash)
 }
