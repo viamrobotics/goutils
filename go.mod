@@ -11,6 +11,7 @@ require (
 	github.com/coreos/go-oidc/v3 v3.1.0
 	github.com/edaniels/golinters v0.0.5-0.20210512224240-495d3b8eed19
 	github.com/edaniels/golog v0.0.0-20210326173913-16d408aa7a5e
+	github.com/edaniels/zeroconf v0.0.0-20220607181113-3dc7461460c6
 	github.com/fatih/color v1.13.0
 	github.com/fsnotify/fsnotify v1.5.1
 	github.com/fullstorydev/grpcurl v1.8.0
@@ -18,15 +19,14 @@ require (
 	github.com/golang/protobuf v1.5.2
 	github.com/golangci/golangci-lint v1.43.0
 	github.com/google/uuid v1.3.0
-	github.com/grandcat/zeroconf v1.0.0
 	github.com/grpc-ecosystem/go-grpc-middleware v1.2.2
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.5.0
 	github.com/improbable-eng/grpc-web v0.14.0
 	github.com/jacobsa/go-serial v0.0.0-20180131005756-15cf729a72d4
-	github.com/pion/ice/v2 v2.1.13
-	github.com/pion/interceptor v0.1.0
+	github.com/pion/ice/v2 v2.2.6
+	github.com/pion/interceptor v0.1.11
 	github.com/pion/logging v0.2.2
-	github.com/pion/webrtc/v3 v3.1.8
+	github.com/pion/webrtc/v3 v3.1.41
 	github.com/pkg/errors v0.9.1
 	github.com/pseudomuto/protoc-gen-doc v1.3.2
 	go.mongodb.org/mongo-driver v1.8.0
@@ -36,7 +36,7 @@ require (
 	go.uber.org/zap v1.21.0
 	go.viam.com/test v1.1.0
 	goji.io v2.0.2+incompatible
-	golang.org/x/net v0.0.0-20220225172249-27dd8689420f
+	golang.org/x/net v0.0.0-20220425223048-2871e0cb64e4
 	golang.org/x/oauth2 v0.0.0-20211104180415-d3ed0bb246c8
 	google.golang.org/api v0.62.0
 	google.golang.org/genproto v0.0.0-20220228195345-15d65a4533f7
@@ -163,18 +163,18 @@ require (
 	github.com/olekukonko/tablewriter v0.0.5 // indirect
 	github.com/pelletier/go-toml v1.9.4 // indirect
 	github.com/phayes/checkstyle v0.0.0-20170904204023-bfd46e6a821d // indirect
-	github.com/pion/datachannel v1.5.1 // indirect
-	github.com/pion/dtls/v2 v2.1.1 // indirect
+	github.com/pion/datachannel v1.5.2 // indirect
+	github.com/pion/dtls/v2 v2.1.5 // indirect
 	github.com/pion/mdns v0.0.5 // indirect
 	github.com/pion/randutil v0.1.0 // indirect
-	github.com/pion/rtcp v1.2.8 // indirect
-	github.com/pion/rtp v1.7.4 // indirect
-	github.com/pion/sctp v1.8.0 // indirect
-	github.com/pion/sdp/v3 v3.0.4 // indirect
-	github.com/pion/srtp/v2 v2.0.5 // indirect
+	github.com/pion/rtcp v1.2.9 // indirect
+	github.com/pion/rtp v1.7.13 // indirect
+	github.com/pion/sctp v1.8.2 // indirect
+	github.com/pion/sdp/v3 v3.0.5 // indirect
+	github.com/pion/srtp/v2 v2.0.9 // indirect
 	github.com/pion/stun v0.3.5 // indirect
 	github.com/pion/transport v0.13.0 // indirect
-	github.com/pion/turn/v2 v2.0.6 // indirect
+	github.com/pion/turn/v2 v2.0.8 // indirect
 	github.com/pion/udp v0.1.1 // indirect
 	github.com/pkg/browser v0.0.0-20210911075715-681adbf594b8 // indirect
 	github.com/pkg/profile v1.6.0 // indirect
@@ -207,7 +207,7 @@ require (
 	github.com/spf13/viper v1.10.0 // indirect
 	github.com/ssgreg/nlreturn/v2 v2.2.1 // indirect
 	github.com/stretchr/objx v0.2.0 // indirect
-	github.com/stretchr/testify v1.7.0 // indirect
+	github.com/stretchr/testify v1.7.1 // indirect
 	github.com/subosito/gotenv v1.2.0 // indirect
 	github.com/sylvia7788/contextcheck v1.0.4 // indirect
 	github.com/tdakkota/asciicheck v0.0.0-20200416200610-e657995f937b // indirect
@@ -224,7 +224,7 @@ require (
 	github.com/yeya24/promlinter v0.1.0 // indirect
 	github.com/youmark/pkcs8 v0.0.0-20181117223130-1be2e3e5546d // indirect
 	go.uber.org/atomic v1.9.0 // indirect
-	golang.org/x/crypto v0.0.0-20211215153901-e495a2d5b3d3 // indirect
+	golang.org/x/crypto v0.0.0-20220516162934-403b01795ae8 // indirect
 	golang.org/x/mod v0.5.1 // indirect
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c // indirect
 	golang.org/x/sys v0.0.0-20220227234510-4e6760a101f9 // indirect
@@ -247,7 +247,3 @@ require (
 
 // vulns
 require github.com/gin-gonic/gin v1.7.0 // indirect
-
-replace github.com/grandcat/zeroconf => github.com/edaniels/zeroconf v0.0.0-20220206052756-a309f5e4c63c
-
-replace github.com/pion/ice/v2 => github.com/edaniels/ice/v2 v2.0.0-20220204035239-204e270e6801

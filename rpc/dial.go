@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/edaniels/golog"
-	"github.com/grandcat/zeroconf"
+	"github.com/edaniels/zeroconf"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
