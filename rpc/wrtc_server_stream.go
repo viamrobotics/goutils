@@ -6,9 +6,7 @@ import (
 	"io"
 
 	"github.com/edaniels/golog"
-
-	//nolint:staticcheck // need this for old v1 messages
-	protov1 "github.com/golang/protobuf/proto"
+	protov1 "github.com/golang/protobuf/proto" //nolint:staticcheck // need this for old v1 messages
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc"

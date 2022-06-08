@@ -33,10 +33,10 @@ type mongoDBWebRTCCallQueue struct {
 
 // Database and collection names used by the mongoDBWebRTCCallQueue.
 var (
-	mongodbWebRTCCallQueueDBName            = "rpc"
-	mongodbWebRTCCallQueueCollName          = "calls"
-	mongodbWebRTCCallQueueExpireAfter int32 = int32(getDefaultOfferDeadline().Seconds())
-	mongodbWebRTCCallQueueIndexes           = []mongo.IndexModel{
+	mongodbWebRTCCallQueueDBName      = "rpc"
+	mongodbWebRTCCallQueueCollName    = "calls"
+	mongodbWebRTCCallQueueExpireAfter = int32(getDefaultOfferDeadline().Seconds())
+	mongodbWebRTCCallQueueIndexes     = []mongo.IndexModel{
 		{
 			Keys: bson.D{
 				{webrtcCallHostField, 1},

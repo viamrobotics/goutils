@@ -7,9 +7,7 @@ import (
 	"sync"
 
 	"github.com/edaniels/golog"
-
-	//nolint:staticcheck // need this for old v1 messages
-	protov1 "github.com/golang/protobuf/proto"
+	protov1 "github.com/golang/protobuf/proto" //nolint:staticcheck // need this for old v1 messages
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/proto"
 
