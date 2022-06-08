@@ -53,7 +53,10 @@ linters-settings:
     excludes:
       - G601
   gci:
-    local-prefixes: go.viam.com/utils
+    sections:
+      - standard
+      - default
+      - prefix(go.viam.com/utils)
 issues:
   exclude:
     - composites
