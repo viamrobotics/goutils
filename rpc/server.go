@@ -619,6 +619,7 @@ func (ss *simpleServer) ServeTLS(listener net.Listener, certFile, keyFile string
 }
 
 func (ss *simpleServer) serveTLS(listener net.Listener, certFile, keyFile string, tlsConfig *tls.Config) error {
+	ss.mu.Lock()
 	ss.httpServer.Addr = listener.Addr().String()
 	ss.httpServer.Handler = ss
 	secure := true
@@ -637,6 +638,7 @@ func (ss *simpleServer) serveTLS(listener net.Listener, certFile, keyFile string
 	var err error
 	var errMu sync.Mutex
 	ss.activeBackgroundWorkers.Add(1)
+	ss.mu.Unlock()
 	utils.ManagedGo(func() {
 		var serveErr error
 		if secure {
