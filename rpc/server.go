@@ -235,6 +235,10 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 	if !(sOpts.debug || utils.Debug) {
 		grpcLogger = grpcLogger.WithOptions(zap.IncreaseLevel(zap.LevelEnablerFunc(zapcore.ErrorLevel.Enabled)))
 	}
+	// TODO(erd): webrtc too
+	if sOpts.unknownStreamDesc != nil {
+		serverOpts = append(serverOpts, grpc.UnknownServiceHandler(sOpts.unknownStreamDesc.Handler))
+	}
 	var unaryInterceptors []grpc.UnaryServerInterceptor
 	unaryInterceptors = append(unaryInterceptors,
 		grpc_recovery.UnaryServerInterceptor(grpc_recovery.WithRecoveryHandler(
@@ -435,10 +439,11 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 		unaryInterceptor := grpc_middleware.ChainUnaryServer(webrtcUnaryInterceptors...)
 		streamInterceptor := grpc_middleware.ChainStreamServer(webrtcStreamInterceptors...)
 
-		server.webrtcServer = newWebRTCServerWithInterceptors(
+		server.webrtcServer = newWebRTCServerWithInterceptorsAndUnknownStreamHandler(
 			logger,
 			unaryInterceptor,
 			streamInterceptor,
+			sOpts.unknownStreamDesc,
 		)
 		reflection.Register(server.webrtcServer)
 

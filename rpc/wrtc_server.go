@@ -29,8 +29,9 @@ type webrtcServer struct {
 	activeBackgroundWorkers sync.WaitGroup
 	callTickets             chan struct{}
 
-	unaryInt  grpc.UnaryServerInterceptor
-	streamInt grpc.StreamServerInterceptor
+	unaryInt          grpc.UnaryServerInterceptor
+	streamInt         grpc.StreamServerInterceptor
+	unknownStreamDesc *grpc.StreamDesc
 }
 
 // from grpc.
@@ -60,6 +61,28 @@ func newWebRTCServerWithInterceptors(
 		callTickets: make(chan struct{}, DefaultWebRTCMaxGRPCCalls),
 		unaryInt:    unaryInt,
 		streamInt:   streamInt,
+	}
+	srv.ctx, srv.cancel = context.WithCancel(context.Background())
+	return srv
+}
+
+// newWebRTCServerWithInterceptorsAndUnknownStreamHandler makes a new server with no registered services that will
+// use the given interceptors and unknown stream handler.
+func newWebRTCServerWithInterceptorsAndUnknownStreamHandler(
+	logger golog.Logger,
+	unaryInt grpc.UnaryServerInterceptor,
+	streamInt grpc.StreamServerInterceptor,
+	unknownStreamDesc *grpc.StreamDesc,
+) *webrtcServer {
+	srv := &webrtcServer{
+		handlers:          map[string]handlerFunc{},
+		services:          map[string]*serviceInfo{},
+		logger:            logger,
+		peerConns:         map[*webrtc.PeerConnection]struct{}{},
+		callTickets:       make(chan struct{}, DefaultWebRTCMaxGRPCCalls),
+		unaryInt:          unaryInt,
+		streamInt:         streamInt,
+		unknownStreamDesc: unknownStreamDesc,
 	}
 	srv.ctx, srv.cancel = context.WithCancel(context.Background())
 	return srv
@@ -190,16 +213,19 @@ func (srv *webrtcServer) unaryHandler(ss interface{}, handler methodHandler) han
 
 func (srv *webrtcServer) streamHandler(ss interface{}, method string, desc grpc.StreamDesc) handlerFunc {
 	return func(s *webrtcServerStream) error {
+		ctx := grpc.NewContextWithServerTransportStream(s.Context(), serverTransportStream{s})
+		wrappedStream := ctxWrappedServerStream{s, ctx}
+
 		var err error
 		if srv.streamInt == nil {
-			err = desc.Handler(ss, s)
+			err = desc.Handler(ss, wrappedStream)
 		} else {
 			info := &grpc.StreamServerInfo{
 				FullMethod:     method,
 				IsClientStream: desc.ClientStreams,
 				IsServerStream: desc.ServerStreams,
 			}
-			err = srv.streamInt(ss, s, info, desc.Handler)
+			err = srv.streamInt(ss, wrappedStream, info, desc.Handler)
 		}
 		if errors.Is(err, io.EOF) {
 			return nil

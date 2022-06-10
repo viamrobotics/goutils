@@ -119,7 +119,7 @@ func (ch *webrtcServerChannel) onChannelMessage(msg webrtc.DataChannelMessage) {
 		}
 		handlerCtx = contextWithPeerConnection(handlerCtx, ch.peerConn)
 
-		serverStream = newWebRTCServerStream(handlerCtx, cancelCtx, ch, stream, ch.removeStreamByID, logger)
+		serverStream = newWebRTCServerStream(handlerCtx, cancelCtx, headers.Headers.Method, ch, stream, ch.removeStreamByID, logger)
 		ch.streams[id] = serverStream
 	}
 	ch.mu.Unlock()

@@ -30,6 +30,7 @@ var ErrIllegalHeaderWrite = errors.New("transport: the stream is done or WriteHe
 type webrtcServerStream struct {
 	*webrtcBaseStream
 	ch              *webrtcServerChannel
+	method          string
 	headersWritten  bool
 	headersReceived bool
 	header          metadata.MD
@@ -42,6 +43,7 @@ type webrtcServerStream struct {
 func newWebRTCServerStream(
 	ctx context.Context,
 	cancelCtx func(),
+	method string,
 	channel *webrtcServerChannel,
 	stream *webrtcpb.Stream,
 	onDone func(id uint64),
@@ -51,8 +53,14 @@ func newWebRTCServerStream(
 	s := &webrtcServerStream{
 		webrtcBaseStream: bs,
 		ch:               channel,
+		method:           method,
 	}
 	return s
+}
+
+// Method returns the method for the stream.
+func (s *webrtcServerStream) Method() string {
+	return s.method
 }
 
 // SetHeader sets the header metadata. It may be called multiple times.
@@ -91,6 +99,27 @@ func (s *webrtcServerStream) SetTrailer(trailer metadata.MD) {
 	} else if trailer != nil {
 		s.trailer = metadata.Join(s.trailer, trailer)
 	}
+}
+
+type serverTransportStream struct {
+	s *webrtcServerStream
+}
+
+func (s serverTransportStream) Method() string {
+	return s.s.Method()
+}
+
+func (s serverTransportStream) SetHeader(header metadata.MD) error {
+	return s.s.SetHeader(header)
+}
+
+func (s serverTransportStream) SendHeader(header metadata.MD) error {
+	return s.s.SendHeader(header)
+}
+
+func (s serverTransportStream) SetTrailer(trailer metadata.MD) error {
+	s.s.SetTrailer(trailer)
+	return nil
 }
 
 var maxResponseMessagePacketDataSize int
@@ -215,10 +244,14 @@ func (s *webrtcServerStream) processHeaders(headers *webrtcpb.RequestHeaders) {
 
 	handlerFunc, ok := s.ch.server.handler(headers.Method)
 	if !ok {
-		if err := s.closeWithSendError(status.Error(codes.Unimplemented, codes.Unimplemented.String())); err != nil {
-			s.logger.Errorw("error closing", "error", err)
+		if s.ch.server.unknownStreamDesc != nil {
+			handlerFunc = s.ch.server.streamHandler(s.ch.server, headers.Method, *s.ch.server.unknownStreamDesc)
+		} else {
+			if err := s.closeWithSendError(status.Error(codes.Unimplemented, codes.Unimplemented.String())); err != nil {
+				s.logger.Errorw("error closing", "error", err)
+			}
+			return
 		}
-		return
 	}
 
 	// take a ticket

@@ -40,6 +40,8 @@ type serverOptions struct {
 	authToType    CredentialsType
 	authToHandler AuthenticateToHandler
 	disableMDNS   bool
+
+	unknownStreamDesc *grpc.StreamDesc
 }
 
 // WebRTCServerOptions control how WebRTC is utilized in a server.
@@ -275,6 +277,25 @@ func WithAuthenticateToHandler(forType CredentialsType, handler AuthenticateToHa
 func WithDisableMulticastDNS() ServerOption {
 	return newFuncServerOption(func(o *serverOptions) error {
 		o.disableMDNS = true
+		return nil
+	})
+}
+
+// WithUnknownServiceHandler returns a ServerOption that allows for adding a custom
+// unknown service handler. The provided method is a bidi-streaming RPC service
+// handler that will be invoked instead of returning the "unimplemented" gRPC
+// error whenever a request is received for an unregistered service or method.
+// The handling function and stream interceptor (if set) have full access to
+// the ServerStream, including its Context.
+// See grpc#WithUnknownServiceHandler.
+func WithUnknownServiceHandler(streamHandler grpc.StreamHandler) ServerOption {
+	return newFuncServerOption(func(o *serverOptions) error {
+		o.unknownStreamDesc = &grpc.StreamDesc{
+			StreamName:    "unknown_service_handler",
+			Handler:       streamHandler,
+			ClientStreams: true,
+			ServerStreams: true,
+		}
 		return nil
 	})
 }
