@@ -77,6 +77,12 @@ func (s *webrtcClientStream) SendMsg(m interface{}) error {
 // It should not be called until after Header or RecvMsg has returned. Once
 // called, subsequent client-side retries are disabled.
 func (s *webrtcClientStream) Context() context.Context {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.userCtx == nil {
+		// be nice to misbehaving users
+		return context.Background()
+	}
 	return s.userCtx
 }
 
@@ -222,7 +228,9 @@ func (s *webrtcClientStream) onResponse(resp *webrtcpb.Response) {
 
 func (s *webrtcClientStream) processHeaders(headers *webrtcpb.ResponseHeaders) {
 	s.headers = metadataFromProto(headers.Metadata)
+	s.mu.Lock()
 	s.userCtx = metadata.NewIncomingContext(s.ctx, s.headers)
+	s.mu.Unlock()
 	close(s.headersReceived)
 }
 
@@ -239,9 +247,6 @@ func (s *webrtcClientStream) processMessage(msg *webrtcpb.ResponseMessage) {
 }
 
 func (s *webrtcClientStream) processTrailers(trailers *webrtcpb.ResponseTrailers) {
-	s.mu.Lock()
-	metadataFromProto(trailers.Metadata)
-	s.mu.Unlock()
 	s.trailersReceived = true
 	respStatus := status.FromProto(trailers.Status)
 	s.closeWithRecvError(respStatus.Err())
