@@ -257,7 +257,6 @@ func (s *webrtcClientStream) processMessage(msg *webrtcpb.ResponseMessage) {
 		select {
 		case msgCh <- data:
 		case <-s.ctx.Done():
-			return
 		}
 	}()
 }

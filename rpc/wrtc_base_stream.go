@@ -147,7 +147,7 @@ func (s *webrtcBaseStream) closeWithRecvError(err error) {
 
 func (s *webrtcBaseStream) processMessage(msg *webrtcpb.PacketMessage) ([]byte, bool) {
 	if len(msg.Data) == 0 && msg.Eom {
-		return nil, true
+		return []byte{}, true
 	}
 	if len(msg.Data)+s.packetBuf.Len() > MaxMessageSize {
 		s.packetBuf.Reset()
