@@ -52,6 +52,7 @@ func newWebRTCBaseStream(
 
 // Context returns the context for this stream.
 func (s *webrtcBaseStream) Context() context.Context {
+	println("HERE1", s.ctx)
 	return s.ctx
 }
 

@@ -77,6 +77,7 @@ func (s *webrtcClientStream) SendMsg(m interface{}) error {
 // It should not be called until after Header or RecvMsg has returned. Once
 // called, subsequent client-side retries are disabled.
 func (s *webrtcClientStream) Context() context.Context {
+	println("HERE3", s.userCtx)
 	return s.userCtx
 }
 
