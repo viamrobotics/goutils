@@ -235,6 +235,7 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 	if !(sOpts.debug || utils.Debug) {
 		grpcLogger = grpcLogger.WithOptions(zap.IncreaseLevel(zap.LevelEnablerFunc(zapcore.ErrorLevel.Enabled)))
 	}
+	// TODO(erd): webrtc too
 	if sOpts.unknownStreamDesc != nil {
 		serverOpts = append(serverOpts, grpc.UnknownServiceHandler(sOpts.unknownStreamDesc.Handler))
 	}

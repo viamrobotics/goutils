@@ -151,7 +151,6 @@ type ctxWrappedServerStream struct {
 }
 
 func (wrapped ctxWrappedServerStream) Context() context.Context {
-	println("HERE2", wrapped.ctx)
 	return wrapped.ctx
 }
 
