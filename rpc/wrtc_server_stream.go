@@ -299,7 +299,23 @@ func (s *webrtcServerStream) processMessage(msg *webrtcpb.RequestMessage) {
 		if !eop {
 			return
 		}
-		s.msgCh <- data
+		s.webrtcBaseStream.mu.Lock()
+		if s.recvClosed {
+			s.webrtcBaseStream.mu.Unlock()
+			return
+		}
+		msgCh := s.msgCh
+		s.webrtcBaseStream.activeSenders.Add(1)
+		s.webrtcBaseStream.mu.Unlock()
+
+		func() {
+			defer s.webrtcBaseStream.activeSenders.Done()
+			select {
+			case msgCh <- data:
+			case <-s.ctx.Done():
+				return
+			}
+		}()
 	}
 	if msg.Eos {
 		s.CloseRecv()

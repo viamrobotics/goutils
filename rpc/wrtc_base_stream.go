@@ -15,17 +15,18 @@ import (
 )
 
 type webrtcBaseStream struct {
-	mu         sync.Mutex
-	ctx        context.Context
-	cancel     context.CancelFunc
-	stream     *webrtcpb.Stream
-	msgCh      chan []byte
-	onDone     func(id uint64)
-	err        error
-	recvClosed bool
-	closed     bool
-	logger     golog.Logger
-	packetBuf  bytes.Buffer
+	mu            sync.Mutex
+	ctx           context.Context
+	cancel        context.CancelFunc
+	stream        *webrtcpb.Stream
+	msgCh         chan []byte
+	onDone        func(id uint64)
+	err           error
+	recvClosed    bool
+	closed        bool
+	logger        golog.Logger
+	packetBuf     bytes.Buffer
+	activeSenders sync.WaitGroup
 }
 
 // newWebRTCBaseStream makes a new webrtcBaseStream where the context should originate
@@ -115,6 +116,7 @@ func (s *webrtcBaseStream) closeRecv() {
 		return
 	}
 	s.recvClosed = true
+	s.activeSenders.Wait()
 	close(s.msgCh)
 }
 

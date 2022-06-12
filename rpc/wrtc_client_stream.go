@@ -243,7 +243,23 @@ func (s *webrtcClientStream) processMessage(msg *webrtcpb.ResponseMessage) {
 	if !eop {
 		return
 	}
-	s.msgCh <- data
+	s.webrtcBaseStream.mu.Lock()
+	if s.recvClosed {
+		s.webrtcBaseStream.mu.Unlock()
+		return
+	}
+	msgCh := s.msgCh
+	s.webrtcBaseStream.activeSenders.Add(1)
+	s.webrtcBaseStream.mu.Unlock()
+
+	func() {
+		defer s.webrtcBaseStream.activeSenders.Done()
+		select {
+		case msgCh <- data:
+		case <-s.ctx.Done():
+			return
+		}
+	}()
 }
 
 func (s *webrtcClientStream) processTrailers(trailers *webrtcpb.ResponseTrailers) {
