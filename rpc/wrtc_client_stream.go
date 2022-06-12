@@ -81,7 +81,7 @@ func (s *webrtcClientStream) Context() context.Context {
 	defer s.mu.Unlock()
 	if s.userCtx == nil {
 		// be nice to misbehaving users
-		return context.Background()
+		return s.ctx
 	}
 	return s.userCtx
 }
