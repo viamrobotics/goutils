@@ -47,6 +47,7 @@ lint: tool-install
 
 cover:
 	go test -tags=no_skip -race -coverprofile=coverage.txt ./...
+	PATH=$(PATH_WITH_TOOLS) gocov convert coverage.txt | gocov-xml > coverage.xml
 
 test:
 	go test -tags=no_skip -race ./...

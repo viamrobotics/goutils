@@ -35,6 +35,7 @@ docs/
 
 # Test data
 coverage.txt
+coverage.xml
 
 *~
 *#

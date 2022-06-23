@@ -6,7 +6,9 @@ require (
 	cloud.google.com/go/iam v0.3.0
 	cloud.google.com/go/secretmanager v1.0.0
 	cloud.google.com/go/storage v1.14.0
+	github.com/AlekSi/gocov-xml v1.0.0
 	github.com/Masterminds/sprig v2.22.0+incompatible
+	github.com/axw/gocov v1.1.0
 	github.com/bufbuild/buf v1.1.0
 	github.com/coreos/go-oidc/v3 v3.1.0
 	github.com/edaniels/golinters v0.0.5-0.20210512224240-495d3b8eed19
