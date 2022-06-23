@@ -26,7 +26,9 @@ tool-install:
 		github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway \
 		github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2 \
 		github.com/edaniels/golinters/cmd/combined \
-		github.com/golangci/golangci-lint/cmd/golangci-lint
+		github.com/golangci/golangci-lint/cmd/golangci-lint \
+		github.com/AlekSi/gocov-xml \
+		github.com/axw/gocov/gocov
 
 buf: buf-go buf-web
 
