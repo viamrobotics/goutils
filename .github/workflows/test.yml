@@ -73,6 +73,7 @@ jobs:
       with:
         recreate: true
         path: code-coverage-results.md
+        GITHUB_TOKEN: ${{ secrets.GIT_ACCESS_TOKEN }}
 
   build_and_test_from_pr: # TODO(GOUT-15): reuse above
     name: Build and Test (PR)
@@ -137,3 +138,4 @@ jobs:
       with:
         recreate: true
         path: code-coverage-results.md
+        GITHUB_TOKEN: ${{ secrets.GIT_ACCESS_TOKEN }}
