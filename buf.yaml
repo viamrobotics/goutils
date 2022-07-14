@@ -1,26 +1,24 @@
-version: v1beta1
+version: v1
 name: buf.build/viamrobotics/goutils
+deps:
+  - buf.build/googleapis/googleapis:c33c435046f2f4db5e8d6db52bd6c662f50f60d8
 build:
-  roots:
-    - .
   excludes:
-    - vendor
+    - node_modules
     - rpc/examples/echo/frontend/node_modules
     - rpc/examples/fileupload/frontend/node_modules
     - rpc/js/node_modules
-    - node_modules
+    - vendor
+breaking:
+  use:
+    - FILE
 lint:
   use:
     - DEFAULT
   ignore_only:
-    RPC_RESPONSE_STANDARD_NAME:
-      - proto/rpc/webrtc/v1/signaling.proto
     RPC_REQUEST_RESPONSE_UNIQUE:
       - proto/rpc/webrtc/v1/signaling.proto
     RPC_REQUEST_STANDARD_NAME:
       - proto/rpc/webrtc/v1/signaling.proto
-breaking:
-  use:
-    - FILE
-deps:
-  - buf.build/googleapis/googleapis:c33c435046f2f4db5e8d6db52bd6c662f50f60d8
+    RPC_RESPONSE_STANDARD_NAME:
+      - proto/rpc/webrtc/v1/signaling.proto

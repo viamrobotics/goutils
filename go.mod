@@ -1,6 +1,6 @@
 module go.viam.com/utils
 
-go 1.17
+go 1.18
 
 require (
 	cloud.google.com/go/iam v0.3.0

@@ -143,7 +143,6 @@ func (p *managedProcess) Start(ctx context.Context) error {
 
 	// It's okay to not wait for management to start.
 	utils.ManagedGo(func() {
-		//nolint:contextcheck
 		p.manage(stdOut, stdErr)
 	}, nil)
 	return nil
