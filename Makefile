@@ -14,9 +14,10 @@ build-go: buf-go
 	go build ./...
 
 build-web: buf-web
-	cd rpc/js && npm install && npm link && npx webpack
-	cd rpc/examples/echo/frontend && npm install && npm link @viamrobotics/rpc && npx webpack
-	cd rpc/examples/fileupload/frontend && npm install && npm link @viamrobotics/rpc && npx webpack
+	export NODE_OPTIONS=--openssl-legacy-provider && node --version 2>/dev/null || unset NODE_OPTIONS;\
+	cd rpc/js && npm install && npx webpack && \
+	cd ../examples/echo/frontend && npm install && npx webpack && \
+	cd ../../fileupload/frontend && npm install && npx webpack
 
 tool-install:
 	GOBIN=`pwd`/$(TOOL_BIN) go install google.golang.org/protobuf/cmd/protoc-gen-go \
