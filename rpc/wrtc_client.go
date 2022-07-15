@@ -272,7 +272,6 @@ func dialWebRTC(
 		// for client channel
 	}
 
-	//nolint:contextcheck
 	clientCh := newWebRTCClientChannel(pc, dc, logger)
 
 	exchangeCandidates := func() error {

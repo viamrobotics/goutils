@@ -1,5 +1,4 @@
-# See https://github.com/mvdan/github-actions-golang for golang nuances
-name: Go
+name: Build and Test
 
 on:
   workflow_dispatch:
@@ -7,103 +6,42 @@ on:
     branches: [ main ]
   pull_request_target:
     branches: [ main ]
-    types: [labeled]
+    types: [ labeled ]
 
 jobs:
   build_and_test:
     name: Build and Test
     runs-on: [self-hosted, x64]
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
     container:
-      image: ghcr.io/viamrobotics/test:latest
+      image: ghcr.io/viamrobotics/canon:amd64-cache
+      options: --platform linux/amd64
+    timeout-minutes: 20
 
     steps:
-
-    - name: Check out code into the Go module directory
+    - name: Check out main branch code
+      if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
       uses: actions/checkout@v2
       with:
         fetch-depth: 2
 
-    - name: Configure git for private modules
-      env:
-        TOKEN: ${{ secrets.GIT_ACCESS_TOKEN }}
-      run: |
-        sudo -u testbot bash -lc "git config --global --unset-all url.ssh://git@github.com/.insteadOf || true"
-        sudo -u testbot bash -lc "git config --global url.\"https://${TOKEN}@github.com\".insteadOf \"https://github.com\""
-
-    - name: Verify no uncommitted changes from build
-      run: |
-        git init
-        git add .
-        chown -R testbot .
-        sudo -u testbot bash -lc 'make build lint'
-        GEN_DIFF=$(git diff)
-        if [ -n "$GEN_DIFF" ]; then
-            echo '"make build lint" resulted in changes not in git' 1>&2
-            git status
-            echo $GEN_DIFF
-            exit 1
-        fi
-
-    - name: Test
-      env:
-        ARTIFACT_GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.ARTIFACT_GOOGLE_APPLICATION_CREDENTIALS }}
-        TEST_MONGODB_URI: ${{ secrets.TEST_MONGODB_URI }}
-      run: |
-        echo "$ARTIFACT_GOOGLE_APPLICATION_CREDENTIALS" | base64 -d > artifact_google_creds.json
-        export ARTIFACT_GOOGLE_APPLICATION_CREDENTIALS=`pwd`/artifact_google_creds.json
-        sudo -u testbot --preserve-env=ARTIFACT_GOOGLE_APPLICATION_CREDENTIALS,TEST_MONGODB_URI bash -lc 'make cover'
-
-    - name: Code Coverage Summary Report
-      uses: edaniels/CodeCoverageSummary@v1.2.3
-      with:
-        filename: coverage.xml
-        badge: true
-        fail_below_min: false
-        format: markdown
-        hide_branch_rate: true
-        hide_complexity: true
-        indicators: true
-        output: both
-        thresholds: '50 70'
-
-    - name: Add Coverage PR Comment
-      uses: marocchino/sticky-pull-request-comment@v2.2.0
-      if: github.event_name == 'pull_request'
-      with:
-        recreate: true
-        path: code-coverage-results.md
-        GITHUB_TOKEN: ${{ secrets.GIT_ACCESS_TOKEN }}
-
-  build_and_test_from_pr: # TODO(GOUT-15): reuse above
-    name: Build and Test (PR)
-    runs-on: [self-hosted, x64]
-    if: contains(github.event.pull_request.labels.*.name, 'safe to test')
-    container:
-      image: ghcr.io/viamrobotics/test:latest
-
-    steps:
-
-    - name: Check out code into the Go module directory
+    - name: Check out PR branch code
+      if: contains(github.event.pull_request.labels.*.name, 'safe to test')
       uses: actions/checkout@v2
       with:
         ref: ${{ github.event.pull_request.head.sha }}
         fetch-depth: 2
 
     - name: Configure git for private modules
-      env:
-        TOKEN: ${{ secrets.GIT_ACCESS_TOKEN }}
       run: |
-        sudo -u testbot bash -lc "git config --global --unset-all url.ssh://git@github.com/.insteadOf"
-        sudo -u testbot bash -lc "git config --global url.\"https://${TOKEN}@github.com\".insteadOf \"https://github.com\""
+        sudo -u testbot bash -lc 'echo "machine github.com login viambot password ${{ secrets.GIT_ACCESS_TOKEN }}" > ~/.netrc'
 
-    - name: Verify no uncommitted changes from build
+    - name: Verify no uncommitted changes from "make build lint"
       run: |
         git init
         git add .
         chown -R testbot .
         sudo -u testbot bash -lc 'make build lint'
-        GEN_DIFF=$(git diff)
+        GEN_DIFF=$(git status -s)
         if [ -n "$GEN_DIFF" ]; then
             echo '"make build lint" resulted in changes not in git' 1>&2
             git status
@@ -112,10 +50,9 @@ jobs:
 
     - name: Test
       env:
-        ARTIFACT_GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.ARTIFACT_GOOGLE_APPLICATION_CREDENTIALS }}
         TEST_MONGODB_URI: ${{ secrets.TEST_MONGODB_URI }}
       run: |
-        echo "$ARTIFACT_GOOGLE_APPLICATION_CREDENTIALS" | base64 -d > artifact_google_creds.json
+        sudo -u testbot bash -lc 'echo "${{ secrets.ARTIFACT_GOOGLE_APPLICATION_CREDENTIALS }}" | base64 -d > artifact_google_creds.json'
         export ARTIFACT_GOOGLE_APPLICATION_CREDENTIALS=`pwd`/artifact_google_creds.json
         sudo -u testbot --preserve-env=ARTIFACT_GOOGLE_APPLICATION_CREDENTIALS,TEST_MONGODB_URI bash -lc 'make cover'
 
