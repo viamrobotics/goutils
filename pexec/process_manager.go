@@ -76,6 +76,9 @@ func (pm *processManager) ProcessIDs() []string {
 func (pm *processManager) ProcessByID(id string) (ManagedProcess, bool) {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
+	if pm.stopped {
+		return nil, false
+	}
 	proc, ok := pm.processesByID[id]
 	return proc, ok
 }
@@ -83,6 +86,9 @@ func (pm *processManager) ProcessByID(id string) (ManagedProcess, bool) {
 func (pm *processManager) RemoveProcessByID(id string) (ManagedProcess, bool) {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
+	if pm.stopped {
+		return nil, false
+	}
 	proc, ok := pm.processesByID[id]
 	if !ok {
 		return nil, false
@@ -113,6 +119,9 @@ func (pm *processManager) Start(ctx context.Context) error {
 func (pm *processManager) AddProcess(ctx context.Context, proc ManagedProcess, start bool) (ManagedProcess, error) {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
+	if pm.stopped {
+		return nil, errAlreadyStopped
+	}
 	replaced := pm.processesByID[proc.ID()]
 	if pm.started && start {
 		if err := proc.Start(ctx); err != nil {
@@ -124,6 +133,9 @@ func (pm *processManager) AddProcess(ctx context.Context, proc ManagedProcess, s
 }
 
 func (pm *processManager) AddProcessFromConfig(ctx context.Context, config ProcessConfig) (ManagedProcess, error) {
+	if pm.stopped {
+		return nil, errAlreadyStopped
+	}
 	proc := NewManagedProcess(config, pm.logger)
 	return pm.AddProcess(ctx, proc, true)
 }

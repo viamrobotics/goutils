@@ -328,6 +328,11 @@ func TestProcessManagerStop(t *testing.T) {
 		pm := NewProcessManager(logger)
 		test.That(t, pm.Stop(), test.ShouldBeNil)
 		test.That(t, pm.Start(context.Background()), test.ShouldEqual, errAlreadyStopped)
+
+		_, err := pm.AddProcess(context.Background(), nil, false)
+		test.That(t, err, test.ShouldEqual, errAlreadyStopped)
+		_, err = pm.AddProcessFromConfig(context.Background(), ProcessConfig{})
+		test.That(t, err, test.ShouldEqual, errAlreadyStopped)
 	})
 
 	t.Run("running processes are stopped", func(t *testing.T) {
