@@ -12,13 +12,23 @@ import (
 	"io/ioutil"
 	"math/big"
 	"net"
+	"testing"
 	"time"
 
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
+	"go.viam.com/test"
 )
 
 var waitDur = 5 * time.Second
+
+// ReserveRandomListener returns a new TCP listener at a random port.
+func ReserveRandomListener(t *testing.T) *net.TCPListener {
+	t.Helper()
+	listener, err := net.ListenTCP("tcp", &net.TCPAddr{Port: 0})
+	test.That(t, err, test.ShouldBeNil)
+	return listener
+}
 
 // WaitSuccessfulDial waits for a dial attempt to succeed.
 func WaitSuccessfulDial(address string) error {
