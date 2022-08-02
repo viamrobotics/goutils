@@ -5,7 +5,7 @@ import (
 	"io"
 )
 
-// type ContextCloser has a Close method with context.
+// ContextCloser is a Closer with a context argument.
 type ContextCloser interface {
 	Close(ctx context.Context) error
 }
