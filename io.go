@@ -5,15 +5,18 @@ import (
 	"io"
 )
 
+// type ContextCloser has a Close method with context.
+type ContextCloser interface {
+	Close(ctx context.Context) error
+}
+
 // TryClose attempts to close the target if it implements
 // the right interface.
 func TryClose(ctx context.Context, target interface{}) error {
 	switch t := target.(type) {
 	case io.Closer:
 		return t.Close()
-	case interface {
-		Close(ctx context.Context) error
-	}:
+	case ContextCloser:
 		return t.Close(ctx)
 	case interface{ Close() }:
 		t.Close()
