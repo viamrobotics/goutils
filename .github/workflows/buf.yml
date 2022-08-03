@@ -14,7 +14,7 @@ on:
 jobs:
   buf-push:
     if: github.repository_owner == 'viamrobotics'
-    runs-on: [self-hosted, x64]
+    runs-on: [x64, qemu-host]
     container:
       image: ghcr.io/viamrobotics/canon:amd64
     steps:
@@ -27,7 +27,7 @@ jobs:
   dispatch:
     needs: buf-push
     if: github.repository_owner == 'viamrobotics'
-    runs-on: [self-hosted, x64]
+    runs-on: [x64, qemu-host]
     container:
       image: ghcr.io/viamrobotics/canon:amd64
     strategy:
