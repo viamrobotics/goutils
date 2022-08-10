@@ -141,6 +141,7 @@ func newPeerConnectionForServer(
 	var negOpen bool
 	var negMu sync.Mutex
 	var negotiationChannel *webrtc.DataChannel
+	var makingOffer bool
 	pc.OnNegotiationNeeded(func() {
 		negMu.Lock()
 		if !negOpen {
@@ -148,6 +149,10 @@ func newPeerConnectionForServer(
 			return
 		}
 		negMu.Unlock()
+		makingOffer = true
+		defer func() {
+			makingOffer = false
+		}()
 		offer, err := pc.CreateOffer(nil)
 		if err != nil {
 			logger.Errorw("renegotiation: error creating offer", "error", err)
@@ -197,15 +202,49 @@ func newPeerConnectionForServer(
 		negOpen = true
 		negMu.Unlock()
 	})
+
+	const polite = false
+	var ignoreOffer bool
 	negotiationChannel.OnMessage(func(msg webrtc.DataChannelMessage) {
-		answer := webrtc.SessionDescription{}
-		if err := decodeSDP(string(msg.Data), &answer); err != nil {
+		negMu.Lock()
+		defer negMu.Unlock()
+
+		description := webrtc.SessionDescription{}
+		if err := decodeSDP(string(msg.Data), &description); err != nil {
 			logger.Errorw("renegotiation: error decoding SDP", "error", err)
 			return
 		}
-		if err := pc.SetRemoteDescription(answer); err != nil {
+		offerCollision := (description.Type == webrtc.SDPTypeOffer) &&
+			(makingOffer || pc.SignalingState() != webrtc.SignalingStateStable)
+		ignoreOffer = !polite && offerCollision
+		if ignoreOffer {
+			logger.Debugw("ignoring offer", "polite", polite, "offer_collision", offerCollision)
+		}
+
+		if err := pc.SetRemoteDescription(description); err != nil {
 			logger.Errorw("renegotiation: error setting remote description", "error", err)
 			return
+		}
+
+		if description.Type == webrtc.SDPTypeOffer {
+			answer, err := pc.CreateAnswer(nil)
+			if err != nil {
+				logger.Errorw("renegotiation: error creating answer", "error", err)
+				return
+			}
+			if err := pc.SetLocalDescription(answer); err != nil {
+				logger.Errorw("renegotiation: error setting local description", "error", err)
+				return
+			}
+			encodedSDP, err := encodeSDP(pc.LocalDescription())
+			if err != nil {
+				logger.Errorw("renegotiation: error encoding SDP", "error", err)
+				return
+			}
+			if err := negotiationChannel.SendText(encodedSDP); err != nil {
+				logger.Errorw("renegotiation: error sending SDP", "error", err)
+				return
+			}
 		}
 	})
 

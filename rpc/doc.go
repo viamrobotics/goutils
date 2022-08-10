@@ -8,19 +8,19 @@ such as grpc-web, gRPC via RESTful JSON, and gRPC via WebRTC.
 WebRTC services gRPC over DataChannels. The work was initially adapted from
 https://github.com/jsmouret/grpc-over-webrtc.
 
-Connection
+# Connection
 
 All connections to RPC servers are done by way of the Dial method which will try multiple
 mechanisms to connect to a target server. By default it will try to connect in the following
 order: mDNS (direct/WebRTC), WebRTC, Direct gRPC. This ordering can be modified by disabling
 some of these methods with DialOptions.
 
-Direct gRPC
+# Direct gRPC
 
 This is the simplest form of connection and for the most part passes straight through to the gRPC
 libraries.
 
-WebRTC
+# WebRTC
 
 This is the most complex form of connection. A WebRTC connection is established by way of a provided
 WebRTC signaling server that exchanges connection information about the client and server. This exchange
@@ -43,7 +43,7 @@ request client certificates. This will not negatively affect any UI hosted (peer
 the server's GRPCHandler because since that handler will only use the tls.Config of the http.Server hosting it,
 separate from the internal one.
 
-Authentication
+# Authentication
 
 Authentication into gRPC works by configuring a server with a series of authentication handlers provided
 by this framework. When one authentication handler is enabled, all requests must be authenticated, except
@@ -83,10 +83,9 @@ Expiration of JWTs is not yet handled/support; see:
 - https://github.com/viamrobotics/goutils/issues/11
 - https://github.com/viamrobotics/goutils/issues/13
 
-Authorization
+# Authorization
 
 Authorization is strictly not handled by this framework. It's up to your registered services/methods
 to handle authorization.
-
 */
 package rpc
