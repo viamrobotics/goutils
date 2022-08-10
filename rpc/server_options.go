@@ -76,6 +76,12 @@ type WebRTCServerOptions struct {
 
 	// Config is the WebRTC specific configuration (i.e. ICE settings)
 	Config *webrtc.Configuration
+
+	// OnPeerAdded is called when a new peer connection is added.
+	OnPeerAdded func(pc *webrtc.PeerConnection)
+
+	// OnPeerRemoved is called when an existing peer connection is removed.
+	OnPeerRemoved func(pc *webrtc.PeerConnection)
 }
 
 // A ServerOption changes the runtime behavior of the server.

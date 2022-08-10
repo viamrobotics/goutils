@@ -445,6 +445,12 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 			streamInterceptor,
 			sOpts.unknownStreamDesc,
 		)
+		if sOpts.webrtcOpts.OnPeerAdded != nil {
+			server.webrtcServer.onPeerAdded = sOpts.webrtcOpts.OnPeerAdded
+		}
+		if sOpts.webrtcOpts.OnPeerRemoved != nil {
+			server.webrtcServer.onPeerRemoved = sOpts.webrtcOpts.OnPeerRemoved
+		}
 		reflection.Register(server.webrtcServer)
 
 		config := DefaultWebRTCConfiguration

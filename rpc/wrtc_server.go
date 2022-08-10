@@ -32,6 +32,9 @@ type webrtcServer struct {
 	unaryInt          grpc.UnaryServerInterceptor
 	streamInt         grpc.StreamServerInterceptor
 	unknownStreamDesc *grpc.StreamDesc
+
+	onPeerAdded   func(pc *webrtc.PeerConnection)
+	onPeerRemoved func(pc *webrtc.PeerConnection)
 }
 
 // from grpc.
@@ -179,6 +182,9 @@ func (srv *webrtcServer) NewChannel(peerConn *webrtc.PeerConnection, dataChannel
 	srv.mu.Lock()
 	srv.peerConns[peerConn] = struct{}{}
 	srv.mu.Unlock()
+	if srv.onPeerAdded != nil {
+		srv.onPeerAdded(peerConn)
+	}
 	return serverCh
 }
 
@@ -186,6 +192,9 @@ func (srv *webrtcServer) removePeer(peerConn *webrtc.PeerConnection) {
 	srv.mu.Lock()
 	defer srv.mu.Unlock()
 	delete(srv.peerConns, peerConn)
+	if srv.onPeerRemoved != nil {
+		srv.onPeerRemoved(peerConn)
+	}
 	if err := peerConn.Close(); err != nil {
 		srv.logger.Errorw("error closing peer connection on removal", "error", err)
 	}
