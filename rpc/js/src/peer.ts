@@ -36,6 +36,10 @@ export async function newPeerConnectionForClient(disableTrickle: boolean, rtcCon
 	let makingOffer = false;
 	let ignoreOffer = false;
 	const polite = true;
+	let negOpen = false;
+	negotiationChannel.onopen = () => {
+		negOpen = true;
+	}
 	negotiationChannel.onmessage = async (event: MessageEvent<any>) => {
 		try {
 			const description = new RTCSessionDescription(JSON.parse(atob(event.data)));
@@ -59,6 +63,9 @@ export async function newPeerConnectionForClient(disableTrickle: boolean, rtcCon
 	}
 
 	peerConnection.onnegotiationneeded = async () => {
+		if (!negOpen) {
+			return;
+		}
 		try {
 			makingOffer = true;
 			await peerConnection.setLocalDescription();
