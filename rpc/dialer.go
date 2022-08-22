@@ -255,6 +255,10 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts *dialOptions, log
 		}
 	}
 
+	if dOpts.statsHandler != nil {
+		dialOpts = append(dialOpts, grpc.WithStatsHandler(dOpts.statsHandler))
+	}
+
 	grpcLogger := logger.Desugar()
 	if !(dOpts.debug || utils.Debug) {
 		grpcLogger = grpcLogger.WithOptions(zap.IncreaseLevel(zap.LevelEnablerFunc(zapcore.ErrorLevel.Enabled)))

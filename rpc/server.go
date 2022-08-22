@@ -303,6 +303,10 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 	streamInterceptor := grpc_middleware.ChainStreamServer(streamInterceptors...)
 	serverOpts = append(serverOpts, grpc.StreamInterceptor(streamInterceptor))
 
+	if sOpts.statsHandler != nil {
+		serverOpts = append(serverOpts, grpc.StatsHandler(sOpts.statsHandler))
+	}
+
 	grpcServer := grpc.NewServer(
 		serverOpts...,
 	)
