@@ -56,17 +56,24 @@ linters:
 linters-settings:
   errcheck:
     check-blank: true
-  lll:
-    line-length: 140
-  unused:
-  gosec:
-    excludes:
-      - G601
   gci:
     sections:
       - standard
       - default
       - prefix(go.viam.com/utils)
+  gofumpt:
+    lang-version: "1.18"
+    extra-rules: true
+  gosec:
+    excludes:
+      - G601
+  govet:
+    enable-all: true
+    disable:
+      - fieldalignment
+      - shadow
+  lll:
+    line-length: 140
 issues:
   exclude:
     - composites

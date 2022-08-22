@@ -94,7 +94,7 @@ func (ch *webrtcClientChannel) Invoke(
 	return err
 }
 
-func (ch *webrtcClientChannel) invoke(ctx context.Context, method string, args interface{}, reply interface{}) error {
+func (ch *webrtcClientChannel) invoke(ctx context.Context, method string, args, reply interface{}) error {
 	clientStream, err := ch.newStream(ctx, ch.nextStreamID())
 	if err != nil {
 		return err

@@ -80,7 +80,7 @@ const defaultListenAddress = "localhost:"
 // either insecure or TLS based listener depending on presence of the tlsCertFile and tlsKeyFile
 // which are expected to be an X509 key pair. If no address is specified, the listener will bind
 // to localhost IPV4 on a random port.
-func NewPossiblySecureTCPListenerFromFile(address string, tlsCertFile, tlsKeyFile string) (net.Listener, bool, error) {
+func NewPossiblySecureTCPListenerFromFile(address, tlsCertFile, tlsKeyFile string) (net.Listener, bool, error) {
 	if (tlsCertFile == "") != (tlsKeyFile == "") {
 		return nil, false, ErrInsufficientX509KeyPair
 	}

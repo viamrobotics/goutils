@@ -28,7 +28,7 @@ func NewNiceLoggingSpanExporter() trace.Exporter {
 
 var reZero = regexp.MustCompile(`^0+$`)
 
-func (e *niceLoggingSpanExporter) printTree(root string, padding string) {
+func (e *niceLoggingSpanExporter) printTree(root, padding string) {
 	for _, s := range e.children[root] {
 		log.Printf("%s %s\n", padding, s.toPrint)
 		e.printTree(s.id, padding+"  ")

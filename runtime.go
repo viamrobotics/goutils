@@ -142,7 +142,7 @@ func PanicCapturingGoWithCallback(f func(), callback func(err interface{})) {
 
 // ManagedGo keeps the given function alive in the background until
 // it terminates normally.
-func ManagedGo(f func(), onComplete func()) {
+func ManagedGo(f, onComplete func()) {
 	PanicCapturingGoWithCallback(func() {
 		defer func() {
 			if err := recover(); err == nil && onComplete != nil {

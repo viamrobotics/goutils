@@ -168,7 +168,7 @@ func dial(
 			}
 			return conn, cached, nil
 		}
-		if err != nil && !errors.Is(err, ErrNoWebRTCSignaler) {
+		if !errors.Is(err, ErrNoWebRTCSignaler) {
 			return nil, false, err
 		}
 		if ctx.Err() != nil {
