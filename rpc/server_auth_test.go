@@ -6,7 +6,7 @@ import (
 	"crypto/rsa"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net"
 	"net/http"
 	"strings"
@@ -160,7 +160,7 @@ func TestServerAuth(t *testing.T) {
 		test.That(t, err, test.ShouldBeNil)
 		defer httpResp1.Body.Close()
 		test.That(t, httpResp1.StatusCode, test.ShouldEqual, 200)
-		rd, err := ioutil.ReadAll(httpResp1.Body)
+		rd, err := io.ReadAll(httpResp1.Body)
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, httpResp1.Header["Grpc-Message"], test.ShouldResemble, []string{"authentication required"})
 		test.That(t, string(rd), test.ShouldResemble, "")
@@ -174,7 +174,7 @@ func TestServerAuth(t *testing.T) {
 		test.That(t, err, test.ShouldBeNil)
 		defer httpResp2.Body.Close()
 		test.That(t, httpResp2.StatusCode, test.ShouldEqual, 200)
-		rd, err = ioutil.ReadAll(httpResp2.Body)
+		rd, err = io.ReadAll(httpResp2.Body)
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, httpResp2.Header["Grpc-Message"], test.ShouldResemble, []string{"expected Authorization: Bearer"})
 		test.That(t, string(rd), test.ShouldResemble, "")
@@ -187,7 +187,7 @@ func TestServerAuth(t *testing.T) {
 		test.That(t, err, test.ShouldBeNil)
 		defer httpResp3.Body.Close()
 		test.That(t, httpResp3.StatusCode, test.ShouldEqual, 200)
-		rd, err = ioutil.ReadAll(httpResp3.Body)
+		rd, err = io.ReadAll(httpResp3.Body)
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, httpResp3.Header["Grpc-Message"],
 			test.ShouldResemble, []string{"unauthenticated: token contains an invalid number of segments"})
@@ -221,7 +221,7 @@ func TestServerAuth(t *testing.T) {
 		test.That(t, err, test.ShouldBeNil)
 		defer httpResp4.Body.Close()
 		test.That(t, httpResp4.StatusCode, test.ShouldEqual, 200)
-		rd, err = ioutil.ReadAll(httpResp4.Body)
+		rd, err = io.ReadAll(httpResp4.Body)
 		test.That(t, err, test.ShouldBeNil)
 		// it says hey!
 		test.That(t, string(rd), test.ShouldResemble, "AAAAAAYKBGhleSE=gAAAABBncnBjLXN0YXR1czogMA0K")

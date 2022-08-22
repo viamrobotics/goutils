@@ -1,7 +1,7 @@
 package artifact
 
 import (
-	"io/ioutil"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,7 +21,7 @@ func TestGlobalCache(t *testing.T) {
 	confPath := filepath.Join(dir, DotDir, ConfigName)
 
 	// bad config
-	test.That(t, ioutil.WriteFile(confPath, []byte(`{
+	test.That(t, os.WriteFile(confPath, []byte(`{
 	"cache": "somedir",
 	"root": "someotherdir",
 	"source_pull_size_limit": false,
@@ -32,7 +32,7 @@ func TestGlobalCache(t *testing.T) {
 	test.That(t, err, test.ShouldNotBeNil)
 	test.That(t, err.Error(), test.ShouldContainSubstring, "bool")
 
-	test.That(t, ioutil.WriteFile(confPath, []byte(`{
+	test.That(t, os.WriteFile(confPath, []byte(`{
 	"cache": "somedir",
 	"root": "someotherdir",
 	"source_pull_size_limit": 5,
@@ -68,7 +68,7 @@ func TestCache(t *testing.T) {
 		test.That(t, cache.Contains("hash1"), test.ShouldBeNil)
 		reader, err := cache.Load("hash1")
 		test.That(t, err, test.ShouldBeNil)
-		rd, err := ioutil.ReadAll(reader)
+		rd, err := io.ReadAll(reader)
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, string(rd), test.ShouldEqual, "hello")
 
@@ -94,7 +94,7 @@ func TestCache(t *testing.T) {
 		barHash, err := computeHash([]byte(barContent))
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, os.MkdirAll(filepath.Dir(barPath), 0o755), test.ShouldBeNil)
-		test.That(t, ioutil.WriteFile(barPath, []byte(barContent), 0o644), test.ShouldBeNil)
+		test.That(t, os.WriteFile(barPath, []byte(barContent), 0o644), test.ShouldBeNil)
 
 		status, err = cache.Status()
 		test.That(t, err, test.ShouldBeNil)
@@ -107,7 +107,7 @@ func TestCache(t *testing.T) {
 		test.That(t, err, test.ShouldBeNil)
 		bapPath := cache.NewPath("baz/bap")
 		test.That(t, os.MkdirAll(filepath.Dir(bapPath), 0o755), test.ShouldBeNil)
-		test.That(t, ioutil.WriteFile(bapPath, []byte(bapContent), 0o644), test.ShouldBeNil)
+		test.That(t, os.WriteFile(bapPath, []byte(bapContent), 0o644), test.ShouldBeNil)
 
 		status, err = cache.Status()
 		test.That(t, err, test.ShouldBeNil)
@@ -122,13 +122,13 @@ func TestCache(t *testing.T) {
 
 		reader, err = cache.Load(barHash)
 		test.That(t, err, test.ShouldBeNil)
-		rd, err = ioutil.ReadAll(reader)
+		rd, err = io.ReadAll(reader)
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, string(rd), test.ShouldResemble, barContent)
 
 		reader, err = cache.Load(bapHash)
 		test.That(t, err, test.ShouldBeNil)
-		rd, err = ioutil.ReadAll(reader)
+		rd, err = io.ReadAll(reader)
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, string(rd), test.ShouldResemble, bapContent)
 
@@ -136,11 +136,11 @@ func TestCache(t *testing.T) {
 		newBapHash, err := computeHash([]byte(newBapContent))
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, os.MkdirAll(filepath.Dir(bapPath), 0o755), test.ShouldBeNil)
-		test.That(t, ioutil.WriteFile(bapPath, []byte(newBapContent), 0o644), test.ShouldBeNil)
+		test.That(t, os.WriteFile(bapPath, []byte(newBapContent), 0o644), test.ShouldBeNil)
 
 		reader, err = cache.Load(bapHash)
 		test.That(t, err, test.ShouldBeNil)
-		rd, err = ioutil.ReadAll(reader)
+		rd, err = io.ReadAll(reader)
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, string(rd), test.ShouldResemble, bapContent)
 
@@ -159,7 +159,7 @@ func TestCache(t *testing.T) {
 
 		deletePath := cache.NewPath("to/be/deleted")
 		test.That(t, os.MkdirAll(filepath.Dir(deletePath), 0o755), test.ShouldBeNil)
-		test.That(t, ioutil.WriteFile(deletePath, []byte("delete me"), 0o644), test.ShouldBeNil)
+		test.That(t, os.WriteFile(deletePath, []byte("delete me"), 0o644), test.ShouldBeNil)
 		_, err = os.Stat(deletePath)
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, cache.Clean(), test.ShouldBeNil)
@@ -174,7 +174,7 @@ func TestCache(t *testing.T) {
 
 		_, err = cache.Ensure("baz/bap", true)
 		test.That(t, err, test.ShouldBeNil)
-		rd, err = ioutil.ReadFile(bapPath)
+		rd, err = os.ReadFile(bapPath)
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, string(rd), test.ShouldEqual, newBapContent)
 
@@ -184,7 +184,7 @@ func TestCache(t *testing.T) {
 
 		_, err = cache.Ensure("/", true)
 		test.That(t, err, test.ShouldBeNil)
-		rd, err = ioutil.ReadFile(barPath)
+		rd, err = os.ReadFile(barPath)
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, string(rd), test.ShouldEqual, barContent)
 
@@ -218,9 +218,9 @@ func TestCache(t *testing.T) {
 		test.That(t, os.MkdirAll(filepath.Dir(path1), 0o755), test.ShouldBeNil)
 		test.That(t, os.MkdirAll(filepath.Dir(path2), 0o755), test.ShouldBeNil)
 		test.That(t, os.MkdirAll(filepath.Dir(path3), 0o755), test.ShouldBeNil)
-		test.That(t, ioutil.WriteFile(path1, []byte(content1), 0o644), test.ShouldBeNil)
-		test.That(t, ioutil.WriteFile(path2, []byte(content2), 0o644), test.ShouldBeNil)
-		test.That(t, ioutil.WriteFile(path3, []byte(content3), 0o644), test.ShouldBeNil)
+		test.That(t, os.WriteFile(path1, []byte(content1), 0o644), test.ShouldBeNil)
+		test.That(t, os.WriteFile(path2, []byte(content2), 0o644), test.ShouldBeNil)
+		test.That(t, os.WriteFile(path3, []byte(content3), 0o644), test.ShouldBeNil)
 
 		test.That(t, cache.WriteThroughUser(), test.ShouldBeNil)
 		test.That(t, os.RemoveAll(cache.NewPath("/")), test.ShouldBeNil)
@@ -266,7 +266,7 @@ func TestCache(t *testing.T) {
 		test.That(t, err, test.ShouldBeNil)
 
 		test.That(t, os.MkdirAll(filepath.Dir(path1), 0o755), test.ShouldBeNil)
-		test.That(t, ioutil.WriteFile(path1, []byte(content1), 0o644), test.ShouldBeNil)
+		test.That(t, os.WriteFile(path1, []byte(content1), 0o644), test.ShouldBeNil)
 
 		test.That(t, cache.WriteThroughUser(), test.ShouldBeNil)
 		test.That(t, os.RemoveAll(cache.NewPath("/")), test.ShouldBeNil)
@@ -306,7 +306,7 @@ func TestCache(t *testing.T) {
 		test.That(t, err, test.ShouldBeNil)
 
 		test.That(t, os.MkdirAll(filepath.Dir(path1), 0o755), test.ShouldBeNil)
-		test.That(t, ioutil.WriteFile(path1, []byte(content1), 0o644), test.ShouldBeNil)
+		test.That(t, os.WriteFile(path1, []byte(content1), 0o644), test.ShouldBeNil)
 
 		test.That(t, cache.WriteThroughUser(), test.ShouldBeNil)
 		test.That(t, os.RemoveAll(cache.NewPath("/")), test.ShouldBeNil)
@@ -360,9 +360,9 @@ func TestCache(t *testing.T) {
 		test.That(t, os.MkdirAll(filepath.Dir(path1), 0o755), test.ShouldBeNil)
 		test.That(t, os.MkdirAll(filepath.Dir(path2), 0o755), test.ShouldBeNil)
 		test.That(t, os.MkdirAll(filepath.Dir(path3), 0o755), test.ShouldBeNil)
-		test.That(t, ioutil.WriteFile(path1, []byte(content1), 0o644), test.ShouldBeNil)
-		test.That(t, ioutil.WriteFile(path2, []byte(content2), 0o644), test.ShouldBeNil)
-		test.That(t, ioutil.WriteFile(path3, []byte(content3), 0o644), test.ShouldBeNil)
+		test.That(t, os.WriteFile(path1, []byte(content1), 0o644), test.ShouldBeNil)
+		test.That(t, os.WriteFile(path2, []byte(content2), 0o644), test.ShouldBeNil)
+		test.That(t, os.WriteFile(path3, []byte(content3), 0o644), test.ShouldBeNil)
 
 		test.That(t, cache.WriteThroughUser(), test.ShouldBeNil)
 		test.That(t, os.RemoveAll(cache.NewPath("/")), test.ShouldBeNil)
@@ -429,9 +429,9 @@ func TestCache(t *testing.T) {
 		test.That(t, os.MkdirAll(filepath.Dir(path1), 0o755), test.ShouldBeNil)
 		test.That(t, os.MkdirAll(filepath.Dir(path2), 0o755), test.ShouldBeNil)
 		test.That(t, os.MkdirAll(filepath.Dir(path3), 0o755), test.ShouldBeNil)
-		test.That(t, ioutil.WriteFile(path1, []byte(content1), 0o644), test.ShouldBeNil)
-		test.That(t, ioutil.WriteFile(path2, []byte(content2), 0o644), test.ShouldBeNil)
-		test.That(t, ioutil.WriteFile(path3, []byte(content3), 0o644), test.ShouldBeNil)
+		test.That(t, os.WriteFile(path1, []byte(content1), 0o644), test.ShouldBeNil)
+		test.That(t, os.WriteFile(path2, []byte(content2), 0o644), test.ShouldBeNil)
+		test.That(t, os.WriteFile(path3, []byte(content3), 0o644), test.ShouldBeNil)
 
 		test.That(t, cache.WriteThroughUser(), test.ShouldBeNil)
 		test.That(t, cache.Contains(content1Hash), test.ShouldBeNil)

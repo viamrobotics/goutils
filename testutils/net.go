@@ -9,9 +9,9 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
-	"io/ioutil"
 	"math/big"
 	"net"
+	"os"
 	"testing"
 	"time"
 
@@ -142,7 +142,7 @@ func GenerateSelfSignedCertificate(commonName string, altNames ...string) (tls.C
 		return tls.Certificate{}, "", "", nil, errors.New("error adding CA to pool")
 	}
 
-	certFile, err := ioutil.TempFile("", "cert")
+	certFile, err := os.CreateTemp("", "cert")
 	if err != nil {
 		return tls.Certificate{}, "", "", nil, err
 	}
@@ -150,7 +150,7 @@ func GenerateSelfSignedCertificate(commonName string, altNames ...string) (tls.C
 		return tls.Certificate{}, "", "", nil, err
 	}
 
-	keyFile, err := ioutil.TempFile("", "key")
+	keyFile, err := os.CreateTemp("", "key")
 	if err != nil {
 		return tls.Certificate{}, "", "", nil, err
 	}

@@ -5,7 +5,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net"
 	"net/http"
 	"strings"
@@ -166,7 +166,7 @@ func TestServer(t *testing.T) {
 							test.That(t, err, test.ShouldBeNil)
 							defer httpResp1.Body.Close()
 							test.That(t, httpResp1.StatusCode, test.ShouldEqual, 200)
-							rd, err := ioutil.ReadAll(httpResp1.Body)
+							rd, err := io.ReadAll(httpResp1.Body)
 							test.That(t, err, test.ShouldBeNil)
 							if withAuthentication {
 								test.That(t, httpResp1.Header["Grpc-Message"], test.ShouldResemble, []string{"authentication required"})
@@ -180,7 +180,7 @@ func TestServer(t *testing.T) {
 								test.That(t, err, test.ShouldBeNil)
 								defer httpResp2.Body.Close()
 								test.That(t, httpResp2.StatusCode, test.ShouldEqual, 200)
-								rd, err = ioutil.ReadAll(httpResp2.Body)
+								rd, err = io.ReadAll(httpResp2.Body)
 								test.That(t, err, test.ShouldBeNil)
 							}
 							// it says hey!
@@ -198,7 +198,7 @@ func TestServer(t *testing.T) {
 							defer httpResp2.Body.Close()
 							test.That(t, httpResp2.StatusCode, test.ShouldEqual, 200)
 							es.SetFail(false)
-							rd, err = ioutil.ReadAll(httpResp2.Body)
+							rd, err = io.ReadAll(httpResp2.Body)
 							test.That(t, err, test.ShouldBeNil)
 							// it says hey!
 							test.That(t, httpResp2.Header["Grpc-Message"], test.ShouldResemble, []string{"whoops"})

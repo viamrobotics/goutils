@@ -3,7 +3,6 @@ package pexec
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -189,7 +188,7 @@ func TestProcessManagerStart(t *testing.T) {
 		test.That(t, pm.Start(context.Background()), test.ShouldBeNil)
 
 		t.Run("adding a process after starting starts it", func(t *testing.T) {
-			temp, err := ioutil.TempFile("", "*.txt")
+			temp, err := os.CreateTemp("", "*.txt")
 			test.That(t, err, test.ShouldBeNil)
 			defer os.Remove(temp.Name())
 
@@ -201,7 +200,7 @@ func TestProcessManagerStart(t *testing.T) {
 				})
 			test.That(t, err, test.ShouldBeNil)
 
-			rd, err := ioutil.ReadFile(temp.Name())
+			rd, err := os.ReadFile(temp.Name())
 			test.That(t, err, test.ShouldBeNil)
 			test.That(t, string(rd), test.ShouldEqual, "hello\n")
 
@@ -231,10 +230,10 @@ func TestProcessManagerStart(t *testing.T) {
 			// a "timed" ctx should only have an effect on one shots
 			ctx, cancel = context.WithCancel(context.Background())
 
-			temp1, err := ioutil.TempFile("", "*.txt")
+			temp1, err := os.CreateTemp("", "*.txt")
 			test.That(t, err, test.ShouldBeNil)
 			defer os.Remove(temp1.Name())
-			temp2, err := ioutil.TempFile("", "*.txt")
+			temp2, err := os.CreateTemp("", "*.txt")
 			test.That(t, err, test.ShouldBeNil)
 			defer os.Remove(temp2.Name())
 
@@ -268,7 +267,7 @@ func TestProcessManagerStart(t *testing.T) {
 			test.That(t, pm.Stop(), test.ShouldBeNil)
 		}()
 
-		temp, err := ioutil.TempFile("", "*.txt")
+		temp, err := os.CreateTemp("", "*.txt")
 		test.That(t, err, test.ShouldBeNil)
 		defer os.Remove(temp.Name())
 
@@ -287,13 +286,13 @@ func TestProcessManagerStart(t *testing.T) {
 			})
 		test.That(t, err, test.ShouldBeNil)
 
-		rd, err := ioutil.ReadFile(temp.Name())
+		rd, err := os.ReadFile(temp.Name())
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, rd, test.ShouldBeEmpty)
 
 		test.That(t, pm.Start(context.Background()), test.ShouldBeNil)
 
-		rd, err = ioutil.ReadFile(temp.Name())
+		rd, err = os.ReadFile(temp.Name())
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, string(rd), test.ShouldContainSubstring, "hello\n")
 		test.That(t, string(rd), test.ShouldContainSubstring, "world\n")
@@ -339,13 +338,13 @@ func TestProcessManagerStop(t *testing.T) {
 		logger := golog.NewTestLogger(t)
 		pm := NewProcessManager(logger)
 
-		temp1, err := ioutil.TempFile("", "*.txt")
+		temp1, err := os.CreateTemp("", "*.txt")
 		test.That(t, err, test.ShouldBeNil)
 		defer os.Remove(temp1.Name())
-		temp2, err := ioutil.TempFile("", "*.txt")
+		temp2, err := os.CreateTemp("", "*.txt")
 		test.That(t, err, test.ShouldBeNil)
 		defer os.Remove(temp2.Name())
-		temp3, err := ioutil.TempFile("", "*.txt")
+		temp3, err := os.CreateTemp("", "*.txt")
 		test.That(t, err, test.ShouldBeNil)
 		defer os.Remove(temp3.Name())
 
@@ -380,13 +379,13 @@ func TestProcessManagerStop(t *testing.T) {
 
 		test.That(t, pm.Stop(), test.ShouldBeNil)
 
-		rd, err := ioutil.ReadFile(temp1.Name())
+		rd, err := os.ReadFile(temp1.Name())
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, string(rd), test.ShouldEqual, "one\n")
-		rd, err = ioutil.ReadFile(temp2.Name())
+		rd, err = os.ReadFile(temp2.Name())
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, string(rd), test.ShouldEqual, "two\n")
-		rd, err = ioutil.ReadFile(temp3.Name())
+		rd, err = os.ReadFile(temp3.Name())
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, string(rd), test.ShouldEqual, "three\n")
 	})
@@ -396,10 +395,10 @@ func TestProcessManagerStop(t *testing.T) {
 		pm := NewProcessManager(logger)
 		test.That(t, pm.Start(context.Background()), test.ShouldBeNil)
 
-		temp1, err := ioutil.TempFile("", "*.txt")
+		temp1, err := os.CreateTemp("", "*.txt")
 		test.That(t, err, test.ShouldBeNil)
 		defer os.Remove(temp1.Name())
-		temp2, err := ioutil.TempFile("", "*.txt")
+		temp2, err := os.CreateTemp("", "*.txt")
 		test.That(t, err, test.ShouldBeNil)
 		defer os.Remove(temp2.Name())
 

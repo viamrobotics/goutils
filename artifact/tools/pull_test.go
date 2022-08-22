@@ -2,7 +2,6 @@ package tools
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,14 +20,14 @@ func TestPull(t *testing.T) {
 	confPath := filepath.Join(dir, artifact.DotDir, artifact.ConfigName)
 	sourcePath := filepath.Join(dir, "source")
 	test.That(t, os.MkdirAll(sourcePath, 0o755), test.ShouldBeNil)
-	test.That(t, ioutil.WriteFile(confPath, []byte(fmt.Sprintf(`{
+	test.That(t, os.WriteFile(confPath, []byte(fmt.Sprintf(`{
 		"source_store": {
 			"type": "fs",
 			"path": "%s"
 		}
 	}`, sourcePath)), 0o644), test.ShouldBeNil)
 	treePath := filepath.Join(dir, artifact.DotDir, artifact.TreeName)
-	test.That(t, ioutil.WriteFile(treePath, []byte(`{
+	test.That(t, os.WriteFile(treePath, []byte(`{
 		"one": {
 			"two": {
 				"size": 10,
@@ -78,7 +77,7 @@ func TestPullLimit(t *testing.T) {
 	confPath := filepath.Join(dir, artifact.DotDir, artifact.ConfigName)
 	sourcePath := filepath.Join(dir, "source")
 	test.That(t, os.MkdirAll(sourcePath, 0o755), test.ShouldBeNil)
-	test.That(t, ioutil.WriteFile(confPath, []byte(fmt.Sprintf(`{
+	test.That(t, os.WriteFile(confPath, []byte(fmt.Sprintf(`{
 		"source_store": {
 			"type": "fs",
 			"path": "%s"
@@ -86,7 +85,7 @@ func TestPullLimit(t *testing.T) {
 		"source_pull_size_limit": 3
 	}`, sourcePath)), 0o644), test.ShouldBeNil)
 	treePath := filepath.Join(dir, artifact.DotDir, artifact.TreeName)
-	test.That(t, ioutil.WriteFile(treePath, []byte(`{
+	test.That(t, os.WriteFile(treePath, []byte(`{
 		"one": {
 			"two": {
 				"size": 10,

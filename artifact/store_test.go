@@ -1,7 +1,7 @@
 package artifact
 
 import (
-	"io/ioutil"
+	"io"
 	"strings"
 	"testing"
 
@@ -54,14 +54,14 @@ func testStore(t *testing.T, store Store, readOnly bool) {
 
 	reader, err := store.Load(hashVal1)
 	test.That(t, err, test.ShouldBeNil)
-	rd, err := ioutil.ReadAll(reader)
+	rd, err := io.ReadAll(reader)
 	test.That(t, reader.Close(), test.ShouldBeNil)
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, string(rd), test.ShouldEqual, content1)
 
 	reader, err = store.Load(hashVal2)
 	test.That(t, err, test.ShouldBeNil)
-	rd, err = ioutil.ReadAll(reader)
+	rd, err = io.ReadAll(reader)
 	test.That(t, reader.Close(), test.ShouldBeNil)
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, string(rd), test.ShouldEqual, content2)

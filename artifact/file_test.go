@@ -1,7 +1,6 @@
 package artifact
 
 import (
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,7 +25,7 @@ func TestPath(t *testing.T) {
 
 	test.That(t, os.MkdirAll(filepath.Join(dir, DotDir), 0o755), test.ShouldBeNil)
 	confPath := filepath.Join(dir, DotDir, ConfigName)
-	test.That(t, ioutil.WriteFile(confPath, []byte(`{
+	test.That(t, os.WriteFile(confPath, []byte(`{
 	"cache": "somedir",
 	"root": "someotherdir",
 	"source_pull_size_limit": 5,
@@ -51,7 +50,7 @@ func TestPath(t *testing.T) {
 
 	toSomePath := filepath.Join(rootDir, "to/somewhere")
 	test.That(t, os.MkdirAll(filepath.Dir(toSomePath), 0o755), test.ShouldBeNil)
-	test.That(t, ioutil.WriteFile(toSomePath, []byte("hello world"), 0o644), test.ShouldBeNil)
+	test.That(t, os.WriteFile(toSomePath, []byte("hello world"), 0o644), test.ShouldBeNil)
 	test.That(t, cache.WriteThroughUser(), test.ShouldBeNil)
 
 	resolved, err := Path("to/somewhere")
@@ -68,7 +67,7 @@ func TestNewPath(t *testing.T) {
 
 	test.That(t, os.MkdirAll(filepath.Join(dir, DotDir), 0o755), test.ShouldBeNil)
 	confPath := filepath.Join(dir, DotDir, ConfigName)
-	test.That(t, ioutil.WriteFile(confPath, []byte(confRaw), 0o644), test.ShouldBeNil)
+	test.That(t, os.WriteFile(confPath, []byte(confRaw), 0o644), test.ShouldBeNil)
 	found, err := searchConfig()
 	test.That(t, err, test.ShouldBeNil)
 
@@ -109,27 +108,27 @@ func TestEmplaceFile(t *testing.T) {
 	test.That(t, store.Store(hashVal2, strings.NewReader(content2)), test.ShouldBeNil)
 
 	test.That(t, emplaceFile(store, hashVal1, file1Path), test.ShouldBeNil)
-	rd, err := ioutil.ReadFile(file1Path)
+	rd, err := os.ReadFile(file1Path)
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, string(rd), test.ShouldEqual, content1)
 
 	test.That(t, emplaceFile(store, hashVal2, file1Path), test.ShouldBeNil)
-	rd, err = ioutil.ReadFile(file1Path)
+	rd, err = os.ReadFile(file1Path)
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, string(rd), test.ShouldEqual, content2)
 
 	file2Path := filepath.Join(storeDir, "file2")
 	test.That(t, emplaceFile(store, hashVal1, file2Path), test.ShouldBeNil)
-	rd, err = ioutil.ReadFile(file2Path)
+	rd, err = os.ReadFile(file2Path)
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, string(rd), test.ShouldEqual, content1)
-	rd, err = ioutil.ReadFile(file1Path)
+	rd, err = os.ReadFile(file1Path)
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, string(rd), test.ShouldEqual, content2)
 
 	file3Path := filepath.Join(storeDir, "one", "two", "three", "file")
 	test.That(t, emplaceFile(store, hashVal1, file3Path), test.ShouldBeNil)
-	rd, err = ioutil.ReadFile(file3Path)
+	rd, err = os.ReadFile(file3Path)
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, string(rd), test.ShouldEqual, content1)
 }

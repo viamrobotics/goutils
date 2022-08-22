@@ -1,7 +1,6 @@
 package tools
 
 import (
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -16,14 +15,14 @@ func TestStatus(t *testing.T) {
 	defer undo()
 	test.That(t, os.MkdirAll(filepath.Join(dir, artifact.DotDir), 0o755), test.ShouldBeNil)
 	confPath := filepath.Join(dir, artifact.DotDir, artifact.ConfigName)
-	test.That(t, ioutil.WriteFile(confPath, []byte(`{}`), 0o644), test.ShouldBeNil)
+	test.That(t, os.WriteFile(confPath, []byte(`{}`), 0o644), test.ShouldBeNil)
 
 	filePath := artifact.MustNewPath("some/file")
 	test.That(t, os.MkdirAll(filepath.Dir(filePath), 0o755), test.ShouldBeNil)
-	test.That(t, ioutil.WriteFile(filePath, []byte("hello"), 0o644), test.ShouldBeNil)
+	test.That(t, os.WriteFile(filePath, []byte("hello"), 0o644), test.ShouldBeNil)
 	otherFilePath := artifact.MustNewPath("some/other_file")
 	test.That(t, os.MkdirAll(filepath.Dir(otherFilePath), 0o755), test.ShouldBeNil)
-	test.That(t, ioutil.WriteFile(otherFilePath, []byte("world"), 0o644), test.ShouldBeNil)
+	test.That(t, os.WriteFile(otherFilePath, []byte("world"), 0o644), test.ShouldBeNil)
 
 	status, err := Status()
 	test.That(t, err, test.ShouldBeNil)
@@ -37,7 +36,7 @@ func TestStatus(t *testing.T) {
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, status, test.ShouldResemble, &artifact.Status{})
 
-	test.That(t, ioutil.WriteFile(otherFilePath, []byte("changes"), 0o644), test.ShouldBeNil)
+	test.That(t, os.WriteFile(otherFilePath, []byte("changes"), 0o644), test.ShouldBeNil)
 
 	status, err = Status()
 	test.That(t, err, test.ShouldBeNil)
@@ -47,7 +46,7 @@ func TestStatus(t *testing.T) {
 
 	newFilePath := artifact.MustNewPath("some/new_file")
 	test.That(t, os.MkdirAll(filepath.Dir(newFilePath), 0o755), test.ShouldBeNil)
-	test.That(t, ioutil.WriteFile(newFilePath, []byte("newwwww"), 0o644), test.ShouldBeNil)
+	test.That(t, os.WriteFile(newFilePath, []byte("newwwww"), 0o644), test.ShouldBeNil)
 
 	status, err = Status()
 	test.That(t, err, test.ShouldBeNil)

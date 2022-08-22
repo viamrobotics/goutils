@@ -4,8 +4,8 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"io/ioutil"
 	"net/http"
+	"os"
 	"testing"
 	"time"
 
@@ -147,9 +147,9 @@ func TestNewPossiblySecureTCPListenerFromMemory(t *testing.T) {
 		_, certFile, keyFile, _, err := testutils.GenerateSelfSignedCertificate("somename")
 		test.That(t, err, test.ShouldBeNil)
 
-		certPEM, err := ioutil.ReadFile(certFile)
+		certPEM, err := os.ReadFile(certFile)
 		test.That(t, err, test.ShouldBeNil)
-		keyPEM, err := ioutil.ReadFile(keyFile)
+		keyPEM, err := os.ReadFile(keyFile)
 		test.That(t, err, test.ShouldBeNil)
 		listener, secure, err := utils.NewPossiblySecureTCPListenerFromMemory(
 			"",

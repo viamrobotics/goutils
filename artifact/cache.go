@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"hash/fnv"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -170,7 +169,7 @@ func (s *cachedStore) Load(hash string) (io.ReadCloser, error) {
 func (s *cachedStore) Store(hash string, r io.Reader) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	data, err := ioutil.ReadAll(r)
+	data, err := io.ReadAll(r)
 	if err != nil {
 		return err
 	}
@@ -369,7 +368,7 @@ func (s *cachedStore) walkUserTreeUncached(
 		}
 		if err := func() error {
 			defer utils.UncheckedErrorFunc(f.Close)
-			data, err := ioutil.ReadAll(f)
+			data, err := io.ReadAll(f)
 			if err != nil {
 				return err
 			}

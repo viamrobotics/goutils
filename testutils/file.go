@@ -2,7 +2,6 @@ package testutils
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -23,7 +22,7 @@ func TempDir(dir, pattern string) (string, error) {
 	var err error
 
 	if os.Getenv("USER") == "" || filepath.IsAbs(dir) {
-		dir, err = ioutil.TempDir(dir, pattern)
+		dir, err = os.MkdirTemp(dir, pattern)
 	} else {
 		dir = filepath.Join("/tmp", fmt.Sprintf("viam-test-%s-%s-%s", os.Getenv("USER"), dir, pattern))
 		err = os.MkdirAll(dir, 0o750)

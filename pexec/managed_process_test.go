@@ -3,7 +3,6 @@ package pexec
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -47,7 +46,7 @@ func TestManagedProcessStart(t *testing.T) {
 		})
 		t.Run("starting with an eventually canceled context should fail", func(t *testing.T) {
 			logger := golog.NewTestLogger(t)
-			temp, err := ioutil.TempFile("", "*.txt")
+			temp, err := os.CreateTemp("", "*.txt")
 			test.That(t, err, test.ShouldBeNil)
 			defer os.Remove(temp.Name())
 
@@ -74,7 +73,7 @@ func TestManagedProcessStart(t *testing.T) {
 		t.Run("starting with a normal context", func(t *testing.T) {
 			logger := golog.NewTestLogger(t)
 
-			temp, err := ioutil.TempFile("", "*.txt")
+			temp, err := os.CreateTemp("", "*.txt")
 			test.That(t, err, test.ShouldBeNil)
 			defer os.Remove(temp.Name())
 			proc := NewManagedProcess(ProcessConfig{
@@ -84,7 +83,7 @@ func TestManagedProcessStart(t *testing.T) {
 			}, logger)
 			test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
 
-			rd, err := ioutil.ReadFile(temp.Name())
+			rd, err := os.ReadFile(temp.Name())
 			test.That(t, err, test.ShouldBeNil)
 			test.That(t, string(rd), test.ShouldEqual, "hello\n")
 
@@ -114,7 +113,7 @@ func TestManagedProcessStart(t *testing.T) {
 		t.Run("starting with a normal context should run until stop", func(t *testing.T) {
 			logger := golog.NewTestLogger(t)
 
-			temp, err := ioutil.TempFile("", "*.txt")
+			temp, err := os.CreateTemp("", "*.txt")
 			test.That(t, err, test.ShouldBeNil)
 			defer os.Remove(temp.Name())
 
@@ -139,7 +138,7 @@ func TestManagedProcessStart(t *testing.T) {
 
 			test.That(t, proc.Stop(), test.ShouldBeNil)
 
-			rd, err := ioutil.ReadFile(temp.Name())
+			rd, err := os.ReadFile(temp.Name())
 			test.That(t, err, test.ShouldBeNil)
 			test.That(t, string(rd), test.ShouldEqual, "hello\nworld\n")
 		})
@@ -150,7 +149,7 @@ func TestManagedProcessManage(t *testing.T) {
 	t.Run("a managed process that dies should be restarted", func(t *testing.T) {
 		logger := golog.NewTestLogger(t)
 
-		temp, err := ioutil.TempFile("", "*.txt")
+		temp, err := os.CreateTemp("", "*.txt")
 		test.That(t, err, test.ShouldBeNil)
 		defer os.Remove(temp.Name())
 
@@ -203,7 +202,7 @@ func TestManagedProcessStop(t *testing.T) {
 	t.Run("stopping a managed process gives it a chance to finish", func(t *testing.T) {
 		logger := golog.NewTestLogger(t)
 
-		temp, err := ioutil.TempFile("", "*.txt")
+		temp, err := os.CreateTemp("", "*.txt")
 		test.That(t, err, test.ShouldBeNil)
 		defer os.Remove(temp.Name())
 

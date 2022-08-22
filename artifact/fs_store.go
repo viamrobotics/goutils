@@ -2,7 +2,6 @@ package artifact
 
 import (
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 
@@ -58,7 +57,7 @@ func (s *fileSystemStore) Load(hash string) (io.ReadCloser, error) {
 // AtomicStore writes reader contents to a temp file and then renames to
 // path, ensuring safer, atomic file writes.
 func AtomicStore(path string, r io.Reader, hash string) (err error) {
-	tempFile, err := ioutil.TempFile(filepath.Dir(path), hash)
+	tempFile, err := os.CreateTemp(filepath.Dir(path), hash)
 	if err != nil {
 		return err
 	}

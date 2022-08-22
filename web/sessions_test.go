@@ -15,7 +15,7 @@ import (
 func TestSession1(t *testing.T) {
 	sm := NewSessionManager(&memorySessionStore{}, golog.NewTestLogger(t))
 
-	r, err := http.NewRequest("GET", "http://localhost/", nil)
+	r, err := http.NewRequest(http.MethodGet, "http://localhost/", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

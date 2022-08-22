@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,7 +27,7 @@ func TestMainMain(t *testing.T) {
 		dir, _ := artifact.TestSetupGlobalCache(t)
 		test.That(t, os.MkdirAll(filepath.Join(dir, artifact.DotDir), 0o755), test.ShouldBeNil)
 		confPath := filepath.Join(dir, artifact.DotDir, artifact.ConfigName)
-		test.That(t, ioutil.WriteFile(confPath, []byte(`{}`), 0o644), test.ShouldBeNil)
+		test.That(t, os.WriteFile(confPath, []byte(`{}`), 0o644), test.ShouldBeNil)
 	}
 
 	pullBeforeWithLimit := func(t *testing.T, limit bool) {
@@ -39,7 +38,7 @@ func TestMainMain(t *testing.T) {
 		sourcePath := filepath.Join(dir, "source")
 		test.That(t, os.MkdirAll(sourcePath, 0o755), test.ShouldBeNil)
 		if limit {
-			test.That(t, ioutil.WriteFile(confPath, []byte(fmt.Sprintf(`{
+			test.That(t, os.WriteFile(confPath, []byte(fmt.Sprintf(`{
 			"source_store": {
 				"type": "fs",
 				"path": "%s"
@@ -47,7 +46,7 @@ func TestMainMain(t *testing.T) {
 			"source_pull_size_limit": 3
 		}`, sourcePath)), 0o644), test.ShouldBeNil)
 		} else {
-			test.That(t, ioutil.WriteFile(confPath, []byte(fmt.Sprintf(`{
+			test.That(t, os.WriteFile(confPath, []byte(fmt.Sprintf(`{
 			"source_store": {
 				"type": "fs",
 				"path": "%s"
@@ -55,7 +54,7 @@ func TestMainMain(t *testing.T) {
 		}`, sourcePath)), 0o644), test.ShouldBeNil)
 		}
 		treePath := filepath.Join(dir, artifact.DotDir, artifact.TreeName)
-		test.That(t, ioutil.WriteFile(treePath, []byte(`{
+		test.That(t, os.WriteFile(treePath, []byte(`{
 			"one": {
 				"two": {
 					"size": 10,
@@ -93,14 +92,14 @@ func TestMainMain(t *testing.T) {
 		dir, _ := artifact.TestSetupGlobalCache(t)
 		test.That(t, os.MkdirAll(filepath.Join(dir, artifact.DotDir), 0o755), test.ShouldBeNil)
 		confPath := filepath.Join(dir, artifact.DotDir, artifact.ConfigName)
-		test.That(t, ioutil.WriteFile(confPath, []byte(`{}`), 0o644), test.ShouldBeNil)
+		test.That(t, os.WriteFile(confPath, []byte(`{}`), 0o644), test.ShouldBeNil)
 
 		filePath := artifact.MustNewPath("some/file")
 		test.That(t, os.MkdirAll(filepath.Dir(filePath), 0o755), test.ShouldBeNil)
-		test.That(t, ioutil.WriteFile(filePath, []byte("hello"), 0o644), test.ShouldBeNil)
+		test.That(t, os.WriteFile(filePath, []byte("hello"), 0o644), test.ShouldBeNil)
 		otherFilePath := artifact.MustNewPath("some/other_file")
 		test.That(t, os.MkdirAll(filepath.Dir(otherFilePath), 0o755), test.ShouldBeNil)
-		test.That(t, ioutil.WriteFile(otherFilePath, []byte("world"), 0o644), test.ShouldBeNil)
+		test.That(t, os.WriteFile(otherFilePath, []byte("world"), 0o644), test.ShouldBeNil)
 	}
 
 	removeBefore := func(t *testing.T, _ golog.Logger, _ *testutils.ContextualMainExecution) {
@@ -108,14 +107,14 @@ func TestMainMain(t *testing.T) {
 		dir, _ := artifact.TestSetupGlobalCache(t)
 		test.That(t, os.MkdirAll(filepath.Join(dir, artifact.DotDir), 0o755), test.ShouldBeNil)
 		confPath := filepath.Join(dir, artifact.DotDir, artifact.ConfigName)
-		test.That(t, ioutil.WriteFile(confPath, []byte(`{}`), 0o644), test.ShouldBeNil)
+		test.That(t, os.WriteFile(confPath, []byte(`{}`), 0o644), test.ShouldBeNil)
 
 		filePath := artifact.MustNewPath("some/file")
 		test.That(t, os.MkdirAll(filepath.Dir(filePath), 0o755), test.ShouldBeNil)
-		test.That(t, ioutil.WriteFile(filePath, []byte("hello"), 0o644), test.ShouldBeNil)
+		test.That(t, os.WriteFile(filePath, []byte("hello"), 0o644), test.ShouldBeNil)
 		otherFilePath := artifact.MustNewPath("some/other_file")
 		test.That(t, os.MkdirAll(filepath.Dir(otherFilePath), 0o755), test.ShouldBeNil)
-		test.That(t, ioutil.WriteFile(otherFilePath, []byte("world"), 0o644), test.ShouldBeNil)
+		test.That(t, os.WriteFile(otherFilePath, []byte("world"), 0o644), test.ShouldBeNil)
 		test.That(t, tools.Push(), test.ShouldBeNil)
 	}
 
@@ -124,14 +123,14 @@ func TestMainMain(t *testing.T) {
 		dir, _ := artifact.TestSetupGlobalCache(t)
 		test.That(t, os.MkdirAll(filepath.Join(dir, artifact.DotDir), 0o755), test.ShouldBeNil)
 		confPath := filepath.Join(dir, artifact.DotDir, artifact.ConfigName)
-		test.That(t, ioutil.WriteFile(confPath, []byte(`{}`), 0o644), test.ShouldBeNil)
+		test.That(t, os.WriteFile(confPath, []byte(`{}`), 0o644), test.ShouldBeNil)
 
 		filePath := artifact.MustNewPath("some/file")
 		test.That(t, os.MkdirAll(filepath.Dir(filePath), 0o755), test.ShouldBeNil)
-		test.That(t, ioutil.WriteFile(filePath, []byte("hello"), 0o644), test.ShouldBeNil)
+		test.That(t, os.WriteFile(filePath, []byte("hello"), 0o644), test.ShouldBeNil)
 		otherFilePath := artifact.MustNewPath("some/other_file")
 		test.That(t, os.MkdirAll(filepath.Dir(otherFilePath), 0o755), test.ShouldBeNil)
-		test.That(t, ioutil.WriteFile(otherFilePath, []byte("world"), 0o644), test.ShouldBeNil)
+		test.That(t, os.WriteFile(otherFilePath, []byte("world"), 0o644), test.ShouldBeNil)
 	}
 
 	testutils.TestMain(t, mainWithArgs, []testutils.MainTestCase{
@@ -148,7 +147,7 @@ func TestMainMain(t *testing.T) {
 
 				filePath := artifact.MustNewPath("some/file")
 				test.That(t, os.MkdirAll(filepath.Dir(filePath), 0o755), test.ShouldBeNil)
-				test.That(t, ioutil.WriteFile(filePath, []byte("hello"), 0o644), test.ShouldBeNil)
+				test.That(t, os.WriteFile(filePath, []byte("hello"), 0o644), test.ShouldBeNil)
 				_, err := os.Stat(filePath)
 				test.That(t, err, test.ShouldBeNil)
 			}, nil, func(t *testing.T, _ *observer.ObservedLogs) {
@@ -364,7 +363,7 @@ func TestMainMain(t *testing.T) {
 			statusBefore(t, logger, exec)
 			test.That(t, tools.Push(), test.ShouldBeNil)
 			otherFilePath := artifact.MustNewPath("some/other_file")
-			test.That(t, ioutil.WriteFile(otherFilePath, []byte("changes"), 0o644), test.ShouldBeNil)
+			test.That(t, os.WriteFile(otherFilePath, []byte("changes"), 0o644), test.ShouldBeNil)
 		}, nil, func(t *testing.T, logs *observer.ObservedLogs) {
 			t.Helper()
 			filePath := artifact.MustNewPath("some/file")
@@ -386,10 +385,10 @@ func TestMainMain(t *testing.T) {
 				statusBefore(t, logger, exec)
 				test.That(t, tools.Push(), test.ShouldBeNil)
 				otherFilePath := artifact.MustNewPath("some/other_file")
-				test.That(t, ioutil.WriteFile(otherFilePath, []byte("changes"), 0o644), test.ShouldBeNil)
+				test.That(t, os.WriteFile(otherFilePath, []byte("changes"), 0o644), test.ShouldBeNil)
 				newFilePath := artifact.MustNewPath("some/new_file")
 				test.That(t, os.MkdirAll(filepath.Dir(newFilePath), 0o755), test.ShouldBeNil)
-				test.That(t, ioutil.WriteFile(newFilePath, []byte("newwwww"), 0o644), test.ShouldBeNil)
+				test.That(t, os.WriteFile(newFilePath, []byte("newwwww"), 0o644), test.ShouldBeNil)
 			}, nil, func(t *testing.T, logs *observer.ObservedLogs) {
 				t.Helper()
 				filePath := artifact.MustNewPath("some/file")

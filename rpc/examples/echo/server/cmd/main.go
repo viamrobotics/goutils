@@ -11,9 +11,9 @@ import (
 	"encoding/pem"
 	"fmt"
 	"html/template"
-	"io/ioutil"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -106,7 +106,7 @@ func runServer(
 	var authPrivKey *rsa.PrivateKey
 	if authPrivateKeyFile != "" {
 		//nolint:gosec
-		rd, err := ioutil.ReadFile(authPrivateKeyFile)
+		rd, err := os.ReadFile(authPrivateKeyFile)
 		if err != nil {
 			return err
 		}
@@ -125,7 +125,7 @@ func runServer(
 	var authPublicKey *rsa.PublicKey
 	if authPublicKeyFile != "" {
 		//nolint:gosec
-		rd, err := ioutil.ReadFile(authPublicKeyFile)
+		rd, err := os.ReadFile(authPublicKeyFile)
 		if err != nil {
 			return err
 		}

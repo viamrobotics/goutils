@@ -1,3 +1,4 @@
+// Package main is a secret getter utility.
 package main
 
 import (

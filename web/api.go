@@ -43,7 +43,7 @@ func handleAPIError(w http.ResponseWriter, err error, logger golog.Logger, extra
 	js, marshalErr := json.Marshal(data)
 	if marshalErr != nil {
 		temp := fmt.Sprintf("err not able to be converted to json (%s) (%s)", data, err)
-		w.WriteHeader(500)
+		w.WriteHeader(http.StatusInternalServerError)
 		_, err = w.Write([]byte(temp))
 		if err != nil {
 			// hack for linter
@@ -55,7 +55,7 @@ func handleAPIError(w http.ResponseWriter, err error, logger golog.Logger, extra
 		if errors.As(err, &er) {
 			w.WriteHeader(er.Status())
 		} else {
-			w.WriteHeader(500)
+			w.WriteHeader(http.StatusInternalServerError)
 		}
 		_, err = w.Write(js)
 		if err != nil {

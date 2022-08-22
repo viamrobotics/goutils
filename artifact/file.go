@@ -11,7 +11,6 @@ package artifact
 
 import (
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 
@@ -71,7 +70,7 @@ func emplaceFile(store Store, hash, path string) error {
 
 	//nolint:gosec
 	if existing, err := os.Open(path); err == nil {
-		data, err := ioutil.ReadAll(existing)
+		data, err := io.ReadAll(existing)
 		if err != nil {
 			return multierr.Combine(err, existing.Close())
 		}
@@ -102,7 +101,7 @@ func emplaceFile(store Store, hash, path string) error {
 		err = multierr.Combine(err, hashFile.Close())
 	}()
 
-	tempFile, err := ioutil.TempFile(filepath.Dir(path), hash)
+	tempFile, err := os.CreateTemp(filepath.Dir(path), hash)
 	if err != nil {
 		return err
 	}

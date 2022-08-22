@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 
@@ -44,7 +44,7 @@ func TestNewGoogleStorageStore(t *testing.T) {
 
 	credsPath := testutils.ArtifactGoogleCreds(t)
 	var creds map[string]interface{}
-	credsRd, err := ioutil.ReadFile(credsPath)
+	credsRd, err := os.ReadFile(credsPath)
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, json.Unmarshal(credsRd, &creds), test.ShouldBeNil)
 	projectID, ok := creds["project_id"].(string)

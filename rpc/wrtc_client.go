@@ -267,7 +267,7 @@ func dialWebRTC(
 	if dOpts.externalAuthAddr != "" {
 		// TODO(GOUT-11): prepare AuthenticateTo here
 		// for client channel.
-	} else if dOpts.creds.Type != "" { // nolint:staticcheck
+	} else if dOpts.creds.Type != "" { //nolint:staticcheck
 		// TODO(GOUT-11): prepare Authenticate here
 		// for client channel
 	}

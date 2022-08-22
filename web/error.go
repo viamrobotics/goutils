@@ -43,7 +43,7 @@ func HandleError(w http.ResponseWriter, err error, logger golog.Logger, context 
 	if errors.As(err, &er) {
 		w.WriteHeader(er.Status())
 	} else {
-		w.WriteHeader(500)
+		w.WriteHeader(http.StatusInternalServerError)
 	}
 
 	var b bytes.Buffer
