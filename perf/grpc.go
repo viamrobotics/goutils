@@ -18,8 +18,6 @@ func registerGrpcViews() error {
 // Example:
 //
 //	grpcServer, err := rpc.NewServer(logger, rpc.WithStatsHandler(perf.NewGrpcStatsHandler()))
-//
-// See further documentation here: https://opencensus.io/guides/grpc/go/
 func NewGrpcStatsHandler() stats.Handler {
 	return &ocgrpc.ServerHandler{
 		IsPublicEndpoint: true,
