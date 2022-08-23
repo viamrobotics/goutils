@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/stats"
 	"google.golang.org/grpc/status"
 
 	"go.viam.com/utils"
@@ -435,4 +437,62 @@ func TestServerUnauthenticatedOption(t *testing.T) {
 		})),
 	)
 	test.That(t, err, test.ShouldEqual, errMixedUnauthAndAuth)
+}
+
+type fakeStatsHandler struct {
+	serverConnections int
+	clientConnections int
+	mu                sync.Mutex
+}
+
+func (s *fakeStatsHandler) TagRPC(ctx context.Context, info *stats.RPCTagInfo) context.Context {
+	return ctx
+}
+func (s *fakeStatsHandler) HandleRPC(ctx context.Context, info stats.RPCStats) {}
+func (s *fakeStatsHandler) TagConn(ctx context.Context, info *stats.ConnTagInfo) context.Context {
+	return ctx
+}
+
+// HandleConn processes the Conn stats.
+func (s *fakeStatsHandler) HandleConn(ctx context.Context, info stats.ConnStats) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if info.IsClient() {
+		if _, ok := info.(*stats.ConnBegin); ok {
+			s.clientConnections++
+		}
+	} else {
+		if _, ok := info.(*stats.ConnBegin); ok {
+			s.serverConnections++
+		}
+	}
+}
+
+func TestWithStatsHandler(t *testing.T) {
+	logger := golog.NewTestLogger(t)
+
+	handler := fakeStatsHandler{}
+
+	rpcServer, err := NewServer(
+		logger,
+		WithUnauthenticated(),
+		WithStatsHandler(&handler),
+	)
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, rpcServer.Start(), test.ShouldBeNil)
+
+	conn, err := Dial(
+		context.Background(),
+		rpcServer.InternalAddr().String(),
+		logger,
+		WithInsecure(),
+		WithDialDebug(),
+	)
+	test.That(t, err, test.ShouldBeNil)
+
+	test.That(t, handler.serverConnections, test.ShouldBeGreaterThan, 1)
+
+	test.That(t, conn.Close(), test.ShouldBeNil)
+	test.That(t, rpcServer.Stop(), test.ShouldBeNil)
 }

@@ -326,3 +326,34 @@ func (crc *closeReffedConn) Close() error {
 	crc.closeCalled++
 	return nil
 }
+
+func TestWithDialStatsHandler(t *testing.T) {
+	logger := golog.NewTestLogger(t)
+	rpcServer, err := NewServer(logger)
+	test.That(t, err, test.ShouldBeNil)
+
+	httpListener, err := net.Listen("tcp", "localhost:0")
+	test.That(t, err, test.ShouldBeNil)
+
+	go func() {
+		rpcServer.Serve(httpListener)
+	}()
+
+	stats := fakeStatsHandler{}
+
+	conn, err := Dial(
+		context.Background(),
+		httpListener.Addr().String(),
+		logger,
+		WithDialStatsHandler(&stats),
+		WithDialDebug(),
+		WithInsecure(),
+	)
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, conn.Close(), test.ShouldBeNil)
+
+	test.That(t, rpcServer.Stop(), test.ShouldBeNil)
+	test.That(t, err, test.ShouldBeNil)
+
+	test.That(t, stats.clientConnections, test.ShouldBeGreaterThan, 1)
+}

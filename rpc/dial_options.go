@@ -1,6 +1,10 @@
 package rpc
 
-import "crypto/tls"
+import (
+	"crypto/tls"
+
+	"google.golang.org/grpc/stats"
+)
 
 // dialOptions configure a Dial call. dialOptions are set by the DialOption
 // values passed to Dial.
@@ -45,6 +49,9 @@ type dialOptions struct {
 	mdnsOptions DialMulticastDNSOptions
 
 	disableDirect bool
+
+	// stats monitoring on the connections.
+	statsHandler stats.Handler
 }
 
 // DialMulticastDNSOptions dictate any special settings to apply while dialing via mDNS.
@@ -206,5 +213,14 @@ func WithDialMulticastDNSOptions(opts DialMulticastDNSOptions) DialOption {
 func WithDisableDirectGRPC() DialOption {
 	return newFuncDialOption(func(o *dialOptions) {
 		o.disableDirect = true
+	})
+}
+
+// WithDialStatsHandler returns a DialOption which sets the the stats handler on the
+// DialOption that specifies the stats handler for all the RPCs and underlying network
+// connections.
+func WithDialStatsHandler(handler stats.Handler) DialOption {
+	return newFuncDialOption(func(o *dialOptions) {
+		o.statsHandler = handler
 	})
 }

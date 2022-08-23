@@ -9,6 +9,7 @@ import (
 	"github.com/pion/webrtc/v3"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/stats"
 )
 
 // serverOptions change the runtime behavior of the server.
@@ -40,6 +41,9 @@ type serverOptions struct {
 	authToType    CredentialsType
 	authToHandler AuthenticateToHandler
 	disableMDNS   bool
+
+	// stats monitoring on the connections.
+	statsHandler stats.Handler
 
 	unknownStreamDesc *grpc.StreamDesc
 }
@@ -302,6 +306,16 @@ func WithUnknownServiceHandler(streamHandler grpc.StreamHandler) ServerOption {
 			ClientStreams: true,
 			ServerStreams: true,
 		}
+		return nil
+	})
+}
+
+// WithStatsHandler returns a ServerOption which sets the the stats handler on the
+// DialOption that specifies the stats handler for all the RPCs and underlying network
+// connections.
+func WithStatsHandler(handler stats.Handler) ServerOption {
+	return newFuncServerOption(func(o *serverOptions) error {
+		o.statsHandler = handler
 		return nil
 	})
 }
