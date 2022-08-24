@@ -8,7 +8,7 @@ import (
 	"go.uber.org/multierr"
 )
 
-// RegisterApplicationViews registers all the default views we may need for the application. gRPC, MongoDb, http, etc...
+// registerApplicationViews registers all the default views we may need for the application. gRPC, MongoDB, HTTP, etc...
 func registerApplicationViews() error {
 	return multierr.Combine(
 		registerGrpcViews(),
@@ -19,23 +19,23 @@ func registerApplicationViews() error {
 // indent these many spaces.
 const indent = "  "
 
-// NewPrintExporter creates a new metric exporter that prints to the console.
+// newPrintExporter creates a new metric exporter that prints to the console.
 // This should NOT be used for production workloads.
-func NewPrintExporter() view.Exporter {
-	return &PrintExporter{}
+func newPrintExporter() view.Exporter {
+	return &printExporter{}
 }
 
-// PrintExporter is a stats and trace exporter that logs
+// printExporter is a stats and trace exporter that logs
 // the exported data to the console.
 //
 // The intent is help new users familiarize themselves with the
 // capabilities of opencensus.
 //
 // This should NOT be used for production workloads.
-type PrintExporter struct{}
+type printExporter struct{}
 
-// ExportView logs the view data.
-func (e *PrintExporter) ExportView(vd *view.Data) {
+// ExportView prints the metric data to the console.
+func (e *printExporter) ExportView(vd *view.Data) {
 	for _, row := range vd.Rows {
 		log.Printf("%v %-45s", vd.End.Format("15:04:05"), vd.View.Name)
 
