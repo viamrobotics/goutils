@@ -22,7 +22,7 @@ type niceLoggingSpanExporter struct {
 }
 
 // NewNiceLoggingSpanExporter creates a new Exporter that prints to the default log.
-func NewNiceLoggingSpanExporter() trace.Exporter {
+func newNiceLoggingSpanExporter() trace.Exporter {
 	return &niceLoggingSpanExporter{children: map[string][]mySpanInfo{}}
 }
 
