@@ -247,6 +247,52 @@ func TestManagedProcessStop(t *testing.T) {
 	})
 }
 
+func TestManagedProcessGetLogLine(t *testing.T) {
+	t.Run("GetLogLine is not supported when Log is false", func(t *testing.T) {
+		logger := golog.NewTestLogger(t)
+		proc := NewManagedProcess(ProcessConfig{
+			Name:    "bash",
+			Args:    []string{"-c", "echo hello"},
+			OneShot: true,
+		}, logger)
+		test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
+		_, err := proc.GetLogLine(context.Background())
+		test.That(t, err.Error(), test.ShouldEqual, "logs are not being buffered for this process")
+		test.That(t, proc.Stop(), test.ShouldBeNil)
+	})
+
+	t.Run("GetLogLine returns the output of a one shot", func(t *testing.T) {
+		logger := golog.NewTestLogger(t)
+		proc := NewManagedProcess(ProcessConfig{
+			Name:    "bash",
+			Args:    []string{"-c", "echo hello"},
+			OneShot: true,
+			Log:     true,
+		}, logger)
+		test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
+		line, err := proc.GetLogLine(context.Background())
+		test.That(t, err, test.ShouldBeNil)
+		test.That(t, line, test.ShouldEqual, "hello\n")
+		test.That(t, proc.Stop(), test.ShouldBeNil)
+	})
+
+	t.Run("GetLogLine returns the log lines for a process", func(t *testing.T) {
+		logger := golog.NewTestLogger(t)
+		proc := NewManagedProcess(ProcessConfig{
+			Name: "bash",
+			Args: []string{"-c", "echo hello"},
+			Log:  true,
+		}, logger)
+		test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
+		for i := 0; i < 5; i++ {
+			line, err := proc.GetLogLine(context.Background())
+			test.That(t, err, test.ShouldBeNil)
+			test.That(t, line, test.ShouldEqual, "hello")
+		}
+		test.That(t, proc.Stop(), test.ShouldBeNil)
+	})
+}
+
 type fakeProcess struct {
 	id        string
 	stopCount int
@@ -271,4 +317,8 @@ func (fp *fakeProcess) Stop() error {
 		return errors.New("stop")
 	}
 	return nil
+}
+
+func (fp *fakeProcess) GetLogLine(ctx context.Context) (string, error) {
+	return "log line", nil
 }

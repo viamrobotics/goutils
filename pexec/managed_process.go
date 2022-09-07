@@ -35,6 +35,11 @@ type ManagedProcess interface {
 	// Stop signals and waits for the process to stop. An error is returned if
 	// there's any system level issue stopping the process.
 	Stop() error
+
+	// Returns the oldest buffered log line. Up to 1000 log lines are buffered, with the
+	// oldest evicted first. Only supports a single reader (if there are multiple callers
+	// of GetLogLine(), log lines will be partitioned among them).
+	GetLogLine(ctx context.Context) (string, error)
 }
 
 // NewManagedProcess returns a new, unstarted, from the given configuration.
@@ -50,6 +55,7 @@ func NewManagedProcess(config ProcessConfig, logger golog.Logger) ManagedProcess
 		managingCh: make(chan struct{}),
 		killCh:     make(chan struct{}),
 		logger:     logger,
+		logBuffer:  make(chan string, 1010),
 	}
 }
 
@@ -69,7 +75,8 @@ type managedProcess struct {
 	killCh      chan struct{}
 	lastWaitErr error
 
-	logger golog.Logger
+	logger    golog.Logger
+	logBuffer chan string
 }
 
 func (p *managedProcess) ID() string {
@@ -102,6 +109,7 @@ func (p *managedProcess) Start(ctx context.Context) error {
 			out, err := cmd.CombinedOutput()
 			if len(out) > 0 {
 				p.logger.Debugw("process output", "name", p.name, "output", string(out))
+				p.logBuffer <- string(out)
 			}
 			if err != nil {
 				runErr = err
@@ -188,6 +196,10 @@ func (p *managedProcess) manage(stdOut, stdErr io.ReadCloser) {
 					return
 				}
 				p.logger.Debugw("output", "name", name, "data", string(line))
+				p.logBuffer <- string(line)
+				if len(p.logBuffer) > 1000 {
+					<-p.logBuffer
+				}
 			}
 		}
 		activeLoggers.Add(2)
@@ -324,4 +336,22 @@ func (p *managedProcess) Stop() error {
 		return p.lastWaitErr
 	}
 	return errors.Errorf("non-successful exit code: %d", p.cmd.ProcessState.ExitCode())
+}
+
+func (p *managedProcess) GetLogLine(ctx context.Context) (string, error) {
+	if !p.shouldLog {
+		return "", errors.New("logs are not being buffered for this process")
+	}
+	if err := ctx.Err(); err != nil {
+		return "", errors.Wrapf(err, "error while getting log line from managed process")
+	}
+	select {
+	case line := <-p.logBuffer:
+		return line, nil
+	case <-ctx.Done():
+		if err := ctx.Err(); err != nil {
+			return "", errors.Wrapf(err, "error while getting log line from managed process")
+		}
+		return "", errors.New("context canceled while getting log line from managed process")
+	}
 }
