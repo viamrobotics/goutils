@@ -1,6 +1,6 @@
 # Example gRPC Echo Server
 
-This example server demonstrates how to run gRPC accessible via `grpc`, `grpc-web`, and `grpc-gateway` all on the same port while hosting other HTTP services.
+This example server demonstrates how to run gRPC accessible via `grpc`, `grpc-web`, `grpc-gateway`, and `grpc-over-webrtc` all on the same port while hosting other HTTP services.
 
 ## Build
 
