@@ -1,15 +1,19 @@
 package pexec
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"os"
+	"sync"
 	"testing"
 
 	"github.com/edaniels/golog"
 	"github.com/fsnotify/fsnotify"
 	"github.com/pkg/errors"
 	"go.viam.com/test"
+	"go.viam.com/utils"
 )
 
 func TestManagedProcessID(t *testing.T) {
@@ -247,47 +251,48 @@ func TestManagedProcessStop(t *testing.T) {
 	})
 }
 
-func TestManagedProcessGetLogLine(t *testing.T) {
-	t.Run("GetLogLine is not supported when Log is false", func(t *testing.T) {
+func TestManagedProcessLogWriter(t *testing.T) {
+	t.Run("Extract output of a one shot", func(t *testing.T) {
 		logger := golog.NewTestLogger(t)
+		var logReader io.Reader
+		var logWriter io.Writer
+		logReader, logWriter = io.Pipe()
 		proc := NewManagedProcess(ProcessConfig{
-			Name:    "bash",
-			Args:    []string{"-c", "echo hello"},
-			OneShot: true,
+			Name:      "bash",
+			Args:      []string{"-c", "echo hello"},
+			OneShot:   true,
+			LogWriter: &logWriter,
 		}, logger)
-		test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
-		_, err := proc.GetLogLine(context.Background())
-		test.That(t, err.Error(), test.ShouldEqual, "logs are not being buffered for this process")
-		test.That(t, proc.Stop(), test.ShouldBeNil)
-	})
-
-	t.Run("GetLogLine returns the output of a one shot", func(t *testing.T) {
-		logger := golog.NewTestLogger(t)
-		proc := NewManagedProcess(ProcessConfig{
-			Name:    "bash",
-			Args:    []string{"-c", "echo hello"},
-			OneShot: true,
-			Log:     true,
-		}, logger)
-		test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
-		line, err := proc.GetLogLine(context.Background())
-		test.That(t, err, test.ShouldBeNil)
-		test.That(t, line, test.ShouldEqual, "hello\n")
-		test.That(t, proc.Stop(), test.ShouldBeNil)
-	})
-
-	t.Run("GetLogLine returns the log lines for a process", func(t *testing.T) {
-		logger := golog.NewTestLogger(t)
-		proc := NewManagedProcess(ProcessConfig{
-			Name: "bash",
-			Args: []string{"-c", "echo hello"},
-			Log:  true,
-		}, logger)
-		test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
-		for i := 0; i < 5; i++ {
-			line, err := proc.GetLogLine(context.Background())
+		var activeReaders sync.WaitGroup
+		activeReaders.Add(1)
+		utils.PanicCapturingGo(func() {
+			defer activeReaders.Done()
+			bufferedLogReader := bufio.NewReader(logReader)
+			line, err := bufferedLogReader.ReadString('\n')
 			test.That(t, err, test.ShouldBeNil)
-			test.That(t, line, test.ShouldEqual, "hello")
+			test.That(t, line, test.ShouldEqual, "hello\n")
+		})
+		test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
+		activeReaders.Wait()
+		test.That(t, proc.Stop(), test.ShouldBeNil)
+	})
+
+	t.Run("Get log lines from a process", func(t *testing.T) {
+		logger := golog.NewTestLogger(t)
+		var logReader io.Reader
+		var logWriter io.Writer
+		logReader, logWriter = io.Pipe()
+		proc := NewManagedProcess(ProcessConfig{
+			Name:      "bash",
+			Args:      []string{"-c", "echo hello"},
+			LogWriter: &logWriter,
+		}, logger)
+		test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
+		bufferedLogReader := bufio.NewReader(logReader)
+		for i := 0; i < 5; i++ {
+			line, err := bufferedLogReader.ReadString('\n')
+			test.That(t, err, test.ShouldBeNil)
+			test.That(t, line, test.ShouldEqual, "hello\n")
 		}
 		test.That(t, proc.Stop(), test.ShouldBeNil)
 	})
@@ -317,8 +322,4 @@ func (fp *fakeProcess) Stop() error {
 		return errors.New("stop")
 	}
 	return nil
-}
-
-func (fp *fakeProcess) GetLogLine(ctx context.Context) (string, error) {
-	return "log line", nil
 }

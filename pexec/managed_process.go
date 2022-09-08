@@ -35,11 +35,6 @@ type ManagedProcess interface {
 	// Stop signals and waits for the process to stop. An error is returned if
 	// there's any system level issue stopping the process.
 	Stop() error
-
-	// Returns the oldest buffered log line. Up to 1000 log lines are buffered, with the
-	// oldest evicted first. Only supports a single reader (if there are multiple callers
-	// of GetLogLine(), log lines will be partitioned among them).
-	GetLogLine(ctx context.Context) (string, error)
 }
 
 // NewManagedProcess returns a new, unstarted, from the given configuration.
@@ -55,7 +50,7 @@ func NewManagedProcess(config ProcessConfig, logger golog.Logger) ManagedProcess
 		managingCh: make(chan struct{}),
 		killCh:     make(chan struct{}),
 		logger:     logger,
-		logBuffer:  make(chan string, 1010),
+		logWriter:  config.LogWriter,
 	}
 }
 
@@ -76,7 +71,7 @@ type managedProcess struct {
 	lastWaitErr error
 
 	logger    golog.Logger
-	logBuffer chan string
+	logWriter *io.Writer
 }
 
 func (p *managedProcess) ID() string {
@@ -105,11 +100,17 @@ func (p *managedProcess) Start(ctx context.Context) error {
 		cmd := exec.CommandContext(ctx, p.name, p.args...)
 		cmd.Dir = p.cwd
 		var runErr error
-		if p.shouldLog {
+		if p.shouldLog || p.logWriter != nil {
 			out, err := cmd.CombinedOutput()
 			if len(out) > 0 {
-				p.logger.Debugw("process output", "name", p.name, "output", string(out))
-				p.logBuffer <- string(out)
+				if p.shouldLog {
+					p.logger.Debugw("process output", "name", p.name, "output", string(out))
+				}
+				if p.logWriter != nil {
+					if _, err := (*p.logWriter).Write(out); err != nil && err != io.ErrClosedPipe {
+						return errors.Wrapf(err, "error writing process output to log writer")
+					}
+				}
 			}
 			if err != nil {
 				runErr = err
@@ -130,7 +131,7 @@ func (p *managedProcess) Start(ctx context.Context) error {
 	cmd.Dir = p.cwd
 
 	var stdOut, stdErr io.ReadCloser
-	if p.shouldLog {
+	if p.shouldLog || p.logWriter != nil {
 		var err error
 		stdOut, err = cmd.StdoutPipe()
 		if err != nil {
@@ -178,10 +179,11 @@ func (p *managedProcess) manage(stdOut, stdErr io.ReadCloser) {
 	// pipes are closed.
 	stopLogging := make(chan struct{})
 	var activeLoggers sync.WaitGroup
-	if p.shouldLog {
+	if p.shouldLog || p.logWriter != nil {
 		logPipe := func(name string, pipe io.ReadCloser) {
 			defer activeLoggers.Done()
 			pipeR := bufio.NewReader(pipe)
+			logWriterError := false
 			for {
 				select {
 				case <-stopLogging:
@@ -195,10 +197,23 @@ func (p *managedProcess) manage(stdOut, stdErr io.ReadCloser) {
 					}
 					return
 				}
-				p.logger.Debugw("output", "name", name, "data", string(line))
-				p.logBuffer <- string(line)
-				if len(p.logBuffer) > 1000 {
-					<-p.logBuffer
+				if p.shouldLog {
+					p.logger.Debugw("output", "name", name, "data", string(line))
+				}
+				if p.logWriter != nil && !logWriterError {
+					_, err := (*p.logWriter).Write(line)
+					if err == nil {
+						_, err = (*p.logWriter).Write([]byte("\n"))
+					}
+					if err != nil {
+						if err != io.ErrClosedPipe {
+							p.logger.Errorw("error writing process output to log writer", "name", name, "error", err)
+						}
+						if !p.shouldLog {
+							return
+						}
+						logWriterError = true
+					}
 				}
 			}
 		}
@@ -336,22 +351,4 @@ func (p *managedProcess) Stop() error {
 		return p.lastWaitErr
 	}
 	return errors.Errorf("non-successful exit code: %d", p.cmd.ProcessState.ExitCode())
-}
-
-func (p *managedProcess) GetLogLine(ctx context.Context) (string, error) {
-	if !p.shouldLog {
-		return "", errors.New("logs are not being buffered for this process")
-	}
-	if err := ctx.Err(); err != nil {
-		return "", errors.Wrapf(err, "error while getting log line from managed process")
-	}
-	select {
-	case line := <-p.logBuffer:
-		return line, nil
-	case <-ctx.Done():
-		if err := ctx.Err(); err != nil {
-			return "", errors.Wrapf(err, "error while getting log line from managed process")
-		}
-		return "", errors.New("context canceled while getting log line from managed process")
-	}
 }
