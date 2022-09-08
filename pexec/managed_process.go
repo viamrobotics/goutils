@@ -50,6 +50,7 @@ func NewManagedProcess(config ProcessConfig, logger golog.Logger) ManagedProcess
 		managingCh: make(chan struct{}),
 		killCh:     make(chan struct{}),
 		logger:     logger,
+		logWriter:  config.LogWriter,
 	}
 }
 
@@ -69,7 +70,8 @@ type managedProcess struct {
 	killCh      chan struct{}
 	lastWaitErr error
 
-	logger golog.Logger
+	logger    golog.Logger
+	logWriter io.Writer
 }
 
 func (p *managedProcess) ID() string {
@@ -98,10 +100,17 @@ func (p *managedProcess) Start(ctx context.Context) error {
 		cmd := exec.CommandContext(ctx, p.name, p.args...)
 		cmd.Dir = p.cwd
 		var runErr error
-		if p.shouldLog {
+		if p.shouldLog || p.logWriter != nil {
 			out, err := cmd.CombinedOutput()
 			if len(out) > 0 {
-				p.logger.Debugw("process output", "name", p.name, "output", string(out))
+				if p.shouldLog {
+					p.logger.Debugw("process output", "name", p.name, "output", string(out))
+				}
+				if p.logWriter != nil {
+					if _, err := p.logWriter.Write(out); err != nil && !errors.Is(err, io.ErrClosedPipe) {
+						p.logger.Errorw("error writing process output to log writer", "name", p.name, "error", err)
+					}
+				}
 			}
 			if err != nil {
 				runErr = err
@@ -122,7 +131,7 @@ func (p *managedProcess) Start(ctx context.Context) error {
 	cmd.Dir = p.cwd
 
 	var stdOut, stdErr io.ReadCloser
-	if p.shouldLog {
+	if p.shouldLog || p.logWriter != nil {
 		var err error
 		stdOut, err = cmd.StdoutPipe()
 		if err != nil {
@@ -170,10 +179,11 @@ func (p *managedProcess) manage(stdOut, stdErr io.ReadCloser) {
 	// pipes are closed.
 	stopLogging := make(chan struct{})
 	var activeLoggers sync.WaitGroup
-	if p.shouldLog {
+	if p.shouldLog || p.logWriter != nil {
 		logPipe := func(name string, pipe io.ReadCloser) {
 			defer activeLoggers.Done()
 			pipeR := bufio.NewReader(pipe)
+			logWriterError := false
 			for {
 				select {
 				case <-stopLogging:
@@ -187,7 +197,24 @@ func (p *managedProcess) manage(stdOut, stdErr io.ReadCloser) {
 					}
 					return
 				}
-				p.logger.Debugw("output", "name", name, "data", string(line))
+				if p.shouldLog {
+					p.logger.Debugw("output", "name", name, "data", string(line))
+				}
+				if p.logWriter != nil && !logWriterError {
+					_, err := p.logWriter.Write(line)
+					if err == nil {
+						_, err = p.logWriter.Write([]byte("\n"))
+					}
+					if err != nil {
+						if !errors.Is(err, io.ErrClosedPipe) {
+							p.logger.Debugw("error writing process output to log writer", "name", name, "error", err)
+						}
+						if !p.shouldLog {
+							return
+						}
+						logWriterError = true
+					}
+				}
 			}
 		}
 		activeLoggers.Add(2)
