@@ -67,7 +67,7 @@ func NewCloudExporter(opts CloudOptions) (Exporter, error) {
 		instanceID := os.Getenv("GCP_INSTANCE_ID")
 		if instanceID == "" {
 			// Get from GCP Metadata
-			if instanceID, err = metadata.Zone(); err != nil {
+			if instanceID, err = metadata.InstanceID(); err != nil {
 				return nil, err
 			}
 		}
