@@ -71,7 +71,7 @@ type managedProcess struct {
 	lastWaitErr error
 
 	logger    golog.Logger
-	logWriter *io.Writer
+	logWriter io.Writer
 }
 
 func (p *managedProcess) ID() string {
@@ -107,8 +107,8 @@ func (p *managedProcess) Start(ctx context.Context) error {
 					p.logger.Debugw("process output", "name", p.name, "output", string(out))
 				}
 				if p.logWriter != nil {
-					if _, err := (*p.logWriter).Write(out); err != nil && !errors.Is(err, io.ErrClosedPipe) {
-						return errors.Wrapf(err, "error writing process output to log writer")
+					if _, err := p.logWriter.Write(out); err != nil && !errors.Is(err, io.ErrClosedPipe) {
+						p.logger.Errorw("error writing process output to log writer", "name", p.name, "error", err)
 					}
 				}
 			}
@@ -201,13 +201,13 @@ func (p *managedProcess) manage(stdOut, stdErr io.ReadCloser) {
 					p.logger.Debugw("output", "name", name, "data", string(line))
 				}
 				if p.logWriter != nil && !logWriterError {
-					_, err := (*p.logWriter).Write(line)
+					_, err := p.logWriter.Write(line)
 					if err == nil {
-						_, err = (*p.logWriter).Write([]byte("\n"))
+						_, err = p.logWriter.Write([]byte("\n"))
 					}
 					if err != nil {
 						if !errors.Is(err, io.ErrClosedPipe) {
-							p.logger.Errorw("error writing process output to log writer", "name", name, "error", err)
+							p.logger.Debugw("error writing process output to log writer", "name", name, "error", err)
 						}
 						if !p.shouldLog {
 							return

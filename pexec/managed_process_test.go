@@ -255,14 +255,12 @@ func TestManagedProcessStop(t *testing.T) {
 func TestManagedProcessLogWriter(t *testing.T) {
 	t.Run("Extract output of a one shot", func(t *testing.T) {
 		logger := golog.NewTestLogger(t)
-		var logReader io.Reader
-		var logWriter io.Writer
-		logReader, logWriter = io.Pipe()
+		logReader, logWriter := io.Pipe()
 		proc := NewManagedProcess(ProcessConfig{
 			Name:      "bash",
 			Args:      []string{"-c", "echo hello"},
 			OneShot:   true,
-			LogWriter: &logWriter,
+			LogWriter: logWriter,
 		}, logger)
 		var activeReaders sync.WaitGroup
 		activeReaders.Add(1)
@@ -280,13 +278,11 @@ func TestManagedProcessLogWriter(t *testing.T) {
 
 	t.Run("Get log lines from a process", func(t *testing.T) {
 		logger := golog.NewTestLogger(t)
-		var logReader io.Reader
-		var logWriter io.Writer
-		logReader, logWriter = io.Pipe()
+		logReader, logWriter := io.Pipe()
 		proc := NewManagedProcess(ProcessConfig{
 			Name:      "bash",
 			Args:      []string{"-c", "echo hello"},
-			LogWriter: &logWriter,
+			LogWriter: logWriter,
 		}, logger)
 		test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
 		bufferedLogReader := bufio.NewReader(logReader)
