@@ -107,7 +107,7 @@ func (p *managedProcess) Start(ctx context.Context) error {
 					p.logger.Debugw("process output", "name", p.name, "output", string(out))
 				}
 				if p.logWriter != nil {
-					if _, err := (*p.logWriter).Write(out); err != nil && err != io.ErrClosedPipe {
+					if _, err := (*p.logWriter).Write(out); err != nil && !errors.Is(err, io.ErrClosedPipe) {
 						return errors.Wrapf(err, "error writing process output to log writer")
 					}
 				}
@@ -206,7 +206,7 @@ func (p *managedProcess) manage(stdOut, stdErr io.ReadCloser) {
 						_, err = (*p.logWriter).Write([]byte("\n"))
 					}
 					if err != nil {
-						if err != io.ErrClosedPipe {
+						if !errors.Is(err, io.ErrClosedPipe) {
 							p.logger.Errorw("error writing process output to log writer", "name", name, "error", err)
 						}
 						if !p.shouldLog {

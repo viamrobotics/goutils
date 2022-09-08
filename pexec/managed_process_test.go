@@ -13,6 +13,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"github.com/pkg/errors"
 	"go.viam.com/test"
+
 	"go.viam.com/utils"
 )
 
