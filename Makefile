@@ -40,10 +40,10 @@ buf-go: tool-install
 	PATH=$(PATH_WITH_TOOLS) buf generate
 
 buf-web: tool-install
-	npm install
+	cd etc && bash ./install_web_deps.sh
 	PATH=$(PATH_WITH_TOOLS) buf lint
 	PATH=$(PATH_WITH_TOOLS) buf generate --template ./etc/buf.web.gen.yaml
-	PATH=$(PATH_WITH_TOOLS) buf generate --template ./etc/buf.web.gen.yaml buf.build/googleapis/googleapis
+	PATH=$(PATH_WITH_TOOLS) buf generate --template ./etc/buf.web.gen.yaml --timeout 10m0s buf.build/googleapis/googleapis
 
 lint: tool-install
 	PATH=$(PATH_WITH_TOOLS) buf lint
