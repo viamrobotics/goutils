@@ -8,7 +8,7 @@
 </p>
 
 
-This is a set of go utilities you can use via importing `go.viam.com/utils`. Subject to change at any time.
+This is a set of go utilities you can use via importing `go.viam.com/utils`. 
 
 ## License 
 Copyright 2021-2022 Viam Inc.
