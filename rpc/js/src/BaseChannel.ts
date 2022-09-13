@@ -1,4 +1,4 @@
-import { ProtobufMessage } from "@improbable-eng/grpc-web/dist/typings/message";
+import { PacketMessage } from "./gen/proto/rpc/webrtc/v1/grpc"; 
 
 export class BaseChannel {
 	public readonly ready: Promise<any>;
@@ -61,7 +61,7 @@ export class BaseChannel {
 		this.closeWithReason(ev.error);
 	}
 
-	protected write(msg: ProtobufMessage) {
-		this.dataChannel.send(msg.serializeBinary());
+	protected write(msg: PacketMessage) {
+		this.dataChannel.send(msg.data);
 	}
 }
