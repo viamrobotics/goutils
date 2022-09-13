@@ -1,24 +1,22 @@
-import { GrpcTransport, GrpcOptions } from '@protobuf-ts/grpc-transport';
-import {  } from '@protobuf-ts/runtime';
-import { RpcMetadata } from '@protobuf-ts/runtime-rpc';
-import { Metadata, PacketMessage, RequestHeaders, RequestMessage, Response, ResponseHeaders, ResponseMessage, ResponseTrailers, Stream, Strings } from "./gen/proto/rpc/webrtc/v1/grpc";
+import { grpc } from "@improbable-eng/grpc-web";
+import { Metadata, PacketMessage, RequestHeaders, RequestMessage, Response, ResponseHeaders, ResponseMessage, ResponseTrailers, Stream, Strings } from "./gen/proto/rpc/webrtc/v1/grpc_pb";
 import { BaseStream } from "./BaseStream";
 import { ClientChannel } from "./ClientChannel";
 
 // see golang/client_stream.go
 const maxRequestMessagePacketDataSize = 16373;
 
-export class ClientStream extends BaseStream implements GrpcTransport {
+export class ClientStream extends BaseStream implements grpc.Transport {
 	private readonly channel: ClientChannel;
 	private headersReceived: boolean = false;
 	private trailersReceived: boolean = false;
 
-	constructor(channel: ClientChannel, stream: Stream, onDone: (id: string) => void, opts: GrpcOptions) {
+	constructor(channel: ClientChannel, stream: Stream, onDone: (id: number) => void, opts: grpc.TransportOptions) {
 		super(stream, onDone, opts);
 		this.channel = channel;
 	}
 
-	public start(metadata: RpcMetadata) {
+	public start(metadata: grpc.Metadata) {
 		const method = `/${this.opts.methodDefinition.service.serviceName}/${this.opts.methodDefinition.methodName}`;
 		const requestHeaders = new RequestHeaders();
 		requestHeaders.setMethod(method);
