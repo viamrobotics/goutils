@@ -1,6 +1,5 @@
-
-import { GrpcTransport, GrpcOptions } from '@protobuf-ts/grpc-transport'
-import { Request, RequestHeaders, RequestMessage, Response, Stream } from "./gen/proto/rpc/webrtc/v1/grpc";
+import { grpc } from "@improbable-eng/grpc-web";
+import { Request, RequestHeaders, RequestMessage, Response, Stream } from "./gen/proto/rpc/webrtc/v1/grpc_pb";
 import { BaseChannel } from "./BaseChannel";
 import { ClientStream } from "./ClientStream";
 
@@ -20,8 +19,8 @@ export class ClientChannel extends BaseChannel {
 		dc.onmessage = (event: MessageEvent<any>) => this.onChannelMessage(event);
 	}
 
-	public transportFactory(): GrpcTransport {
-		return (opts: GrpcOptions) => {
+	public transportFactory(): grpc.TransportFactory {
+		return (opts: grpc.TransportOptions) => {
 			return this.newStream(this.nextStreamID(), opts);
 		}
 	}
@@ -51,8 +50,9 @@ export class ClientChannel extends BaseChannel {
 	}
 
 	private nextStreamID(): Stream {
-		const id = `${this.streamIDCounter++}`;
-		return { id };
+		const stream = new Stream();
+		stream.setId(this.streamIDCounter++);
+		return stream;
 	}
 
 	private newStream(stream: Stream, opts: grpc.TransportOptions): ClientStream {
