@@ -6,4 +6,9 @@
 </p>
 
 
-This is a set of go utilities you can use via importing `go.viam.com/utils`.
+This is a set of go utilities you can use via importing `go.viam.com/utils`. 
+
+## License 
+Copyright 2021-2022 Viam Inc.
+
+Apache 2.0 - See [LICENSE](https://github.com/viamrobotics/goutils/blob/main/LICENSE) file
