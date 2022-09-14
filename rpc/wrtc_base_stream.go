@@ -7,7 +7,8 @@ import (
 	"sync"
 
 	"github.com/edaniels/golog"
-	protov1 "github.com/golang/protobuf/proto" 
+	//nolint:staticcheck
+	protov1 "github.com/golang/protobuf/proto"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/proto"
 

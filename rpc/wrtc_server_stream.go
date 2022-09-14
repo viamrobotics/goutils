@@ -6,7 +6,8 @@ import (
 	"io"
 
 	"github.com/edaniels/golog"
-	protov1 "github.com/golang/protobuf/proto" 
+	//nolint:staticcheck
+	protov1 "github.com/golang/protobuf/proto"
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc"
