@@ -1,6 +1,5 @@
 {
   "name": "goutils",
-  "version": "0.0.63",
   "license": "Apache-2.0",
   "devDependencies": {
     "ts-protoc-gen": "0.15.0"
