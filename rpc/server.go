@@ -490,7 +490,7 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 		}
 
 		if sOpts.webrtcOpts.EnableInternalSignaling {
-			logger.Info("will run internal signaling service")
+			logger.Debug("will run internal signaling service")
 			signalingCallQueue := NewMemoryWebRTCCallQueue()
 			server.signalingCallQueue = signalingCallQueue
 			if err := server.RegisterServiceServer(
@@ -503,7 +503,7 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 			}
 
 			address := grpcListener.Addr().String()
-			logger.Infow(
+			logger.Debugw(
 				"will run internal signaling answerer",
 				"signaling_address", address,
 				"for_hosts", internalSignalingHosts,

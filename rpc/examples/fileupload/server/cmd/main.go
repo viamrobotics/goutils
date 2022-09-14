@@ -259,11 +259,14 @@ func runServer(
 	mux.Handle(pat.New("/api/*"), http.StripPrefix("/api", rpcServer.GatewayHandler()))
 	mux.Handle(pat.New("/*"), rpcServer.GRPCHandler())
 
-	httpServer, err := utils.NewPlainTextHTTP2Server(mux)
+	httpServer, err := utils.NewPossiblySecureHTTPServer(mux, utils.HTTPServerOptions{
+		Secure:         secure,
+		MaxHeaderBytes: rpc.MaxMessageSize,
+		Addr:           listenerAddr,
+	})
 	if err != nil {
 		return err
 	}
-	httpServer.Addr = listenerAddr
 
 	done := make(chan struct{})
 	defer func() { <-done }()
@@ -275,7 +278,7 @@ func runServer(
 				panic(err)
 			}
 		}()
-		if err := httpServer.Shutdown(ctx); err != nil {
+		if err := httpServer.Shutdown(ctx); err != nil && utils.FilterOutError(err, context.Canceled) != nil {
 			panic(err)
 		}
 	})

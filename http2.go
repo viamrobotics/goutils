@@ -2,12 +2,53 @@ package utils
 
 import (
 	"context"
+	"crypto/tls"
 	"net/http"
 	"time"
 
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 )
+
+// HTTPServerOptions define options to use when calling NewPossiblySecureHTTPServer.
+type HTTPServerOptions struct {
+	Secure         bool
+	TLSAuth        bool
+	MaxHeaderBytes int
+	Addr           string
+}
+
+// NewPossiblySecureHTTPServer returns an http.Server capable of handling HTTP/2 requests that
+// may be plaintext or secured depending on the options.
+func NewPossiblySecureHTTPServer(handler http.Handler, opts HTTPServerOptions) (*http.Server, error) {
+	if opts.MaxHeaderBytes == 0 {
+		opts.MaxHeaderBytes = 1 << 20
+	}
+	var httpServer *http.Server
+	if opts.Secure {
+		httpServer = &http.Server{
+			ReadTimeout:    10 * time.Second,
+			MaxHeaderBytes: opts.MaxHeaderBytes,
+			Handler:        handler,
+		}
+
+		if opts.TLSAuth {
+			httpServer.TLSConfig = &tls.Config{
+				MinVersion: tls.VersionTLS12,
+				ClientAuth: tls.VerifyClientCertIfGiven,
+			}
+		}
+	} else {
+		var err error
+		httpServer, err = NewPlainTextHTTP2Server(handler)
+		if err != nil {
+			return httpServer, err
+		}
+	}
+	httpServer.MaxHeaderBytes = opts.MaxHeaderBytes
+	httpServer.Addr = opts.Addr
+	return httpServer, nil
+}
 
 // NewPlainTextHTTP2Server returns an http.Server capable of handling HTTP/2
 // over plaintext via h2c for the given handler.

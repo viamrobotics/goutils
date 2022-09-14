@@ -15,7 +15,6 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/Masterminds/sprig"
 	"github.com/edaniels/golog"
@@ -279,17 +278,14 @@ func runServer(
 	mux.Handle(pat.New("/api/*"), http.StripPrefix("/api", rpcServer.GatewayHandler()))
 	mux.Handle(pat.New("/*"), rpcServer.GRPCHandler())
 
-	httpServer := &http.Server{
-		ReadTimeout:    10 * time.Second,
+	httpServer, err := utils.NewPossiblySecureHTTPServer(mux, utils.HTTPServerOptions{
+		Secure:         secure,
+		TLSAuth:        tlsAuth,
 		MaxHeaderBytes: rpc.MaxMessageSize,
-	}
-	httpServer.Addr = listenerAddr
-	httpServer.Handler = mux
-	if secure && tlsAuth {
-		httpServer.TLSConfig = &tls.Config{
-			MinVersion: tls.VersionTLS12,
-			ClientAuth: tls.VerifyClientCertIfGiven,
-		}
+		Addr:           listenerAddr,
+	})
+	if err != nil {
+		return err
 	}
 
 	done := make(chan struct{})
@@ -302,7 +298,7 @@ func runServer(
 				panic(err)
 			}
 		}()
-		if err := httpServer.Shutdown(ctx); err != nil {
+		if err := httpServer.Shutdown(ctx); err != nil && utils.FilterOutError(err, context.Canceled) != nil {
 			panic(err)
 		}
 	})
