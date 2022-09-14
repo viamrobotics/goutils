@@ -1,7 +1,7 @@
 {
   "name": "@viamrobotics/rpc",
-  "version": "0.1.22",
-  "license": "MIT",
+  "version": "0.0.63",
+  "license": "Apache-2.0",
   "dependencies": {
     "@improbable-eng/grpc-web": "^0.13.0",
     "google-protobuf": "^3.14.0",
