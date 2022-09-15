@@ -82,6 +82,48 @@ func TestMakeSimpleAuthHandler(t *testing.T) {
 	})
 }
 
+func TestMakeSimpleMultiAuthHandler(t *testing.T) {
+	test.That(t, func() {
+		MakeSimpleMultiAuthHandler([]string{"hey"}, nil)
+	}, test.ShouldPanicWith, "expected at least one payload")
+
+	t.Run("with no entities should always fail", func(t *testing.T) {
+		handler := MakeSimpleMultiAuthHandler(nil, []string{"something"})
+		_, err := handler.Authenticate(context.Background(), "", "something")
+		test.That(t, err, test.ShouldNotBeNil)
+		_, err = handler.Authenticate(context.Background(), "entity", "something")
+		test.That(t, err, test.ShouldNotBeNil)
+		_, err = handler.VerifyEntity(context.Background(), "")
+		test.That(t, err, test.ShouldNotBeNil)
+		_, err = handler.VerifyEntity(context.Background(), "entity")
+		test.That(t, err, test.ShouldNotBeNil)
+	})
+
+	t.Run("should validate entities and key", func(t *testing.T) {
+		expectedEntities := []string{"one", "two", "three"}
+		expectedKeys := []string{"mykey", "somethingelse"}
+		handler := MakeSimpleMultiAuthHandler(expectedEntities, expectedKeys)
+
+		for _, expectedKey := range expectedKeys {
+			t.Run(expectedKey, func(t *testing.T) {
+				for _, ent := range expectedEntities {
+					_, err := handler.Authenticate(context.Background(), ent, expectedKey)
+					test.That(t, err, test.ShouldBeNil)
+					_, err = handler.Authenticate(context.Background(), ent, expectedKey+"1")
+					test.That(t, err, test.ShouldEqual, errInvalidCredentials)
+					ret, err := handler.VerifyEntity(context.Background(), ent)
+					test.That(t, err, test.ShouldBeNil)
+					test.That(t, ret, test.ShouldEqual, ent)
+				}
+				_, err := handler.Authenticate(context.Background(), "notent", expectedKey)
+				test.That(t, err, test.ShouldBeError, errInvalidCredentials)
+				_, err = handler.VerifyEntity(context.Background(), "notent")
+				test.That(t, err, test.ShouldBeError, errCannotAuthEntity)
+			})
+		}
+	})
+}
+
 func TestWithTokenVerificationKeyProvider(t *testing.T) {
 	handler := MakeSimpleAuthHandler([]string{"one"}, "key")
 	err1 := errors.New("whoops")

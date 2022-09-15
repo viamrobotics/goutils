@@ -124,6 +124,15 @@ func WithPublicKeyProvider(
 // shared key. This is NOT secure for usage over networks exposed to the public internet.
 // For that, use a more sophisticated handler with at least one key per entity.
 func MakeSimpleAuthHandler(forEntities []string, expectedPayload string) AuthHandler {
+	return MakeSimpleMultiAuthHandler(forEntities, []string{expectedPayload})
+}
+
+// MakeSimpleMultiAuthHandler returns a simple auth handler that handles multiple entities
+// sharing multiple possible payloads. This is useful for rolling keys.
+func MakeSimpleMultiAuthHandler(forEntities, expectedPayloads []string) AuthHandler {
+	if len(expectedPayloads) == 0 {
+		panic("expected at least one payload")
+	}
 	entityChecker := MakeEntitiesChecker(forEntities)
 	return MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) (map[string]string, error) {
 		if err := entityChecker(ctx, entity); err != nil {
@@ -132,8 +141,12 @@ func MakeSimpleAuthHandler(forEntities []string, expectedPayload string) AuthHan
 			}
 			return nil, err
 		}
-		if subtle.ConstantTimeCompare([]byte(payload), []byte(expectedPayload)) == 1 {
-			return map[string]string{}, nil
+
+		payloadB := []byte(payload)
+		for _, expectedPayload := range expectedPayloads {
+			if subtle.ConstantTimeCompare(payloadB, []byte(expectedPayload)) == 1 {
+				return map[string]string{}, nil
+			}
 		}
 		return nil, errInvalidCredentials
 	}, func(ctx context.Context, entity string) (interface{}, error) {
