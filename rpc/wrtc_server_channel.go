@@ -113,7 +113,7 @@ func (ch *webrtcServerChannel) onChannelMessage(msg webrtc.DataChannelMessage) {
 		timeout := headers.Headers.Timeout.AsDuration()
 		var cancelCtx func()
 		if timeout == 0 {
-			cancelCtx = func() {}
+			handlerCtx, cancelCtx = context.WithCancel(handlerCtx)
 		} else {
 			handlerCtx, cancelCtx = context.WithTimeout(handlerCtx, timeout)
 		}
