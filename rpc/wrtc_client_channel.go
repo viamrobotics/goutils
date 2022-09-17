@@ -204,6 +204,13 @@ func (ch *webrtcClientChannel) newStream(ctx context.Context, stream *webrtcpb.S
 		)
 		activeStream = activeWebRTCClienStream{clientStream, cancel}
 		ch.streams[id] = activeStream
+
+		go func() {
+			<-ctx.Done()
+			if !clientStream.Closed() {
+				clientStream.ResetStream()
+			}
+		}()
 	}
 	ch.mu.Unlock()
 	return activeStream.cs, nil
@@ -250,6 +257,15 @@ func (ch *webrtcClientChannel) writeMessage(stream *webrtcpb.Stream, msg *webrtc
 		Stream: stream,
 		Type: &webrtcpb.Request_Message{
 			Message: msg,
+		},
+	})
+}
+
+func (ch *webrtcClientChannel) writeReset(stream *webrtcpb.Stream) error {
+	return ch.webrtcBaseChannel.write(&webrtcpb.Request{
+		Stream: stream,
+		Type: &webrtcpb.Request_ResetStream{
+			ResetStream: true,
 		},
 	})
 }

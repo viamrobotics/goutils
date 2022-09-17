@@ -68,7 +68,7 @@ func newWebRTCClientStream(
 // It is safe to have a goroutine calling SendMsg and another goroutine
 // calling RecvMsg on the same stream at the same time, but it is not safe
 // to call SendMsg on the same stream in different goroutines. It is also
-// not safe to call CloseSend concurrently with SendMsg.
+// not safe to call CloseSend concurrently with SendMsg or ResetStream.
 func (s *webrtcClientStream) SendMsg(m interface{}) error {
 	return s.writeMessage(m, false)
 }
@@ -109,9 +109,21 @@ func (s *webrtcClientStream) Trailer() metadata.MD {
 
 // CloseSend closes the send direction of the stream. It closes the stream
 // when non-nil error is met. It is also not safe to call CloseSend
-// concurrently with SendMsg.
+// concurrently with SendMsg or ResetStream.
 func (s *webrtcClientStream) CloseSend() error {
 	return s.writeMessage(nil, true)
+}
+
+// ResetStream cancels the stream and sends a reset signal.
+// It is also not safe to call ResetStream
+// concurrently with SendMsg or CloseSend.
+func (s *webrtcClientStream) ResetStream() (err error) {
+	defer func() {
+		if err != nil {
+			s.closeWithRecvError(err)
+		}
+	}()
+	return s.ch.writeReset(s.stream)
 }
 
 func (s *webrtcClientStream) writeHeaders(headers *webrtcpb.RequestHeaders) (err error) {
