@@ -35,10 +35,10 @@ type webrtcClientChannel struct {
 	*webrtcBaseChannel
 	mu              sync.Mutex
 	streamIDCounter uint64
-	streams         map[uint64]activeWebRTCClienStream
+	streams         map[uint64]activeWebRTCClientStream
 }
 
-type activeWebRTCClienStream struct {
+type activeWebRTCClientStream struct {
 	cs     *webrtcClientStream
 	cancel func()
 }
@@ -59,7 +59,7 @@ func newWebRTCClientChannel(
 	)
 	ch := &webrtcClientChannel{
 		webrtcBaseChannel: base,
-		streams:           map[uint64]activeWebRTCClienStream{},
+		streams:           map[uint64]activeWebRTCClientStream{},
 	}
 	dataChannel.OnMessage(ch.onChannelMessage)
 	return ch
@@ -202,7 +202,7 @@ func (ch *webrtcClientChannel) newStream(ctx context.Context, stream *webrtcpb.S
 			ch.removeStreamByID,
 			ch.webrtcBaseChannel.logger.With("id", id),
 		)
-		activeStream = activeWebRTCClienStream{clientStream, cancel}
+		activeStream = activeWebRTCClientStream{clientStream, cancel}
 		ch.streams[id] = activeStream
 
 		go func() {
