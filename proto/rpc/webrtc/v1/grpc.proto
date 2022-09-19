@@ -28,7 +28,7 @@ message Request {
 	oneof type {
 		RequestHeaders headers = 2;
 		RequestMessage message = 3;
-		bool reset_stream = 4;
+		bool rst_stream = 4;
 	}
 }
 

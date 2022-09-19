@@ -264,8 +264,8 @@ func (ch *webrtcClientChannel) writeMessage(stream *webrtcpb.Stream, msg *webrtc
 func (ch *webrtcClientChannel) writeReset(stream *webrtcpb.Stream) error {
 	return ch.webrtcBaseChannel.write(&webrtcpb.Request{
 		Stream: stream,
-		Type: &webrtcpb.Request_ResetStream{
-			ResetStream: true,
+		Type: &webrtcpb.Request_RstStream{
+			RstStream: true,
 		},
 	})
 }

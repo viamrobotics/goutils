@@ -222,7 +222,7 @@ func (s *webrtcServerStream) onRequest(request *webrtcpb.Request) {
 			return
 		}
 		s.processMessage(r.Message)
-	case *webrtcpb.Request_ResetStream:
+	case *webrtcpb.Request_RstStream:
 		if err := s.closeWithSendError(status.Error(codes.Canceled, "request cancelled")); err != nil {
 			s.logger.Errorw("error closing", "error", err)
 		}
