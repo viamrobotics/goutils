@@ -13,6 +13,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
+	"go.viam.com/utils"
 	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
 )
 
@@ -22,13 +23,14 @@ var _ = grpc.ClientStream(&webrtcClientStream{})
 // unary and streaming call requests.
 type webrtcClientStream struct {
 	*webrtcBaseStream
-	mu               sync.Mutex
-	ch               *webrtcClientChannel
-	headers          metadata.MD
-	trailers         metadata.MD
-	userCtx          context.Context
-	headersReceived  chan struct{}
-	trailersReceived bool
+	mu                      sync.Mutex
+	activeBackgroundWorkers sync.WaitGroup
+	ch                      *webrtcClientChannel
+	headers                 metadata.MD
+	trailers                metadata.MD
+	userCtx                 context.Context
+	headersReceived         chan struct{}
+	trailersReceived        bool
 }
 
 // newWebRTCClientStream creates a gRPC stream from the given client channel with a
@@ -48,6 +50,14 @@ func newWebRTCClientStream(
 		ch:               channel,
 		headersReceived:  make(chan struct{}),
 	}
+	s.activeBackgroundWorkers.Add(1)
+	utils.PanicCapturingGo(func() {
+		defer s.activeBackgroundWorkers.Done()
+		<-ctx.Done()
+		if !s.Closed() {
+			s.ResetStream()
+		}
+	})
 	return s
 }
 
@@ -124,6 +134,13 @@ func (s *webrtcClientStream) ResetStream() (err error) {
 		}
 	}()
 	return s.ch.writeReset(s.stream)
+}
+
+// Close closes the stream.
+func (s *webrtcClientStream) Close() error {
+	s.cancel()
+	s.activeBackgroundWorkers.Wait()
+	return nil
 }
 
 func (s *webrtcClientStream) writeHeaders(headers *webrtcpb.RequestHeaders) (err error) {

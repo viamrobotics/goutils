@@ -69,7 +69,7 @@ func newWebRTCClientChannel(
 func (ch *webrtcClientChannel) Close() error {
 	ch.mu.Lock()
 	for _, s := range ch.streams {
-		s.cancel()
+		s.cs.Close()
 	}
 	ch.mu.Unlock()
 	return ch.webrtcBaseChannel.Close()
@@ -204,13 +204,6 @@ func (ch *webrtcClientChannel) newStream(ctx context.Context, stream *webrtcpb.S
 		)
 		activeStream = activeWebRTCClientStream{clientStream, cancel}
 		ch.streams[id] = activeStream
-
-		go func() {
-			<-ctx.Done()
-			if !clientStream.Closed() {
-				clientStream.ResetStream()
-			}
-		}()
 	}
 	ch.mu.Unlock()
 	return activeStream.cs, nil
