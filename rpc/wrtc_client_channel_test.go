@@ -3,6 +3,7 @@ package rpc
 import (
 	"context"
 	"errors"
+	"io"
 	"sync"
 	"testing"
 	"time"
@@ -317,4 +318,93 @@ func TestWebRTCClientChannel(t *testing.T) {
 	rejected.Wait()
 	test.That(t, clientCh.Close(), test.ShouldBeNil)
 	test.That(t, <-clientErr, test.ShouldEqual, context.Canceled)
+}
+
+func TestWebRTCClientChannelResetStream(t *testing.T) {
+	testutils.SkipUnlessInternet(t)
+	logger := golog.NewTestLogger(t)
+	pc1, pc2, dc1, dc2 := setupWebRTCPeers(t)
+
+	clientCh := newWebRTCClientChannel(pc1, dc1, logger)
+	defer func() {
+		test.That(t, clientCh.Close(), test.ShouldBeNil)
+	}()
+	serverCh := newBaseChannel(context.Background(), pc2, dc2, nil, logger)
+	defer func() {
+		test.That(t, serverCh.Close(), test.ShouldBeNil)
+	}()
+
+	<-clientCh.Ready()
+	<-serverCh.Ready()
+
+	someStatus, _ := status.FromError(errors.New("ouch"))
+
+	someStatusMd, err := proto.Marshal(someStatus.Proto())
+	test.That(t, err, test.ShouldBeNil)
+
+	var expectedMessagesMu sync.Mutex
+	expectedMessages := []*webrtcpb.Request{
+		{
+			Stream: &webrtcpb.Stream{Id: 1},
+			Type: &webrtcpb.Request_Headers{
+				Headers: &webrtcpb.RequestHeaders{
+					Method:  "thing",
+					Timeout: durationpb.New(0),
+				},
+			},
+		},
+		{
+			Stream: &webrtcpb.Stream{Id: 1},
+			Type: &webrtcpb.Request_Message{
+				Message: &webrtcpb.RequestMessage{
+					HasMessage: true,
+					PacketMessage: &webrtcpb.PacketMessage{
+						Data: someStatusMd,
+						Eom:  true,
+					},
+					Eos: true,
+				},
+			},
+		},
+		{
+			Stream: &webrtcpb.Stream{Id: 1},
+			Type: &webrtcpb.Request_RstStream{
+				RstStream: true,
+			},
+		},
+	}
+
+	var ctx context.Context
+	var cancel func()
+	serverCh.dataChannel.OnMessage(func(msg webrtc.DataChannelMessage) {
+		expectedMessagesMu.Lock()
+		defer expectedMessagesMu.Unlock()
+
+		req := &webrtcpb.Request{}
+		test.That(t, proto.Unmarshal(msg.Data, req), test.ShouldBeNil)
+
+		expected := expectedMessages[0]
+		expectedMessages = expectedMessages[1:]
+
+		logger.Debugw("comparing", "expected", expected, "actual", req)
+		test.That(t, proto.Equal(expected, req), test.ShouldBeTrue)
+
+		if len(expectedMessages) == 1 {
+			cancel()
+		}
+
+		if len(expectedMessages) == 0 {
+			test.That(t, serverCh.write(&webrtcpb.Response{
+				Stream: &webrtcpb.Stream{Id: 1},
+				Type:   &webrtcpb.Response_Headers{},
+			}), test.ShouldBeError, io.ErrClosedPipe)
+		}
+	})
+	ctx, cancel = context.WithCancel(context.Background())
+	defer cancel()
+
+	var respStatus pbstatus.Status
+	err = clientCh.Invoke(ctx, "thing", someStatus.Proto(), &respStatus)
+	test.That(t, err, test.ShouldBeError, context.Canceled)
+	test.That(t, &respStatus, test.ShouldResemble, &pbstatus.Status{})
 }

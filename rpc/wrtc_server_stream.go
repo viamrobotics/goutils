@@ -222,6 +222,11 @@ func (s *webrtcServerStream) onRequest(request *webrtcpb.Request) {
 			return
 		}
 		s.processMessage(r.Message)
+	case *webrtcpb.Request_RstStream:
+		if err := s.closeWithSendError(status.Error(codes.Canceled, "request cancelled")); err != nil {
+			s.logger.Errorw("error closing", "error", err)
+		}
+		return
 	default:
 		if err := s.closeWithSendError(status.Error(codes.InvalidArgument, fmt.Sprintf("unknown request type %T", r))); err != nil {
 			s.logger.Errorw("error closing", "error", err)
