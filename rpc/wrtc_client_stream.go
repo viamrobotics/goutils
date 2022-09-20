@@ -55,7 +55,9 @@ func newWebRTCClientStream(
 		defer s.activeBackgroundWorkers.Done()
 		<-ctx.Done()
 		if !s.Closed() {
-			s.ResetStream()
+			if err := s.ResetStream(); err != nil {
+				s.logger.Errorw("error resetting stream", "error", err)
+			}
 		}
 	})
 	return s
