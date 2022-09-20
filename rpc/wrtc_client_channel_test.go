@@ -316,6 +316,8 @@ func TestWebRTCClientChannel(t *testing.T) {
 		clientErr <- clientCh.Invoke(context.Background(), "thing", someStatus.Proto(), &respStatus)
 	}()
 	rejected.Wait()
+	// client channel cancellation will send a RST_STREAM signal for non-closed streams
+	rejected.Add(1)
 	test.That(t, clientCh.Close(), test.ShouldBeNil)
 	test.That(t, <-clientErr, test.ShouldEqual, context.Canceled)
 }
@@ -400,8 +402,10 @@ func TestWebRTCClientChannelResetStream(t *testing.T) {
 			}), test.ShouldBeError, io.ErrClosedPipe)
 		}
 	})
+	expectedMessagesMu.Lock()
 	ctx, cancel = context.WithCancel(context.Background())
 	defer cancel()
+	expectedMessagesMu.Unlock()
 
 	var respStatus pbstatus.Status
 	err = clientCh.Invoke(ctx, "thing", someStatus.Proto(), &respStatus)
