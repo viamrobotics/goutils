@@ -23,6 +23,8 @@ var _ = grpc.ClientStream(&webrtcClientStream{})
 // unary and streaming call requests.
 type webrtcClientStream struct {
 	*webrtcBaseStream
+	ctx                     context.Context
+	cancel                  func()
 	mu                      sync.Mutex
 	activeBackgroundWorkers sync.WaitGroup
 	ch                      *webrtcClientChannel
@@ -47,6 +49,8 @@ func newWebRTCClientStream(
 	bs := newWebRTCBaseStream(ctx, cancel, stream, onDone, logger)
 	s := &webrtcClientStream{
 		webrtcBaseStream: bs,
+		ctx:              ctx,
+		cancel:           cancel,
 		ch:               channel,
 		headersReceived:  make(chan struct{}),
 	}
@@ -54,9 +58,9 @@ func newWebRTCClientStream(
 	utils.PanicCapturingGo(func() {
 		defer s.activeBackgroundWorkers.Done()
 		<-ctx.Done()
-		if !s.Closed() {
+		if !s.webrtcBaseStream.Closed() {
 			if err := s.ResetStream(); err != nil {
-				s.logger.Errorw("error resetting stream", "error", err)
+				s.webrtcBaseStream.logger.Errorw("error resetting stream", "error", err)
 			}
 		}
 	})
@@ -132,10 +136,10 @@ func (s *webrtcClientStream) CloseSend() error {
 func (s *webrtcClientStream) ResetStream() (err error) {
 	defer func() {
 		if err != nil {
-			s.closeWithRecvError(err)
+			s.webrtcBaseStream.closeWithRecvError(err)
 		}
 	}()
-	return s.ch.writeReset(s.stream)
+	return s.ch.writeReset(s.webrtcBaseStream.stream)
 }
 
 // Close closes the stream.
@@ -148,10 +152,10 @@ func (s *webrtcClientStream) Close() error {
 func (s *webrtcClientStream) writeHeaders(headers *webrtcpb.RequestHeaders) (err error) {
 	defer func() {
 		if err != nil {
-			s.closeWithRecvError(err)
+			s.webrtcBaseStream.closeWithRecvError(err)
 		}
 	}()
-	return s.ch.writeHeaders(s.stream, headers)
+	return s.ch.writeHeaders(s.webrtcBaseStream.stream, headers)
 }
 
 var maxRequestMessagePacketDataSize int
@@ -177,7 +181,7 @@ func init() {
 func (s *webrtcClientStream) writeMessage(m interface{}, eos bool) (err error) {
 	defer func() {
 		if err != nil {
-			s.closeWithRecvError(err)
+			s.webrtcBaseStream.closeWithRecvError(err)
 		}
 	}()
 
@@ -193,7 +197,7 @@ func (s *webrtcClientStream) writeMessage(m interface{}, eos bool) (err error) {
 	}
 
 	if len(data) == 0 {
-		return s.ch.writeMessage(s.stream, &webrtcpb.RequestMessage{
+		return s.ch.writeMessage(s.webrtcBaseStream.stream, &webrtcpb.RequestMessage{
 			HasMessage: m != nil, // maybe no data but a non-nil message
 			PacketMessage: &webrtcpb.PacketMessage{
 				Eom: true,
@@ -214,7 +218,7 @@ func (s *webrtcClientStream) writeMessage(m interface{}, eos bool) (err error) {
 		if len(data) == 0 {
 			packet.Eom = true
 		}
-		if err := s.ch.writeMessage(s.stream, &webrtcpb.RequestMessage{
+		if err := s.ch.writeMessage(s.webrtcBaseStream.stream, &webrtcpb.RequestMessage{
 			HasMessage:    m != nil, // maybe no data but a non-nil message
 			PacketMessage: packet,
 			Eos:           eos,
@@ -230,12 +234,12 @@ func (s *webrtcClientStream) onResponse(resp *webrtcpb.Response) {
 	case *webrtcpb.Response_Headers:
 		select {
 		case <-s.headersReceived:
-			s.closeWithRecvError(errors.New("headers already received"))
+			s.webrtcBaseStream.closeWithRecvError(errors.New("headers already received"))
 			return
 		default:
 		}
 		if s.trailersReceived {
-			s.closeWithRecvError(errors.New("headers received after trailers"))
+			s.webrtcBaseStream.closeWithRecvError(errors.New("headers received after trailers"))
 			return
 		}
 		s.processHeaders(r.Headers)
@@ -243,11 +247,11 @@ func (s *webrtcClientStream) onResponse(resp *webrtcpb.Response) {
 		select {
 		case <-s.headersReceived:
 		default:
-			s.closeWithRecvError(errors.New("headers not yet received"))
+			s.webrtcBaseStream.closeWithRecvError(errors.New("headers not yet received"))
 			return
 		}
 		if s.trailersReceived {
-			s.closeWithRecvError(errors.New("message received after trailers"))
+			s.webrtcBaseStream.closeWithRecvError(errors.New("message received after trailers"))
 			return
 		}
 		s.processMessage(r.Message)
@@ -268,7 +272,7 @@ func (s *webrtcClientStream) processHeaders(headers *webrtcpb.ResponseHeaders) {
 
 func (s *webrtcClientStream) processMessage(msg *webrtcpb.ResponseMessage) {
 	if s.trailersReceived {
-		s.logger.Error("message received after trailers")
+		s.webrtcBaseStream.logger.Error("message received after trailers")
 		return
 	}
 	data, eop := s.webrtcBaseStream.processMessage(msg.PacketMessage)
@@ -276,11 +280,11 @@ func (s *webrtcClientStream) processMessage(msg *webrtcpb.ResponseMessage) {
 		return
 	}
 	s.webrtcBaseStream.mu.Lock()
-	if s.recvClosed {
+	if s.webrtcBaseStream.recvClosed {
 		s.webrtcBaseStream.mu.Unlock()
 		return
 	}
-	msgCh := s.msgCh
+	msgCh := s.webrtcBaseStream.msgCh
 	s.webrtcBaseStream.activeSenders.Add(1)
 	s.webrtcBaseStream.mu.Unlock()
 
@@ -296,5 +300,5 @@ func (s *webrtcClientStream) processMessage(msg *webrtcpb.ResponseMessage) {
 func (s *webrtcClientStream) processTrailers(trailers *webrtcpb.ResponseTrailers) {
 	s.trailersReceived = true
 	respStatus := status.FromProto(trailers.Status)
-	s.closeWithRecvError(respStatus.Err())
+	s.webrtcBaseStream.closeWithRecvError(respStatus.Err())
 }

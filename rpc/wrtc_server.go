@@ -212,7 +212,7 @@ type (
 
 func (srv *webrtcServer) unaryHandler(ss interface{}, handler methodHandler) handlerFunc {
 	return func(s *webrtcServerStream) error {
-		response, err := handler(ss, s.ctx, s.RecvMsg, srv.unaryInt)
+		response, err := handler(ss, s.webrtcBaseStream.ctx, s.webrtcBaseStream.RecvMsg, srv.unaryInt)
 		if err != nil {
 			return s.closeWithSendError(err)
 		}
@@ -222,7 +222,7 @@ func (srv *webrtcServer) unaryHandler(ss interface{}, handler methodHandler) han
 
 func (srv *webrtcServer) streamHandler(ss interface{}, method string, desc grpc.StreamDesc) handlerFunc {
 	return func(s *webrtcServerStream) error {
-		ctx := grpc.NewContextWithServerTransportStream(s.Context(), serverTransportStream{s})
+		ctx := grpc.NewContextWithServerTransportStream(s.webrtcBaseStream.Context(), serverTransportStream{s})
 		wrappedStream := ctxWrappedServerStream{s, ctx}
 
 		var err error
