@@ -68,12 +68,16 @@ func newWebRTCClientChannel(
 // Close closes all streams and the underlying channel.
 func (ch *webrtcClientChannel) Close() error {
 	ch.mu.Lock()
-	for _, s := range ch.streams {
+	streamsToClose := make(map[uint64]activeWebRTCClientStream, len(ch.streams))
+	for k, v := range ch.streams {
+		streamsToClose[k] = v
+	}
+	ch.mu.Unlock()
+	for _, s := range streamsToClose {
 		if err := s.cs.Close(); err != nil {
 			s.cs.webrtcBaseStream.logger.Errorw("error closing stream", "error", err)
 		}
 	}
-	ch.mu.Unlock()
 	return ch.webrtcBaseChannel.Close()
 }
 
