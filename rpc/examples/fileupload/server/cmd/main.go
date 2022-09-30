@@ -35,7 +35,7 @@ func main() {
 
 var (
 	defaultPort = 8080
-	logger      = golog.Global.Named("server")
+	logger      = golog.Global().Named("server")
 )
 
 // Arguments for the command.

@@ -33,7 +33,7 @@ var uploadLatency = statz.NewDistribution2[string, bool]("datasync/uploaded_late
 func main() {
 	exporter := perf.NewDevelopmentExporter()
 	if err := exporter.Start(); err != nil {
-		golog.Global.Panicf("Failed to start: %s", err)
+		golog.Global().Panicf("Failed to start: %s", err)
 		return
 	}
 	defer exporter.Stop()
@@ -42,7 +42,7 @@ func main() {
 	for i := 0; i < 25; i++ {
 		//nolint:all
 		ms := float64(5*time.Second/time.Millisecond) * rand.Float64()
-		golog.Global.Infof("Latency %d: %f", i, ms)
+		golog.Global().Infof("Latency %d: %f", i, ms)
 		uploadCounter.Inc("binary", true)
 		uploadLatency.Observe(ms, "binary", true)
 		time.Sleep(100 * time.Millisecond)

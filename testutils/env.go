@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	logger            = golog.Global.Named("test")
+	logger            = golog.Global().Named("test")
 	noSkip            = false
 	internetConnected *bool
 )

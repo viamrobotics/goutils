@@ -142,13 +142,13 @@ func createAndRegisterOpenCensusMetric(name string, measure stats.Measure, agg *
 	internal.RegisterMetric(name)
 
 	if err := validateMetricName(name); err != nil {
-		golog.Global.Panicf("Failed to register metric name not valid: %s", err)
+		golog.Global().Panicf("Failed to register metric name not valid: %s", err)
 		return nil
 	}
 
 	for _, l := range cfg.Labels {
 		if err := validateMetricLabel(l); err != nil {
-			golog.Global.Panicf("Failed to register metric label not valid: %s", err)
+			golog.Global().Panicf("Failed to register metric label not valid: %s", err)
 			return nil
 		}
 	}
@@ -173,7 +173,7 @@ func createAndRegisterOpenCensusMetric(name string, measure stats.Measure, agg *
 
 	// Register the views it is imperative that this step exists
 	if err := view.Register(ocData.View); err != nil {
-		golog.Global.Fatalf("Failed to register the views: %v", err)
+		golog.Global().Fatalf("Failed to register the views: %v", err)
 	}
 
 	return ocData
@@ -185,7 +185,7 @@ func validateMetricName(name string) error {
 	}
 
 	if match, err := regexp.MatchString(nameRegex, name); err != nil {
-		golog.Global.Panic("Regex failed, this should not happen")
+		golog.Global().Panic("Regex failed, this should not happen")
 	} else if !match {
 		return fmt.Errorf("metric name '%s' must be valud regex '%s'", name, nameRegex)
 	}
@@ -199,7 +199,7 @@ func validateMetricLabel(l Label) error {
 	}
 
 	if match, err := regexp.MatchString(labelNameRegex, l.Name); err != nil {
-		golog.Global.Panic("Regex failed, this should not happen")
+		golog.Global().Panic("Regex failed, this should not happen")
 	} else if !match {
 		return fmt.Errorf("label name '%s' must be valud regex '%s'", l.Name, labelNameRegex)
 	}

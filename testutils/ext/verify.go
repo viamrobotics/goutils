@@ -18,13 +18,13 @@ import (
 func VerifyTestMain(m goleak.TestingM) {
 	cache, err := artifact.GlobalCache()
 	if err != nil {
-		golog.Global.Fatalw("error opening artifact", "error", err)
+		golog.Global().Fatalw("error opening artifact", "error", err)
 	}
 	//nolint:ifshort
 	exitCode := m.Run()
 	testutils.Teardown()
 	if err := cache.Close(); err != nil {
-		golog.Global.Errorw("error closing artifact", "error", err)
+		golog.Global().Errorw("error closing artifact", "error", err)
 	}
 	if exitCode != 0 {
 		os.Exit(exitCode)

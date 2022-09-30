@@ -94,7 +94,7 @@ func (w *ocCounterWrapper) incBy(ctx context.Context, labels []string, incBy int
 	mutations := w.data.labelsToMutations(labels)
 	for i := int64(0); i < incBy; i++ {
 		if err := stats.RecordWithTags(ctx, mutations, w.measure.M(1)); err != nil {
-			golog.Global.Errorf("faild to write metric %s", err)
+			golog.Global().Errorf("faild to write metric %s", err)
 		}
 	}
 }

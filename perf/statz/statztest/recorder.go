@@ -82,7 +82,7 @@ func newStringSet(values ...string) map[string]string {
 	}
 
 	if len(values)%2 != 0 {
-		golog.Global.Panic("Expected even number of keypairs")
+		golog.Global().Panic("Expected even number of keypairs")
 	}
 
 	set := make(map[string]string, len(values)/2)

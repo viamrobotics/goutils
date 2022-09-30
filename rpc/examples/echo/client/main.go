@@ -19,7 +19,7 @@ func main() {
 	utils.ContextualMain(mainWithArgs, logger)
 }
 
-var logger = golog.Global.Named("client")
+var logger = golog.Global().Named("client")
 
 // Arguments for the command.
 type Arguments struct {

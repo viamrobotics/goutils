@@ -83,7 +83,7 @@ type ocDistributionWrapper struct {
 func (w *ocDistributionWrapper) observe(ctx context.Context, labels []string, value float64) {
 	mutations := w.data.labelsToMutations(labels)
 	if err := stats.RecordWithTags(ctx, mutations, w.measure.M(value)); err != nil {
-		golog.Global.Errorf("faild to write metric %s", err)
+		golog.Global().Errorf("faild to write metric %s", err)
 	}
 }
 

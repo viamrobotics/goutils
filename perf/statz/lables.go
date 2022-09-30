@@ -45,7 +45,7 @@ func labelToString(v interface{}) string {
 		}
 		return boolValueFalse
 	default:
-		golog.Global.Fatalf("Invalid type to string, should never happen with the type contraints defined.")
+		golog.Global().Fatalf("Invalid type to string, should never happen with the type contraints defined.")
 		return ""
 	}
 }
@@ -55,7 +55,7 @@ func tagKeysFromConfig(cfg *MetricConfig) []tag.Key {
 	for _, l := range cfg.Labels {
 		t, err := tag.NewKey(l.Name)
 		if err != nil {
-			golog.Global.Fatalf("error creating metric label", err)
+			golog.Global().Fatalf("error creating metric label", err)
 			return []tag.Key{}
 		}
 		tagKeys = append(tagKeys, t)

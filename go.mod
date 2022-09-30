@@ -3,6 +3,7 @@ module go.viam.com/utils
 go 1.18
 
 require (
+	cloud.google.com/go/compute v1.7.0
 	cloud.google.com/go/iam v0.3.0
 	cloud.google.com/go/secretmanager v1.0.0
 	cloud.google.com/go/storage v1.22.1
@@ -13,7 +14,7 @@ require (
 	github.com/bufbuild/buf v1.1.0
 	github.com/coreos/go-oidc/v3 v3.1.0
 	github.com/edaniels/golinters v0.0.5-0.20210512224240-495d3b8eed19
-	github.com/edaniels/golog v0.0.0-20210326173913-16d408aa7a5e
+	github.com/edaniels/golog v0.0.0-20220930140416-6e52e83a97fc
 	github.com/edaniels/zeroconf v0.0.0-20220607181113-3dc7461460c6
 	github.com/fatih/color v1.13.0
 	github.com/fsnotify/fsnotify v1.5.4
@@ -36,7 +37,7 @@ require (
 	go.opencensus.io v0.23.0
 	go.uber.org/goleak v1.1.12
 	go.uber.org/multierr v1.8.0
-	go.uber.org/zap v1.21.0
+	go.uber.org/zap v1.23.0
 	go.viam.com/test v1.1.0
 	goji.io v2.0.2+incompatible
 	golang.org/x/net v0.0.0-20220722155237-a158d28d115b
@@ -52,7 +53,6 @@ require (
 require (
 	4d63.com/gochecknoglobals v0.1.0 // indirect
 	cloud.google.com/go v0.102.1 // indirect
-	cloud.google.com/go/compute v1.7.0 // indirect
 	cloud.google.com/go/container v1.3.1 // indirect
 	cloud.google.com/go/monitoring v1.6.0 // indirect
 	cloud.google.com/go/trace v1.2.0 // indirect
