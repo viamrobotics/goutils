@@ -16,7 +16,7 @@ type opencensusStatsData struct {
 // with the string values.
 func (sd *opencensusStatsData) labelsToMutations(labels []string) []tag.Mutator {
 	if len(labels) != len(sd.labelKeys) {
-		golog.Global.Panic("Should never happen where the label lengths do not match")
+		golog.Global().Panic("Should never happen where the label lengths do not match")
 		return []tag.Mutator{}
 	}
 

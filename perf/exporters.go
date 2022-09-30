@@ -128,7 +128,7 @@ func (e *sdExporter) Stop() {
 	e.sdExporter.Flush()
 
 	if err := utils.TryClose(context.Background(), e.sdExporter); err != nil {
-		golog.Global.Errorf("Failed to close Stackdriver Exporter: %s", err)
+		golog.Global().Errorf("Failed to close Stackdriver Exporter: %s", err)
 	}
 }
 

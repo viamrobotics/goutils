@@ -182,7 +182,7 @@ func (rc *reffedConn) Close() error {
 				defer rc.onUnref()
 			}
 			if utils.Debug {
-				golog.Global.Debugw("close referenced conn", "proto", rc.proto)
+				golog.Global().Debugw("close referenced conn", "proto", rc.proto)
 			}
 			if closeErr := rc.ClientConn.Close(); closeErr != nil && status.Convert(closeErr).Code() != codes.Canceled {
 				err = closeErr

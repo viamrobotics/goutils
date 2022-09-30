@@ -36,7 +36,7 @@ func RegisterMetric(name string) {
 	}
 
 	if prev, ok := state.metrics[name]; ok {
-		golog.Global.Panicf(`Metric %s was already defined and is trying to register again. It may be registered at: %s
+		golog.Global().Panicf(`Metric %s was already defined and is trying to register again. It may be registered at: %s
 			"Statz metrics MUST be globalally unique in the application.`, name, prev)
 		return
 	}

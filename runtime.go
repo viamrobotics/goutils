@@ -127,11 +127,11 @@ func PanicCapturingGoWithCallback(f func(), callback func(err interface{})) {
 		defer func() {
 			if err := recover(); err != nil {
 				debug.PrintStack()
-				golog.Global.Errorw("panic while running function", "error", err)
+				golog.Global().Errorw("panic while running function", "error", err)
 				if callback == nil {
 					return
 				}
-				golog.Global.Infow("waiting a bit to call callback", "wait", waitDur.String())
+				golog.Global().Infow("waiting a bit to call callback", "wait", waitDur.String())
 				time.Sleep(waitDur)
 				callback(err)
 			}
