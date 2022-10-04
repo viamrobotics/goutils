@@ -13,6 +13,8 @@ import (
 
 	"github.com/Masterminds/sprig"
 	"github.com/edaniels/golog"
+
+	"go.viam.com/utils/web/protojson"
 )
 
 // TemplateManager responsible for managing, caching, finding templates.
@@ -29,6 +31,8 @@ func lookupTemplate(main *template.Template, name string) (*template.Template, e
 }
 
 type embedTM struct {
+	protojson.MarshalingOptions
+
 	cachedTemplates *template.Template
 }
 
@@ -38,6 +42,11 @@ func (tm *embedTM) LookupTemplate(name string) (*template.Template, error) {
 
 // NewTemplateManagerEmbed creates a TemplateManager from an embedded file system.
 func NewTemplateManagerEmbed(fs fs.ReadDirFS, srcDir string) (TemplateManager, error) {
+	return NewTemplateManagerEmbedWithOptions(fs, srcDir, protojson.DefaultMarshalingOptions())
+}
+
+// NewTemplateManagerEmbedWithOptions creates a TemplateManager from an embedded file system. Allows optional protojson.MarshalingOptions.
+func NewTemplateManagerEmbedWithOptions(fs fs.ReadDirFS, srcDir string, opts protojson.MarshalingOptions) (TemplateManager, error) {
 	files, err := fs.ReadDir(srcDir)
 	if err != nil {
 		return nil, err
@@ -45,14 +54,16 @@ func NewTemplateManagerEmbed(fs fs.ReadDirFS, srcDir string) (TemplateManager, e
 
 	newFiles := fixFiles(files, srcDir)
 
-	ts, err := baseTemplate().ParseFS(fs, newFiles...)
+	ts, err := baseTemplate(opts).ParseFS(fs, newFiles...)
 	if err != nil {
 		return nil, fmt.Errorf("error initializing templates from embedded filesystem: %w", err)
 	}
-	return &embedTM{ts}, nil
+	return &embedTM{opts, ts}, nil
 }
 
 type fsTM struct {
+	protojson.MarshalingOptions
+
 	srcDir string
 }
 
@@ -64,7 +75,7 @@ func (tm *fsTM) LookupTemplate(name string) (*template.Template, error) {
 
 	newFiles := fixFiles(files, tm.srcDir)
 
-	main, err := baseTemplate().ParseFiles(newFiles...)
+	main, err := baseTemplate(tm.MarshalingOptions).ParseFiles(newFiles...)
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +84,12 @@ func (tm *fsTM) LookupTemplate(name string) (*template.Template, error) {
 
 // NewTemplateManagerFS creates a new TemplateManager from the file system.
 func NewTemplateManagerFS(srcDir string) (TemplateManager, error) {
-	return &fsTM{srcDir}, nil
+	return NewTemplateManagerFSWithOptions(srcDir, protojson.DefaultMarshalingOptions())
+}
+
+// NewTemplateManagerFSWithOptions creates a new TemplateManager from the file system. Allows optional protojson.MarshalingOptions.
+func NewTemplateManagerFSWithOptions(srcDir string, opts protojson.MarshalingOptions) (TemplateManager, error) {
+	return &fsTM{opts, srcDir}, nil
 }
 
 // -------------------------
@@ -183,6 +199,24 @@ func fixFiles(files []fs.DirEntry, root string) []string {
 	return newFiles
 }
 
-func baseTemplate() *template.Template {
-	return template.New("app").Funcs(sprig.FuncMap())
+func baseTemplate(opts protojson.MarshalingOptions) *template.Template {
+	funcs := sprig.FuncMap()
+
+	// Support optional protoJson
+	funcs["protoJson"] = createToProtoJSON(opts)
+
+	return template.New("app").Funcs(funcs)
+}
+
+// createToProtoJson returns a function to encode an item into a json inteface using the protojson marshaler.
+func createToProtoJSON(opts protojson.MarshalingOptions) func(v interface{}) interface{} {
+	marshaler := protojson.Marshaler{Opts: opts}
+
+	return func(v interface{}) interface{} {
+		out, err := marshaler.MarshalToInterface(v)
+		if err != nil {
+			golog.Global().Errorf("protoJson failed to marshal: %s", err)
+		}
+		return out
+	}
 }
