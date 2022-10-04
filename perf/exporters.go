@@ -8,7 +8,6 @@ import (
 	"cloud.google.com/go/compute/metadata"
 	"contrib.go.opencensus.io/exporter/stackdriver"
 	"github.com/edaniels/golog"
-	"go.opencensus.io/stats/view"
 	"go.opencensus.io/trace"
 
 	"go.viam.com/utils"
@@ -153,14 +152,12 @@ func (r *gaeResource) MonitoredResource() (resType string, labels map[string]str
 // NewDevelopmentExporter creates a new exporter that outputs the console.
 func NewDevelopmentExporter() Exporter {
 	return &developmentExporter{
-		trace:  newNiceLoggingSpanExporter(),
-		metric: newPrintExporter(),
+		trace: newNiceLoggingSpanExporter(),
 	}
 }
 
 type developmentExporter struct {
-	metric view.Exporter
-	trace  trace.Exporter
+	trace trace.Exporter
 }
 
 // Starts the applications stats/span monitoring. Registers views and starts trace/metric exporters to console.
@@ -169,7 +166,6 @@ func (e *developmentExporter) Start() error {
 		return err
 	}
 
-	view.RegisterExporter(e.metric)
 	trace.RegisterExporter(e.trace)
 	trace.ApplyConfig(trace.Config{DefaultSampler: trace.AlwaysSample()})
 
@@ -178,6 +174,5 @@ func (e *developmentExporter) Start() error {
 
 // Stop all exporting.
 func (e *developmentExporter) Stop() {
-	view.UnregisterExporter(e.metric)
 	trace.UnregisterExporter(e.trace)
 }
