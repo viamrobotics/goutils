@@ -275,6 +275,9 @@ func (ch *webrtcClientChannel) writeReset(stream *webrtcpb.Stream) error {
 func logFinalClientLine(ctx context.Context, startTime time.Time, err error, msg string) {
 	code := grpc_logging.DefaultErrorToCode(err)
 	level := grpc_zap.DefaultCodeToLevel(code)
+	if err == nil {
+		level = zap.DebugLevel
+	}
 	duration := grpc_zap.DefaultDurationToField(time.Since(startTime))
 	grpc_zap.DefaultMessageProducer(ctx, msg, level, code, err, duration)
 }
