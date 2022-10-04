@@ -113,6 +113,21 @@ type TemplateMiddleware struct {
 	Templates TemplateManager
 	Handler   TemplateHandler
 	Logger    golog.Logger
+
+	// Recover from panics with a proper error logs.
+	PanicCapture
+}
+
+// NewTemplateMiddleware returns a configured TemplateMiddleWare with a panic capture configured.
+func NewTemplateMiddleware(template TemplateManager, h TemplateHandler, logger golog.Logger) *TemplateMiddleware {
+	return &TemplateMiddleware{
+		Templates: template,
+		Handler:   h,
+		Logger:    logger,
+		PanicCapture: PanicCapture{
+			Logger: logger,
+		},
+	}
 }
 
 type responseWriterCapturer struct {
@@ -126,6 +141,9 @@ func (w *responseWriterCapturer) WriteHeader(code int) {
 }
 
 func (tm *TemplateMiddleware) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Recover from panics in underlying handler.
+	defer tm.Recover(w, r)
+
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
