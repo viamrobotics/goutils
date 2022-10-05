@@ -1,4 +1,4 @@
-import { grpc } from "@improbable-eng/grpc-web";
+import type { grpc } from "@improbable-eng/grpc-web";
 import { Request, RequestHeaders, RequestMessage, Response, Stream } from "./gen/proto/rpc/webrtc/v1/grpc_pb";
 import { BaseChannel } from "./BaseChannel";
 import { ClientStream } from "./ClientStream";
@@ -16,7 +16,7 @@ export class ClientChannel extends BaseChannel {
 
 	constructor(pc: RTCPeerConnection, dc: RTCDataChannel) {
 		super(pc, dc);
-		dc.onmessage = (event: MessageEvent<any>) => this.onChannelMessage(event);
+		dc.onmessage = (event: MessageEvent<unknown>) => this.onChannelMessage(event);
 	}
 
 	public transportFactory(): grpc.TransportFactory {

@@ -1,6 +1,6 @@
-import { ProtobufMessage } from "@improbable-eng/grpc-web/dist/typings/message";
+import type { ProtobufMessage } from "@improbable-eng/grpc-web/dist/typings/message";
 export declare class BaseChannel {
-    readonly ready: Promise<any>;
+    readonly ready: Promise<unknown>;
     private readonly peerConn;
     private readonly dataChannel;
     private pResolve;

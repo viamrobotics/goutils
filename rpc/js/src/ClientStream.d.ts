@@ -1,7 +1,7 @@
 import { grpc } from "@improbable-eng/grpc-web";
 import { Response, Stream } from "./gen/proto/rpc/webrtc/v1/grpc_pb";
 import { BaseStream } from "./BaseStream";
-import { ClientChannel } from "./ClientChannel";
+import type { ClientChannel } from "./ClientChannel";
 export declare class ClientStream extends BaseStream implements grpc.Transport {
     private readonly channel;
     private headersReceived;

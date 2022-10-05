@@ -1,4 +1,5 @@
 import { grpc } from "@improbable-eng/grpc-web";
+import type { ProtobufMessage } from "@improbable-eng/grpc-web/dist/typings/message";
 import { ClientChannel } from "./ClientChannel";
 import { Code } from "./gen/google/rpc/code_pb";
 import { Status } from "./gen/google/rpc/status_pb";
@@ -66,7 +67,7 @@ async function makeAuthenticatedTransportFactory(address: string, defaultFactory
 			request.setCredentials(creds);
 
 			let pResolve: (value: grpc.Metadata) => void;
-			let pReject: (reason?: any) => void;
+			let pReject: (reason?: unknown) => void;
 			let done = new Promise<grpc.Metadata>((resolve, reject) => {
 				pResolve = resolve;
 				pReject = reject;
@@ -79,7 +80,7 @@ async function makeAuthenticatedTransportFactory(address: string, defaultFactory
 				onMessage: (message: AuthenticateResponse) => {
 					thisAccessToken = message.getAccessToken();
 				},
-				onEnd: (code: grpc.Code, msg: string | undefined, trailers: grpc.Metadata) => {
+				onEnd: (code: grpc.Code, msg: string | undefined, _trailers: grpc.Metadata) => {
 					if (code == grpc.Code.OK) {
 						pResolve(md);
 					} else {
@@ -110,7 +111,7 @@ async function makeAuthenticatedTransportFactory(address: string, defaultFactory
 					onMessage: (message: AuthenticateToResponse) => {
 						thisAccessToken = message.getAccessToken();
 					},
-					onEnd: (code: grpc.Code, msg: string | undefined, trailers: grpc.Metadata) => {
+					onEnd: (code: grpc.Code, msg: string | undefined, _trailers: grpc.Metadata) => {
 						if (code == grpc.Code.OK) {
 							pResolve(md);
 						} else {
@@ -144,7 +145,7 @@ class authenticatedTransport implements grpc.Transport {
 	}
 
 	public async start(metadata: grpc.Metadata) {
-		this.extraMetadata.forEach((key, values) => {
+		this.extraMetadata.forEach((key: string, values: string | string[]) => {
 			metadata.set(key, values);
 		});
 		this.transport.start(metadata);
@@ -256,11 +257,9 @@ export async function dialWebRTC(signalingAddress: string, host: string, opts?: 
 		});
 	}
 
-	let pResolve: (value: any) => void;
-	let pReject: (reason?: any) => void;
-	let remoteDescSet = new Promise<any>((resolve, reject) => {
+	let pResolve: (value: unknown) => void;
+	let remoteDescSet = new Promise<unknown>((resolve) => {
 		pResolve = resolve;
-		pReject = reject;
 	});
 	let exchangeDone = false;
 	if (!webrtcOpts?.disableTrickleICE) {
@@ -308,15 +307,17 @@ export async function dialWebRTC(signalingAddress: string, host: string, opts?: 
 	}
 
 	let haveInit = false;
-	client.onMessage(async (message: CallResponse) => {
-		if (message.hasInit()) {
+	client.onMessage(async (message: ProtobufMessage) => {
+		const response = message as CallResponse
+
+		if (response.hasInit()) {
 			if (haveInit) {
 				sendError("got init stage more than once");
 				return;
 			}
-			const init = message.getInit()!;
+			const init = response.getInit()!;
 			haveInit = true;
-			uuid = message.getUuid();
+			uuid = response.getUuid();
 
 			const remoteSDP = new RTCSessionDescription(JSON.parse(atob(init.getSdp())));
 			pc.setRemoteDescription(remoteSDP);
@@ -328,21 +329,21 @@ export async function dialWebRTC(signalingAddress: string, host: string, opts?: 
 				sendDone();
 				return;
 			}
-		} else if (message.hasUpdate()) {
+		} else if (response.hasUpdate()) {
 			if (!haveInit) {
 				sendError("got update stage before init stage");
 				return;
 			}
-			if (message.getUuid() !== uuid) {
-				sendError(`uuid mismatch; have=${message.getUuid()} want=${uuid}`);
+			if (response.getUuid() !== uuid) {
+				sendError(`uuid mismatch; have=${response.getUuid()} want=${uuid}`);
 				return;
 			}
-			const update = message.getUpdate()!;
+			const update = response.getUpdate()!;
 			const cand = iceCandidateFromProto(update.getCandidate()!);
 			try {
 				await pc.addIceCandidate(cand);
-			} catch (e) {
-				sendError(e);
+			} catch (error) {
+				sendError(JSON.stringify(error));
 				return;
 			}
 		} else {
@@ -352,12 +353,12 @@ export async function dialWebRTC(signalingAddress: string, host: string, opts?: 
 	});
 
 	let clientEndResolve: () => void;
-	let clientEndReject: (reason?: any) => void;
+	let clientEndReject: (reason?: unknown) => void;
 	let clientEnd = new Promise<void>((resolve, reject) => {
 		clientEndResolve = resolve;
 		clientEndReject = reject;
 	});
-	client.onEnd((status: grpc.Code, statusMessage: string, trailers: grpc.Metadata) => {
+	client.onEnd((status: grpc.Code, statusMessage: string, _trailers: grpc.Metadata) => {
 		if (status === grpc.Code.OK) {
 			clientEndResolve();
 			return;
@@ -423,4 +424,3 @@ function iceCandidateToProto(i: RTCIceCandidateInit): ICECandidate {
 	}
 	return candidate;
 }
-

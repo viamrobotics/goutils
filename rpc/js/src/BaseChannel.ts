@@ -1,13 +1,13 @@
-import { ProtobufMessage } from "@improbable-eng/grpc-web/dist/typings/message";
+import type { ProtobufMessage } from "@improbable-eng/grpc-web/dist/typings/message";
 
 export class BaseChannel {
-	public readonly ready: Promise<any>;
+	public readonly ready: Promise<unknown>;
 
 	private readonly peerConn: RTCPeerConnection;
 	private readonly dataChannel: RTCDataChannel;
-	private pResolve: (value: any) => void;
+	private pResolve: ((value: unknown) => void) | undefined;
 
-	private closed: boolean;
+	private closed = false;
 	private closedReason?: Error;
 
 	protected maxDataChannelSize = 16384;
@@ -16,13 +16,13 @@ export class BaseChannel {
 		this.peerConn = peerConn;
 		this.dataChannel = dataChannel;
 
-		this.ready = new Promise<any>(resolve => {
+		this.ready = new Promise<unknown>(resolve => {
 			this.pResolve = resolve;
 		})
 
 		dataChannel.onopen = () => this.onChannelOpen();
 		dataChannel.onclose = () => this.onChannelClose();
-		dataChannel.onerror = (ev: RTCErrorEvent) => this.onChannelError(ev);
+		dataChannel.onerror = (ev: Event) => this.onChannelError(ev as RTCErrorEvent);
 
 		peerConn.oniceconnectionstatechange = () => console.log(peerConn.iceConnectionState);
 	}
@@ -49,7 +49,7 @@ export class BaseChannel {
 	}
 
 	private onChannelOpen() {
-		this.pResolve(undefined);
+		this.pResolve?.(undefined);
 	}
 
 	private onChannelClose() {

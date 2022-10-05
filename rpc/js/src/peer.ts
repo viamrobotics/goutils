@@ -32,8 +32,7 @@ export async function newPeerConnectionForClient(disableTrickle: boolean, rtcCon
 		ordered: true
 	});
 	negotiationChannel.binaryType = "arraybuffer";
-	
-	let makingOffer = false;
+
 	let ignoreOffer = false;
 	const polite = true;
 	let negOpen = false;
@@ -67,13 +66,10 @@ export async function newPeerConnectionForClient(disableTrickle: boolean, rtcCon
 			return;
 		}
 		try {
-			makingOffer = true;
 			await peerConnection.setLocalDescription();
 			negotiationChannel.send(btoa(JSON.stringify(peerConnection.localDescription)));
 		} catch (e) {
 			console.error(e);
-		} finally {
-			makingOffer = false;
 		}
 	};
 

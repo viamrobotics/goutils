@@ -1,7 +1,8 @@
 module.exports = {
+	target: "web",
 	mode: "production",
 	entry: "./src/index.ts",
-	devtool: 'inline-source-map',
+	devtool: false, //  'inline-source-map',
 	output: {
 		library: 'rpc',
 		libraryTarget: 'umd'

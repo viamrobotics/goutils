@@ -1,5 +1,5 @@
-import { grpc } from "@improbable-eng/grpc-web";
-import { PacketMessage, Stream } from "./gen/proto/rpc/webrtc/v1/grpc_pb";
+import type { grpc } from "@improbable-eng/grpc-web";
+import type { PacketMessage, Stream } from "./gen/proto/rpc/webrtc/v1/grpc_pb";
 
 // MaxMessageSize is the maximum size a gRPC message can be.
 let MaxMessageSize = 1 << 25;
@@ -51,7 +51,7 @@ export class BaseStream {
 			const data = new Uint8Array(this.packetBufSize);
 			let position = 0;
 			for (let i = 0; i < this.packetBuf.length; i++) {
-				const partialData = this.packetBuf[i];
+				const partialData = this.packetBuf[i]!;
 				data.set(partialData, position);
 				position += partialData.length;
 			}
