@@ -26,6 +26,20 @@ type APIHandler interface {
 type APIMiddleware struct {
 	Handler APIHandler
 	Logger  golog.Logger
+
+	// Recover from panics with a proper error logs.
+	PanicCapture
+}
+
+// NewAPIMiddleware returns a configured APIMiddleware with a panic capture configured.
+func NewAPIMiddleware(h APIHandler, logger golog.Logger) *APIMiddleware {
+	return &APIMiddleware{
+		Handler: h,
+		Logger:  logger,
+		PanicCapture: PanicCapture{
+			Logger: logger,
+		},
+	}
 }
 
 func handleAPIError(w http.ResponseWriter, err error, logger golog.Logger, extra interface{}) bool {
@@ -45,6 +59,9 @@ func handleAPIError(w http.ResponseWriter, err error, logger golog.Logger, extra
 		temp := fmt.Sprintf("err not able to be converted to json (%s) (%s)", data, err)
 		w.WriteHeader(http.StatusInternalServerError)
 		_, err = w.Write([]byte(temp))
+
+		logger.Errorf("Internal API Issue: %s", err)
+
 		if err != nil {
 			// hack for linter
 			return true
@@ -52,11 +69,17 @@ func handleAPIError(w http.ResponseWriter, err error, logger golog.Logger, extra
 	} else {
 		w.Header().Set("Content-Type", "application/json")
 		var er ErrorResponse
+		statusCode := http.StatusInternalServerError
 		if errors.As(err, &er) {
-			w.WriteHeader(er.Status())
-		} else {
-			w.WriteHeader(http.StatusInternalServerError)
+			statusCode = er.Status()
 		}
+
+		if statusCode >= 500 {
+			logger.Errorf("Internal API Issue: %s", err)
+		}
+
+		w.WriteHeader(statusCode)
+
 		_, err = w.Write(js)
 		if err != nil {
 			// hack for linter
@@ -69,6 +92,9 @@ func handleAPIError(w http.ResponseWriter, err error, logger golog.Logger, extra
 
 // ServeHTTP call the api.
 func (am *APIMiddleware) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Recover from panics with a proper log message.
+	defer am.Recover(w, r)
+
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 

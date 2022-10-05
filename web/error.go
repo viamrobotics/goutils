@@ -39,12 +39,19 @@ func HandleError(w http.ResponseWriter, err error, logger golog.Logger, context 
 
 	logger.Info(err)
 
+	statusCode := http.StatusInternalServerError
+
 	var er ErrorResponse
 	if errors.As(err, &er) {
-		w.WriteHeader(er.Status())
-	} else {
-		w.WriteHeader(http.StatusInternalServerError)
+		statusCode = er.Status()
 	}
+
+	// Log internal errors.
+	if statusCode >= 500 {
+		logger.Errorf("Error during http response: %s", err)
+	}
+
+	w.WriteHeader(statusCode)
 
 	var b bytes.Buffer
 
