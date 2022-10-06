@@ -1,11 +1,9 @@
 {
   "compilerOptions": {
-    "target": "ESNext",
-    "module": "ESNext",
+    "target": "ES5",
     "useDefineForClassFields": true,
     "declaration": true,
     "strict": true,
-    "jsx": "preserve",
     "importHelpers": true,
     "moduleResolution": "Node",
     "resolveJsonModule": true,
@@ -33,14 +31,10 @@
     "importsNotUsedAsValues": "error",
     "sourceMap": true,
     "baseUrl": "./",
-    "paths": {
-      "@/*": ["src/*"],
-    },
     "lib": [
       "ESNext",
       "DOM",
       "DOM.iterable",
-      "scripthost"
     ]
   },
   "include": [
