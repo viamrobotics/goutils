@@ -37,8 +37,6 @@ func HandleError(w http.ResponseWriter, err error, logger golog.Logger, context 
 		return false
 	}
 
-	logger.Info(err)
-
 	statusCode := http.StatusInternalServerError
 
 	var er ErrorResponse
@@ -49,6 +47,8 @@ func HandleError(w http.ResponseWriter, err error, logger golog.Logger, context 
 	// Log internal errors.
 	if statusCode >= 500 {
 		logger.Errorf("Error during http response: %s", err)
+	} else {
+		logger.Infof("Error with non-5xx status during http response: %s", err)
 	}
 
 	w.WriteHeader(statusCode)

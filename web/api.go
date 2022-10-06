@@ -13,6 +13,7 @@ import (
 	"go.opencensus.io/trace"
 
 	"go.viam.com/utils"
+	"go.viam.com/utils/web/protojson"
 )
 
 // APIHandler what a user has to implement to use APIMiddleware.
@@ -24,6 +25,8 @@ type APIHandler interface {
 
 // APIMiddleware simple layer between http.Handler interface that does json marshalling and error handling.
 type APIMiddleware struct {
+	protojson.MarshalingOptions
+
 	Handler APIHandler
 	Logger  golog.Logger
 
@@ -112,7 +115,8 @@ func (am *APIMiddleware) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	js, err := json.Marshal(data)
+	marshaler := protojson.Marshaler{am.MarshalingOptions}
+	js, err := marshaler.Marshal(data)
 	if handleAPIError(w, err, am.Logger, nil) {
 		return
 	}
