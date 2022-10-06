@@ -96,7 +96,7 @@ func newBaseChannel(
 				fallthrough
 			default:
 				var candPair *webrtc.ICECandidatePair
-				if peerConn.SCTP() != nil &&
+				if connectionState == webrtc.ICEConnectionStateConnected && peerConn.SCTP() != nil &&
 					peerConn.SCTP().Transport() != nil &&
 					peerConn.SCTP().Transport().ICETransport() != nil {
 					//nolint:errcheck
