@@ -3,7 +3,7 @@ module.exports = {
 	entry: "./src/index.ts",
 	devtool: 'inline-source-map',
 	output: {
-		library: 'rpc',
+	 library: 'rpc',
 		libraryTarget: 'umd'
 	},
 	module: {

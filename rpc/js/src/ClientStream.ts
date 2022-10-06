@@ -1,7 +1,7 @@
 import { grpc } from "@improbable-eng/grpc-web";
 import { Metadata, PacketMessage, RequestHeaders, RequestMessage, Response, ResponseHeaders, ResponseMessage, ResponseTrailers, Stream, Strings } from "./gen/proto/rpc/webrtc/v1/grpc_pb";
 import { BaseStream } from "./BaseStream";
-import { ClientChannel } from "./ClientChannel";
+import type { ClientChannel } from "./ClientChannel";
 
 // see golang/client_stream.go
 const maxRequestMessagePacketDataSize = 16373;
@@ -24,9 +24,9 @@ export class ClientStream extends BaseStream implements grpc.Transport {
 
 		try {
 			this.channel.writeHeaders(this.stream, requestHeaders);
-		} catch (e) {
-			console.error("error writing headers", e);
-			this.closeWithRecvError(e);
+		} catch (error) {
+			console.error("error writing headers", error);
+			this.closeWithRecvError(error as Error);
 		}
 	}
 
@@ -73,9 +73,9 @@ export class ClientStream extends BaseStream implements grpc.Transport {
 				requestMessage.setEos(eos);
 				this.channel.writeMessage(this.stream, requestMessage);
 			}
-		} catch (e) {
-			console.error("error writing message", e);
-			this.closeWithRecvError(e);
+		} catch (error) {
+			console.error("error writing message", error);
+			this.closeWithRecvError(error as Error);
 		}
 	}
 
