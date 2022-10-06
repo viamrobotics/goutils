@@ -1,8 +1,7 @@
 module.exports = {
-	// target: "es2020",
 	mode: "production",
 	entry: "./src/index.ts",
-	devtool: false, // 'inline-source-map',
+	devtool: 'inline-source-map',
 	output: {
 	 library: 'rpc',
 		libraryTarget: 'umd'

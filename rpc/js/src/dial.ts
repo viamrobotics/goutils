@@ -307,6 +307,7 @@ export async function dialWebRTC(signalingAddress: string, host: string, opts?: 
 	}
 
 	let haveInit = false;
+	// TS says that CallResponse isn't a valid type here. More investigation required.
 	client.onMessage(async (message: ProtobufMessage) => {
 		const response = message as CallResponse
 
