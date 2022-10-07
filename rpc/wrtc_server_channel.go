@@ -104,7 +104,7 @@ func (ch *webrtcServerChannel) onChannelMessage(msg webrtc.DataChannelMessage) {
 		// peek headers for timeout
 		headers, ok := req.Type.(*webrtcpb.Request_Headers)
 		if !ok || headers.Headers == nil {
-			ch.webrtcBaseChannel.logger.Errorf("expected headers as first message but got %T, discard request", req.Type)
+			ch.webrtcBaseChannel.logger.Debugf("expected headers as first message but got %T, discard request", req.Type)
 			ch.mu.Unlock()
 			return
 		}
