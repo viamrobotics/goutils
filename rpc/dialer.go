@@ -265,11 +265,17 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts *dialOptions, log
 	}
 	var unaryInterceptors []grpc.UnaryClientInterceptor
 	unaryInterceptors = append(unaryInterceptors, grpc_zap.UnaryClientInterceptor(grpcLogger))
+	if dOpts.unaryInterceptor != nil {
+		unaryInterceptors = append(unaryInterceptors, dOpts.unaryInterceptor)
+	}
 	unaryInterceptor := grpc_middleware.ChainUnaryClient(unaryInterceptors...)
 	dialOpts = append(dialOpts, grpc.WithUnaryInterceptor(unaryInterceptor))
 
 	var streamInterceptors []grpc.StreamClientInterceptor
 	streamInterceptors = append(streamInterceptors, grpc_zap.StreamClientInterceptor(grpcLogger))
+	if dOpts.streamInterceptor != nil {
+		streamInterceptors = append(streamInterceptors, dOpts.streamInterceptor)
+	}
 	streamInterceptor := grpc_middleware.ChainStreamClient(streamInterceptors...)
 	dialOpts = append(dialOpts, grpc.WithStreamInterceptor(streamInterceptor))
 
