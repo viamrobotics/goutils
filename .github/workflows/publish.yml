@@ -1,25 +1,28 @@
-name: NPM Publish
+### Temporarily turned off due to an issue in CI.
+### See: https://github.com/viamrobotics/goutils/actions/runs/3207545693/jobs/5242534039
 
-on:
-  push:
-    branches:
-      - main
+# name: NPM Publish
 
-jobs:
-  publish:
-    runs-on: ubuntu-latest
+# on:
+#   push:
+#     branches:
+#       - main
 
-    steps:
-      - name: Checkout 🛎️
-        uses: actions/checkout@v2.4.0
-        with:
-          persist-credentials: false
+# jobs:
+#   publish:
+#     runs-on: ubuntu-latest
 
-      - name: Install and Build 🔧
-        run: |
-          make build-web
+#     steps:
+#       - name: Checkout 🛎️
+#         uses: actions/checkout@v2.4.0
+#         with:
+#           persist-credentials: false
 
-      - name: Publish 🚀
-        uses: JS-DevTools/npm-publish@v1
-        with:
-          token: ${{ secrets.NPM_TOKEN }} 
+#       - name: Install and Build 🔧
+#         run: |
+#           make build-web
+
+#       - name: Publish 🚀
+#         uses: JS-DevTools/npm-publish@v1
+#         with:
+#           token: ${{ secrets.NPM_TOKEN }} 
