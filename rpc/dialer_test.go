@@ -357,3 +357,122 @@ func TestWithDialStatsHandler(t *testing.T) {
 
 	test.That(t, stats.clientConnections, test.ShouldBeGreaterThan, 1)
 }
+
+func TestWithUnaryInterceptor(t *testing.T) {
+	logger := golog.NewTestLogger(t)
+	rpcServer, err := NewServer(logger, WithUnauthenticated())
+	test.That(t, err, test.ShouldBeNil)
+
+	httpListener, err := net.Listen("tcp", "localhost:0")
+	test.That(t, err, test.ShouldBeNil)
+
+	err = rpcServer.RegisterServiceServer(
+		context.Background(),
+		&pb.EchoService_ServiceDesc,
+		&echoserver.Server{},
+		pb.RegisterEchoServiceHandlerFromEndpoint,
+	)
+	test.That(t, err, test.ShouldBeNil)
+
+	go func() {
+		rpcServer.Serve(httpListener)
+	}()
+
+	var interceptedMethods []string
+	fakeInterceptor := func(
+		ctx context.Context,
+		method string,
+		req, reply interface{},
+		cc *grpc.ClientConn,
+		invoker grpc.UnaryInvoker,
+		opts ...grpc.CallOption,
+	) error {
+		interceptedMethods = append(interceptedMethods, method)
+		return invoker(ctx, method, req, reply, cc, opts...)
+	}
+	conn, err := Dial(
+		context.Background(),
+		httpListener.Addr().String(),
+		logger,
+		WithUnaryClientInterceptor(fakeInterceptor),
+		WithDialDebug(),
+		WithInsecure(),
+	)
+	test.That(t, err, test.ShouldBeNil)
+
+	client := pb.NewEchoServiceClient(conn)
+	_, err = client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
+	test.That(t, err, test.ShouldBeNil)
+
+	test.That(t, conn.Close(), test.ShouldBeNil)
+	test.That(t, rpcServer.Stop(), test.ShouldBeNil)
+	test.That(t, err, test.ShouldBeNil)
+
+	test.That(
+		t,
+		interceptedMethods,
+		test.ShouldResemble,
+		[]string{
+			"/proto.rpc.webrtc.v1.SignalingService/OptionalWebRTCConfig",
+			"/proto.rpc.examples.echo.v1.EchoService/Echo",
+		},
+	)
+}
+
+func TestWithStreamInterceptor(t *testing.T) {
+	logger := golog.NewTestLogger(t)
+	rpcServer, err := NewServer(logger, WithUnauthenticated())
+	test.That(t, err, test.ShouldBeNil)
+
+	httpListener, err := net.Listen("tcp", "localhost:0")
+	test.That(t, err, test.ShouldBeNil)
+
+	err = rpcServer.RegisterServiceServer(
+		context.Background(),
+		&pb.EchoService_ServiceDesc,
+		&echoserver.Server{},
+		pb.RegisterEchoServiceHandlerFromEndpoint,
+	)
+	test.That(t, err, test.ShouldBeNil)
+
+	go func() {
+		rpcServer.Serve(httpListener)
+	}()
+
+	var interceptedMethods []string
+	fakeInterceptor := func(
+		ctx context.Context,
+		desc *grpc.StreamDesc,
+		cc *grpc.ClientConn,
+		method string,
+		streamer grpc.Streamer,
+		opts ...grpc.CallOption,
+	) (grpc.ClientStream, error) {
+		interceptedMethods = append(interceptedMethods, method)
+		return streamer(ctx, desc, cc, method, opts...)
+	}
+	conn, err := Dial(
+		context.Background(),
+		httpListener.Addr().String(),
+		logger,
+		WithStreamClientInterceptor(fakeInterceptor),
+		WithDialDebug(),
+		WithInsecure(),
+	)
+	test.That(t, err, test.ShouldBeNil)
+
+	client := pb.NewEchoServiceClient(conn)
+	_, err = client.EchoMultiple(context.Background(), &pb.EchoMultipleRequest{Message: "hello"})
+	test.That(t, err, test.ShouldBeNil)
+
+	test.That(t, conn.Close(), test.ShouldBeNil)
+	test.That(t, rpcServer.Stop(), test.ShouldBeNil)
+	test.That(t, err, test.ShouldBeNil)
+
+	test.That(
+		t,
+		interceptedMethods,
+		test.ShouldResemble,
+		[]string{"/proto.rpc.examples.echo.v1.EchoService/EchoMultiple"},
+	)
+}
