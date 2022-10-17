@@ -27,12 +27,14 @@ require (
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.5.0
 	github.com/improbable-eng/grpc-web v0.14.0
 	github.com/jacobsa/go-serial v0.0.0-20180131005756-15cf729a72d4
+	github.com/mitchellh/mapstructure v1.5.0
 	github.com/pion/ice/v2 v2.2.6
 	github.com/pion/interceptor v0.1.11
 	github.com/pion/logging v0.2.2
 	github.com/pion/webrtc/v3 v3.1.41
 	github.com/pkg/errors v0.9.1
 	github.com/pseudomuto/protoc-gen-doc v1.3.2
+	github.com/rs/cors v1.8.2
 	go.mongodb.org/mongo-driver v1.8.0
 	go.opencensus.io v0.23.0
 	go.uber.org/goleak v1.1.12
@@ -171,7 +173,6 @@ require (
 	github.com/miekg/dns v1.1.41 // indirect
 	github.com/mitchellh/copystructure v1.0.0 // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
-	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/mitchellh/reflectwalk v1.0.1 // indirect
 	github.com/moricho/tparallel v0.2.1 // indirect
 	github.com/mwitkow/go-proto-validators v0.2.0 // indirect
@@ -209,7 +210,6 @@ require (
 	github.com/quasilyte/gogrep v0.0.0-20220120141003-628d8b3623b5 // indirect
 	github.com/quasilyte/regex/syntax v0.0.0-20200407221936-30656e2c4a95 // indirect
 	github.com/quasilyte/stdinfo v0.0.0-20220114132959-f7386bf02567 // indirect
-	github.com/rs/cors v1.7.0 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/ryancurrah/gomodguard v1.2.4 // indirect
 	github.com/ryanrolds/sqlclosecheck v0.3.0 // indirect
