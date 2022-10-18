@@ -41,6 +41,33 @@ type TokenVerificationKeyProvider interface {
 	TokenVerificationKey(token *jwt.Token) (interface{}, error)
 }
 
+// Claims is an interface that all custom claims must implement to be supported
+// by the rpc system.
+type Claims interface {
+	// Ensure we meet the jwt.Claims interface, return error if claims are invalid. Claims
+	// are validated before entity checks,
+	jwt.Claims
+
+	// Entity must return the "entity" making the request to the rpc system from the jwt claims
+	// presented. Return error if entity is missing. Should not preform any entity checks.
+	Entity() (string, error)
+
+	// GetCredentialsType returns the rpc CredentialsType based on the jwt claims.
+	GetCredentialsType() CredentialsType
+
+	// GetAuthMetadata returns the rpc auth metadata based on the jwt claims.
+	GetAuthMetadata() map[string]string
+}
+
+// TokenCustomClaimProvider allows an AuthHandler to supply a key needed to peform
+// verification of a JWT. This is helpful when the server itself is not responsible
+// for authentication. For example, this could be for a central auth server
+// with untrusted peers using a public key to verify JWTs.
+type TokenCustomClaimProvider interface {
+	// CreateClaims returns the claim interface
+	CreateClaims() Claims
+}
+
 var (
 	errInvalidCredentials = status.Error(codes.Unauthenticated, "invalid credentials")
 	errCannotAuthEntity   = status.Error(codes.Unauthenticated, "cannot authenticate entity")
@@ -83,6 +110,20 @@ type keyFuncAuthHandler struct {
 
 func (h keyFuncAuthHandler) TokenVerificationKey(token *jwt.Token) (interface{}, error) {
 	return h.keyFunc(token)
+}
+
+// WithTokenCustomClaimProvider returns an AuthHandler that returns a custom claim type.
+func WithTokenCustomClaimProvider(handler AuthHandler, claimFunc func() Claims) AuthHandler {
+	return customClaimAuthHandler{AuthHandler: handler, claimFunc: claimFunc}
+}
+
+type customClaimAuthHandler struct {
+	AuthHandler
+	claimFunc func() Claims
+}
+
+func (h customClaimAuthHandler) CreateClaims() Claims {
+	return h.claimFunc()
 }
 
 // MakeSimpleVerifyEntity returns a VerifyEntity function to be used in an AuthHandler that

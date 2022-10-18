@@ -15,6 +15,7 @@ const (
 	ctxKeyPeerConnection
 	ctxKeyAuthMetadata
 	ctxKeyAuthEntity
+	ctxKeyAuthClaims // all jwt claims
 )
 
 // contextWithHost attaches a host name to the given context.
@@ -71,6 +72,20 @@ func ContextAuthMetadata(ctx context.Context) map[string]string {
 		return nil
 	}
 	return authMD.(map[string]string)
+}
+
+// contextWithAuthClaims attaches authentication jwt claims to the given context.
+func contextWithAuthClaims(ctx context.Context, claims Claims) context.Context {
+	return context.WithValue(ctx, ctxKeyAuthClaims, claims)
+}
+
+// ContextAuthClaims returns authentication jwt claims.
+func ContextAuthClaims(ctx context.Context) Claims {
+	claims := ctx.Value(ctxKeyAuthClaims)
+	if claims == nil {
+		return nil
+	}
+	return claims.(Claims)
 }
 
 // ContextWithAuthEntity attaches authentication metadata to the given context.
