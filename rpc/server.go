@@ -34,6 +34,7 @@ import (
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/encoding/protojson"
 
 	"go.viam.com/utils"
 	rpcpb "go.viam.com/utils/proto/rpc/v1"
@@ -210,7 +211,17 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 		sOpts.authHandlers = make(map[CredentialsType]AuthHandler)
 	}
 
-	grpcGatewayHandler := runtime.NewServeMux(runtime.WithMarshalerOption(runtime.MIMEWildcard, &runtime.HTTPBodyMarshaler{JSONPB}))
+	grpcGatewayHandler := runtime.NewServeMux(
+		runtime.WithMarshalerOption(runtime.MIMEWildcard, &runtime.JSONPb{
+			MarshalOptions: protojson.MarshalOptions{
+				UseProtoNames: true,
+			},
+			UnmarshalOptions: protojson.UnmarshalOptions{
+				DiscardUnknown: true,
+			},
+		}),
+	)
+
 	server := &simpleServer{
 		grpcListener:       grpcListener,
 		httpServer:         httpServer,
