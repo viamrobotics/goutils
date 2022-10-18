@@ -3,6 +3,7 @@ package rpc
 import (
 	"crypto/tls"
 
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/stats"
 )
 
@@ -52,6 +53,10 @@ type dialOptions struct {
 
 	// stats monitoring on the connections.
 	statsHandler stats.Handler
+
+	// interceptors
+	unaryInterceptor  grpc.UnaryClientInterceptor
+	streamInterceptor grpc.StreamClientInterceptor
 }
 
 // DialMulticastDNSOptions dictate any special settings to apply while dialing via mDNS.
@@ -222,5 +227,21 @@ func WithDisableDirectGRPC() DialOption {
 func WithDialStatsHandler(handler stats.Handler) DialOption {
 	return newFuncDialOption(func(o *dialOptions) {
 		o.statsHandler = handler
+	})
+}
+
+// WithUnaryClientInterceptor returns a DialOption that specifies the interceptor for
+// unary RPCs.
+func WithUnaryClientInterceptor(interceptor grpc.UnaryClientInterceptor) DialOption {
+	return newFuncDialOption(func(o *dialOptions) {
+		o.unaryInterceptor = interceptor
+	})
+}
+
+// WithStreamClientInterceptor returns a DialOption that specifies the interceptor for
+// streaming RPCs.
+func WithStreamClientInterceptor(interceptor grpc.StreamClientInterceptor) DialOption {
+	return newFuncDialOption(func(o *dialOptions) {
+		o.streamInterceptor = interceptor
 	})
 }
