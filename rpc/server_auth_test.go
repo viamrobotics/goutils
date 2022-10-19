@@ -50,6 +50,12 @@ func TestServerAuth(t *testing.T) {
 			if md["please persist"] != "need this value" {
 				return nil, errors.New("bad metadata")
 			}
+
+			claims := ContextAuthClaims(ctx)
+			if claims == nil {
+				return nil, errors.New("bad metadata, missing claims")
+			}
+
 			return "somespecialinterface", nil
 		})),
 	)
@@ -562,4 +568,111 @@ func TestServerAuthKeyFunc(t *testing.T) {
 	test.That(t, rpcServer.Stop(), test.ShouldBeNil)
 	err = <-errChan
 	test.That(t, err, test.ShouldBeNil)
+}
+
+func TestServerAuthWithCustomClaimsFunc(t *testing.T) {
+	testutils.SkipUnlessInternet(t)
+	logger := golog.NewTestLogger(t)
+
+	privKey, err := rsa.GenerateKey(rand.Reader, generatedRSAKeyBits)
+	test.That(t, err, test.ShouldBeNil)
+
+	rpcServer, err := NewServer(
+		logger,
+		WithAuthHandler("fake", WithTokenCustomClaimProvider(
+			funcAuthHandler{
+				auth: func(ctx context.Context, entity, payload string) (map[string]string, error) {
+					return map[string]string{}, nil
+				},
+				verify: func(ctx context.Context, entity string) (interface{}, error) {
+					md := ContextAuthMetadata(ctx)
+					if md["key1"] != "other" {
+						return nil, errors.New("invalid context in Verify, missing metadata")
+					}
+
+					claims := ContextAuthClaims(ctx)
+					if claims == nil {
+						return nil, errors.New("invalid context in Verify, missing all claims")
+					}
+
+					customClaims, ok := claims.(*customClaims)
+					if !ok {
+						return nil, errors.New("invalid context in Verify, invalid type for Claims")
+					}
+
+					if customClaims.CustomClaim != "custom-claim" {
+						return nil, errors.New("invalid context in Verify, invalid claim")
+					}
+
+					return entity, nil
+				},
+			},
+			func() Claims {
+				return &customClaims{}
+			},
+		)),
+		WithAuthRSAPrivateKey(privKey),
+	)
+	test.That(t, err, test.ShouldBeNil)
+
+	err = rpcServer.RegisterServiceServer(
+		context.Background(),
+		&pb.EchoService_ServiceDesc,
+		&echoserver.Server{},
+		pb.RegisterEchoServiceHandlerFromEndpoint,
+	)
+	test.That(t, err, test.ShouldBeNil)
+
+	httpListener, err := net.Listen("tcp", "localhost:0")
+	test.That(t, err, test.ShouldBeNil)
+
+	errChan := make(chan error)
+	go func() {
+		errChan <- rpcServer.Serve(httpListener)
+	}()
+
+	conn, err := grpc.DialContext(
+		context.Background(),
+		httpListener.Addr().String(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithBlock(),
+	)
+	test.That(t, err, test.ShouldBeNil)
+	defer func() {
+		test.That(t, conn.Close(), test.ShouldBeNil)
+	}()
+	client := pb.NewEchoServiceClient(conn)
+
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, customClaims{
+		JWTClaims: JWTClaims{
+			RegisteredClaims: jwt.RegisteredClaims{
+				Audience: jwt.ClaimStrings{"tasd"},
+			},
+			CredentialsType: "fake",
+			AuthMetadata: map[string]string{
+				"key1": "other",
+			},
+		},
+		CustomClaim: "custom-claim",
+	})
+
+	tokenString, err := token.SignedString(privKey)
+	test.That(t, err, test.ShouldBeNil)
+
+	md := make(metadata.MD)
+	bearer := fmt.Sprintf("Bearer %s", tokenString)
+	md.Set("authorization", bearer)
+	ctx := metadata.NewOutgoingContext(context.Background(), md)
+
+	_, err = client.Echo(ctx, &pb.EchoRequest{Message: "hello"})
+	test.That(t, err, test.ShouldBeNil)
+
+	test.That(t, rpcServer.Stop(), test.ShouldBeNil)
+	err = <-errChan
+	test.That(t, err, test.ShouldBeNil)
+}
+
+type customClaims struct {
+	JWTClaims
+	CustomClaim string `json:"custom-claim"`
 }

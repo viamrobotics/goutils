@@ -40,6 +40,28 @@ type JWTClaims struct {
 	AuthMetadata    map[string]string `json:"rpc_auth_md,omitempty"`
 }
 
+// Entity entity from the claims Audience.
+func (c JWTClaims) Entity() (string, error) {
+	if len(c.Audience) == 0 {
+		return "", status.Error(codes.Unauthenticated, "invalid claims: no audience")
+	}
+
+	return c.Audience[0], nil
+}
+
+// GetCredentialsType returns the credential type from `rpc_creds_type` claim.
+func (c JWTClaims) GetCredentialsType() CredentialsType {
+	return c.CredentialsType
+}
+
+// GetAuthMetadata returns the metadata from `rpc_auth_md` claim.
+func (c JWTClaims) GetAuthMetadata() map[string]string {
+	return c.AuthMetadata
+}
+
+// ensure JWTClaims implements Claims.
+var _ Claims = JWTClaims{}
+
 func (ss *simpleServer) Authenticate(ctx context.Context, req *rpcpb.AuthenticateRequest) (*rpcpb.AuthenticateResponse, error) {
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
@@ -198,11 +220,22 @@ func (ss *simpleServer) ensureAuthed(ctx context.Context) (interface{}, error) {
 		return nil, err
 	}
 
-	var claims JWTClaims
 	var handler AuthHandler
-	if _, err := jwt.ParseWithClaims(tokenString, &claims, func(token *jwt.Token) (interface{}, error) {
-		var err error
-		handler, err = ss.authHandler(claims.CredentialsType)
+
+	// Skip validating cliams until rpc_creds_type can determine if custom claim is used. Claims must be validated
+	// after decoding the jwt.
+	// We MUST call claims.Valid() before passing the VerifyEntity()
+	jwtParser := jwt.NewParser(jwt.WithoutClaimsValidation())
+
+	// Parse without claims and use the default provided by jwt library. This allows us to get all unknown claims.
+	outToken, err := jwtParser.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		// Get the credential type from the claims
+		credType, err := getCredentialsTypeFromMapClaims(token.Claims)
+		if err != nil {
+			return nil, err
+		}
+
+		handler, err = ss.authHandler(credType)
 		if err != nil {
 			return nil, err
 		}
@@ -217,16 +250,68 @@ func (ss *simpleServer) ensureAuthed(ctx context.Context) (interface{}, error) {
 		}
 
 		return &ss.authRSAPrivKey.PublicKey, nil
-	}); err != nil {
+	})
+	if err != nil {
 		return nil, status.Errorf(codes.Unauthenticated, "unauthenticated: %s", err)
 	}
-	if len(claims.Audience) == 0 {
-		return nil, errors.New("invalid jwt claims; no audience")
+
+	// By default use the standard rpc.JWTClaims
+	var claims Claims = &JWTClaims{}
+
+	// If AuthHandler is using CustomClaims use the claims type provided.
+	if provider, ok := handler.(TokenCustomClaimProvider); ok {
+		// reset the claims to the handlers version
+		claims = provider.CreateClaims()
+		if claims == nil {
+			return nil, status.Error(codes.Internal, "invalid implementation of TokenCustomClaimProvider, cannot return nil")
+		}
 	}
 
-	if claims.AuthMetadata != nil {
-		ctx = contextWithAuthMetadata(ctx, claims.AuthMetadata)
+	// For simplicity we reparse the raw JWT into the claims. The claims in outTokens.Claims are a generic map.
+	// mapstructure.Decoder has issues parsing the generic map to our struct because of the RegisteredClaims struct
+	// usess pointers to time.Time causing parsing issues. For now we can just reparse the json jwt token into the claim.
+	_, _, err = jwtParser.ParseUnverified(outToken.Raw, claims)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "error decoding claims: %s", err)
 	}
 
-	return handler.VerifyEntity(ctx, claims.Audience[0])
+	// We MUST validate claims here. We disabled claims validation in the parser above.
+	err = claims.Valid()
+	if err != nil {
+		return nil, status.Errorf(codes.Unauthenticated, "unauthenticated: %s", err)
+	}
+
+	entity, err := claims.Entity()
+	if err != nil {
+		return nil, err
+	}
+
+	// Pass the raw claims to the Context.
+	ctx = contextWithAuthClaims(ctx, claims)
+
+	// Pass the auth metadata to the context.
+	if claims.GetAuthMetadata() != nil {
+		ctx = contextWithAuthMetadata(ctx, claims.GetAuthMetadata())
+	}
+
+	return handler.VerifyEntity(ctx, entity)
+}
+
+func getCredentialsTypeFromMapClaims(in jwt.Claims) (CredentialsType, error) {
+	claims, ok := in.(jwt.MapClaims)
+	if !ok {
+		return CredentialsType("none"), errors.New("invalid type for claims, check library implementation")
+	}
+
+	credType, found := claims["rpc_creds_type"]
+	if !found {
+		return CredentialsType("none"), status.Errorf(codes.Unauthenticated, "invalid claims, missing rpc_creds_type")
+	}
+
+	credTypeAsString, ok := credType.(string)
+	if !ok {
+		return CredentialsType("none"), status.Errorf(codes.Unauthenticated, "invalid claims, invalid rpc_creds_type")
+	}
+
+	return CredentialsType(credTypeAsString), nil
 }
