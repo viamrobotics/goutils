@@ -5,6 +5,7 @@ export interface DialOptions {
     webrtcOptions?: DialWebRTCOptions;
     externalAuthAddress?: string;
     externalAuthToEntity?: string;
+    accessToken?: string;
 }
 export interface DialWebRTCOptions {
     disableTrickleICE: boolean;
@@ -13,6 +14,7 @@ export interface DialWebRTCOptions {
     signalingExternalAuthAddress?: string;
     signalingExternalAuthToEntity?: string;
     signalingCredentials?: Credentials;
+    signalingAccessToken?: string;
 }
 export interface Credentials {
     type: string;

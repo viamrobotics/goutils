@@ -15,6 +15,15 @@ export interface DialOptions {
 	webrtcOptions?: DialWebRTCOptions;
 	externalAuthAddress?: string;
 	externalAuthToEntity?: string;
+
+	// `accessToken` allows a pre-authenticated client to dial with
+	// an authorization header. Direct dial will have the access token
+	// appended to the "Authorization: Bearer" header. WebRTC dial will
+	// appened it to the signaling server communication
+	//
+	// If enabled, other auth options have no affect. Eg. authEntity, credentials, 
+	// externalAuthAddress, externalAuthToEntity, webrtcOptions.signalingAccessToken
+	accessToken?: string;
 }
 
 export interface DialWebRTCOptions {
@@ -37,6 +46,15 @@ export interface DialWebRTCOptions {
 
 	// signalingCredentials are used to authenticate the request to the signaling server.
 	signalingCredentials?: Credentials;
+
+	// `signalingAccessToken` allows a pre-authenticated client to dial with
+	// an authorization header to the signaling server. This skips the Authenticate()
+	// request to the singaling server or external auth but does not skip the 
+	// AuthenticateTo() request to retrieve the credentials at the external auth
+	// endpoint.
+	//
+	// If enabled, other auth options have no affect. Eg. authEntity, credentials, signalingAuthEntity, signalingCredentials.
+	signalingAccessToken?: string;
 }
 
 export interface Credentials {
@@ -45,12 +63,25 @@ export interface Credentials {
 }
 
 export async function dialDirect(address: string, opts?: DialOptions): Promise<grpc.TransportFactory> {
+	validateDialOptions(opts);
+
 	const defaultFactory = (opts: grpc.TransportOptions): grpc.Transport => {
 		return grpc.CrossBrowserHttpTransport({ withCredentials: false })(opts);
 	};
+
+	// Client already has access token with no external auth, skip Authenticate process.
+	if (opts?.accessToken && !(opts?.externalAuthAddress && opts?.externalAuthToEntity)) {
+		const md = new grpc.Metadata();
+		md.set("authorization", `Bearer ${opts.accessToken}`);
+		return (opts: grpc.TransportOptions): grpc.Transport => {
+			return new authenticatedTransport(opts, defaultFactory, md);
+		};
+	}
+	
 	if (!opts?.credentials) {
 		return defaultFactory;
 	}
+
 	return makeAuthenticatedTransportFactory(address, defaultFactory, opts);
 }
 
@@ -59,43 +90,51 @@ async function makeAuthenticatedTransportFactory(address: string, defaultFactory
 	const getExtraMetadata = async (): Promise<grpc.Metadata> => {
 		// TODO(GOUT-10): handle expiration
 		if (accessToken == "") {
-			const request = new AuthenticateRequest();
-			request.setEntity(opts?.authEntity ? opts.authEntity : address.replace(/^(.*:\/\/)/, ''));
-			const creds = new PBCredentials();
-			creds.setType(opts?.credentials?.type!);
-			creds.setPayload(opts?.credentials?.payload!);
-			request.setCredentials(creds);
+			let thisAccessToken = "";
 
 			let pResolve: (value: grpc.Metadata) => void;
 			let pReject: (reason?: unknown) => void;
-			let done = new Promise<grpc.Metadata>((resolve, reject) => {
-				pResolve = resolve;
-				pReject = reject;
-			});
-			let thisAccessToken = "";
-			grpc.invoke(AuthService.Authenticate, {
-				request: request,
-				host: opts?.externalAuthAddress ? opts.externalAuthAddress : address,
-				transport: defaultFactory,
-				onMessage: (message: AuthenticateResponse) => {
-					thisAccessToken = message.getAccessToken();
-				},
-				onEnd: (code: grpc.Code, msg: string | undefined, _trailers: grpc.Metadata) => {
-					if (code == grpc.Code.OK) {
-						pResolve(md);
-					} else {
-						pReject(msg);
+
+			if (opts?.accessToken != "") {
+				const request = new AuthenticateRequest();
+				request.setEntity(opts?.authEntity ? opts.authEntity : address.replace(/^(.*:\/\/)/, ''));
+				const creds = new PBCredentials();
+				creds.setType(opts?.credentials?.type!);
+				creds.setPayload(opts?.credentials?.payload!);
+				request.setCredentials(creds);
+
+				let done = new Promise<grpc.Metadata>((resolve, reject) => {
+					pResolve = resolve;
+					pReject = reject;
+				});
+
+				grpc.invoke(AuthService.Authenticate, {
+					request: request,
+					host: opts?.externalAuthAddress ? opts.externalAuthAddress : address,
+					transport: defaultFactory,
+					onMessage: (message: AuthenticateResponse) => {
+						thisAccessToken = message.getAccessToken();
+					},
+					onEnd: (code: grpc.Code, msg: string | undefined, _trailers: grpc.Metadata) => {
+						if (code == grpc.Code.OK) {
+							pResolve(md);
+						} else {
+							pReject(msg);
+						}
 					}
-				}
-			});
-			await done;
+				});
+				await done;
+			} else {
+				thisAccessToken = opts.accessToken;
+			}
+
 			accessToken = thisAccessToken;
 
 			if (opts?.externalAuthAddress && opts?.externalAuthToEntity) {
 				const md = new grpc.Metadata();
 				md.set("authorization", `Bearer ${accessToken}`);
 
-				done = new Promise<grpc.Metadata>((resolve, reject) => {
+				let done = new Promise<grpc.Metadata>((resolve, reject) => {
 					pResolve = resolve;
 					pReject = reject;
 				});
@@ -175,6 +214,8 @@ interface WebRTCConnection {
 // use.
 // TODO(GOUT-7): figure out decent way to handle reconnect on connection termination
 export async function dialWebRTC(signalingAddress: string, host: string, opts?: DialOptions): Promise<WebRTCConnection> {
+	validateDialOptions(opts);
+
 	const webrtcOpts = opts?.webrtcOptions;
 	const { pc, dc } = await newPeerConnectionForClient(webrtcOpts !== undefined && webrtcOpts.disableTrickleICE, webrtcOpts?.rtcConfig);
 
@@ -183,17 +224,20 @@ export async function dialWebRTC(signalingAddress: string, host: string, opts?: 
 	if (opts) {
 		optsCopy = { ...opts } as DialOptions;
 
-		optsCopy.authEntity = opts?.webrtcOptions?.signalingAuthEntity
-		if (!optsCopy.authEntity) {
-			if (optsCopy.externalAuthAddress) {
-				optsCopy.authEntity = opts.externalAuthAddress?.replace(/^(.*:\/\/)/, '');
-			} else {
-				optsCopy.authEntity = signalingAddress.replace(/^(.*:\/\/)/, '');
+		if (!opts.accessToken) {
+			optsCopy.authEntity = opts?.webrtcOptions?.signalingAuthEntity;
+			if (!optsCopy.authEntity) {
+				if (optsCopy.externalAuthAddress) {
+					optsCopy.authEntity = opts.externalAuthAddress?.replace(/^(.*:\/\/)/, '');
+				} else {
+					optsCopy.authEntity = signalingAddress.replace(/^(.*:\/\/)/, '');
+				}
 			}
+			optsCopy.credentials = opts?.webrtcOptions?.signalingCredentials;
+			optsCopy.externalAuthAddress = opts?.webrtcOptions?.signalingExternalAuthAddress;
+			optsCopy.externalAuthToEntity = opts?.webrtcOptions?.signalingExternalAuthToEntity;
+			optsCopy.accessToken = opts?.webrtcOptions?.signalingAccessToken;
 		}
-		optsCopy.credentials = opts?.webrtcOptions?.signalingCredentials
-		optsCopy.externalAuthAddress = opts?.webrtcOptions?.signalingExternalAuthAddress
-		optsCopy.externalAuthToEntity = opts?.webrtcOptions?.signalingExternalAuthToEntity
 	}
 
 	const directTransport = await dialDirect(signalingAddress, optsCopy);
@@ -424,4 +468,55 @@ function iceCandidateToProto(i: RTCIceCandidateInit): ICECandidate {
 		candidate.setUsernameFragment(i.usernameFragment);
 	}
 	return candidate;
+}
+
+function validateDialOptions(opts?: DialOptions) {
+	if (!opts) {
+		return;
+	}
+
+	if (opts.accessToken && opts.accessToken.length > 0) {
+		if (opts.authEntity) {
+			throw new Error("cannot set authEntity with accessToken");
+		}
+
+		if (opts.credentials) {
+			throw new Error("cannot set credentials with accessToken");
+		}
+
+		if (opts.externalAuthAddress) {
+			throw new Error("cannot set externalAuthAddress with accessToken");
+		}
+
+		if (opts.externalAuthToEntity) {
+			throw new Error("cannot set externalAuthToEntity with accessToken");
+		}
+
+		if (opts.webrtcOptions) {
+			if (opts.webrtcOptions.signalingAccessToken) {
+				throw new Error("cannot set webrtcOptions.signalingAccessToken with accessToken");
+			}
+			if (opts.webrtcOptions.signalingAuthEntity) {
+				throw new Error("cannot set webrtcOptions.signalingAuthEntity with accessToken");
+			}
+			if (opts.webrtcOptions.signalingCredentials) {
+				throw new Error("cannot set webrtcOptions.signalingCredentials with accessToken");
+			}
+			if (opts.webrtcOptions.signalingExternalAuthAddress) {
+				throw new Error("cannot set webrtcOptions.signalingExternalAuthAddress with accessToken");
+			}
+			if (opts.webrtcOptions.signalingExternalAuthToEntity) {
+				throw new Error("cannot set webrtcOptions.signalingExternalAuthToEntity with accessToken");
+			}
+		}
+	}
+
+	if (opts?.webrtcOptions?.signalingAccessToken && opts.webrtcOptions.signalingAccessToken.length > 0) {
+		if (opts.webrtcOptions.signalingAuthEntity) {
+			throw new Error("cannot set webrtcOptions.signalingAuthEntity with webrtcOptions.signalingAccessToken");
+		}
+		if (opts.webrtcOptions.signalingCredentials) {
+			throw new Error("cannot set webrtcOptions.signalingCredentials with webrtcOptions.signalingAccessToken");
+		}
+	}
 }
