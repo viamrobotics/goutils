@@ -9,8 +9,8 @@ import (
 
 // UserInfo basic info about a user from a session.
 type UserInfo struct {
-	LoggedIn   bool
-	Properties map[string]interface{}
+	LoggedIn   bool                   `json:"loggedIn"`
+	Properties map[string]interface{} `json:"properties"`
 }
 
 // GetEmail the email.
