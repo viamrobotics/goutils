@@ -16,7 +16,7 @@ jobs:
       - name: Check if organization member
         id: is_organization_member
         uses: jamessingleton/is-organization-member@1.0.1
-        with:GIT_ACCESS_TOKEN
+        with:
           organization: viamrobotics
           username: ${{ github.actor }}
           token: ${{ secrets.GITHUB_TOKEN }}
