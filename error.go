@@ -13,7 +13,7 @@ import (
 // example, if err was context.Canceled and so was the target, this
 // would return nil. Furthermore, if err was a multierr containing
 // a context.Canceled, it would also be filtered out from a new
-// multierr.
+// multierr.aaa
 func FilterOutError(err, target error) error {
 	if err == nil {
 		return nil
