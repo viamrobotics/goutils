@@ -14,9 +14,9 @@ jobs:
     runs-on: ubuntu-latest
     if: |
       github.event_name == 'pull_request_target' &&
-      (github.event.pull_request_target.action == 'opened' ||
-      github.event.pull_request_target.action == 'synchronize' ||
-      github.event.pull_request_target.action == 'reopened')
+      (github.event.pull_request.action == 'opened' ||
+      github.event.pull_request.action == 'synchronize' ||
+      github.event.pull_request.action == 'reopened')
     steps:
       - name: Check if organization member
         id: is_organization_member
