@@ -24,7 +24,7 @@ jobs:
         fetch-depth: 2
 
     - name: Check out PR branch code
-      if: github.event_name == 'pull_request_target'
+      if: contains(github.event.pull_request.labels.*.name, 'safe to test')
       uses: actions/checkout@v2
       with:
         ref: ${{ github.event.pull_request.head.sha }}
