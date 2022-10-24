@@ -6,7 +6,7 @@ import (
 	"go.viam.com/test"
 )
 
-func TestParseFlags(t *testing.T) {
+func TestParseFlagse(t *testing.T) {
 	t.Run("simple", func(t *testing.T) {
 		test.That(t, ParseFlags(nil, nil), test.ShouldBeNil)
 		test.That(t, ParseFlags([]string{"1"}, nil), test.ShouldBeNil)
