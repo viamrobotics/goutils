@@ -6,12 +6,13 @@ on:
     branches: [ main ]
   pull_request_target:
     branches: [ main ]
-    types: [ labeled ]
 
 jobs:
   build_and_test:
     name: Build and Test
     runs-on: [x64, qemu-host]
+    environment:
+      name: Pull Request
     container:
       image: ghcr.io/viamrobotics/canon:amd64-cache
       options: --platform linux/amd64
@@ -25,7 +26,7 @@ jobs:
         fetch-depth: 2
 
     - name: Check out PR branch code
-      if: contains(github.event.pull_request.labels.*.name, 'safe to test')
+      if: github.event_name == 'pull_request_target'
       uses: actions/checkout@v2
       with:
         ref: ${{ github.event.pull_request.head.sha }}
