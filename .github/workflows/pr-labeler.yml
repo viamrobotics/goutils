@@ -32,3 +32,10 @@ jobs:
         with:
           repo-token: ${{ secrets.PR_TOKEN }} 
           add-labels: "safe to test"
+      - name: Add Unsafe PR Comment
+        if: |
+          steps.is_organization_member.outputs.result == 'true'
+        uses: marocchino/sticky-pull-request-comment@v2.2.0
+        with:
+          recreate: true
+          message: For security reasons, this PR must be labeled with `safe to test` in order for tests to run.
