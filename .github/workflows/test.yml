@@ -23,6 +23,8 @@ jobs:
           organization: viamrobotics
           username: ${{ github.actor }}
           token: ${{ secrets.GITHUB_TOKEN }}
+      - name: debug
+        run: echo ${{ steps.is_organization_member.outputs }}
       - name: Always add label
         if: |
           steps.is_organization_member.outputs.result == true
