@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// MergeContext merges the two given contexts together and returns a new "child"
+// MergeContext merges the two given contexts together and returns a new "child"aaa
 // context parented by the first context that will be cancelled either by the
 // returned cancel function or when either of the two initial contexts are canceled.
 // Note: This implies that the values will only come from the first argument's context.
