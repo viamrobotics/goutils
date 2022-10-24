@@ -21,8 +21,6 @@ jobs:
           username: ${{ github.actor }}
           token: ${{ secrets.GITHUB_TOKEN }}
       - name: Always remove label
-        if: |
-          steps.is_organization_member.outputs.result == 'true'
         uses: andymckay/labeler@1.0.4
         with:
           remove-labels: "safe to test"
