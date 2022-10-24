@@ -14,7 +14,7 @@ import (
 	"github.com/edaniels/golog"
 )
 
-// ContextualMain calls a main entry point function aaaawith a cancellable
+// ContextualMain calls a main entry point function aaaawiaaath a cancellable
 // context via SIGTERM. This should be called once per process so as
 // to not clobber the signals from Notify.aaaa
 func ContextualMain(main func(ctx context.Context, args []string, logger golog.Logger) error, logger golog.Logger) {
