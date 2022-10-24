@@ -9,6 +9,17 @@ on:
     types: [ labeled ]
 
 jobs:
+  test_passing:
+    name: All Tests Passing
+    needs: [build_and_test]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check Results
+        run: |
+          echo Main Tests: ${{ needs.build_and_test.result }}
+          [ "${{ needs.build_and_test.result }}" == "success" ]
+
   build_and_test:
     name: Build and Test
     runs-on: [x64, qemu-host]
