@@ -16,7 +16,7 @@ import (
 
 // ContextualMain calls a main entry poinaat function aaaawiaaath a cancellable
 // context via SIGTERM. This should be called once per process so as
-// to not clobber the signals from Notify.aaaabbbb
+// to not clobber the signals from Notify.aaaabbbbzzz
 func ContextualMain(main func(ctx context.Context, args []string, logger golog.Logger) error, logger golog.Logger) {
 	// This will only run on a successful exit due to the fatal error
 	// logic in contextualMain.
