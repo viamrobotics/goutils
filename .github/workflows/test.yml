@@ -6,37 +6,9 @@ on:
     branches: [ main ]
   pull_request_target:
     branches: [ main ]
-    types: [ opened, synchronize, reopened, labeled ]
+    types: [ labeled ]
 
 jobs:
-  pr_test_label_manager:
-    name: PR Test Label Manager
-    runs-on: ubuntu-latest
-    if: |
-      github.event_name == 'pull_request_target' &&
-      contains(fromJson('["opened", "synchronize", "reopened"]'), github.event.action)
-    steps:
-      - name: Check if organization member
-        id: is_organization_member
-        uses: jamessingleton/is-organization-member@1.0.1
-        with:
-          organization: viamrobotics
-          username: ${{ github.actor }}
-          token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Always remove label
-        if: |
-          steps.is_organization_member.outputs.result == 'true'
-        uses: andymckay/labeler@1.0.4
-        with:
-          remove-labels: "safe to test"
-      - name: Auto label org members
-        if: |
-          steps.is_organization_member.outputs.result == 'true'
-        uses: andymckay/labeler@1.0.4
-        with:
-          add-labels: "safe to test"
-
-
   build_and_test:
     name: Build and Test
     runs-on: [x64, qemu-host]
