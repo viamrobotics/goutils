@@ -23,15 +23,13 @@ jobs:
           organization: viamrobotics
           username: ${{ github.actor }}
           token: ${{ secrets.GITHUB_TOKEN }}
-      - name: debug
-        run: echo ${{ steps.is_organization_member.outputs.result }}
       - name: Always add label
         if: |
-          steps.is_organization_member.outputs.result == true
+          steps.is_organization_member.outputs.result == 'true'
         run: echo add label
       - name: Always remove label
         if: |
-          steps.is_organization_member.outputs.result == false
+          steps.is_organization_member.outputs.result == 'false'
         run: echo remove label
 
 
