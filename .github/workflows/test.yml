@@ -12,8 +12,8 @@ jobs:
   pr_test_label_manager:
     name: PR Test Label Manager
     runs-on: ubuntu-latest
-    # if: |
-    #   github.event_name == 'pull_request_target' &&
+    if: |
+      github.event_name == 'pull_request_target'
     #   contains(fromJson('["opened", "synchronize", "reopened"]'), github.event.pull_request.action)
     steps:
       - name: Check if organization member
