@@ -23,12 +23,12 @@ jobs:
       - name: Always remove label
         uses: andymckay/labeler@1.0.4
         with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }} 
+          repo-token: ${{ secrets.PR_TOKEN }} 
           remove-labels: "safe to test"
       - name: Auto label org members
         if: |
           steps.is_organization_member.outputs.result == 'true'
         uses: andymckay/labeler@1.0.4
         with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }} 
+          repo-token: ${{ secrets.PR_TOKEN }} 
           add-labels: "safe to test"
