@@ -6,9 +6,33 @@ on:
     branches: [ main ]
   pull_request_target:
     branches: [ main ]
-    types: [ labeled ]
+    types: [ opened, synchronize, reopened, labeled ]
 
 jobs:
+  pr_test_label_manager:
+    name: PR Test Label Manager
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'pull_request_target' &&
+      contains(fromJson('["opened", "synchronize", "reopened"]'), github.event.pull_request.action)
+    steps:
+      - name: Check if organization member
+        id: is_organization_member
+        uses: jamessingleton/is-organization-member@v1
+        with:
+          organization: viamrobotics
+          username: ${{ github.event.issue.user.login }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Always add label
+        if: |
+          steps.is_organization_member.outputs.result == true
+        run: echo add label
+      - name: Always remove label
+        if: |
+          steps.is_organization_member.outputs.result == false
+        run: echo remove label
+
+
   build_and_test:
     name: Build and Test
     runs-on: [x64, qemu-host]
