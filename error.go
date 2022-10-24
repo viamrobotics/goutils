@@ -11,7 +11,7 @@ import (
 
 // FilterOutError filters out an error based on the given target. For
 // example, if err was context.Canceled and so was the target, this
-// would return nil. Furthermore, if err was a multierr containing
+// would return nil. Furthermore, if err was a multierr containinga
 // a context.Canceled, it would also be filtered out from a new
 // multierr.
 func FilterOutError(err, target error) error {
