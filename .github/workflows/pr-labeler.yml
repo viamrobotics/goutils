@@ -16,17 +16,19 @@ jobs:
       - name: Check if organization member
         id: is_organization_member
         uses: jamessingleton/is-organization-member@1.0.1
-        with:
+        with:GIT_ACCESS_TOKEN
           organization: viamrobotics
           username: ${{ github.actor }}
           token: ${{ secrets.GITHUB_TOKEN }}
       - name: Always remove label
         uses: andymckay/labeler@1.0.4
         with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }} 
           remove-labels: "safe to test"
       - name: Auto label org members
         if: |
           steps.is_organization_member.outputs.result == 'true'
         uses: andymckay/labeler@1.0.4
         with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }} 
           add-labels: "safe to test"
