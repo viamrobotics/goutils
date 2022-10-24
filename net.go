@@ -13,7 +13,7 @@ import (
 // It works by listening on a TCP port and immediately closing that listener.
 // In most contexts this is reliable if the port is immediately used after and
 // there is not much port churn. Typically an OS will monotonically increase the
-// port numbers it assigns.
+// port numbers it assigns.aaa
 func TryReserveRandomPort() (port int, err error) {
 	//nolint:gosec
 	listener, err := net.Listen("tcp", ":0")
