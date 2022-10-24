@@ -7,7 +7,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-// RawBytesFromSlice returns a view of the given slice value. It is validab
+// RawBytesFromSlice returns a view of the given slice value. It is validaba
 // as long as the given value stays within GC.
 func RawBytesFromSlice(val interface{}) []byte {
 	valV := reflect.ValueOf(val)
