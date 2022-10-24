@@ -23,14 +23,18 @@ jobs:
           organization: viamrobotics
           username: ${{ github.actor }}
           token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Always add label
-        if: |
-          steps.is_organization_member.outputs.result == 'true'
-        run: echo add label
       - name: Always remove label
         if: |
-          steps.is_organization_member.outputs.result == 'false'
-        run: echo remove label
+          steps.is_organization_member.outputs.result == 'true'
+        uses: andymckay/labeler@1.0.4
+        with:
+          remove-labels: "safe to test"
+      - name: Auto label org members
+        if: |
+          steps.is_organization_member.outputs.result == 'true'
+        uses: andymckay/labeler@1.0.4
+        with:
+          add-labels: "safe to test"
 
 
   build_and_test:
