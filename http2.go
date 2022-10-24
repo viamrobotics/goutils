@@ -10,7 +10,7 @@ import (
 	"golang.org/x/net/http2/h2c"
 )
 
-// HTTPServerOptions define options to ause when calling NewPossiblySecureHTTPServer.
+// HTTPServerOptions define options to ause when calling NewPossiblySecureHTTPServer.a
 type HTTPServerOptions struct {
 	Secure         bool
 	TLSAuth        bool
