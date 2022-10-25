@@ -3,6 +3,7 @@ package rpc
 import (
 	"crypto/tls"
 
+	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/stats"
 )
@@ -234,7 +235,11 @@ func WithDialStatsHandler(handler stats.Handler) DialOption {
 // unary RPCs.
 func WithUnaryClientInterceptor(interceptor grpc.UnaryClientInterceptor) DialOption {
 	return newFuncDialOption(func(o *dialOptions) {
-		o.unaryInterceptor = interceptor
+		if o.unaryInterceptor != nil {
+			o.unaryInterceptor = grpc_middleware.ChainUnaryClient(o.unaryInterceptor, interceptor)
+		} else {
+			o.unaryInterceptor = interceptor
+		}
 	})
 }
 
@@ -242,6 +247,10 @@ func WithUnaryClientInterceptor(interceptor grpc.UnaryClientInterceptor) DialOpt
 // streaming RPCs.
 func WithStreamClientInterceptor(interceptor grpc.StreamClientInterceptor) DialOption {
 	return newFuncDialOption(func(o *dialOptions) {
-		o.streamInterceptor = interceptor
+		if o.streamInterceptor != nil {
+			o.streamInterceptor = grpc_middleware.ChainStreamClient(o.streamInterceptor, interceptor)
+		} else {
+			o.streamInterceptor = interceptor
+		}
 	})
 }
