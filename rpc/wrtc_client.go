@@ -272,7 +272,7 @@ func dialWebRTC(
 		// for client channel
 	}
 
-	clientCh := newWebRTCClientChannel(pc, dc, logger)
+	clientCh := newWebRTCClientChannel(pc, dc, logger, dOpts.unaryInterceptor, dOpts.streamInterceptor)
 
 	exchangeCandidates := func() error {
 		haveInit := false

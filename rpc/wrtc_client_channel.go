@@ -51,6 +51,8 @@ func newWebRTCClientChannel(
 	peerConn *webrtc.PeerConnection,
 	dataChannel *webrtc.DataChannel,
 	logger golog.Logger,
+	unaryInterceptor grpc.UnaryClientInterceptor,
+	streamInterceptor grpc.StreamClientInterceptor,
 ) *webrtcClientChannel {
 	base := newBaseChannel(
 		context.Background(),
@@ -62,6 +64,8 @@ func newWebRTCClientChannel(
 	ch := &webrtcClientChannel{
 		webrtcBaseChannel: base,
 		streams:           map[uint64]activeWebRTCClientStream{},
+		unaryInterceptor:  unaryInterceptor,
+		streamInterceptor: streamInterceptor,
 	}
 	dataChannel.OnMessage(ch.onChannelMessage)
 	return ch
