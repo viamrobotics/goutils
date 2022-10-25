@@ -176,7 +176,13 @@ func (ch *webrtcClientChannel) NewStream(
 }
 
 func (ch *webrtcClientChannel) streamWithInterceptor(ctx context.Context, method string) (grpc.ClientStream, error) {
-	streamer := func(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, opts ...grpc.CallOption) (grpc.ClientStream, error) {
+	streamer := func(
+		ctx context.Context,
+		desc *grpc.StreamDesc,
+		cc *grpc.ClientConn,
+		method string,
+		opts ...grpc.CallOption,
+	) (grpc.ClientStream, error) {
 		return ch.newClientStream(ctx, method)
 	}
 	return ch.streamInterceptor(ctx, nil, nil, method, streamer)
