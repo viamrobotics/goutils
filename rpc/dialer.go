@@ -268,6 +268,7 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts *dialOptions, log
 	if dOpts.unaryInterceptor != nil {
 		unaryInterceptors = append(unaryInterceptors, dOpts.unaryInterceptor)
 	}
+	logger.Infof("chaining unary interceptors | count: %d | actual: %#v", len(unaryInterceptors), unaryInterceptors)
 	unaryInterceptor := grpc_middleware.ChainUnaryClient(unaryInterceptors...)
 	dialOpts = append(dialOpts, grpc.WithUnaryInterceptor(unaryInterceptor))
 
