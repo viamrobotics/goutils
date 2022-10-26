@@ -12,6 +12,7 @@ import (
 	"github.com/pion/webrtc/v3"
 	"go.viam.com/test"
 	pbstatus "google.golang.org/genproto/googleapis/rpc/status"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -411,4 +412,90 @@ func TestWebRTCClientChannelResetStream(t *testing.T) {
 	err = clientCh.Invoke(ctx, "thing", someStatus.Proto(), &respStatus)
 	test.That(t, err, test.ShouldBeError, context.Canceled)
 	test.That(t, &respStatus, test.ShouldResemble, &pbstatus.Status{})
+}
+
+func TestWebRTCClientChannelWithInterceptor(t *testing.T) {
+	testutils.SkipUnlessInternet(t)
+	logger := golog.NewTestLogger(t)
+	pc1, pc2, dc1, dc2 := setupWebRTCPeers(t)
+
+	var interceptedUnaryMethods []string
+	unaryInterceptor := func(
+		ctx context.Context,
+		method string,
+		req,
+		reply interface{},
+		cc *grpc.ClientConn,
+		invoker grpc.UnaryInvoker,
+		opts ...grpc.CallOption,
+	) error {
+		interceptedUnaryMethods = append(interceptedUnaryMethods, method)
+		return invoker(ctx, method, req, reply, cc, opts...)
+	}
+
+	var interceptedStreamMethods []string
+	streamInterceptor := func(
+		ctx context.Context,
+		desc *grpc.StreamDesc,
+		cc *grpc.ClientConn,
+		method string,
+		streamer grpc.Streamer,
+		opts ...grpc.CallOption,
+	) (grpc.ClientStream, error) {
+		interceptedStreamMethods = append(interceptedStreamMethods, method)
+		return streamer(ctx, desc, cc, method, opts...)
+	}
+
+	clientCh := newWebRTCClientChannel(pc1, dc1, logger, unaryInterceptor, streamInterceptor)
+	defer func() {
+		test.That(t, clientCh.Close(), test.ShouldBeNil)
+	}()
+	serverCh := newBaseChannel(context.Background(), pc2, dc2, nil, logger)
+	defer func() {
+		test.That(t, serverCh.Close(), test.ShouldBeNil)
+	}()
+
+	<-clientCh.Ready()
+	<-serverCh.Ready()
+
+	var wg sync.WaitGroup
+	wg.Add(4)
+
+	idCounter := uint64(1)
+	serverCh.dataChannel.OnMessage(func(msg webrtc.DataChannelMessage) {
+		test.That(t, serverCh.write(&webrtcpb.Response{
+			Stream: &webrtcpb.Stream{Id: idCounter},
+			Type:   &webrtcpb.Response_Headers{},
+		}), test.ShouldBeNil)
+
+		test.That(t, serverCh.write(&webrtcpb.Response{
+			Stream: &webrtcpb.Stream{Id: idCounter},
+			Type: &webrtcpb.Response_Message{
+				Message: &webrtcpb.ResponseMessage{
+					PacketMessage: &webrtcpb.PacketMessage{
+						Data: []byte{},
+						Eom:  true,
+					},
+				},
+			},
+		}), test.ShouldBeNil)
+		idCounter++
+		wg.Done()
+	})
+
+	var unaryMsg interface{}
+	var respStatus pbstatus.Status
+	test.That(t, clientCh.Invoke(context.Background(), "a unary", unaryMsg, &respStatus), test.ShouldBeNil)
+	test.That(t, interceptedUnaryMethods, test.ShouldHaveLength, 1)
+	test.That(t, interceptedUnaryMethods, test.ShouldContain, "a unary")
+
+	var streamMsg interface{}
+	clientStream, err := clientCh.NewStream(context.Background(), &grpc.StreamDesc{}, "a stream")
+	test.That(t, err, test.ShouldBeNil)
+	err = clientStream.SendMsg(streamMsg)
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, interceptedStreamMethods, test.ShouldHaveLength, 1)
+	test.That(t, interceptedStreamMethods, test.ShouldContain, "a stream")
+
+	wg.Wait()
 }
