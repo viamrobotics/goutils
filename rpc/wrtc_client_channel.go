@@ -100,20 +100,18 @@ func (ch *webrtcClientChannel) Invoke(
 ) error {
 	fields := newClientLoggerFields(method)
 	startTime := time.Now()
-
-	var err error
-	if ch.unaryInterceptor != nil {
-		err = ch.invokeWithInterceptor(ctx, method, args, reply)
-	} else {
-		err = ch.invoke(ctx, method, args, reply)
-	}
-
+	err := ch.invokeWithInterceptor(ctx, method, args, reply)
 	newCtx := ctxzap.ToContext(ctx, ch.webrtcBaseChannel.logger.Desugar().With(fields...))
 	logFinalClientLine(newCtx, startTime, err, "finished client unary call")
 	return err
 }
 
 func (ch *webrtcClientChannel) invokeWithInterceptor(ctx context.Context, method string, args, reply interface{}) error {
+	if ch.unaryInterceptor == nil {
+		return ch.invoke(ctx, method, args, reply)
+	}
+
+	// change signature of invoker to be compatible with grpc unary interceptor
 	invoker := func(ctx context.Context, method string, req, reply interface{}, _ *grpc.ClientConn, _ ...grpc.CallOption) error {
 		return ch.invoke(ctx, method, req, reply)
 	}
@@ -161,21 +159,18 @@ func (ch *webrtcClientChannel) NewStream(
 ) (grpc.ClientStream, error) {
 	fields := newClientLoggerFields(method)
 	startTime := time.Now()
-
-	var clientStream grpc.ClientStream
-	var err error
-	if ch.streamInterceptor != nil {
-		clientStream, err = ch.streamWithInterceptor(ctx, method)
-	} else {
-		clientStream, err = ch.newClientStream(ctx, method)
-	}
-
+	clientStream, err := ch.streamWithInterceptor(ctx, method)
 	newCtx := ctxzap.ToContext(ctx, ch.webrtcBaseChannel.logger.Desugar().With(fields...))
 	logFinalClientLine(newCtx, startTime, err, "finished client streaming call")
 	return clientStream, err
 }
 
 func (ch *webrtcClientChannel) streamWithInterceptor(ctx context.Context, method string) (grpc.ClientStream, error) {
+	if ch.streamInterceptor == nil {
+		return ch.newClientStream(ctx, method)
+	}
+
+	// change signature of streamer to be compatible with grpc stream interceptor
 	streamer := func(
 		ctx context.Context,
 		desc *grpc.StreamDesc,
