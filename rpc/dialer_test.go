@@ -379,7 +379,7 @@ func TestWithUnaryInterceptor(t *testing.T) {
 	}()
 
 	var interceptedMethods []string
-	fakeInterceptor := func(
+	collector := func(
 		ctx context.Context,
 		method string,
 		req, reply interface{},
@@ -390,11 +390,24 @@ func TestWithUnaryInterceptor(t *testing.T) {
 		interceptedMethods = append(interceptedMethods, method)
 		return invoker(ctx, method, req, reply, cc, opts...)
 	}
+	var interceptedCount int
+	counter := func(
+		ctx context.Context,
+		method string,
+		req, reply interface{},
+		cc *grpc.ClientConn,
+		invoker grpc.UnaryInvoker,
+		opts ...grpc.CallOption,
+	) error {
+		interceptedCount++
+		return invoker(ctx, method, req, reply, cc, opts...)
+	}
 	conn, err := Dial(
 		context.Background(),
 		httpListener.Addr().String(),
 		logger,
-		WithUnaryClientInterceptor(fakeInterceptor),
+		WithUnaryClientInterceptor(collector),
+		WithUnaryClientInterceptor(counter),
 		WithDialDebug(),
 		WithInsecure(),
 	)
@@ -417,6 +430,7 @@ func TestWithUnaryInterceptor(t *testing.T) {
 			"/proto.rpc.examples.echo.v1.EchoService/Echo",
 		},
 	)
+	test.That(t, interceptedCount, test.ShouldEqual, 2)
 }
 
 func TestWithStreamInterceptor(t *testing.T) {
@@ -440,7 +454,7 @@ func TestWithStreamInterceptor(t *testing.T) {
 	}()
 
 	var interceptedMethods []string
-	fakeInterceptor := func(
+	collector := func(
 		ctx context.Context,
 		desc *grpc.StreamDesc,
 		cc *grpc.ClientConn,
@@ -451,11 +465,24 @@ func TestWithStreamInterceptor(t *testing.T) {
 		interceptedMethods = append(interceptedMethods, method)
 		return streamer(ctx, desc, cc, method, opts...)
 	}
+	var interceptedCount int
+	counter := func(
+		ctx context.Context,
+		desc *grpc.StreamDesc,
+		cc *grpc.ClientConn,
+		method string,
+		streamer grpc.Streamer,
+		opts ...grpc.CallOption,
+	) (grpc.ClientStream, error) {
+		interceptedCount++
+		return streamer(ctx, desc, cc, method, opts...)
+	}
 	conn, err := Dial(
 		context.Background(),
 		httpListener.Addr().String(),
 		logger,
-		WithStreamClientInterceptor(fakeInterceptor),
+		WithStreamClientInterceptor(collector),
+		WithStreamClientInterceptor(counter),
 		WithDialDebug(),
 		WithInsecure(),
 	)
@@ -475,4 +502,5 @@ func TestWithStreamInterceptor(t *testing.T) {
 		test.ShouldResemble,
 		[]string{"/proto.rpc.examples.echo.v1.EchoService/EchoMultiple"},
 	)
+	test.That(t, interceptedCount, test.ShouldEqual, 1)
 }
