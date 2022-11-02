@@ -98,6 +98,7 @@ func (p *managedProcess) Start(ctx context.Context) error {
 		// to finish running.
 		//nolint:gosec
 		cmd := exec.CommandContext(ctx, p.name, p.args...)
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 		cmd.Dir = p.cwd
 		var runErr error
 		if p.shouldLog || p.logWriter != nil {
@@ -128,6 +129,7 @@ func (p *managedProcess) Start(ctx context.Context) error {
 	// use the CommandContext variant.
 	//nolint:gosec
 	cmd := exec.Command(p.name, p.args...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Dir = p.cwd
 
 	var stdOut, stdErr io.ReadCloser
