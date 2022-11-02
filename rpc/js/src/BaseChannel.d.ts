@@ -11,7 +11,7 @@ export declare class BaseChannel {
     close(): void;
     isClosed(): boolean;
     isClosedReason(): Error | undefined;
-    private closeWithReason;
+    protected closeWithReason(err?: Error): void;
     private onChannelOpen;
     private onChannelClose;
     private onChannelError;

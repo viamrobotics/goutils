@@ -6,6 +6,7 @@ export declare class ClientChannel extends BaseChannel {
     private readonly streams;
     constructor(pc: RTCPeerConnection, dc: RTCDataChannel);
     transportFactory(): grpc.TransportFactory;
+    private onConnectionTerminated;
     private onChannelMessage;
     private nextStreamID;
     private newStream;

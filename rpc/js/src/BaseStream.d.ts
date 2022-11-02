@@ -10,6 +10,6 @@ export declare class BaseStream {
     private err?;
     constructor(stream: Stream, onDone: (id: number) => void, opts: grpc.TransportOptions);
     cancel(): void;
-    protected closeWithRecvError(err?: Error): void;
+    closeWithRecvError(err?: Error): void;
     protected processPacketMessage(msg: PacketMessage): Uint8Array | undefined;
 }

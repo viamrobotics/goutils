@@ -3,8 +3,7 @@ module.exports = {
 	entry: "./src/index.ts",
 	devtool: 'inline-source-map',
 	output: {
-	 library: 'rpc',
-		libraryTarget: 'umd'
+		libraryTarget: 'module'
 	},
 	module: {
 		rules: [
@@ -18,5 +17,8 @@ module.exports = {
 	},
 	resolve: {
 		extensions: [".ts", ".js"]
+	},
+	experiments: {
+		outputModule: true
 	}
 };

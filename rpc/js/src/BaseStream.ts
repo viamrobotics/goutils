@@ -25,7 +25,7 @@ export class BaseStream {
 		}
 	}
 
-	protected closeWithRecvError(err?: Error) {
+	public closeWithRecvError(err?: Error) {
 		if (this.closed) {
 			return;
 		}
