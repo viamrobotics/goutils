@@ -139,6 +139,7 @@ type Request struct {
 
 	Stream *Stream `protobuf:"bytes,1,opt,name=stream,proto3" json:"stream,omitempty"`
 	// Types that are assignable to Type:
+	//
 	//	*Request_Headers
 	//	*Request_Message
 	//	*Request_RstStream
@@ -374,6 +375,7 @@ type Response struct {
 
 	Stream *Stream `protobuf:"bytes,1,opt,name=stream,proto3" json:"stream,omitempty"`
 	// Types that are assignable to Type:
+	//
 	//	*Response_Headers
 	//	*Response_Message
 	//	*Response_Trailers
