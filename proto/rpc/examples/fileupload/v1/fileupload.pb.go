@@ -26,7 +26,6 @@ type UploadFileRequest struct {
 	unknownFields protoimpl.UnknownFields
 
 	// Types that are assignable to Data:
-	//
 	//	*UploadFileRequest_Name
 	//	*UploadFileRequest_ChunkData
 	Data isUploadFileRequest_Data `protobuf_oneof:"data"`

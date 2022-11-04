@@ -260,7 +260,6 @@ type CallResponse struct {
 
 	Uuid string `protobuf:"bytes,1,opt,name=uuid,proto3" json:"uuid,omitempty"`
 	// Types that are assignable to Stage:
-	//
 	//	*CallResponse_Init
 	//	*CallResponse_Update
 	Stage isCallResponse_Stage `protobuf_oneof:"stage"`
@@ -350,7 +349,6 @@ type CallUpdateRequest struct {
 
 	Uuid string `protobuf:"bytes,1,opt,name=uuid,proto3" json:"uuid,omitempty"`
 	// Types that are assignable to Update:
-	//
 	//	*CallUpdateRequest_Candidate
 	//	*CallUpdateRequest_Done
 	//	*CallUpdateRequest_Error
@@ -809,7 +807,6 @@ type AnswerRequest struct {
 
 	Uuid string `protobuf:"bytes,1,opt,name=uuid,proto3" json:"uuid,omitempty"`
 	// Types that are assignable to Stage:
-	//
 	//	*AnswerRequest_Init
 	//	*AnswerRequest_Update
 	//	*AnswerRequest_Done
@@ -1114,7 +1111,6 @@ type AnswerResponse struct {
 
 	Uuid string `protobuf:"bytes,1,opt,name=uuid,proto3" json:"uuid,omitempty"`
 	// Types that are assignable to Stage:
-	//
 	//	*AnswerResponse_Init
 	//	*AnswerResponse_Update
 	//	*AnswerResponse_Done
