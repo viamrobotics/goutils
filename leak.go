@@ -9,5 +9,9 @@ func FindGoroutineLeaks() error {
 		goleak.IgnoreTopFunction("go.opencensus.io/stats/view.(*worker).start"),
 		goleak.IgnoreTopFunction("github.com/desertbit/timer.timerRoutine"),              // gRPC uses this
 		goleak.IgnoreTopFunction("github.com/letsencrypt/pebble/va.VAImpl.processTasks"), // no way to stop it
+
+		// net/http.(*Transport).CloseIdleConnections() doesn't interrupt in-progress connection attempts
+		goleak.IgnoreTopFunction("net.(*netFD).connect.func2"),
+		goleak.IgnoreTopFunction("internal/poll.runtime_pollWait"),
 	)
 }
