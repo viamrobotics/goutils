@@ -1,4 +1,4 @@
-name: NPM Publish
+name: NPM Publish @viamrobotics/js
 
 on:
   push:
@@ -13,16 +13,14 @@ jobs:
       options: --platform linux/amd64
 
     steps:
-      - name: Checkout 🛎️
+      - name: Checkout
         uses: actions/checkout@v2.4.0
         with:
           persist-credentials: false
 
-      - name: Install and Build 🔧
+      - name: Install, Build, and Publish
         run: |
           make build-web
-
-      - name: Publish 🚀
-        uses: JS-DevTools/npm-publish@v1
-        with:
-          token: ${{ secrets.NPM_TOKEN }} 
+          cd rpc/js
+          npm install -g @jsdevtools/npm-publish
+          npm-publish --token=${{ secrets.NPM_TOKEN }}
