@@ -20,6 +20,9 @@ func TestSetupGlobalCache(t *testing.T) (string, func()) {
 	if err == nil {
 		undoFunc = func() {
 			test.That(t, os.Chdir(cwd), test.ShouldBeNil)
+			cache, err := GlobalCache()
+			test.That(t, err, test.ShouldBeNil)
+			test.That(t, cache.Close(), test.ShouldBeNil)
 		}
 	}
 	dir := t.TempDir()

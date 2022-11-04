@@ -49,15 +49,12 @@ func newGoogleStorageStore(config *GoogleStorageStoreConfig) (*googleStorageStor
 	}
 
 	var opts []option.ClientOption
-	var noAuth bool
 	credsPath := getGoogleCredsPath()
 	if credsPath == "" {
-		noAuth = true
 		opts = append(opts, option.WithoutAuthentication())
 	} else {
 		opts = append(opts, option.WithCredentialsFile(credsPath), option.WithScopes(storage.ScopeFullControl))
 	}
-
 	var httpTransport http.Transport
 	var err error
 	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: &httpTransport})
@@ -67,23 +64,12 @@ func newGoogleStorageStore(config *GoogleStorageStoreConfig) (*googleStorageStor
 	}
 
 	httpClient := &http.Client{Transport: gcpTransport}
-	clientOpt := option.WithHTTPClient(httpClient)
-	client, err := storage.NewClient(context.Background(), clientOpt)
+	opts = append(opts, option.WithHTTPClient(httpClient))
+
+	client, err := storage.NewClient(context.Background(), opts...)
 	if err != nil {
 		httpTransport.CloseIdleConnections()
-		if noAuth {
-			return nil, errors.WithStack(err)
-		}
-		httpClient.Transport, err = gcphttp.NewTransport(ctx, &httpTransport, option.WithoutAuthentication())
-		if err != nil {
-			return nil, err
-		}
-
-		client, err = storage.NewClient(context.Background(), clientOpt)
-		if err != nil {
-			httpTransport.CloseIdleConnections()
-			return nil, errors.WithStack(err)
-		}
+		return nil, errors.WithStack(err)
 	}
 
 	return &googleStorageStore{
@@ -137,6 +123,6 @@ func (s *googleStorageStore) Store(hash string, r io.Reader) (err error) {
 }
 
 func (s *googleStorageStore) Close() error {
-	s.httpTransport.CloseIdleConnections()
+	defer s.httpTransport.CloseIdleConnections()
 	return s.client.Close()
 }
