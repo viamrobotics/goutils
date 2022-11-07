@@ -56,17 +56,7 @@ func newWebRTCServerWithInterceptors(
 	unaryInt grpc.UnaryServerInterceptor,
 	streamInt grpc.StreamServerInterceptor,
 ) *webrtcServer {
-	srv := &webrtcServer{
-		handlers:    map[string]handlerFunc{},
-		services:    map[string]*serviceInfo{},
-		logger:      logger,
-		peerConns:   map[*webrtc.PeerConnection]struct{}{},
-		callTickets: make(chan struct{}, DefaultWebRTCMaxGRPCCalls),
-		unaryInt:    unaryInt,
-		streamInt:   streamInt,
-	}
-	srv.ctx, srv.cancel = context.WithCancel(context.Background())
-	return srv
+	return newWebRTCServerWithInterceptorsAndUnknownStreamHandler(logger, unaryInt, streamInt, nil)
 }
 
 // newWebRTCServerWithInterceptorsAndUnknownStreamHandler makes a new server with no registered services that will

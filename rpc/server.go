@@ -246,7 +246,6 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 	if !(sOpts.debug || utils.Debug) {
 		grpcLogger = grpcLogger.WithOptions(zap.IncreaseLevel(zap.LevelEnablerFunc(zapcore.ErrorLevel.Enabled)))
 	}
-	// TODO(erd): webrtc too
 	if sOpts.unknownStreamDesc != nil {
 		serverOpts = append(serverOpts, grpc.UnknownServiceHandler(sOpts.unknownStreamDesc.Handler))
 	}
@@ -454,12 +453,20 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 		unaryInterceptor := grpc_middleware.ChainUnaryServer(webrtcUnaryInterceptors...)
 		streamInterceptor := grpc_middleware.ChainStreamServer(webrtcStreamInterceptors...)
 
-		server.webrtcServer = newWebRTCServerWithInterceptorsAndUnknownStreamHandler(
-			logger,
-			unaryInterceptor,
-			streamInterceptor,
-			sOpts.unknownStreamDesc,
-		)
+		if sOpts.unknownStreamDesc == nil {
+			server.webrtcServer = newWebRTCServerWithInterceptors(
+				logger,
+				unaryInterceptor,
+				streamInterceptor,
+			)
+		} else {
+			server.webrtcServer = newWebRTCServerWithInterceptorsAndUnknownStreamHandler(
+				logger,
+				unaryInterceptor,
+				streamInterceptor,
+				sOpts.unknownStreamDesc,
+			)
+		}
 		if sOpts.webrtcOpts.OnPeerAdded != nil {
 			server.webrtcServer.onPeerAdded = sOpts.webrtcOpts.OnPeerAdded
 		}
