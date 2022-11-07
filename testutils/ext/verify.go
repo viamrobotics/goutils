@@ -30,7 +30,7 @@ func VerifyTestMain(m goleak.TestingM) {
 		//nolint:errcheck
 		_, _ = transport.Creds(context.Background(), option.WithHTTPClient(httpClient))
 
-		t := time.NewTimer(50 * time.Millisecond)
+		t := time.NewTimer(100 * time.Millisecond)
 		defer t.Stop()
 		for {
 			select {
