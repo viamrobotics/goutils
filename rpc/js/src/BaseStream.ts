@@ -8,7 +8,7 @@ export class BaseStream {
 	protected readonly stream: Stream;
 	private readonly onDone: (id: number) => void;
 	protected readonly opts: grpc.TransportOptions;
-	private closed: boolean = false;
+	protected closed: boolean = false;
 	private readonly packetBuf: Array<Uint8Array> = [];
 	private packetBufSize = 0;
 	private err?: Error;
@@ -19,19 +19,12 @@ export class BaseStream {
 		this.opts = opts;
 	}
 
-	public cancel() {
-		if (this.opts.debug) {
-			console.debug("cancel")
-		}
-	}
-
 	public closeWithRecvError(err?: Error) {
 		if (this.closed) {
 			return;
 		}
 		this.closed = true;
 		this.err = err;
-		this.cancel();
 		this.onDone(this.stream.getId());
 		// pretty sure passing the error does nothing.
 		this.opts.onEnd(this.err);

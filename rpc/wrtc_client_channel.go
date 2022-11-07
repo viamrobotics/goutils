@@ -100,26 +100,36 @@ func (ch *webrtcClientChannel) Invoke(
 ) error {
 	fields := newClientLoggerFields(method)
 	startTime := time.Now()
-	err := ch.invokeWithInterceptor(ctx, method, args, reply)
+	err := ch.invokeWithInterceptor(ctx, method, args, reply, opts...)
 	newCtx := ctxzap.ToContext(ctx, ch.webrtcBaseChannel.logger.Desugar().With(fields...))
 	logFinalClientLine(newCtx, startTime, err, "finished client unary call")
 	return err
 }
 
-func (ch *webrtcClientChannel) invokeWithInterceptor(ctx context.Context, method string, args, reply interface{}) error {
+func (ch *webrtcClientChannel) invokeWithInterceptor(
+	ctx context.Context,
+	method string,
+	args, reply interface{},
+	opts ...grpc.CallOption,
+) error {
 	if ch.unaryInterceptor == nil {
-		return ch.invoke(ctx, method, args, reply)
+		return ch.invoke(ctx, method, args, reply, opts...)
 	}
 
 	// change signature of invoker to be compatible with grpc unary interceptor
-	invoker := func(ctx context.Context, method string, req, reply interface{}, _ *grpc.ClientConn, _ ...grpc.CallOption) error {
-		return ch.invoke(ctx, method, req, reply)
+	invoker := func(ctx context.Context, method string, req, reply interface{}, _ *grpc.ClientConn, opts ...grpc.CallOption) error {
+		return ch.invoke(ctx, method, req, reply, opts...)
 	}
 	return ch.unaryInterceptor(ctx, method, args, reply, nil, invoker)
 }
 
-func (ch *webrtcClientChannel) invoke(ctx context.Context, method string, args, reply interface{}) error {
-	clientStream, err := ch.newStream(ctx, ch.nextStreamID())
+func (ch *webrtcClientChannel) invoke(
+	ctx context.Context,
+	method string,
+	args, reply interface{},
+	opts ...grpc.CallOption,
+) error {
+	clientStream, err := ch.newStream(ctx, ch.nextStreamID(), opts...)
 	if err != nil {
 		return err
 	}
@@ -228,7 +238,11 @@ func (ch *webrtcClientChannel) removeStreamByID(id uint64) {
 	ch.mu.Unlock()
 }
 
-func (ch *webrtcClientChannel) newStream(ctx context.Context, stream *webrtcpb.Stream) (*webrtcClientStream, error) {
+func (ch *webrtcClientChannel) newStream(
+	ctx context.Context,
+	stream *webrtcpb.Stream,
+	opts ...grpc.CallOption,
+) (*webrtcClientStream, error) {
 	id := stream.Id
 	ch.mu.Lock()
 	activeStream, ok := ch.streams[id]
@@ -243,6 +257,7 @@ func (ch *webrtcClientChannel) newStream(ctx context.Context, stream *webrtcpb.S
 			stream,
 			ch.removeStreamByID,
 			ch.webrtcBaseChannel.logger.With("id", id),
+			opts...,
 		)
 		activeStream = activeWebRTCClientStream{clientStream, cancel}
 		ch.streams[id] = activeStream

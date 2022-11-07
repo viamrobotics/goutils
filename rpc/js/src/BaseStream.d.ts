@@ -4,12 +4,11 @@ export declare class BaseStream {
     protected readonly stream: Stream;
     private readonly onDone;
     protected readonly opts: grpc.TransportOptions;
-    private closed;
+    protected closed: boolean;
     private readonly packetBuf;
     private packetBufSize;
     private err?;
     constructor(stream: Stream, onDone: (id: number) => void, opts: grpc.TransportOptions);
-    cancel(): void;
     closeWithRecvError(err?: Error): void;
     protected processPacketMessage(msg: PacketMessage): Uint8Array | undefined;
 }

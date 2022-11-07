@@ -1,7 +1,7 @@
 import { grpc } from "@improbable-eng/grpc-web";
-import { Metadata, PacketMessage, RequestHeaders, RequestMessage, Response, ResponseHeaders, ResponseMessage, ResponseTrailers, Stream, Strings } from "./gen/proto/rpc/webrtc/v1/grpc_pb";
 import { BaseStream } from "./BaseStream";
 import type { ClientChannel } from "./ClientChannel";
+import { Metadata, PacketMessage, RequestHeaders, RequestMessage, Response, ResponseHeaders, ResponseMessage, ResponseTrailers, Stream, Strings } from "./gen/proto/rpc/webrtc/v1/grpc_pb";
 
 // see golang/client_stream.go
 const maxRequestMessagePacketDataSize = 16373;
@@ -39,11 +39,27 @@ export class ClientStream extends BaseStream implements grpc.Transport {
 		this.writeMessage(false, undefined);
 	}
 
+	public resetStream() {
+		try {
+			this.channel.writeReset(this.stream);
+		} catch (error) {
+			console.error("error writing reset", error);
+			this.closeWithRecvError(error as Error);
+		}
+	}
+
 	public finishSend() {
 		if (!this.opts.methodDefinition.requestStream) {
 			return
 		}
 		this.writeMessage(true, undefined);
+	}
+
+	public cancel() {
+		if (this.closed) {
+			return;
+		}
+		this.resetStream();
 	}
 
 	private writeMessage(eos: boolean, msgBytes?: Uint8Array) {

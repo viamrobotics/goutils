@@ -1,8 +1,8 @@
 import type { grpc } from "@improbable-eng/grpc-web";
-import { Request, RequestHeaders, RequestMessage, Response, Stream } from "./gen/proto/rpc/webrtc/v1/grpc_pb";
 import { BaseChannel } from "./BaseChannel";
 import { ClientStream } from "./ClientStream";
 import { ConnectionClosedError } from "./errors";
+import { Request, RequestHeaders, RequestMessage, Response, Stream } from "./gen/proto/rpc/webrtc/v1/grpc_pb";
 
 // MaxStreamCount is the max number of streams a channel can have.
 let MaxStreamCount = 256;
@@ -19,11 +19,11 @@ export class ClientChannel extends BaseChannel {
         super(pc, dc);
         dc.onmessage = (event: MessageEvent<unknown>) => this.onChannelMessage(event);
         pc.addEventListener("iceconnectionstatechange", () => {
-          const state = pc.iceConnectionState;
-          if (!(state === "failed"|| state === "disconnected" || state === "closed")) {
-            return;
-          }
-          this.onConnectionTerminated();
+            const state = pc.iceConnectionState;
+            if (!(state === "failed" || state === "disconnected" || state === "closed")) {
+                return;
+            }
+            this.onConnectionTerminated();
         });
         dc.addEventListener("close", () => this.onConnectionTerminated());
     }
@@ -105,6 +105,13 @@ export class ClientChannel extends BaseChannel {
         const request = new Request();
         request.setStream(stream);
         request.setMessage(msg);
+        this.write(request);
+    }
+
+    public writeReset(stream: Stream) {
+        const request = new Request();
+        request.setStream(stream);
+        request.setRstStream(true);
         this.write(request);
     }
 }

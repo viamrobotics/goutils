@@ -33,6 +33,9 @@ type webrtcClientStream struct {
 	userCtx                 context.Context
 	headersReceived         chan struct{}
 	trailersReceived        bool
+
+	callOptHeaders  *metadata.MD
+	callOptTrailers *metadata.MD
 }
 
 // newWebRTCClientStream creates a gRPC stream from the given client channel with a
@@ -44,6 +47,7 @@ func newWebRTCClientStream(
 	stream *webrtcpb.Stream,
 	onDone func(id uint64),
 	logger golog.Logger,
+	opts ...grpc.CallOption,
 ) *webrtcClientStream {
 	ctx, cancel := context.WithCancel(ctx)
 	bs := newWebRTCBaseStream(ctx, cancel, stream, onDone, logger)
@@ -53,6 +57,16 @@ func newWebRTCClientStream(
 		cancel:           cancel,
 		ch:               channel,
 		headersReceived:  make(chan struct{}),
+	}
+	for _, opt := range opts {
+		switch optV := opt.(type) {
+		case grpc.HeaderCallOption:
+			s.callOptHeaders = optV.HeaderAddr
+		case grpc.TrailerCallOption:
+			s.callOptTrailers = optV.TrailerAddr
+		default:
+			s.webrtcBaseStream.logger.Errorf("do not know how to handle call option %T", opt)
+		}
 	}
 	s.activeBackgroundWorkers.Add(1)
 	utils.PanicCapturingGo(func() {
@@ -298,6 +312,16 @@ func (s *webrtcClientStream) processMessage(msg *webrtcpb.ResponseMessage) {
 }
 
 func (s *webrtcClientStream) processTrailers(trailers *webrtcpb.ResponseTrailers) {
+	defer func() {
+		if s.callOptHeaders != nil && s.headers != nil {
+			headersCopy := s.headers.Copy()
+			*s.callOptHeaders = headersCopy
+		}
+		if s.callOptTrailers != nil && trailers.Metadata != nil {
+			trailersMD := metadataFromProto(trailers.Metadata)
+			*s.callOptTrailers = trailersMD
+		}
+	}()
 	s.trailersReceived = true
 	respStatus := status.FromProto(trailers.Status)
 	s.webrtcBaseStream.closeWithRecvError(respStatus.Err())
