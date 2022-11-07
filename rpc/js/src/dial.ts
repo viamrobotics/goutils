@@ -218,115 +218,50 @@ export async function dialWebRTC(signalingAddress: string, host: string, opts?: 
 
 	const webrtcOpts = opts?.webrtcOptions;
 	const { pc, dc } = await newPeerConnectionForClient(webrtcOpts !== undefined && webrtcOpts.disableTrickleICE, webrtcOpts?.rtcConfig);
+	let successful = false;
 
-	// replace auth entity and creds
-	let optsCopy = opts;
-	if (opts) {
-		optsCopy = { ...opts } as DialOptions;
+	try {
+		// replace auth entity and creds
+		let optsCopy = opts;
+		if (opts) {
+			optsCopy = { ...opts } as DialOptions;
 
-		if (!opts.accessToken) {
-			optsCopy.authEntity = opts?.webrtcOptions?.signalingAuthEntity;
-			if (!optsCopy.authEntity) {
-				if (optsCopy.externalAuthAddress) {
-					optsCopy.authEntity = opts.externalAuthAddress?.replace(/^(.*:\/\/)/, '');
-				} else {
-					optsCopy.authEntity = signalingAddress.replace(/^(.*:\/\/)/, '');
+			if (!opts.accessToken) {
+				optsCopy.authEntity = opts?.webrtcOptions?.signalingAuthEntity;
+				if (!optsCopy.authEntity) {
+					if (optsCopy.externalAuthAddress) {
+						optsCopy.authEntity = opts.externalAuthAddress?.replace(/^(.*:\/\/)/, '');
+					} else {
+						optsCopy.authEntity = signalingAddress.replace(/^(.*:\/\/)/, '');
+					}
 				}
+				optsCopy.credentials = opts?.webrtcOptions?.signalingCredentials;
+				optsCopy.externalAuthAddress = opts?.webrtcOptions?.signalingExternalAuthAddress;
+				optsCopy.externalAuthToEntity = opts?.webrtcOptions?.signalingExternalAuthToEntity;
+				optsCopy.accessToken = opts?.webrtcOptions?.signalingAccessToken;
 			}
-			optsCopy.credentials = opts?.webrtcOptions?.signalingCredentials;
-			optsCopy.externalAuthAddress = opts?.webrtcOptions?.signalingExternalAuthAddress;
-			optsCopy.externalAuthToEntity = opts?.webrtcOptions?.signalingExternalAuthToEntity;
-			optsCopy.accessToken = opts?.webrtcOptions?.signalingAccessToken;
 		}
-	}
 
-	const directTransport = await dialDirect(signalingAddress, optsCopy);
-	const client = grpc.client(SignalingService.Call, {
-		host: signalingAddress,
-		transport: directTransport,
-	});
-
-	let uuid = '';
-	// only send once since exchange may end or ICE may end
-	let sentDoneOrErrorOnce = false;
-	const sendError = (err: string) => {
-		if (sentDoneOrErrorOnce) {
-			return;
-		}
-		sentDoneOrErrorOnce = true;
-		const callRequestUpdate = new CallUpdateRequest();
-		callRequestUpdate.setUuid(uuid);
-		const status = new Status();
-		status.setCode(Code.UNKNOWN);
-		status.setMessage(err);
-		callRequestUpdate.setError(status);
-		grpc.unary(SignalingService.CallUpdate, {
-			request: callRequestUpdate,
-			metadata: {
-				'rpc-host': host,
-			},
+		const directTransport = await dialDirect(signalingAddress, optsCopy);
+		const client = grpc.client(SignalingService.Call, {
 			host: signalingAddress,
 			transport: directTransport,
-			onEnd: (output: grpc.UnaryOutput<CallUpdateResponse>) => {
-				const { status, statusMessage, message } = output;
-				if (status === grpc.Code.OK && message) {
-					return;
-				}
-				console.error(statusMessage)
-			}
 		});
-	}
-	const sendDone = () => {
-		if (sentDoneOrErrorOnce) {
-			return;
-		}
-		sentDoneOrErrorOnce = true;
-		const callRequestUpdate = new CallUpdateRequest();
-		callRequestUpdate.setUuid(uuid);
-		callRequestUpdate.setDone(true);
-		grpc.unary(SignalingService.CallUpdate, {
-			request: callRequestUpdate,
-			metadata: {
-				'rpc-host': host,
-			},
-			host: signalingAddress,
-			transport: directTransport,
-			onEnd: (output: grpc.UnaryOutput<CallUpdateResponse>) => {
-				const { status, statusMessage, message } = output;
-				if (status === grpc.Code.OK && message) {
-					return;
-				}
-				console.error(statusMessage)
-			}
-		});
-	}
 
-	let pResolve: (value: unknown) => void;
-	let remoteDescSet = new Promise<unknown>((resolve) => {
-		pResolve = resolve;
-	});
-	let exchangeDone = false;
-	if (!webrtcOpts?.disableTrickleICE) {
-		// set up offer
-		const offerDesc = await pc.createOffer();
-
-		let iceComplete = false;
-		pc.onicecandidate = async event => {
-			await remoteDescSet;
-			if (exchangeDone) {
+		let uuid = '';
+		// only send once since exchange may end or ICE may end
+		let sentDoneOrErrorOnce = false;
+		const sendError = (err: string) => {
+			if (sentDoneOrErrorOnce) {
 				return;
 			}
-
-			if (event.candidate === null) {
-				iceComplete = true;
-				sendDone();
-				return;
-			}
-
-			const iProto = iceCandidateToProto(event.candidate);
+			sentDoneOrErrorOnce = true;
 			const callRequestUpdate = new CallUpdateRequest();
 			callRequestUpdate.setUuid(uuid);
-			callRequestUpdate.setCandidate(iProto);
+			const status = new Status();
+			status.setCode(Code.UNKNOWN);
+			status.setMessage(err);
+			callRequestUpdate.setError(status);
 			grpc.unary(SignalingService.CallUpdate, {
 				request: callRequestUpdate,
 				metadata: {
@@ -339,104 +274,177 @@ export async function dialWebRTC(signalingAddress: string, host: string, opts?: 
 					if (status === grpc.Code.OK && message) {
 						return;
 					}
-					if (exchangeDone || iceComplete) {
+					console.error(statusMessage)
+				}
+			});
+		}
+		const sendDone = () => {
+			if (sentDoneOrErrorOnce) {
+				return;
+			}
+			sentDoneOrErrorOnce = true;
+			const callRequestUpdate = new CallUpdateRequest();
+			callRequestUpdate.setUuid(uuid);
+			callRequestUpdate.setDone(true);
+			grpc.unary(SignalingService.CallUpdate, {
+				request: callRequestUpdate,
+				metadata: {
+					'rpc-host': host,
+				},
+				host: signalingAddress,
+				transport: directTransport,
+				onEnd: (output: grpc.UnaryOutput<CallUpdateResponse>) => {
+					const { status, statusMessage, message } = output;
+					if (status === grpc.Code.OK && message) {
 						return;
 					}
-					console.error("error sending candidate", statusMessage)
+					console.error(statusMessage)
 				}
 			});
 		}
 
-		await pc.setLocalDescription(offerDesc);
-	}
+		let pResolve: (value: unknown) => void;
+		let remoteDescSet = new Promise<unknown>((resolve) => {
+			pResolve = resolve;
+		});
+		let exchangeDone = false;
+		if (!webrtcOpts?.disableTrickleICE) {
+			// set up offer
+			const offerDesc = await pc.createOffer();
 
-	let haveInit = false;
-	// TS says that CallResponse isn't a valid type here. More investigation required.
-	client.onMessage(async (message: ProtobufMessage) => {
-		const response = message as CallResponse
+			let iceComplete = false;
+			pc.onicecandidate = async event => {
+				await remoteDescSet;
+				if (exchangeDone) {
+					return;
+				}
 
-		if (response.hasInit()) {
-			if (haveInit) {
-				sendError("got init stage more than once");
-				return;
-			}
-			const init = response.getInit()!;
-			haveInit = true;
-			uuid = response.getUuid();
+				if (event.candidate === null) {
+					iceComplete = true;
+					sendDone();
+					return;
+				}
 
-			const remoteSDP = new RTCSessionDescription(JSON.parse(atob(init.getSdp())));
-			pc.setRemoteDescription(remoteSDP);
+				const iProto = iceCandidateToProto(event.candidate);
+				const callRequestUpdate = new CallUpdateRequest();
+				callRequestUpdate.setUuid(uuid);
+				callRequestUpdate.setCandidate(iProto);
+				grpc.unary(SignalingService.CallUpdate, {
+					request: callRequestUpdate,
+					metadata: {
+						'rpc-host': host,
+					},
+					host: signalingAddress,
+					transport: directTransport,
+					onEnd: (output: grpc.UnaryOutput<CallUpdateResponse>) => {
+						const { status, statusMessage, message } = output;
+						if (status === grpc.Code.OK && message) {
+							return;
+						}
+						if (exchangeDone || iceComplete) {
+							return;
+						}
+						console.error("error sending candidate", statusMessage)
+					}
+				});
+			}
 
-			pResolve(true);
-
-			if (webrtcOpts?.disableTrickleICE) {
-				exchangeDone = true;
-				sendDone();
-				return;
-			}
-		} else if (response.hasUpdate()) {
-			if (!haveInit) {
-				sendError("got update stage before init stage");
-				return;
-			}
-			if (response.getUuid() !== uuid) {
-				sendError(`uuid mismatch; have=${response.getUuid()} want=${uuid}`);
-				return;
-			}
-			const update = response.getUpdate()!;
-			const cand = iceCandidateFromProto(update.getCandidate()!);
-			try {
-				await pc.addIceCandidate(cand);
-			} catch (error) {
-				sendError(JSON.stringify(error));
-				return;
-			}
-		} else {
-			sendError("unknown CallResponse stage");
-			return;
+			await pc.setLocalDescription(offerDesc);
 		}
-	});
 
-	let clientEndResolve: () => void;
-	let clientEndReject: (reason?: unknown) => void;
-	let clientEnd = new Promise<void>((resolve, reject) => {
-		clientEndResolve = resolve;
-		clientEndReject = reject;
-	});
-	client.onEnd((status: grpc.Code, statusMessage: string, _trailers: grpc.Metadata) => {
-		if (status === grpc.Code.OK) {
-			clientEndResolve();
-			return;
+		let haveInit = false;
+		// TS says that CallResponse isn't a valid type here. More investigation required.
+		client.onMessage(async (message: ProtobufMessage) => {
+			const response = message as CallResponse
+
+			if (response.hasInit()) {
+				if (haveInit) {
+					sendError("got init stage more than once");
+					return;
+				}
+				const init = response.getInit()!;
+				haveInit = true;
+				uuid = response.getUuid();
+
+				const remoteSDP = new RTCSessionDescription(JSON.parse(atob(init.getSdp())));
+				pc.setRemoteDescription(remoteSDP);
+
+				pResolve(true);
+
+				if (webrtcOpts?.disableTrickleICE) {
+					exchangeDone = true;
+					sendDone();
+					return;
+				}
+			} else if (response.hasUpdate()) {
+				if (!haveInit) {
+					sendError("got update stage before init stage");
+					return;
+				}
+				if (response.getUuid() !== uuid) {
+					sendError(`uuid mismatch; have=${response.getUuid()} want=${uuid}`);
+					return;
+				}
+				const update = response.getUpdate()!;
+				const cand = iceCandidateFromProto(update.getCandidate()!);
+				try {
+					await pc.addIceCandidate(cand);
+				} catch (error) {
+					sendError(JSON.stringify(error));
+					return;
+				}
+			} else {
+				sendError("unknown CallResponse stage");
+				return;
+			}
+		});
+
+		let clientEndResolve: () => void;
+		let clientEndReject: (reason?: unknown) => void;
+		let clientEnd = new Promise<void>((resolve, reject) => {
+			clientEndResolve = resolve;
+			clientEndReject = reject;
+		});
+		client.onEnd((status: grpc.Code, statusMessage: string, _trailers: grpc.Metadata) => {
+			if (status === grpc.Code.OK) {
+				clientEndResolve();
+				return;
+			}
+			console.error(statusMessage);
+			clientEndReject(statusMessage);
+		});
+		client.start({ 'rpc-host': host })
+
+		const callRequest = new CallRequest();
+		const encodedSDP = btoa(JSON.stringify(pc.localDescription));
+		callRequest.setSdp(encodedSDP);
+		if (webrtcOpts && webrtcOpts.disableTrickleICE) {
+			callRequest.setDisableTrickle(webrtcOpts.disableTrickleICE);
 		}
-		console.error(statusMessage);
-		clientEndReject(statusMessage);
-	});
-	client.start({ 'rpc-host': host })
+		client.send(callRequest);
 
-	const callRequest = new CallRequest();
-	const encodedSDP = btoa(JSON.stringify(pc.localDescription));
-	callRequest.setSdp(encodedSDP);
-	if (webrtcOpts && webrtcOpts.disableTrickleICE) {
-		callRequest.setDisableTrickle(webrtcOpts.disableTrickleICE);
-	}
-	client.send(callRequest);
+		const cc = new ClientChannel(pc, dc);
+		cc.ready.then(() => clientEndResolve()).catch(err => clientEndReject(err));
+		await clientEnd;
+		await cc.ready;
+		exchangeDone = true;
+		sendDone();
 
-	const cc = new ClientChannel(pc, dc);
-	cc.ready.then(() => clientEndResolve()).catch(err => clientEndReject(err));
-	await clientEnd;
-	await cc.ready;
-	exchangeDone = true;
-	sendDone();
-
-	if (opts?.externalAuthAddress) {
-		// TODO(GOUT-11): prepare AuthenticateTo here
-		// for client channel.
-	} else if (opts?.credentials?.type) {
-		// TODO(GOUT-11): prepare Authenticate here
-		// for client channel
-	}
+		if (opts?.externalAuthAddress) {
+			// TODO(GOUT-11): prepare AuthenticateTo here
+			// for client channel.
+		} else if (opts?.credentials?.type) {
+			// TODO(GOUT-11): prepare Authenticate here
+			// for client channel
+		}
 	
-	return { transportFactory: cc.transportFactory(), peerConnection: pc };
+		successful = true;
+		return { transportFactory: cc.transportFactory(), peerConnection: pc };
+	} finally {
+		if (!successful) {
+			pc.close();
+		}
+	}
 }
 
 function iceCandidateFromProto(i: ICECandidate): RTCIceCandidateInit {
