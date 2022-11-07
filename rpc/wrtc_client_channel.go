@@ -129,10 +129,29 @@ func (ch *webrtcClientChannel) invoke(
 	args, reply interface{},
 	opts ...grpc.CallOption,
 ) error {
-	clientStream, err := ch.newStream(ctx, ch.nextStreamID(), opts...)
+	clientStream, err := ch.newStream(ctx, ch.nextStreamID())
 	if err != nil {
 		return err
 	}
+	defer func() {
+		clientStream.mu.Lock()
+		defer clientStream.mu.Unlock()
+
+		for _, opt := range opts {
+			switch optV := opt.(type) {
+			case grpc.HeaderCallOption:
+				if clientStream.headers != nil {
+					*optV.HeaderAddr = clientStream.headers.Copy()
+				}
+			case grpc.TrailerCallOption:
+				if clientStream.trailers != nil {
+					*optV.TrailerAddr = clientStream.trailers.Copy()
+				}
+			default:
+				clientStream.webrtcBaseStream.logger.Errorf("do not know how to handle call option %T", opt)
+			}
+		}
+	}()
 
 	if err := clientStream.writeHeaders(makeRequestHeaders(ctx, method)); err != nil {
 		return err
@@ -241,7 +260,6 @@ func (ch *webrtcClientChannel) removeStreamByID(id uint64) {
 func (ch *webrtcClientChannel) newStream(
 	ctx context.Context,
 	stream *webrtcpb.Stream,
-	opts ...grpc.CallOption,
 ) (*webrtcClientStream, error) {
 	id := stream.Id
 	ch.mu.Lock()
@@ -257,7 +275,6 @@ func (ch *webrtcClientChannel) newStream(
 			stream,
 			ch.removeStreamByID,
 			ch.webrtcBaseChannel.logger.With("id", id),
-			opts...,
 		)
 		activeStream = activeWebRTCClientStream{clientStream, cancel}
 		ch.streams[id] = activeStream
