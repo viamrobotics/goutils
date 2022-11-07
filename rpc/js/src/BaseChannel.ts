@@ -7,6 +7,7 @@ export class BaseChannel {
     private readonly peerConn: RTCPeerConnection;
     private readonly dataChannel: RTCDataChannel;
     private pResolve: ((value: unknown) => void) | undefined;
+    private pReject: ((reason?: unknown) => void) | undefined;
 
     private closed = false;
     private closedReason?: Error;
@@ -17,15 +18,22 @@ export class BaseChannel {
         this.peerConn = peerConn;
         this.dataChannel = dataChannel;
 
-        this.ready = new Promise<unknown>(resolve => {
+        this.ready = new Promise<unknown>((resolve, reject) => {
             this.pResolve = resolve;
+            this.pReject = reject;
         })
 
         dataChannel.onopen = () => this.onChannelOpen();
         dataChannel.onclose = () => this.onChannelClose();
         dataChannel.onerror = (ev: Event) => this.onChannelError(ev as RTCErrorEvent);
 
-        peerConn.oniceconnectionstatechange = () => console.log(peerConn.iceConnectionState);
+        peerConn.addEventListener("iceconnectionstatechange", () => {
+            const state = peerConn.iceConnectionState;
+            if (!(state === "failed" || state === "disconnected" || state === "closed")) {
+                return;
+            }
+            this.pReject?.(new Error(`ICE connection failed with state: ${state}`));
+        });
     }
 
     public close() {

@@ -4,6 +4,7 @@ export declare class BaseChannel {
     private readonly peerConn;
     private readonly dataChannel;
     private pResolve;
+    private pReject;
     private closed;
     private closedReason?;
     protected maxDataChannelSize: number;

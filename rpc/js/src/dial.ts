@@ -422,7 +422,7 @@ export async function dialWebRTC(signalingAddress: string, host: string, opts?: 
 	client.send(callRequest);
 
 	const cc = new ClientChannel(pc, dc);
-	cc.ready.then(() => clientEndResolve());
+	cc.ready.then(() => clientEndResolve()).catch(err => clientEndReject(err));
 	await clientEnd;
 	await cc.ready;
 	exchangeDone = true;
