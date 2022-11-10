@@ -36,7 +36,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/pseudomuto/protoc-gen-doc v1.3.2
 	github.com/rs/cors v1.8.2
-	go.mongodb.org/mongo-driver v1.10.0-prerelease.0.20221031215941-4a22ce6d689a
+	go.mongodb.org/mongo-driver v1.12.0-prerelease.0.20221109213319-d3466eeae7a7
 	go.opencensus.io v0.23.0
 	go.uber.org/goleak v1.1.12
 	go.uber.org/multierr v1.8.0
