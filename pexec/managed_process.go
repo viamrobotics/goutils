@@ -180,7 +180,7 @@ func (p *managedProcess) manage(stdOut, stdErr io.ReadCloser) {
 	stopLogging := make(chan struct{})
 	var activeLoggers sync.WaitGroup
 	if p.shouldLog || p.logWriter != nil {
-		logPipe := func(name string, pipe io.ReadCloser) {
+		logPipe := func(name string, pipe io.ReadCloser, isErr bool) {
 			defer activeLoggers.Done()
 			pipeR := bufio.NewReader(pipe)
 			logWriterError := false
@@ -198,7 +198,11 @@ func (p *managedProcess) manage(stdOut, stdErr io.ReadCloser) {
 					return
 				}
 				if p.shouldLog {
-					p.logger.Debugw("output", "name", name, "data", string(line))
+					if isErr {
+						p.logger.Errorw("output", "name", name, "data", string(line))
+					} else {
+						p.logger.Infow("output", "name", name, "data", string(line))
+					}
 				}
 				if p.logWriter != nil && !logWriterError {
 					_, err := p.logWriter.Write(line)
@@ -219,10 +223,10 @@ func (p *managedProcess) manage(stdOut, stdErr io.ReadCloser) {
 		}
 		activeLoggers.Add(2)
 		utils.PanicCapturingGo(func() {
-			logPipe("StdOut", stdOut)
+			logPipe("StdOut", stdOut, false)
 		})
 		utils.PanicCapturingGo(func() {
-			logPipe("StdErr", stdErr)
+			logPipe("StdErr", stdErr, true)
 		})
 	}
 
