@@ -183,7 +183,7 @@ class authenticatedTransport implements grpc.Transport {
 		this.transport = defaultFactory(opts);
 	}
 
-	public async start(metadata: grpc.Metadata) {
+	public start(metadata: grpc.Metadata) {
 		this.extraMetadata.forEach((key: string, values: string | string[]) => {
 			metadata.set(key, values);
 		});
