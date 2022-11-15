@@ -56,3 +56,11 @@ cover:
 
 test:
 	go test -tags=no_skip -race ./...
+
+# examples
+
+example-echo/%: build-web
+	$(MAKE) -C rpc/examples/echo $*
+
+example-fileupload/%: build-web
+	$(MAKE) -C rpc/examples/fileupload $*
