@@ -1,6 +1,7 @@
 import { grpc } from "@improbable-eng/grpc-web";
 import { BaseStream } from "./BaseStream";
 import type { ClientChannel } from "./ClientChannel";
+import { GRPCError } from "./errors";
 import { Metadata, PacketMessage, RequestHeaders, RequestMessage, Response, ResponseHeaders, ResponseMessage, ResponseTrailers, Stream, Strings } from "./gen/proto/rpc/webrtc/v1/grpc_pb";
 
 // see golang/client_stream.go
@@ -172,7 +173,7 @@ export class ClientStream extends BaseStream implements grpc.Transport {
 			this.closeWithRecvError();
 			return;	
 		}
-		this.closeWithRecvError(new Error(`Code=${statusCode} Message=${statusMessage}`));
+		this.closeWithRecvError(new GRPCError(statusCode, statusMessage));
 	}
 }
 

@@ -1,6 +1,7 @@
 import { grpc } from "@improbable-eng/grpc-web";
 import type { ProtobufMessage } from "@improbable-eng/grpc-web/dist/typings/message";
 import { ClientChannel } from "./ClientChannel";
+import { ConnectionClosedError } from "./errors";
 import { Code } from "./gen/google/rpc/code_pb";
 import { Status } from "./gen/google/rpc/status_pb";
 import { AuthenticateRequest, AuthenticateResponse, AuthenticateToRequest, AuthenticateToResponse, Credentials as PBCredentials } from "./gen/proto/rpc/v1/auth_pb";
@@ -408,6 +409,10 @@ export async function dialWebRTC(signalingAddress: string, host: string, opts?: 
 		client.onEnd((status: grpc.Code, statusMessage: string, _trailers: grpc.Metadata) => {
 			if (status === grpc.Code.OK) {
 				clientEndResolve();
+				return;
+			}
+			if (statusMessage === "Response closed without headers") {
+				clientEndReject(new ConnectionClosedError("failed to dial"));
 				return;
 			}
 			console.error(statusMessage);

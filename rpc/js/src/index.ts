@@ -3,7 +3,9 @@ export {
     dialWebRTC,
     type Credentials
 } from "./dial";
-
 export {
-    ConnectionClosedError
+    ConnectionClosedError,
+    GRPCError
 } from "./errors";
+
+
