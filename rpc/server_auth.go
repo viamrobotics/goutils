@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/golang-jwt/jwt/v4"
+	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc"
@@ -36,11 +37,16 @@ const (
 // as authentication metadata.
 type JWTClaims struct {
 	jwt.RegisteredClaims
-	CredentialsType CredentialsType   `json:"rpc_creds_type,omitempty"`
-	AuthMetadata    map[string]string `json:"rpc_auth_md,omitempty"`
+	AuthCredentialsType CredentialsType   `json:"rpc_creds_type,omitempty"`
+	AuthMetadata        map[string]string `json:"rpc_auth_md,omitempty"`
 }
 
-// Entity entity from the claims Audience.
+// ID returns the ID from the claims ID.
+func (c JWTClaims) ID() string {
+	return c.RegisteredClaims.ID
+}
+
+// Entity returns the entity from the claims Audience.
 func (c JWTClaims) Entity() (string, error) {
 	if len(c.Audience) == 0 {
 		return "", status.Error(codes.Unauthenticated, "invalid claims: no audience")
@@ -49,13 +55,13 @@ func (c JWTClaims) Entity() (string, error) {
 	return c.Audience[0], nil
 }
 
-// GetCredentialsType returns the credential type from `rpc_creds_type` claim.
-func (c JWTClaims) GetCredentialsType() CredentialsType {
-	return c.CredentialsType
+// CredentialsType returns the credential type from `rpc_creds_type` claim.
+func (c JWTClaims) CredentialsType() CredentialsType {
+	return c.AuthCredentialsType
 }
 
-// GetAuthMetadata returns the metadata from `rpc_auth_md` claim.
-func (c JWTClaims) GetAuthMetadata() map[string]string {
+// Metadata returns the metadata from `rpc_auth_md` claim.
+func (c JWTClaims) Metadata() map[string]string {
 	return c.AuthMetadata
 }
 
@@ -116,10 +122,11 @@ func (ss *simpleServer) signAccessTokenForEntity(
 ) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, JWTClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
+			ID:       uuid.NewString(),
 			Audience: jwt.ClaimStrings{entity},
 		},
-		CredentialsType: forType,
-		AuthMetadata:    authMD,
+		AuthCredentialsType: forType,
+		AuthMetadata:        authMD,
 		// TODO(GOUT-13): expiration
 		// TODO(GOUT-12): refresh token
 		// TODO(GOUT-9): more complete info
@@ -141,11 +148,11 @@ func (ss *simpleServer) authUnaryInterceptor(
 	handler grpc.UnaryHandler,
 ) (interface{}, error) {
 	if !ss.exemptMethods[info.FullMethod] {
-		authEntity, err := ss.ensureAuthed(ctx)
+		authUID, authEntity, err := ss.ensureAuthed(ctx)
 		if err != nil {
 			return nil, err
 		}
-		ctx = ContextWithAuthEntity(ctx, authEntity)
+		ctx = ContextWithAuthUniqueID(ContextWithAuthEntity(ctx, authEntity), authUID)
 	}
 	return handler(ctx, req)
 }
@@ -157,11 +164,11 @@ func (ss *simpleServer) authStreamInterceptor(
 	handler grpc.StreamHandler,
 ) error {
 	if !ss.exemptMethods[info.FullMethod] {
-		authEntity, err := ss.ensureAuthed(serverStream.Context())
+		authUID, authEntity, err := ss.ensureAuthed(serverStream.Context())
 		if err != nil {
 			return err
 		}
-		ctx := ContextWithAuthEntity(serverStream.Context(), authEntity)
+		ctx := ContextWithAuthUniqueID(ContextWithAuthEntity(serverStream.Context(), authEntity), authUID)
 		serverStream = ctxWrappedServerStream{serverStream, ctx}
 	}
 	return handler(srv, serverStream)
@@ -193,12 +200,12 @@ func tokenFromContext(ctx context.Context) (string, error) {
 
 var errNotTLSAuthed = errors.New("not authenticated via TLS")
 
-func (ss *simpleServer) ensureAuthed(ctx context.Context) (interface{}, error) {
+func (ss *simpleServer) ensureAuthed(ctx context.Context) (string, interface{}, error) {
 	tokenString, err := tokenFromContext(ctx)
 	if err != nil {
 		// check TLS state
 		if ss.tlsAuthHandler == nil {
-			return nil, err
+			return "", nil, err
 		}
 		var verifiedCert *x509.Certificate
 		if p, ok := peer.FromContext(ctx); ok && p.AuthInfo != nil {
@@ -210,14 +217,22 @@ func (ss *simpleServer) ensureAuthed(ctx context.Context) (interface{}, error) {
 			}
 		}
 		if verifiedCert == nil {
-			return nil, err
+			return "", nil, err
 		}
 		if tlsAuthEntity, tlsErr := ss.tlsAuthHandler(ctx, verifiedCert.DNSNames...); tlsErr == nil {
-			return tlsAuthEntity, nil
+			// mTLS based authentication contexts do not really have a sense of a unique identifier
+			// when considering multiple clients using the certificate. We deem this okay but it does
+			// mean that if the identifier is used to bind to the concept of a unique session, it is
+			// not sufficient without another piece of information (like an address and port).
+			// Furthermore, if TLS certificate verification is disabled, this trust is lost.
+			// Our best chance at uniqueness with a compliant CA is to use the issuer DN (Distinguished Name)
+			// along with the serial number; compliancy hinges on issuing unique serial numbers and if this
+			// is an intermediate CA, their parent issuing unique DNs.
+			return verifiedCert.Issuer.String() + ":" + verifiedCert.SerialNumber.String(), tlsAuthEntity, nil
 		} else if !errors.Is(tlsErr, errNotTLSAuthed) {
-			return nil, multierr.Combine(err, tlsErr)
+			return "", nil, multierr.Combine(err, tlsErr)
 		}
-		return nil, err
+		return "", nil, err
 	}
 
 	var handler AuthHandler
@@ -252,7 +267,7 @@ func (ss *simpleServer) ensureAuthed(ctx context.Context) (interface{}, error) {
 		return &ss.authRSAPrivKey.PublicKey, nil
 	})
 	if err != nil {
-		return nil, status.Errorf(codes.Unauthenticated, "unauthenticated: %s", err)
+		return "", nil, status.Errorf(codes.Unauthenticated, "unauthenticated: %s", err)
 	}
 
 	// By default use the standard rpc.JWTClaims
@@ -263,7 +278,7 @@ func (ss *simpleServer) ensureAuthed(ctx context.Context) (interface{}, error) {
 		// reset the claims to the handlers version
 		claims = provider.CreateClaims()
 		if claims == nil {
-			return nil, status.Error(codes.Internal, "invalid implementation of TokenCustomClaimProvider, cannot return nil")
+			return "", nil, status.Error(codes.Internal, "invalid implementation of TokenCustomClaimProvider, cannot return nil")
 		}
 	}
 
@@ -272,29 +287,31 @@ func (ss *simpleServer) ensureAuthed(ctx context.Context) (interface{}, error) {
 	// usess pointers to time.Time causing parsing issues. For now we can just reparse the json jwt token into the claim.
 	_, _, err = jwtParser.ParseUnverified(outToken.Raw, claims)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "error decoding claims: %s", err)
+		return "", nil, status.Errorf(codes.InvalidArgument, "error decoding claims: %s", err)
 	}
 
 	// We MUST validate claims here. We disabled claims validation in the parser above.
 	err = claims.Valid()
 	if err != nil {
-		return nil, status.Errorf(codes.Unauthenticated, "unauthenticated: %s", err)
+		return "", nil, status.Errorf(codes.Unauthenticated, "unauthenticated: %s", err)
 	}
 
 	entity, err := claims.Entity()
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
 
-	// Pass the raw claims to the Context.
-	ctx = contextWithAuthClaims(ctx, claims)
-
-	// Pass the auth metadata to the context.
-	if claims.GetAuthMetadata() != nil {
-		ctx = contextWithAuthMetadata(ctx, claims.GetAuthMetadata())
+	claimsID := claims.ID()
+	if claimsID == "" {
+		return "", nil, errors.New("expected claims to have ID")
 	}
 
-	return handler.VerifyEntity(ctx, entity)
+	// Pass the raw claims to VerifyEntity.
+	entityInfo, err := handler.VerifyEntity(contextWithAuthClaims(ctx, claims), entity)
+	if err != nil {
+		return "", nil, err
+	}
+	return claims.ID(), entityInfo, nil
 }
 
 func getCredentialsTypeFromMapClaims(in jwt.Claims) (CredentialsType, error) {

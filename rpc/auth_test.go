@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/golang-jwt/jwt/v4"
+	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"go.viam.com/test"
 	"google.golang.org/grpc/codes"
@@ -154,9 +155,10 @@ func TestWithPublicKeyProvider(t *testing.T) {
 
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, JWTClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
+			ID:       uuid.NewString(),
 			Audience: jwt.ClaimStrings{"does not matter"},
 		},
-		CredentialsType: CredentialsType("fake"),
+		AuthCredentialsType: CredentialsType("fake"),
 	})
 
 	provder, ok := wrappedHandler.(TokenVerificationKeyProvider)
@@ -167,9 +169,10 @@ func TestWithPublicKeyProvider(t *testing.T) {
 
 	badToken := jwt.NewWithClaims(jwt.SigningMethodHS256, JWTClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
+			ID:       uuid.NewString(),
 			Audience: jwt.ClaimStrings{"does not matter"},
 		},
-		CredentialsType: CredentialsType("fake"),
+		AuthCredentialsType: CredentialsType("fake"),
 	})
 
 	_, err = provder.TokenVerificationKey(badToken)

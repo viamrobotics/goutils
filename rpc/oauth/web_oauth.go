@@ -39,7 +39,7 @@ type webOAuthClaims struct {
 
 func (c *webOAuthClaims) Entity() (string, error) {
 	// Claim `sub` will contain the Auth0 userid not the basic email.
-	if email, ok := c.AuthMetadata["email"]; ok {
+	if email, ok := c.Metadata()["email"]; ok {
 		return email, nil
 	}
 
@@ -135,7 +135,7 @@ func SignWebAuthAccessToken(key *rsa.PrivateKey, entity, aud, iss, keyID string)
 				Subject:  entity,
 				IssuedAt: jwt.NewNumericDate(time.Now()),
 			},
-			CredentialsType: CredentialsTypeOAuthWeb,
+			AuthCredentialsType: CredentialsTypeOAuthWeb,
 			AuthMetadata: map[string]string{
 				"email": entity,
 			},

@@ -15,6 +15,7 @@ import (
 
 	"github.com/edaniels/golog"
 	"github.com/golang-jwt/jwt/v4"
+	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.uber.org/multierr"
@@ -131,7 +132,7 @@ func TestDial(t *testing.T) {
 						if entity != "someent" {
 							return nil, errors.New("not someent")
 						}
-						if ContextAuthMetadata(ctx)["some"] != "data" {
+						if ContextAuthClaims(ctx).Metadata()["some"] != "data" {
 							return nil, errors.New("bad authed data")
 						}
 						return entity, nil
@@ -494,7 +495,7 @@ func TestDialExternalAuth(t *testing.T) {
 				if entity != "someent" {
 					return nil, errors.New("bad authed ent")
 				}
-				if ContextAuthMetadata(ctx)["some"] != "data" {
+				if ContextAuthClaims(ctx).Metadata()["some"] != "data" {
 					return nil, errors.New("bad authed data")
 				}
 				return entity, nil
@@ -1286,7 +1287,14 @@ func TestDialMutualTLSAuth(t *testing.T) {
 				return "", nil, err
 			}
 
-			echoServer := &echoserver.Server{ContextAuthEntity: MustContextAuthEntity}
+			echoServer := &echoserver.Server{
+				ContextAuthEntity: MustContextAuthEntity,
+				ContextAuthClaims: func(ctx context.Context) echoserver.ClaimsForTest {
+					return ContextAuthClaims(ctx)
+				},
+				ContextAuthUniqueID:  MustContextAuthUniqueID,
+				ExpectedAuthUniqueID: leaf.Issuer.String() + ":" + leaf.SerialNumber.String(),
+			}
 			echoServer.SetAuthorized(true)
 			server.RegisterServiceServer(
 				context.Background(),
@@ -1468,10 +1476,11 @@ func (svc *externalAuthServer) AuthenticateTo(
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, JWTClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
+			ID:       uuid.NewString(),
 			Audience: jwt.ClaimStrings{req.Entity},
 		},
-		CredentialsType: CredentialsType("inter-node"),
-		AuthMetadata:    authMetadata,
+		AuthCredentialsType: CredentialsType("inter-node"),
+		AuthMetadata:        authMetadata,
 	})
 
 	tokenString, err := token.SignedString(svc.privKey)

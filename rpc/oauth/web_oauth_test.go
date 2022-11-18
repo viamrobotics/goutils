@@ -51,7 +51,13 @@ func TestWebOauth(t *testing.T) {
 	rpcServer, err := rpc.NewServer(logger, WithWebOAuthTokenAuthHandler(opts))
 	test.That(t, err, test.ShouldBeNil)
 
-	echoServer := &echoserver.Server{ContextAuthEntity: rpc.MustContextAuthEntity}
+	echoServer := &echoserver.Server{
+		ContextAuthEntity: rpc.MustContextAuthEntity,
+		ContextAuthClaims: func(ctx context.Context) echoserver.ClaimsForTest {
+			return rpc.ContextAuthClaims(ctx)
+		},
+		ContextAuthUniqueID: rpc.MustContextAuthUniqueID,
+	}
 	echoServer.SetAuthorized(true)
 	err = rpcServer.RegisterServiceServer(
 		context.Background(),
@@ -163,7 +169,13 @@ func TestWebOauthWithNilVerifyEntity(t *testing.T) {
 	rpcServer, err := rpc.NewServer(logger, WithWebOAuthTokenAuthHandler(opts))
 	test.That(t, err, test.ShouldBeNil)
 
-	echoServer := &echoserver.Server{ContextAuthEntity: rpc.MustContextAuthEntity}
+	echoServer := &echoserver.Server{
+		ContextAuthEntity: rpc.MustContextAuthEntity,
+		ContextAuthClaims: func(ctx context.Context) echoserver.ClaimsForTest {
+			return rpc.ContextAuthClaims(ctx)
+		},
+		ContextAuthUniqueID: rpc.MustContextAuthUniqueID,
+	}
 	echoServer.SetAuthorized(true)
 	err = rpcServer.RegisterServiceServer(
 		context.Background(),

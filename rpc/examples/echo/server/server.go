@@ -6,10 +6,18 @@ import (
 	"io"
 	"sync"
 
+	"github.com/golang-jwt/jwt/v4"
+	"github.com/google/uuid"
 	"github.com/pkg/errors"
 
 	echopb "go.viam.com/utils/proto/rpc/examples/echo/v1"
 )
+
+type ClaimsForTest interface {
+	jwt.Claims
+	ID() string
+	Metadata() map[string]string
+}
 
 // Server implements a simple echo service.
 type Server struct {
@@ -20,7 +28,11 @@ type Server struct {
 
 	// prevents a package cycle. DO NOT set this to anything other
 	// than the real thing.
-	ContextAuthEntity func(ctx context.Context) interface{}
+	ContextAuthEntity   func(ctx context.Context) interface{}
+	ContextAuthClaims   func(ctx context.Context) ClaimsForTest
+	ContextAuthUniqueID func(ctx context.Context) string
+
+	ExpectedAuthUniqueID string
 }
 
 // SetFail instructs the server to fail at certain points in its execution.
@@ -47,6 +59,17 @@ func (srv *Server) Echo(ctx context.Context, req *echopb.EchoRequest) (*echopb.E
 	if srv.authorized {
 		if srv.ContextAuthEntity(ctx) != "somespecialinterface" {
 			return nil, errors.New("unauthenticated or unauthorized")
+		}
+		if srv.ContextAuthClaims(ctx) != nil {
+			return nil, errors.New("did not expect auth claims here")
+		}
+		uniqueID := srv.ContextAuthUniqueID(ctx)
+		if srv.ExpectedAuthUniqueID == "" {
+			if _, err := uuid.Parse(uniqueID); err != nil {
+				return nil, err
+			}
+		} else if uniqueID != srv.ExpectedAuthUniqueID {
+			return nil, errors.Errorf("expected auth unique id %q; got %q", srv.ExpectedAuthUniqueID, uniqueID)
 		}
 	}
 	srv.mu.Unlock()

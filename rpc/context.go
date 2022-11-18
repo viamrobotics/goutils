@@ -13,9 +13,9 @@ const (
 	ctxKeyHost = ctxKey(iota)
 	ctxKeyDialer
 	ctxKeyPeerConnection
-	ctxKeyAuthMetadata
 	ctxKeyAuthEntity
 	ctxKeyAuthClaims // all jwt claims
+	ctxKeyAuthUniqueID
 )
 
 // contextWithHost attaches a host name to the given context.
@@ -60,26 +60,14 @@ func ContextPeerConnection(ctx context.Context) (*webrtc.PeerConnection, bool) {
 	return pc.(*webrtc.PeerConnection), true
 }
 
-// contextWithAuthMetadata attaches authentication metadata to the given context.
-func contextWithAuthMetadata(ctx context.Context, authMD map[string]string) context.Context {
-	return context.WithValue(ctx, ctxKeyAuthMetadata, authMD)
-}
-
-// ContextAuthMetadata returns authentication metadata. It may be nil if the value was never set.
-func ContextAuthMetadata(ctx context.Context) map[string]string {
-	authMD := ctx.Value(ctxKeyAuthMetadata)
-	if authMD == nil {
-		return nil
-	}
-	return authMD.(map[string]string)
-}
-
 // contextWithAuthClaims attaches authentication jwt claims to the given context.
 func contextWithAuthClaims(ctx context.Context, claims Claims) context.Context {
 	return context.WithValue(ctx, ctxKeyAuthClaims, claims)
 }
 
-// ContextAuthClaims returns authentication jwt claims.
+// ContextAuthClaims returns authentication jwt claims. This context value is only expected
+// to exist in auth middleware and should not be saved unless the confidentiality of the
+// claims is not important.
 func ContextAuthClaims(ctx context.Context) Claims {
 	claims := ctx.Value(ctxKeyAuthClaims)
 	if claims == nil {
@@ -110,4 +98,28 @@ func MustContextAuthEntity(ctx context.Context) interface{} {
 		panic(err)
 	}
 	return authEntity
+}
+
+// ContextWithAuthUniqueID attaches a unique ID for an authenticated entity to the given context.
+func ContextWithAuthUniqueID(ctx context.Context, authUniqueID interface{}) context.Context {
+	return context.WithValue(ctx, ctxKeyAuthUniqueID, authUniqueID)
+}
+
+// contextAuthUniqueID returns the unique ID for the entity associated with this authentication context.
+func contextAuthUniqueID(ctx context.Context) (string, error) {
+	authUniqueID, ok := ctx.Value(ctxKeyAuthUniqueID).(string)
+	if !ok || authUniqueID == "" {
+		return "", errors.New("no auth unique ID")
+	}
+	return authUniqueID, nil
+}
+
+// MustContextAuthUniqueID returns the unique ID for the entity associated with this authentication context;
+// it panics if there is none set.
+func MustContextAuthUniqueID(ctx context.Context) string {
+	authUniqueID, err := contextAuthUniqueID(ctx)
+	if err != nil {
+		panic(err)
+	}
+	return authUniqueID
 }

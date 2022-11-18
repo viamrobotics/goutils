@@ -48,15 +48,18 @@ type Claims interface {
 	// are validated before entity checks,
 	jwt.Claims
 
+	// ID returns the identity (typically "jti") associated with the claims.
+	ID() string
+
 	// Entity must return the "entity" making the request to the rpc system from the jwt claims
 	// presented. Return error if entity is missing. Should not preform any entity checks.
 	Entity() (string, error)
 
-	// GetCredentialsType returns the rpc CredentialsType based on the jwt claims.
-	GetCredentialsType() CredentialsType
+	// CredentialsType returns the rpc CredentialsType based on the jwt claims.
+	CredentialsType() CredentialsType
 
-	// GetAuthMetadata returns the rpc auth metadata based on the jwt claims.
-	GetAuthMetadata() map[string]string
+	// Metadata returns the rpc auth metadata based on the jwt claims.
+	Metadata() map[string]string
 }
 
 // TokenCustomClaimProvider allows an AuthHandler to supply a key needed to peform
