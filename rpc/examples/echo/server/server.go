@@ -3,6 +3,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"sync"
 
@@ -25,6 +26,7 @@ type Server struct {
 	ContextAuthClaims   func(ctx context.Context) interface{}
 	ContextAuthUniqueID func(ctx context.Context) string
 
+	expectedAuthEntity   string
 	ExpectedAuthUniqueID string
 }
 
@@ -42,15 +44,27 @@ func (srv *Server) SetAuthorized(authorized bool) {
 	srv.mu.Unlock()
 }
 
+// SetExpectedAuthEntity sets the expected auth entity
+func (srv *Server) SetExpectedAuthEntity(authEntity string) {
+	srv.mu.Lock()
+	srv.expectedAuthEntity = authEntity
+	srv.mu.Unlock()
+}
+
 // Echo responds back with the same message.
 func (srv *Server) Echo(ctx context.Context, req *echopb.EchoRequest) (*echopb.EchoResponse, error) {
 	srv.mu.Lock()
+	defer srv.mu.Unlock()
 	if srv.fail {
-		srv.mu.Unlock()
 		return nil, errors.New("whoops")
 	}
 	if srv.authorized {
-		if srv.ContextAuthEntity(ctx) != "somespecialinterface" {
+		expectedAuthEntity := srv.expectedAuthEntity
+		if expectedAuthEntity == "" {
+			expectedAuthEntity = "somespecialinterface"
+		}
+		if srv.ContextAuthEntity(ctx) != expectedAuthEntity {
+			fmt.Println("hmm", srv.ContextAuthEntity(ctx))
 			return nil, errors.New("unauthenticated or unauthorized")
 		}
 		if srv.ContextAuthClaims(ctx) != nil {
@@ -65,7 +79,6 @@ func (srv *Server) Echo(ctx context.Context, req *echopb.EchoRequest) (*echopb.E
 			return nil, errors.Errorf("expected auth unique id %q; got %q", srv.ExpectedAuthUniqueID, uniqueID)
 		}
 	}
-	srv.mu.Unlock()
 	return &echopb.EchoResponse{Message: req.Message}, nil
 }
 

@@ -91,7 +91,8 @@ func contextAuthEntity(ctx context.Context) (interface{}, error) {
 }
 
 // MustContextAuthEntity returns the authentication entity associated with this context;
-// it panics if there is none set.
+// it panics if there is none set. This value is opaque and therefore should not be inspected
+// beyond equality checks.
 func MustContextAuthEntity(ctx context.Context) interface{} {
 	authEntity, err := contextAuthEntity(ctx)
 	if err != nil {

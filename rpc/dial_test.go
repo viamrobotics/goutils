@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -142,10 +143,17 @@ func TestDial(t *testing.T) {
 			)
 			test.That(t, err, test.ShouldBeNil)
 
+			echoServer := &echoserver.Server{
+				ContextAuthEntity: MustContextAuthEntity,
+				ContextAuthClaims: func(ctx context.Context) interface{} {
+					return ContextAuthClaims(ctx)
+				},
+				ContextAuthUniqueID: MustContextAuthUniqueID,
+			}
 			err = rpcServer.RegisterServiceServer(
 				context.Background(),
 				&pb.EchoService_ServiceDesc,
-				&echoserver.Server{},
+				echoServer,
 				pb.RegisterEchoServiceHandlerFromEndpoint,
 			)
 			test.That(t, err, test.ShouldBeNil)
@@ -233,6 +241,10 @@ func TestDial(t *testing.T) {
 			testMu.Unlock()
 
 			t.Run("with credentials provided", func(t *testing.T) {
+				echoServer.SetAuthorized(true)
+				defer echoServer.SetAuthorized(false)
+				echoServer.SetExpectedAuthEntity(httpListener.Addr().String())
+
 				conn, err := DialDirectGRPC(context.Background(), httpListener.Addr().String(), logger,
 					WithDialDebug(),
 					WithInsecure(),
@@ -246,6 +258,9 @@ func TestDial(t *testing.T) {
 				test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
 				test.That(t, conn.Close(), test.ShouldBeNil)
 
+				// TODO(GOUT-11): Once auth is handled, we can expect the same host for both gRPC and
+				// WebRTC based connections.
+				echoServer.SetExpectedAuthEntity(strings.Join(internalSignalingHosts, ":"))
 				conn, err = Dial(context.Background(), host, logger,
 					WithDialDebug(),
 					WithInsecure(),

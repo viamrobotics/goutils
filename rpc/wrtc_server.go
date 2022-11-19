@@ -167,8 +167,12 @@ func (srv *webrtcServer) handler(path string) (handlerFunc, bool) {
 
 // NewChannel binds the given data channel to be serviced as the server end of a gRPC
 // connection.
-func (srv *webrtcServer) NewChannel(peerConn *webrtc.PeerConnection, dataChannel *webrtc.DataChannel) *webrtcServerChannel {
-	serverCh := newWebRTCServerChannel(srv, peerConn, dataChannel, srv.logger)
+func (srv *webrtcServer) NewChannel(
+	peerConn *webrtc.PeerConnection,
+	dataChannel *webrtc.DataChannel,
+	forHosts []string,
+) *webrtcServerChannel {
+	serverCh := newWebRTCServerChannel(srv, peerConn, dataChannel, forHosts, srv.logger)
 	srv.mu.Lock()
 	srv.peerConns[peerConn] = struct{}{}
 	srv.mu.Unlock()

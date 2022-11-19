@@ -2,9 +2,11 @@ package rpc
 
 import (
 	"context"
+	"strings"
 	"sync"
 
 	"github.com/edaniels/golog"
+	"github.com/google/uuid"
 	"github.com/pion/webrtc/v3"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/proto"
@@ -16,9 +18,15 @@ import (
 // a WebRTC data channel.
 type webrtcServerChannel struct {
 	*webrtcBaseChannel
-	mu      sync.Mutex
-	server  *webrtcServer
-	streams map[uint64]*webrtcServerStream
+	mu  sync.Mutex
+	uid string
+	// TODO(GOUT-11): Handle auth; forHosts is an approximation of the authenticated
+	// entity due to the lack of the signaling protocol indicating to the answerer who
+	// the entity. There is no reason to extend the protocol right now since we intend
+	// to support some for of authentication in the presence of untrusted signalers.
+	forHosts string
+	server   *webrtcServer
+	streams  map[uint64]*webrtcServerStream
 }
 
 // newWebRTCServerChannel wraps the given WebRTC data channel to be used as the server end
@@ -27,6 +35,7 @@ func newWebRTCServerChannel(
 	server *webrtcServer,
 	peerConn *webrtc.PeerConnection,
 	dataChannel *webrtc.DataChannel,
+	forHosts []string,
 	logger golog.Logger,
 ) *webrtcServerChannel {
 	base := newBaseChannel(
@@ -37,6 +46,8 @@ func newWebRTCServerChannel(
 		logger,
 	)
 	ch := &webrtcServerChannel{
+		uid:               uuid.NewString(),
+		forHosts:          strings.Join(forHosts, ":"),
 		webrtcBaseChannel: base,
 		server:            server,
 		streams:           make(map[uint64]*webrtcServerStream),
@@ -118,6 +129,12 @@ func (ch *webrtcServerChannel) onChannelMessage(msg webrtc.DataChannelMessage) {
 			handlerCtx, cancelCtx = context.WithTimeout(handlerCtx, timeout)
 		}
 		handlerCtx = contextWithPeerConnection(handlerCtx, ch.peerConn)
+
+		// TODO(GOUT-11): Handle auth; right now we assume
+		// successful auth to the signaler implies that auth should be allowed here, which is not 100%
+		// true.
+		handlerCtx = ContextWithAuthUniqueID(handlerCtx, ch.uid)
+		handlerCtx = ContextWithAuthEntity(handlerCtx, ch.forHosts)
 
 		serverStream = newWebRTCServerStream(handlerCtx, cancelCtx, headers.Headers.Method, ch, stream, ch.removeStreamByID, logger)
 		ch.streams[id] = serverStream
