@@ -290,6 +290,21 @@ type webrtcPeerConnectionStats struct {
 	RemoteCandidates map[string]string
 }
 
+func webrtcPeerConnCandPair(peerConnection *webrtc.PeerConnection) (*webrtc.ICECandidatePair, bool) {
+	connectionState := peerConnection.ICEConnectionState()
+	if connectionState == webrtc.ICEConnectionStateConnected && peerConnection.SCTP() != nil &&
+		peerConnection.SCTP().Transport() != nil &&
+		peerConnection.SCTP().Transport().ICETransport() != nil {
+
+		candPair, err := peerConnection.SCTP().Transport().ICETransport().GetSelectedCandidatePair()
+		if err != nil {
+			return nil, false
+		}
+		return candPair, true
+	}
+	return nil, false
+}
+
 func getWebRTCPeerConnectionStats(peerConnection *webrtc.PeerConnection) webrtcPeerConnectionStats {
 	stats := peerConnection.GetStats()
 	var connID string

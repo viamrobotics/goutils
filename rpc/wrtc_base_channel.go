@@ -95,13 +95,7 @@ func newBaseChannel(
 				webrtc.ICEConnectionStateConnected, webrtc.ICEConnectionStateNew:
 				fallthrough
 			default:
-				var candPair *webrtc.ICECandidatePair
-				if connectionState == webrtc.ICEConnectionStateConnected && peerConn.SCTP() != nil &&
-					peerConn.SCTP().Transport() != nil &&
-					peerConn.SCTP().Transport().ICETransport() != nil {
-					//nolint:errcheck
-					candPair, _ = peerConn.SCTP().Transport().ICETransport().GetSelectedCandidatePair()
-				}
+				candPair, hasCandPair := webrtcPeerConnCandPair(peerConn)
 				connInfo := getWebRTCPeerConnectionStats(peerConn)
 				connIDMu.Lock()
 				connID = connInfo.ID
@@ -111,7 +105,7 @@ func newBaseChannel(
 					"conn_state", connectionState.String(),
 					"conn_remote_candidates", connInfo.RemoteCandidates,
 				)
-				if candPair != nil {
+				if hasCandPair {
 					logger.Debugw("selected candidate pair",
 						"conn_id", connInfo.ID,
 						"candidate_pair", candPair.String(),

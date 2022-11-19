@@ -32,6 +32,7 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
+	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -829,4 +830,45 @@ func InstanceNameFromAddress(addr string) (string, error) {
 	}
 	// will use a UUID since we have no better choice
 	return uuid.NewString(), nil
+}
+
+// PeerConnectionType describes the type of connection of a peer.
+type PeerConnectionType uint16
+
+// Known types of peer connections.
+const (
+	PeerConnectionTypeUnknown = PeerConnectionType(iota)
+	PeerConnectionTypeGRPC
+	PeerConnectionTypeWebRTC
+)
+
+// PeerConnectionInfo details information about a connection.
+type PeerConnectionInfo struct {
+	ConnectionType PeerConnectionType
+	LocalAddress   string
+	RemoteAddress  string
+}
+
+// PeerConnectionInfoFromContext returns as much information about the connection as can be found
+// from the request context.
+func PeerConnectionInfoFromContext(ctx context.Context) PeerConnectionInfo {
+	if p, ok := peer.FromContext(ctx); ok && p != nil {
+		return PeerConnectionInfo{
+			ConnectionType: PeerConnectionTypeGRPC,
+			RemoteAddress:  p.Addr.String(),
+		}
+	}
+	if pc, ok := ContextPeerConnection(ctx); ok {
+		candPair, hasCandPair := webrtcPeerConnCandPair(pc)
+		if hasCandPair {
+			return PeerConnectionInfo{
+				ConnectionType: PeerConnectionTypeWebRTC,
+				LocalAddress:   candPair.Local.String(),
+				RemoteAddress:  candPair.Remote.String(),
+			}
+		}
+	}
+	return PeerConnectionInfo{
+		ConnectionType: PeerConnectionTypeUnknown,
+	}
 }
