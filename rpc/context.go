@@ -107,6 +107,8 @@ func ContextWithAuthUniqueID(ctx context.Context, authUniqueID interface{}) cont
 }
 
 // ContextAuthUniqueID returns the unique ID for the entity associated with this authentication context.
+// If it is not present, ("", false) is returned but in the future this function will break and start
+// always returning a present unique ID.
 func ContextAuthUniqueID(ctx context.Context) (string, bool) {
 	authUniqueID, ok := ctx.Value(ctxKeyAuthUniqueID).(string)
 	if !ok || authUniqueID == "" {
