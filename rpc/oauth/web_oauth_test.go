@@ -53,7 +53,7 @@ func TestWebOauth(t *testing.T) {
 
 	echoServer := &echoserver.Server{
 		ContextAuthEntity: rpc.MustContextAuthEntity,
-		ContextAuthClaims: func(ctx context.Context) echoserver.ClaimsForTest {
+		ContextAuthClaims: func(ctx context.Context) interface{} {
 			return rpc.ContextAuthClaims(ctx)
 		},
 		ContextAuthUniqueID: rpc.MustContextAuthUniqueID,
@@ -171,7 +171,7 @@ func TestWebOauthWithNilVerifyEntity(t *testing.T) {
 
 	echoServer := &echoserver.Server{
 		ContextAuthEntity: rpc.MustContextAuthEntity,
-		ContextAuthClaims: func(ctx context.Context) echoserver.ClaimsForTest {
+		ContextAuthClaims: func(ctx context.Context) interface{} {
 			return rpc.ContextAuthClaims(ctx)
 		},
 		ContextAuthUniqueID: rpc.MustContextAuthUniqueID,

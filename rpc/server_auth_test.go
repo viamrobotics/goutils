@@ -63,7 +63,7 @@ func TestServerAuth(t *testing.T) {
 
 	echoServer := &echoserver.Server{
 		ContextAuthEntity: MustContextAuthEntity,
-		ContextAuthClaims: func(ctx context.Context) echoserver.ClaimsForTest {
+		ContextAuthClaims: func(ctx context.Context) interface{} {
 			return ContextAuthClaims(ctx)
 		},
 		ContextAuthUniqueID: MustContextAuthUniqueID,
@@ -396,7 +396,7 @@ func TestServerAuthJWTAudienceAndID(t *testing.T) {
 		WithAuthHandler("fake", MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) (map[string]string, error) {
 			return map[string]string{}, nil
 		}, func(ctx context.Context, entity string) (interface{}, error) {
-			if ContextAuthClaims(ctx).ID() != expectedUUID {
+			if uid, err := ContextAuthClaims(ctx).UID(); err != nil || uid != expectedUUID {
 				return nil, errCannotAuthEntity
 			}
 			if entity == expectedEntity {
@@ -410,7 +410,7 @@ func TestServerAuthJWTAudienceAndID(t *testing.T) {
 
 	echoServer := &echoserver.Server{
 		ContextAuthEntity: MustContextAuthEntity,
-		ContextAuthClaims: func(ctx context.Context) echoserver.ClaimsForTest {
+		ContextAuthClaims: func(ctx context.Context) interface{} {
 			return ContextAuthClaims(ctx)
 		},
 		ContextAuthUniqueID:  MustContextAuthUniqueID,

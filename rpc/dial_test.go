@@ -1289,7 +1289,7 @@ func TestDialMutualTLSAuth(t *testing.T) {
 
 			echoServer := &echoserver.Server{
 				ContextAuthEntity: MustContextAuthEntity,
-				ContextAuthClaims: func(ctx context.Context) echoserver.ClaimsForTest {
+				ContextAuthClaims: func(ctx context.Context) interface{} {
 					return ContextAuthClaims(ctx)
 				},
 				ContextAuthUniqueID:  MustContextAuthUniqueID,

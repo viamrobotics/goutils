@@ -42,8 +42,11 @@ type JWTClaims struct {
 }
 
 // ID returns the ID from the claims ID.
-func (c JWTClaims) ID() string {
-	return c.RegisteredClaims.ID
+func (c JWTClaims) UID() (string, error) {
+	if c.RegisteredClaims.ID == "" {
+		return "", errors.New("no unique ID")
+	}
+	return c.RegisteredClaims.ID, nil
 }
 
 // Entity returns the entity from the claims Audience.
@@ -152,7 +155,10 @@ func (ss *simpleServer) authUnaryInterceptor(
 		if err != nil {
 			return nil, err
 		}
-		ctx = ContextWithAuthUniqueID(ContextWithAuthEntity(ctx, authEntity), authUID)
+		ctx = ContextWithAuthEntity(ctx, authEntity)
+		if authUID != "" {
+			ctx = ContextWithAuthUniqueID(ctx, authUID)
+		}
 	}
 	return handler(ctx, req)
 }
@@ -168,7 +174,10 @@ func (ss *simpleServer) authStreamInterceptor(
 		if err != nil {
 			return err
 		}
-		ctx := ContextWithAuthUniqueID(ContextWithAuthEntity(serverStream.Context(), authEntity), authUID)
+		ctx := ContextWithAuthEntity(serverStream.Context(), authEntity)
+		if authUID != "" {
+			ctx = ContextWithAuthUniqueID(ctx, authUID)
+		}
 		serverStream = ctxWrappedServerStream{serverStream, ctx}
 	}
 	return handler(srv, serverStream)
@@ -301,9 +310,11 @@ func (ss *simpleServer) ensureAuthed(ctx context.Context) (string, interface{}, 
 		return "", nil, err
 	}
 
-	claimsID := claims.ID()
-	if claimsID == "" {
-		return "", nil, errors.New("expected claims to have ID")
+	// TODO(RSDK-886): start requiring this; until then, log it for observation.
+	claimsUID, err := claims.UID()
+	if err != nil {
+		ss.logger.Errorw("error getting claims UID", "error", err)
+		claimsUID = ""
 	}
 
 	// Pass the raw claims to VerifyEntity.
@@ -311,7 +322,7 @@ func (ss *simpleServer) ensureAuthed(ctx context.Context) (string, interface{}, 
 	if err != nil {
 		return "", nil, err
 	}
-	return claims.ID(), entityInfo, nil
+	return claimsUID, entityInfo, nil
 }
 
 func getCredentialsTypeFromMapClaims(in jwt.Claims) (CredentialsType, error) {

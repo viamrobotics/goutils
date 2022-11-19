@@ -6,18 +6,11 @@ import (
 	"io"
 	"sync"
 
-	"github.com/golang-jwt/jwt/v4"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 
 	echopb "go.viam.com/utils/proto/rpc/examples/echo/v1"
 )
-
-type ClaimsForTest interface {
-	jwt.Claims
-	ID() string
-	Metadata() map[string]string
-}
 
 // Server implements a simple echo service.
 type Server struct {
@@ -29,7 +22,7 @@ type Server struct {
 	// prevents a package cycle. DO NOT set this to anything other
 	// than the real thing.
 	ContextAuthEntity   func(ctx context.Context) interface{}
-	ContextAuthClaims   func(ctx context.Context) ClaimsForTest
+	ContextAuthClaims   func(ctx context.Context) interface{}
 	ContextAuthUniqueID func(ctx context.Context) string
 
 	ExpectedAuthUniqueID string
