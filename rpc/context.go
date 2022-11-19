@@ -106,21 +106,21 @@ func ContextWithAuthUniqueID(ctx context.Context, authUniqueID interface{}) cont
 	return context.WithValue(ctx, ctxKeyAuthUniqueID, authUniqueID)
 }
 
-// contextAuthUniqueID returns the unique ID for the entity associated with this authentication context.
-func contextAuthUniqueID(ctx context.Context) (string, error) {
+// ContextAuthUniqueID returns the unique ID for the entity associated with this authentication context.
+func ContextAuthUniqueID(ctx context.Context) (string, bool) {
 	authUniqueID, ok := ctx.Value(ctxKeyAuthUniqueID).(string)
 	if !ok || authUniqueID == "" {
-		return "", errors.New("no auth unique ID")
+		return "", false
 	}
-	return authUniqueID, nil
+	return authUniqueID, true
 }
 
 // MustContextAuthUniqueID returns the unique ID for the entity associated with this authentication context;
 // it panics if there is none set.
 func MustContextAuthUniqueID(ctx context.Context) string {
-	authUniqueID, err := contextAuthUniqueID(ctx)
-	if err != nil {
-		panic(err)
+	authUniqueID, has := ContextAuthUniqueID(ctx)
+	if !has {
+		panic(errors.New("no auth unique ID present"))
 	}
 	return authUniqueID
 }
