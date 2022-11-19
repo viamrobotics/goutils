@@ -41,7 +41,7 @@ type JWTClaims struct {
 	AuthMetadata        map[string]string `json:"rpc_auth_md,omitempty"`
 }
 
-// ID returns the ID from the claims ID.
+// UID returns the unique ID from the claims ID.
 func (c JWTClaims) UID() (string, error) {
 	if c.RegisteredClaims.ID == "" {
 		return "", errors.New("no unique ID")
