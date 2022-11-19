@@ -295,7 +295,6 @@ func webrtcPeerConnCandPair(peerConnection *webrtc.PeerConnection) (*webrtc.ICEC
 	if connectionState == webrtc.ICEConnectionStateConnected && peerConnection.SCTP() != nil &&
 		peerConnection.SCTP().Transport() != nil &&
 		peerConnection.SCTP().Transport().ICETransport() != nil {
-
 		candPair, err := peerConnection.SCTP().Transport().ICETransport().GetSelectedCandidatePair()
 		if err != nil {
 			return nil, false
