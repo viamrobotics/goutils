@@ -74,14 +74,14 @@ export class ClientChannel extends BaseChannel {
         return stream;
     }
 
-    private newStream(stream: Stream, opts: grpc.TransportOptions): ClientStream {
+    private newStream(stream: Stream, opts: grpc.TransportOptions): grpc.Transport {
         if (this.isClosed()) {
-            throw new ConnectionClosedError("connection closed");
+            return new FailingClientStream(new ConnectionClosedError("connection closed"), opts);
         }
         let activeStream = this.streams[stream.getId()];
         if (activeStream === undefined) {
             if (Object.keys(this.streams).length > MaxStreamCount) {
-                throw new Error("stream limit hit");
+                return new FailingClientStream(new Error("stream limit hit"), opts);
             }
             const clientStream = new ClientStream(this, stream, (id: number) => this.removeStreamByID(id), opts);
             activeStream = { cs: clientStream };
@@ -114,4 +114,26 @@ export class ClientChannel extends BaseChannel {
         request.setRstStream(true);
         this.write(request);
     }
+}
+
+class FailingClientStream implements grpc.Transport {
+    private readonly err: Error;
+    private readonly opts: grpc.TransportOptions;
+
+    constructor(err: Error, opts: grpc.TransportOptions) {
+        this.err = err;
+        this.opts = opts;
+    }
+
+    public start() {
+        if (this.opts.onEnd) {
+            setTimeout(() => this.opts.onEnd(this.err));
+        }
+    }
+
+    public sendMessage() {}
+
+    public finishSend() {}
+
+    public cancel() {}
 }
