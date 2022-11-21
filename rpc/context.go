@@ -120,7 +120,7 @@ func contextAuthSubject(ctx context.Context) (string, bool) {
 func MustContextAuthSubject(ctx context.Context) string {
 	authSubject, has := contextAuthSubject(ctx)
 	if !has {
-		panic(errors.New("no auth sibject present"))
+		panic(errors.New("no auth subject present"))
 	}
 	return authSubject
 }
