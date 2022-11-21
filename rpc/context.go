@@ -102,8 +102,8 @@ func MustContextAuthEntity(ctx context.Context) interface{} {
 }
 
 // ContextWithAuthSubject attaches a subject (e.g. a user) for an authenticated context to the given context.
-func ContextWithAuthSubject(ctx context.Context, authUniqueID string) context.Context {
-	return context.WithValue(ctx, ctxKeyAuthSubject, authUniqueID)
+func ContextWithAuthSubject(ctx context.Context, authSubject string) context.Context {
+	return context.WithValue(ctx, ctxKeyAuthSubject, authSubject)
 }
 
 // contextAuthSubject returns the subject (e.g. a user) associated with this authentication context.
