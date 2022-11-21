@@ -11,9 +11,15 @@ import (
 // That is, if waiting with respect time is critical, it's okay to use this.
 func WaitForAssertion(t *testing.T, assertion func(tb testing.TB)) {
 	t.Helper()
+	WaitForAssertionWithSleep(t, 50*time.Millisecond, 100, assertion)
+}
+
+// WaitForAssertionWithSleep is similar to WaitForAssertion but takes a wait
+// time and maximum number of attempts as parameters.
+func WaitForAssertionWithSleep(t *testing.T, wait time.Duration, maxAttempts int, assertion func(tb testing.TB)) {
+	t.Helper()
 	var attempts int
 	var checkOk bool
-	maxAttempts := 100
 	for !checkOk && attempts < maxAttempts {
 		noFailT := &testingTBNoFail{}
 		assertion(noFailT)
@@ -21,7 +27,7 @@ func WaitForAssertion(t *testing.T, assertion func(tb testing.TB)) {
 		if checkOk {
 			return
 		}
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(wait)
 		attempts++
 	}
 	assertion(t)
