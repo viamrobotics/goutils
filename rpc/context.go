@@ -106,8 +106,8 @@ func ContextWithAuthSubject(ctx context.Context, authSubject string) context.Con
 	return context.WithValue(ctx, ctxKeyAuthSubject, authSubject)
 }
 
-// contextAuthSubject returns the subject (e.g. a user) associated with this authentication context.
-func contextAuthSubject(ctx context.Context) (string, bool) {
+// ContextAuthSubject returns the subject (e.g. a user) associated with this authentication context.
+func ContextAuthSubject(ctx context.Context) (string, bool) {
 	authSubject, ok := ctx.Value(ctxKeyAuthSubject).(string)
 	if !ok || authSubject == "" {
 		return "", false
@@ -118,7 +118,7 @@ func contextAuthSubject(ctx context.Context) (string, bool) {
 // MustContextAuthSubject returns the subject associated with this authentication context;
 // it panics if there is none set.
 func MustContextAuthSubject(ctx context.Context) string {
-	authSubject, has := contextAuthSubject(ctx)
+	authSubject, has := ContextAuthSubject(ctx)
 	if !has {
 		panic(errors.New("no auth subject present"))
 	}
