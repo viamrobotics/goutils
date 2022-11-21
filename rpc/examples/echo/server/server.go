@@ -7,7 +7,6 @@ import (
 	"io"
 	"sync"
 
-	"github.com/google/uuid"
 	"github.com/pkg/errors"
 
 	echopb "go.viam.com/utils/proto/rpc/examples/echo/v1"
@@ -22,12 +21,12 @@ type Server struct {
 
 	// prevents a package cycle. DO NOT set this to anything other
 	// than the real thing.
-	ContextAuthEntity   func(ctx context.Context) interface{}
-	ContextAuthClaims   func(ctx context.Context) interface{}
-	ContextAuthUniqueID func(ctx context.Context) string
+	ContextAuthEntity  func(ctx context.Context) interface{}
+	ContextAuthClaims  func(ctx context.Context) interface{}
+	ContextAuthSubject func(ctx context.Context) string
 
-	expectedAuthEntity   string
-	ExpectedAuthUniqueID string
+	expectedAuthEntity  string
+	ExpectedAuthSubject string
 }
 
 // SetFail instructs the server to fail at certain points in its execution.
@@ -70,13 +69,13 @@ func (srv *Server) Echo(ctx context.Context, req *echopb.EchoRequest) (*echopb.E
 		if srv.ContextAuthClaims(ctx) != nil {
 			return nil, errors.New("did not expect auth claims here")
 		}
-		uniqueID := srv.ContextAuthUniqueID(ctx)
-		if srv.ExpectedAuthUniqueID == "" {
-			if _, err := uuid.Parse(uniqueID); err != nil {
-				return nil, err
+		subject := srv.ContextAuthSubject(ctx)
+		if srv.ExpectedAuthSubject == "" {
+			if subject == "" {
+				return nil, errors.New("empty subject")
 			}
-		} else if uniqueID != srv.ExpectedAuthUniqueID {
-			return nil, errors.Errorf("expected auth unique id %q; got %q", srv.ExpectedAuthUniqueID, uniqueID)
+		} else if subject != srv.ExpectedAuthSubject {
+			return nil, errors.Errorf("expected auth subject %q; got %q", srv.ExpectedAuthSubject, subject)
 		}
 	}
 	return &echopb.EchoResponse{Message: req.Message}, nil

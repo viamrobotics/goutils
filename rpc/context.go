@@ -15,7 +15,7 @@ const (
 	ctxKeyPeerConnection
 	ctxKeyAuthEntity
 	ctxKeyAuthClaims // all jwt claims
-	ctxKeyAuthUniqueID
+	ctxKeyAuthSubject
 )
 
 // contextWithHost attaches a host name to the given context.
@@ -66,8 +66,8 @@ func contextWithAuthClaims(ctx context.Context, claims Claims) context.Context {
 }
 
 // ContextAuthClaims returns authentication jwt claims. This context value is only expected
-// to exist in auth middleware and should not be saved unless the confidentiality of the
-// claims is not important.
+// to exist in auth middleware. If the claims are possibly confidential (e.g. from a JOSE),
+// care should be taken to expose only safe, public claims.
 func ContextAuthClaims(ctx context.Context) Claims {
 	claims := ctx.Value(ctxKeyAuthClaims)
 	if claims == nil {
@@ -91,8 +91,8 @@ func contextAuthEntity(ctx context.Context) (interface{}, error) {
 }
 
 // MustContextAuthEntity returns the authentication entity associated with this context;
-// it panics if there is none set. This value is opaque and therefore should not be inspected
-// beyond equality checks.
+// it panics if there is none set. This value is specific to the handler used and should
+// be etype checked.
 func MustContextAuthEntity(ctx context.Context) interface{} {
 	authEntity, err := contextAuthEntity(ctx)
 	if err != nil {
@@ -101,28 +101,26 @@ func MustContextAuthEntity(ctx context.Context) interface{} {
 	return authEntity
 }
 
-// ContextWithAuthUniqueID attaches a unique ID for an authenticated entity to the given context.
-func ContextWithAuthUniqueID(ctx context.Context, authUniqueID interface{}) context.Context {
-	return context.WithValue(ctx, ctxKeyAuthUniqueID, authUniqueID)
+// ContextWithAuthSubject attaches a subject (e.g. a user) for an authenticated context to the given context.
+func ContextWithAuthSubject(ctx context.Context, authUniqueID string) context.Context {
+	return context.WithValue(ctx, ctxKeyAuthSubject, authUniqueID)
 }
 
-// ContextAuthUniqueID returns the unique ID for the entity associated with this authentication context.
-// If it is not present, ("", false) is returned but in the future this function will break and start
-// always returning a present unique ID.
-func ContextAuthUniqueID(ctx context.Context) (string, bool) {
-	authUniqueID, ok := ctx.Value(ctxKeyAuthUniqueID).(string)
-	if !ok || authUniqueID == "" {
+// contextAuthSubject returns the subject (e.g. a user) associated with this authentication context.
+func contextAuthSubject(ctx context.Context) (string, bool) {
+	authSubject, ok := ctx.Value(ctxKeyAuthSubject).(string)
+	if !ok || authSubject == "" {
 		return "", false
 	}
-	return authUniqueID, true
+	return authSubject, true
 }
 
-// MustContextAuthUniqueID returns the unique ID for the entity associated with this authentication context;
+// MustContextAuthSubject returns the subject associated with this authentication context;
 // it panics if there is none set.
-func MustContextAuthUniqueID(ctx context.Context) string {
-	authUniqueID, has := ContextAuthUniqueID(ctx)
+func MustContextAuthSubject(ctx context.Context) string {
+	authSubject, has := contextAuthSubject(ctx)
 	if !has {
-		panic(errors.New("no auth unique ID present"))
+		panic(errors.New("no auth sibject present"))
 	}
-	return authUniqueID
+	return authSubject
 }

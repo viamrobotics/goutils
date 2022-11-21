@@ -148,7 +148,7 @@ func TestDial(t *testing.T) {
 				ContextAuthClaims: func(ctx context.Context) interface{} {
 					return ContextAuthClaims(ctx)
 				},
-				ContextAuthUniqueID: MustContextAuthUniqueID,
+				ContextAuthSubject: MustContextAuthSubject,
 			}
 			err = rpcServer.RegisterServiceServer(
 				context.Background(),
@@ -1307,8 +1307,8 @@ func TestDialMutualTLSAuth(t *testing.T) {
 				ContextAuthClaims: func(ctx context.Context) interface{} {
 					return ContextAuthClaims(ctx)
 				},
-				ContextAuthUniqueID:  MustContextAuthUniqueID,
-				ExpectedAuthUniqueID: leaf.Issuer.String() + ":" + leaf.SerialNumber.String(),
+				ContextAuthSubject:  MustContextAuthSubject,
+				ExpectedAuthSubject: leaf.Issuer.String() + ":" + leaf.SerialNumber.String(),
 			}
 			echoServer.SetAuthorized(true)
 			server.RegisterServiceServer(
@@ -1491,7 +1491,7 @@ func (svc *externalAuthServer) AuthenticateTo(
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, JWTClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
-			ID:       uuid.NewString(),
+			Subject:  uuid.NewString(),
 			Audience: jwt.ClaimStrings{req.Entity},
 		},
 		AuthCredentialsType: CredentialsType("inter-node"),

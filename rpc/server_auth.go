@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/golang-jwt/jwt/v4"
-	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc"
@@ -41,12 +40,9 @@ type JWTClaims struct {
 	AuthMetadata        map[string]string `json:"rpc_auth_md,omitempty"`
 }
 
-// UID returns the unique ID from the claims ID.
-func (c JWTClaims) UID() (string, error) {
-	if c.RegisteredClaims.ID == "" {
-		return "", errors.New("no unique ID")
-	}
-	return c.RegisteredClaims.ID, nil
+// Subject returns the subject from the claims Subject.
+func (c JWTClaims) Subject() string {
+	return c.RegisteredClaims.Subject
 }
 
 // Entity returns the entity from the claims Audience.
@@ -123,9 +119,10 @@ func (ss *simpleServer) signAccessTokenForEntity(
 	entity string,
 	authMD map[string]string,
 ) (string, error) {
+	// TODO(RSDK-890): use the correct subject, not the audience (entity)
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, JWTClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
-			ID:       uuid.NewString(),
+			Subject:  entity,
 			Audience: jwt.ClaimStrings{entity},
 		},
 		AuthCredentialsType: forType,
@@ -151,13 +148,13 @@ func (ss *simpleServer) authUnaryInterceptor(
 	handler grpc.UnaryHandler,
 ) (interface{}, error) {
 	if !ss.exemptMethods[info.FullMethod] {
-		authUID, authEntity, err := ss.ensureAuthed(ctx)
+		authSubject, authEntity, err := ss.ensureAuthed(ctx)
 		if err != nil {
 			return nil, err
 		}
 		ctx = ContextWithAuthEntity(ctx, authEntity)
-		if authUID != "" {
-			ctx = ContextWithAuthUniqueID(ctx, authUID)
+		if authSubject != "" {
+			ctx = ContextWithAuthSubject(ctx, authSubject)
 		}
 	}
 	return handler(ctx, req)
@@ -170,13 +167,13 @@ func (ss *simpleServer) authStreamInterceptor(
 	handler grpc.StreamHandler,
 ) error {
 	if !ss.exemptMethods[info.FullMethod] {
-		authUID, authEntity, err := ss.ensureAuthed(serverStream.Context())
+		authSubject, authEntity, err := ss.ensureAuthed(serverStream.Context())
 		if err != nil {
 			return err
 		}
 		ctx := ContextWithAuthEntity(serverStream.Context(), authEntity)
-		if authUID != "" {
-			ctx = ContextWithAuthUniqueID(ctx, authUID)
+		if authSubject != "" {
+			ctx = ContextWithAuthSubject(ctx, authSubject)
 		}
 		serverStream = ctxWrappedServerStream{serverStream, ctx}
 	}
@@ -311,10 +308,9 @@ func (ss *simpleServer) ensureAuthed(ctx context.Context) (string, interface{}, 
 	}
 
 	// TODO(RSDK-886): start requiring this; until then, log it for observation.
-	claimsUID, err := claims.UID()
-	if err != nil {
-		ss.logger.Errorw("error getting claims UID", "error", err)
-		claimsUID = ""
+	claimsSubject := claims.Subject()
+	if claimsSubject == "" {
+		return "", nil, errors.New("expected subject in claims")
 	}
 
 	// Pass the raw claims to VerifyEntity.
@@ -322,7 +318,7 @@ func (ss *simpleServer) ensureAuthed(ctx context.Context) (string, interface{}, 
 	if err != nil {
 		return "", nil, err
 	}
-	return claimsUID, entityInfo, nil
+	return claimsSubject, entityInfo, nil
 }
 
 func getCredentialsTypeFromMapClaims(in jwt.Claims) (CredentialsType, error) {

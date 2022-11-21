@@ -155,7 +155,7 @@ func TestWithPublicKeyProvider(t *testing.T) {
 
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, JWTClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
-			ID:       uuid.NewString(),
+			Subject:  uuid.NewString(),
 			Audience: jwt.ClaimStrings{"does not matter"},
 		},
 		AuthCredentialsType: CredentialsType("fake"),
@@ -169,7 +169,7 @@ func TestWithPublicKeyProvider(t *testing.T) {
 
 	badToken := jwt.NewWithClaims(jwt.SigningMethodHS256, JWTClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
-			ID:       uuid.NewString(),
+			Subject:  uuid.NewString(),
 			Audience: jwt.ClaimStrings{"does not matter"},
 		},
 		AuthCredentialsType: CredentialsType("fake"),

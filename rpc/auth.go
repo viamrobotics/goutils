@@ -48,9 +48,8 @@ type Claims interface {
 	// are validated before entity checks,
 	jwt.Claims
 
-	// UID returns the unique identity (typically "jti") associated with the claims.
-	// Returns an error if the UID is missing.
-	UID() (string, error)
+	// Subject returns the subject associated with the claims.
+	Subject() string
 
 	// Entity must return the "entity" making the request to the rpc system from the jwt claims
 	// presented. Returns an error if entity is missing. Should not preform any entity checks.

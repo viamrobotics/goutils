@@ -8,7 +8,6 @@ import (
 
 	"github.com/edaniels/golog"
 	"github.com/golang-jwt/jwt/v4"
-	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -129,7 +128,6 @@ func SignWebAuthAccessToken(key *rsa.PrivateKey, entity, aud, iss, keyID string)
 		},
 		Claims: rpc.JWTClaims{
 			RegisteredClaims: jwt.RegisteredClaims{
-				ID:       uuid.NewString(),
 				Audience: []string{aud},
 				Issuer:   iss,
 				// in prod this may not be 1:1 to the email. This is usually the user id

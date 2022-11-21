@@ -56,7 +56,7 @@ func TestWebOauth(t *testing.T) {
 		ContextAuthClaims: func(ctx context.Context) interface{} {
 			return rpc.ContextAuthClaims(ctx)
 		},
-		ContextAuthUniqueID: rpc.MustContextAuthUniqueID,
+		ContextAuthSubject: rpc.MustContextAuthSubject,
 	}
 	echoServer.SetAuthorized(true)
 	err = rpcServer.RegisterServiceServer(
@@ -174,7 +174,7 @@ func TestWebOauthWithNilVerifyEntity(t *testing.T) {
 		ContextAuthClaims: func(ctx context.Context) interface{} {
 			return rpc.ContextAuthClaims(ctx)
 		},
-		ContextAuthUniqueID: rpc.MustContextAuthUniqueID,
+		ContextAuthSubject: rpc.MustContextAuthSubject,
 	}
 	echoServer.SetAuthorized(true)
 	err = rpcServer.RegisterServiceServer(

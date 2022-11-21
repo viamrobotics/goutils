@@ -66,7 +66,7 @@ func TestServerAuth(t *testing.T) {
 		ContextAuthClaims: func(ctx context.Context) interface{} {
 			return ContextAuthClaims(ctx)
 		},
-		ContextAuthUniqueID: MustContextAuthUniqueID,
+		ContextAuthSubject: MustContextAuthSubject,
 	}
 	echoServer.SetAuthorized(true)
 	err = rpcServer.RegisterServiceServer(
@@ -355,7 +355,7 @@ func TestServerAuthJWTExpiration(t *testing.T) {
 
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, JWTClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
-			ID:        uuid.NewString(),
+			Subject:   uuid.NewString(),
 			Audience:  jwt.ClaimStrings{"does not matter"},
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(-time.Minute)),
 		},
@@ -389,14 +389,14 @@ func TestServerAuthJWTAudienceAndID(t *testing.T) {
 	privKey, err := rsa.GenerateKey(rand.Reader, generatedRSAKeyBits)
 	test.That(t, err, test.ShouldBeNil)
 
-	expectedUUID := uuid.NewString()
+	expectedSubject := "yeehaw"
 	expectedEntity := "someent"
 	rpcServer, err := NewServer(
 		logger,
 		WithAuthHandler("fake", MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) (map[string]string, error) {
 			return map[string]string{}, nil
 		}, func(ctx context.Context, entity string) (interface{}, error) {
-			if uid, err := ContextAuthClaims(ctx).UID(); err != nil || uid != expectedUUID {
+			if ContextAuthClaims(ctx).Subject() != expectedSubject {
 				return nil, errCannotAuthEntity
 			}
 			if entity == expectedEntity {
@@ -413,8 +413,8 @@ func TestServerAuthJWTAudienceAndID(t *testing.T) {
 		ContextAuthClaims: func(ctx context.Context) interface{} {
 			return ContextAuthClaims(ctx)
 		},
-		ContextAuthUniqueID:  MustContextAuthUniqueID,
-		ExpectedAuthUniqueID: expectedUUID,
+		ContextAuthSubject:  MustContextAuthSubject,
+		ExpectedAuthSubject: expectedSubject,
 	}
 	echoServer.SetAuthorized(true)
 	err = rpcServer.RegisterServiceServer(
@@ -451,13 +451,13 @@ func TestServerAuthJWTAudienceAndID(t *testing.T) {
 		test.That(t, err, test.ShouldBeNil)
 	})
 
-	for _, correctUID := range []bool{false, true} {
-		t.Run(fmt.Sprintf("correctUID=%t", correctUID), func(t *testing.T) {
-			var uid string
-			if correctUID {
-				uid = expectedUUID
+	for _, correctSubject := range []bool{false, true} {
+		t.Run(fmt.Sprintf("correctSubject=%t", correctSubject), func(t *testing.T) {
+			var subject string
+			if correctSubject {
+				subject = expectedSubject
 			} else {
-				uid = "really actually matters"
+				subject = "really actually matters"
 			}
 			for _, correctEntity := range []bool{false, true} {
 				t.Run(fmt.Sprintf("correctEntity=%t", correctEntity), func(t *testing.T) {
@@ -469,7 +469,7 @@ func TestServerAuthJWTAudienceAndID(t *testing.T) {
 					}
 					token := jwt.NewWithClaims(jwt.SigningMethodRS256, JWTClaims{
 						RegisteredClaims: jwt.RegisteredClaims{
-							ID:       uid,
+							Subject:  subject,
 							Audience: jwt.ClaimStrings{aud},
 						},
 						AuthCredentialsType: CredentialsType("fake"),
@@ -484,7 +484,7 @@ func TestServerAuthJWTAudienceAndID(t *testing.T) {
 					ctx := metadata.NewOutgoingContext(context.Background(), md)
 
 					echoResp, err := client.Echo(ctx, &pb.EchoRequest{Message: "hello"})
-					if correctEntity && correctUID {
+					if correctEntity && correctSubject {
 						test.That(t, err, test.ShouldBeNil)
 						test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
 					} else {
@@ -677,7 +677,7 @@ func TestServerAuthWithCustomClaimsFunc(t *testing.T) {
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, customClaims{
 		JWTClaims: JWTClaims{
 			RegisteredClaims: jwt.RegisteredClaims{
-				ID:       uuid.NewString(),
+				Subject:  uuid.NewString(),
 				Audience: jwt.ClaimStrings{"tasd"},
 			},
 			AuthCredentialsType: "fake",
