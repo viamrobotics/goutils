@@ -170,9 +170,9 @@ func (srv *webrtcServer) handler(path string) (handlerFunc, bool) {
 func (srv *webrtcServer) NewChannel(
 	peerConn *webrtc.PeerConnection,
 	dataChannel *webrtc.DataChannel,
-	forHosts []string,
+	authAudience []string,
 ) *webrtcServerChannel {
-	serverCh := newWebRTCServerChannel(srv, peerConn, dataChannel, forHosts, srv.logger)
+	serverCh := newWebRTCServerChannel(srv, peerConn, dataChannel, authAudience, srv.logger)
 	srv.mu.Lock()
 	srv.peerConns[peerConn] = struct{}{}
 	srv.mu.Unlock()

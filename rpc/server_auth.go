@@ -153,9 +153,7 @@ func (ss *simpleServer) authUnaryInterceptor(
 			return nil, err
 		}
 		ctx = ContextWithAuthEntity(ctx, authEntity)
-		if authSubject != "" {
-			ctx = ContextWithAuthSubject(ctx, authSubject)
-		}
+		ctx = ContextWithAuthSubject(ctx, authSubject)
 	}
 	return handler(ctx, req)
 }
@@ -172,9 +170,7 @@ func (ss *simpleServer) authStreamInterceptor(
 			return err
 		}
 		ctx := ContextWithAuthEntity(serverStream.Context(), authEntity)
-		if authSubject != "" {
-			ctx = ContextWithAuthSubject(ctx, authSubject)
-		}
+		ctx = ContextWithAuthSubject(ctx, authSubject)
 		serverStream = ctxWrappedServerStream{serverStream, ctx}
 	}
 	return handler(srv, serverStream)
@@ -307,7 +303,6 @@ func (ss *simpleServer) ensureAuthed(ctx context.Context) (string, interface{}, 
 		return "", nil, err
 	}
 
-	// TODO(RSDK-886): start requiring this; until then, log it for observation.
 	claimsSubject := claims.Subject()
 	if claimsSubject == "" {
 		return "", nil, errors.New("expected subject in claims")
