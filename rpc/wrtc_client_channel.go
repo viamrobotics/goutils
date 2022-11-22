@@ -226,13 +226,7 @@ func (ch *webrtcClientChannel) newClientStream(ctx context.Context, method strin
 }
 
 func makeRequestHeaders(ctx context.Context, method string) *webrtcpb.RequestHeaders {
-	var headersMD metadata.MD
-	if md, ok := metadata.FromOutgoingContext(ctx); ok {
-		headersMD = make(metadata.MD, len(md))
-		for k, v := range headersMD {
-			headersMD[k] = v
-		}
-	}
+	headersMD, _ := metadata.FromOutgoingContext(ctx)
 	var timeout time.Duration
 	if deadline, ok := ctx.Deadline(); ok {
 		timeout = time.Until(deadline)

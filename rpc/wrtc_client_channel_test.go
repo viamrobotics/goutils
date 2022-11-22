@@ -430,6 +430,7 @@ func TestWebRTCClientChannelWithInterceptor(t *testing.T) {
 		opts ...grpc.CallOption,
 	) error {
 		interceptedUnaryMethods = append(interceptedUnaryMethods, method)
+		ctx = metadata.AppendToOutgoingContext(ctx, "some", "value")
 		return invoker(ctx, method, req, reply, cc, opts...)
 	}
 
@@ -443,6 +444,7 @@ func TestWebRTCClientChannelWithInterceptor(t *testing.T) {
 		opts ...grpc.CallOption,
 	) (grpc.ClientStream, error) {
 		interceptedStreamMethods = append(interceptedStreamMethods, method)
+		ctx = metadata.AppendToOutgoingContext(ctx, "other", "thing")
 		return streamer(ctx, desc, cc, method, opts...)
 	}
 
@@ -462,7 +464,30 @@ func TestWebRTCClientChannelWithInterceptor(t *testing.T) {
 	wg.Add(4)
 
 	idCounter := uint64(1)
+	var headerCounter int
 	serverCh.dataChannel.OnMessage(func(msg webrtc.DataChannelMessage) {
+		req := &webrtcpb.Request{}
+		test.That(t, proto.Unmarshal(msg.Data, req), test.ShouldBeNil)
+		if r, ok := req.Type.(*webrtcpb.Request_Headers); ok {
+			test.That(t, r.Headers.Metadata, test.ShouldNotBeNil)
+
+			var key, value string
+			switch headerCounter {
+			case 0:
+				key = "some"
+				value = "value"
+			case 1:
+				key = "other"
+				value = "thing"
+			default:
+				panic("header counter too high")
+			}
+			test.That(t, r.Headers.Metadata.Md[key], test.ShouldNotBeNil)
+			test.That(t, r.Headers.Metadata.Md[key].Values, test.ShouldHaveLength, 1)
+			test.That(t, r.Headers.Metadata.Md[key].Values[0], test.ShouldEqual, value)
+			headerCounter++
+		}
+
 		test.That(t, serverCh.write(&webrtcpb.Response{
 			Stream: &webrtcpb.Stream{Id: idCounter},
 			Type:   &webrtcpb.Response_Headers{},
