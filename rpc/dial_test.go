@@ -9,12 +9,14 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/edaniels/golog"
 	"github.com/golang-jwt/jwt/v4"
+	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.uber.org/multierr"
@@ -131,7 +133,7 @@ func TestDial(t *testing.T) {
 						if entity != "someent" {
 							return nil, errors.New("not someent")
 						}
-						if ContextAuthMetadata(ctx)["some"] != "data" {
+						if ContextAuthClaims(ctx).Metadata()["some"] != "data" {
 							return nil, errors.New("bad authed data")
 						}
 						return entity, nil
@@ -141,10 +143,17 @@ func TestDial(t *testing.T) {
 			)
 			test.That(t, err, test.ShouldBeNil)
 
+			echoServer := &echoserver.Server{
+				ContextAuthEntity: MustContextAuthEntity,
+				ContextAuthClaims: func(ctx context.Context) interface{} {
+					return ContextAuthClaims(ctx)
+				},
+				ContextAuthSubject: MustContextAuthSubject,
+			}
 			err = rpcServer.RegisterServiceServer(
 				context.Background(),
 				&pb.EchoService_ServiceDesc,
-				&echoserver.Server{},
+				echoServer,
 				pb.RegisterEchoServiceHandlerFromEndpoint,
 			)
 			test.That(t, err, test.ShouldBeNil)
@@ -232,6 +241,10 @@ func TestDial(t *testing.T) {
 			testMu.Unlock()
 
 			t.Run("with credentials provided", func(t *testing.T) {
+				echoServer.SetAuthorized(true)
+				defer echoServer.SetAuthorized(false)
+				echoServer.SetExpectedAuthEntity(httpListener.Addr().String())
+
 				conn, err := DialDirectGRPC(context.Background(), httpListener.Addr().String(), logger,
 					WithDialDebug(),
 					WithInsecure(),
@@ -245,6 +258,9 @@ func TestDial(t *testing.T) {
 				test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
 				test.That(t, conn.Close(), test.ShouldBeNil)
 
+				// TODO(GOUT-11): Once auth is handled, we can expect the same host for both gRPC and
+				// WebRTC based connections.
+				echoServer.SetExpectedAuthEntity(strings.Join(internalSignalingHosts, ":"))
 				conn, err = Dial(context.Background(), host, logger,
 					WithDialDebug(),
 					WithInsecure(),
@@ -494,7 +510,7 @@ func TestDialExternalAuth(t *testing.T) {
 				if entity != "someent" {
 					return nil, errors.New("bad authed ent")
 				}
-				if ContextAuthMetadata(ctx)["some"] != "data" {
+				if ContextAuthClaims(ctx).Metadata()["some"] != "data" {
 					return nil, errors.New("bad authed data")
 				}
 				return entity, nil
@@ -1286,7 +1302,14 @@ func TestDialMutualTLSAuth(t *testing.T) {
 				return "", nil, err
 			}
 
-			echoServer := &echoserver.Server{ContextAuthEntity: MustContextAuthEntity}
+			echoServer := &echoserver.Server{
+				ContextAuthEntity: MustContextAuthEntity,
+				ContextAuthClaims: func(ctx context.Context) interface{} {
+					return ContextAuthClaims(ctx)
+				},
+				ContextAuthSubject:  MustContextAuthSubject,
+				ExpectedAuthSubject: leaf.Issuer.String() + ":" + leaf.SerialNumber.String(),
+			}
 			echoServer.SetAuthorized(true)
 			server.RegisterServiceServer(
 				context.Background(),
@@ -1468,10 +1491,11 @@ func (svc *externalAuthServer) AuthenticateTo(
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, JWTClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:  uuid.NewString(),
 			Audience: jwt.ClaimStrings{req.Entity},
 		},
-		CredentialsType: CredentialsType("inter-node"),
-		AuthMetadata:    authMetadata,
+		AuthCredentialsType: CredentialsType("inter-node"),
+		AuthMetadata:        authMetadata,
 	})
 
 	tokenString, err := token.SignedString(svc.privKey)

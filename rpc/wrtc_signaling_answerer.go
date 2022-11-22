@@ -343,7 +343,7 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 	}
 	close(initSent)
 
-	serverChannel := ans.server.NewChannel(pc, dc)
+	serverChannel := ans.server.NewChannel(pc, dc, ans.hosts)
 
 	if !init.OptionalConfig.DisableTrickle {
 		exchangeCandidates := func() error {

@@ -16,6 +16,7 @@ import (
 
 	"github.com/edaniels/golog"
 	"github.com/golang-jwt/jwt/v4"
+	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"go.viam.com/test"
 	"google.golang.org/grpc"
@@ -46,14 +47,13 @@ func TestServerAuth(t *testing.T) {
 			}
 			return nil, errors.New("this auth does not work yet")
 		}, func(ctx context.Context, entity string) (interface{}, error) {
-			md := ContextAuthMetadata(ctx)
-			if md["please persist"] != "need this value" {
-				return nil, errors.New("bad metadata")
-			}
-
 			claims := ContextAuthClaims(ctx)
 			if claims == nil {
 				return nil, errors.New("bad metadata, missing claims")
+			}
+
+			if claims.Metadata()["please persist"] != "need this value" {
+				return nil, errors.New("bad metadata")
 			}
 
 			return "somespecialinterface", nil
@@ -61,7 +61,13 @@ func TestServerAuth(t *testing.T) {
 	)
 	test.That(t, err, test.ShouldBeNil)
 
-	echoServer := &echoserver.Server{ContextAuthEntity: MustContextAuthEntity}
+	echoServer := &echoserver.Server{
+		ContextAuthEntity: MustContextAuthEntity,
+		ContextAuthClaims: func(ctx context.Context) interface{} {
+			return ContextAuthClaims(ctx)
+		},
+		ContextAuthSubject: MustContextAuthSubject,
+	}
 	echoServer.SetAuthorized(true)
 	err = rpcServer.RegisterServiceServer(
 		context.Background(),
@@ -349,10 +355,11 @@ func TestServerAuthJWTExpiration(t *testing.T) {
 
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, JWTClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   uuid.NewString(),
 			Audience:  jwt.ClaimStrings{"does not matter"},
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(-time.Minute)),
 		},
-		CredentialsType: CredentialsType("fake"),
+		AuthCredentialsType: CredentialsType("fake"),
 	})
 
 	tokenString, err := token.SignedString(privKey)
@@ -375,21 +382,25 @@ func TestServerAuthJWTExpiration(t *testing.T) {
 	test.That(t, err, test.ShouldBeNil)
 }
 
-func TestServerAuthJWTAudience(t *testing.T) {
+func TestServerAuthJWTAudienceAndID(t *testing.T) {
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
 
 	privKey, err := rsa.GenerateKey(rand.Reader, generatedRSAKeyBits)
 	test.That(t, err, test.ShouldBeNil)
 
+	expectedSubject := "yeehaw"
 	expectedEntity := "someent"
 	rpcServer, err := NewServer(
 		logger,
 		WithAuthHandler("fake", MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) (map[string]string, error) {
 			return map[string]string{}, nil
 		}, func(ctx context.Context, entity string) (interface{}, error) {
+			if ContextAuthClaims(ctx).Subject() != expectedSubject {
+				return nil, errCannotAuthEntity
+			}
 			if entity == expectedEntity {
-				return map[string]string{}, nil
+				return "somespecialinterface", nil
 			}
 			return nil, errCannotAuthEntity
 		})),
@@ -397,10 +408,19 @@ func TestServerAuthJWTAudience(t *testing.T) {
 	)
 	test.That(t, err, test.ShouldBeNil)
 
+	echoServer := &echoserver.Server{
+		ContextAuthEntity: MustContextAuthEntity,
+		ContextAuthClaims: func(ctx context.Context) interface{} {
+			return ContextAuthClaims(ctx)
+		},
+		ContextAuthSubject:  MustContextAuthSubject,
+		ExpectedAuthSubject: expectedSubject,
+	}
+	echoServer.SetAuthorized(true)
 	err = rpcServer.RegisterServiceServer(
 		context.Background(),
 		&pb.EchoService_ServiceDesc,
-		&echoserver.Server{},
+		echoServer,
 		pb.RegisterEchoServiceHandlerFromEndpoint,
 	)
 	test.That(t, err, test.ShouldBeNil)
@@ -431,39 +451,50 @@ func TestServerAuthJWTAudience(t *testing.T) {
 		test.That(t, err, test.ShouldBeNil)
 	})
 
-	for _, correctEntity := range []bool{false, true} {
-		t.Run(fmt.Sprintf("correctEntity=%t", correctEntity), func(t *testing.T) {
-			var aud string
-			if correctEntity {
-				aud = expectedEntity
+	for _, correctSubject := range []bool{false, true} {
+		t.Run(fmt.Sprintf("correctSubject=%t", correctSubject), func(t *testing.T) {
+			var subject string
+			if correctSubject {
+				subject = expectedSubject
 			} else {
-				aud = "actually matters"
+				subject = "really actually matters"
 			}
-			token := jwt.NewWithClaims(jwt.SigningMethodRS256, JWTClaims{
-				RegisteredClaims: jwt.RegisteredClaims{
-					Audience: jwt.ClaimStrings{aud},
-				},
-				CredentialsType: CredentialsType("fake"),
-			})
+			for _, correctEntity := range []bool{false, true} {
+				t.Run(fmt.Sprintf("correctEntity=%t", correctEntity), func(t *testing.T) {
+					var aud string
+					if correctEntity {
+						aud = expectedEntity
+					} else {
+						aud = "actually matters"
+					}
+					token := jwt.NewWithClaims(jwt.SigningMethodRS256, JWTClaims{
+						RegisteredClaims: jwt.RegisteredClaims{
+							Subject:  subject,
+							Audience: jwt.ClaimStrings{aud},
+						},
+						AuthCredentialsType: CredentialsType("fake"),
+					})
 
-			tokenString, err := token.SignedString(privKey)
-			test.That(t, err, test.ShouldBeNil)
+					tokenString, err := token.SignedString(privKey)
+					test.That(t, err, test.ShouldBeNil)
 
-			md := make(metadata.MD)
-			bearer := fmt.Sprintf("Bearer %s", tokenString)
-			md.Set("authorization", bearer)
-			ctx := metadata.NewOutgoingContext(context.Background(), md)
+					md := make(metadata.MD)
+					bearer := fmt.Sprintf("Bearer %s", tokenString)
+					md.Set("authorization", bearer)
+					ctx := metadata.NewOutgoingContext(context.Background(), md)
 
-			echoResp, err := client.Echo(ctx, &pb.EchoRequest{Message: "hello"})
-			if correctEntity {
-				test.That(t, err, test.ShouldBeNil)
-				test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
-			} else {
-				test.That(t, err, test.ShouldNotBeNil)
-				gStatus, ok := status.FromError(err)
-				test.That(t, ok, test.ShouldBeTrue)
-				test.That(t, gStatus.Code(), test.ShouldEqual, codes.Unauthenticated)
-				test.That(t, gStatus.Message(), test.ShouldContainSubstring, "cannot authenticate")
+					echoResp, err := client.Echo(ctx, &pb.EchoRequest{Message: "hello"})
+					if correctEntity && correctSubject {
+						test.That(t, err, test.ShouldBeNil)
+						test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
+					} else {
+						test.That(t, err, test.ShouldNotBeNil)
+						gStatus, ok := status.FromError(err)
+						test.That(t, ok, test.ShouldBeTrue)
+						test.That(t, gStatus.Code(), test.ShouldEqual, codes.Unauthenticated)
+						test.That(t, gStatus.Message(), test.ShouldContainSubstring, "cannot authenticate")
+					}
+				})
 			}
 		})
 	}
@@ -585,14 +616,14 @@ func TestServerAuthWithCustomClaimsFunc(t *testing.T) {
 					return map[string]string{}, nil
 				},
 				verify: func(ctx context.Context, entity string) (interface{}, error) {
-					md := ContextAuthMetadata(ctx)
-					if md["key1"] != "other" {
-						return nil, errors.New("invalid context in Verify, missing metadata")
-					}
-
 					claims := ContextAuthClaims(ctx)
 					if claims == nil {
 						return nil, errors.New("invalid context in Verify, missing all claims")
+					}
+
+					md := claims.Metadata()
+					if md["key1"] != "other" {
+						return nil, errors.New("invalid context in Verify, missing metadata")
 					}
 
 					customClaims, ok := claims.(*customClaims)
@@ -646,9 +677,10 @@ func TestServerAuthWithCustomClaimsFunc(t *testing.T) {
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, customClaims{
 		JWTClaims: JWTClaims{
 			RegisteredClaims: jwt.RegisteredClaims{
+				Subject:  uuid.NewString(),
 				Audience: jwt.ClaimStrings{"tasd"},
 			},
-			CredentialsType: "fake",
+			AuthCredentialsType: "fake",
 			AuthMetadata: map[string]string{
 				"key1": "other",
 			},

@@ -3,6 +3,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"sync"
 
@@ -20,7 +21,12 @@ type Server struct {
 
 	// prevents a package cycle. DO NOT set this to anything other
 	// than the real thing.
-	ContextAuthEntity func(ctx context.Context) interface{}
+	ContextAuthEntity  func(ctx context.Context) interface{}
+	ContextAuthClaims  func(ctx context.Context) interface{}
+	ContextAuthSubject func(ctx context.Context) string
+
+	expectedAuthEntity  string
+	ExpectedAuthSubject string
 }
 
 // SetFail instructs the server to fail at certain points in its execution.
@@ -37,19 +43,41 @@ func (srv *Server) SetAuthorized(authorized bool) {
 	srv.mu.Unlock()
 }
 
+// SetExpectedAuthEntity sets the expected auth entity
+func (srv *Server) SetExpectedAuthEntity(authEntity string) {
+	srv.mu.Lock()
+	srv.expectedAuthEntity = authEntity
+	srv.mu.Unlock()
+}
+
 // Echo responds back with the same message.
 func (srv *Server) Echo(ctx context.Context, req *echopb.EchoRequest) (*echopb.EchoResponse, error) {
 	srv.mu.Lock()
+	defer srv.mu.Unlock()
 	if srv.fail {
-		srv.mu.Unlock()
 		return nil, errors.New("whoops")
 	}
 	if srv.authorized {
-		if srv.ContextAuthEntity(ctx) != "somespecialinterface" {
+		expectedAuthEntity := srv.expectedAuthEntity
+		if expectedAuthEntity == "" {
+			expectedAuthEntity = "somespecialinterface"
+		}
+		if srv.ContextAuthEntity(ctx) != expectedAuthEntity {
+			fmt.Println("hmm", srv.ContextAuthEntity(ctx))
 			return nil, errors.New("unauthenticated or unauthorized")
 		}
+		if srv.ContextAuthClaims(ctx) != nil {
+			return nil, errors.New("did not expect auth claims here")
+		}
+		subject := srv.ContextAuthSubject(ctx)
+		if srv.ExpectedAuthSubject == "" {
+			if subject == "" {
+				return nil, errors.New("empty subject")
+			}
+		} else if subject != srv.ExpectedAuthSubject {
+			return nil, errors.Errorf("expected auth subject %q; got %q", srv.ExpectedAuthSubject, subject)
+		}
 	}
-	srv.mu.Unlock()
 	return &echopb.EchoResponse{Message: req.Message}, nil
 }
 

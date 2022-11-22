@@ -13,9 +13,9 @@ const (
 	ctxKeyHost = ctxKey(iota)
 	ctxKeyDialer
 	ctxKeyPeerConnection
-	ctxKeyAuthMetadata
 	ctxKeyAuthEntity
 	ctxKeyAuthClaims // all jwt claims
+	ctxKeyAuthSubject
 )
 
 // contextWithHost attaches a host name to the given context.
@@ -60,26 +60,14 @@ func ContextPeerConnection(ctx context.Context) (*webrtc.PeerConnection, bool) {
 	return pc.(*webrtc.PeerConnection), true
 }
 
-// contextWithAuthMetadata attaches authentication metadata to the given context.
-func contextWithAuthMetadata(ctx context.Context, authMD map[string]string) context.Context {
-	return context.WithValue(ctx, ctxKeyAuthMetadata, authMD)
-}
-
-// ContextAuthMetadata returns authentication metadata. It may be nil if the value was never set.
-func ContextAuthMetadata(ctx context.Context) map[string]string {
-	authMD := ctx.Value(ctxKeyAuthMetadata)
-	if authMD == nil {
-		return nil
-	}
-	return authMD.(map[string]string)
-}
-
 // contextWithAuthClaims attaches authentication jwt claims to the given context.
 func contextWithAuthClaims(ctx context.Context, claims Claims) context.Context {
 	return context.WithValue(ctx, ctxKeyAuthClaims, claims)
 }
 
-// ContextAuthClaims returns authentication jwt claims.
+// ContextAuthClaims returns authentication jwt claims. This context value is only expected
+// to exist in auth middleware. If the claims are possibly confidential (e.g. from a JOSE),
+// care should be taken to expose only safe, public claims.
 func ContextAuthClaims(ctx context.Context) Claims {
 	claims := ctx.Value(ctxKeyAuthClaims)
 	if claims == nil {
@@ -103,11 +91,36 @@ func contextAuthEntity(ctx context.Context) (interface{}, error) {
 }
 
 // MustContextAuthEntity returns the authentication entity associated with this context;
-// it panics if there is none set.
+// it panics if there is none set. This value is specific to the handler used and should
+// be etype checked.
 func MustContextAuthEntity(ctx context.Context) interface{} {
 	authEntity, err := contextAuthEntity(ctx)
 	if err != nil {
 		panic(err)
 	}
 	return authEntity
+}
+
+// ContextWithAuthSubject attaches a subject (e.g. a user) for an authenticated context to the given context.
+func ContextWithAuthSubject(ctx context.Context, authSubject string) context.Context {
+	return context.WithValue(ctx, ctxKeyAuthSubject, authSubject)
+}
+
+// ContextAuthSubject returns the subject (e.g. a user) associated with this authentication context.
+func ContextAuthSubject(ctx context.Context) (string, bool) {
+	authSubject, ok := ctx.Value(ctxKeyAuthSubject).(string)
+	if !ok || authSubject == "" {
+		return "", false
+	}
+	return authSubject, true
+}
+
+// MustContextAuthSubject returns the subject associated with this authentication context;
+// it panics if there is none set.
+func MustContextAuthSubject(ctx context.Context) string {
+	authSubject, has := ContextAuthSubject(ctx)
+	if !has {
+		panic(errors.New("no auth subject present"))
+	}
+	return authSubject
 }
