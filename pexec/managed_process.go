@@ -316,12 +316,13 @@ func (p *managedProcess) Stop() error {
 		return errors.Wrap(err, "error interrupting process")
 	}
 
-	// If after a while the process still isn't stopping, let's kill it.
+	// In case the process didn't stop, or left behind any orphan children in its process group,
+	// we send a kill to everything in the process group after a brief wait.
 	timer := time.NewTimer(waitInterrupt)
 	defer timer.Stop()
 	select {
 	case <-timer.C:
-		if err := p.cmd.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
+		if err := syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL); err != nil && !errors.Is(err, os.ErrProcessDone) {
 			return errors.Wrap(err, "error killing process")
 		}
 	case <-p.managingCh:
