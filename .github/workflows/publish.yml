@@ -1,4 +1,4 @@
-name: NPM Publish @viamrobotics/js
+name: NPM Publish @viamrobotics/rpc
 
 on:
   push:
