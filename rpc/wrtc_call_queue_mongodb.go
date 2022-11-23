@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/edaniels/golog"
 	"github.com/google/uuid"
 	"github.com/pion/webrtc/v3"
 	"github.com/pkg/errors"
@@ -26,6 +27,7 @@ func init() {
 type mongoDBWebRTCCallQueue struct {
 	activeBackgroundWorkers sync.WaitGroup
 	coll                    *mongo.Collection
+	logger                  golog.Logger
 
 	cancelCtx  context.Context
 	cancelFunc func()
@@ -58,7 +60,7 @@ var (
 // TODO(GOUT-6): more efficient, multiplexed change streams;
 // uniquely identify host ephemerally
 // TODO(GOUT-5): max queue size.
-func NewMongoDBWebRTCCallQueue(client *mongo.Client) (WebRTCCallQueue, error) {
+func NewMongoDBWebRTCCallQueue(client *mongo.Client, logger golog.Logger) (WebRTCCallQueue, error) {
 	coll := client.Database(mongodbWebRTCCallQueueDBName).Collection(mongodbWebRTCCallQueueCollName)
 	if err := mongoutils.EnsureIndexes(coll, mongodbWebRTCCallQueueIndexes...); err != nil {
 		return nil, err
@@ -68,6 +70,7 @@ func NewMongoDBWebRTCCallQueue(client *mongo.Client) (WebRTCCallQueue, error) {
 		coll:       coll,
 		cancelCtx:  cancelCtx,
 		cancelFunc: cancelFunc,
+		logger:     logger,
 	}, nil
 }
 
@@ -362,7 +365,7 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 	recvOfferSuccessful = true
 	cleanup()
 
-	rt := cs.ResumeToken()
+	// This is broken in 6.0 because of https://jira.mongodb.org/browse/SERVER-71565.
 	cs, err = queue.coll.Watch(ctx, []bson.D{
 		{
 			{"$match", bson.D{
@@ -372,7 +375,7 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 		},
 	}, options.ChangeStream().
 		SetFullDocument(options.UpdateLookup).
-		SetResumeAfter(rt))
+		SetResumeAfter(cs.ResumeToken()))
 	if err != nil {
 		return nil, err
 	}
@@ -403,14 +406,19 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 		callerDoneCtx:    callerDoneCtx,
 	}
 	setErr := func(errToSet error) {
+		if !(errors.Is(errToSet, context.Canceled) || errors.Is(errToSet, context.DeadlineExceeded)) {
+			queue.logger.Errorw("error in RecvOffer", "error", errToSet, "id", callReq.ID)
+		}
 		_, err := queue.coll.UpdateOne(
 			ctx,
 			bson.D{
 				{webrtcCallIDField, callReq.ID},
 			},
-			bson.D{{"$set", bson.D{{webrtcCallAnsweredField, errToSet}}}},
+			bson.D{{"$set", bson.D{{webrtcCallAnswererErrorField, errToSet.Error()}}}},
 		)
-		utils.UncheckedError(err)
+		if err != nil {
+			queue.logger.Errorw("error updating error for RecvOffer", "error", errToSet, "id", callReq.ID)
+		}
 	}
 	sendCandidate := func(cand webrtc.ICECandidateInit) bool {
 		select {
