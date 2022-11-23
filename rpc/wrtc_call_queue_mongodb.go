@@ -3,13 +3,16 @@ package rpc
 import (
 	"context"
 	"fmt"
+	"math"
 	"sync"
 	"time"
 
+	"github.com/edaniels/golog"
 	"github.com/google/uuid"
 	"github.com/pion/webrtc/v3"
 	"github.com/pkg/errors"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 
@@ -26,6 +29,7 @@ func init() {
 type mongoDBWebRTCCallQueue struct {
 	activeBackgroundWorkers sync.WaitGroup
 	coll                    *mongo.Collection
+	logger                  golog.Logger
 
 	cancelCtx  context.Context
 	cancelFunc func()
@@ -58,7 +62,7 @@ var (
 // TODO(GOUT-6): more efficient, multiplexed change streams;
 // uniquely identify host ephemerally
 // TODO(GOUT-5): max queue size.
-func NewMongoDBWebRTCCallQueue(client *mongo.Client) (WebRTCCallQueue, error) {
+func NewMongoDBWebRTCCallQueue(client *mongo.Client, logger golog.Logger) (WebRTCCallQueue, error) {
 	coll := client.Database(mongodbWebRTCCallQueueDBName).Collection(mongodbWebRTCCallQueueCollName)
 	if err := mongoutils.EnsureIndexes(coll, mongodbWebRTCCallQueueIndexes...); err != nil {
 		return nil, err
@@ -68,6 +72,7 @@ func NewMongoDBWebRTCCallQueue(client *mongo.Client) (WebRTCCallQueue, error) {
 		coll:       coll,
 		cancelCtx:  cancelCtx,
 		cancelFunc: cancelFunc,
+		logger:     logger,
 	}, nil
 }
 
@@ -337,32 +342,40 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 		return nil, err
 	}
 
-	getFirstResult := func() error {
+	getFirstResult := func() (primitive.Timestamp, error) {
 		if err == nil {
-			return nil
+			return primitive.Timestamp{}, nil
 		}
 
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return primitive.Timestamp{}, ctx.Err()
 		case next, ok := <-csOfferNext:
 			if !ok {
-				return errors.New("no next result")
+				return primitive.Timestamp{}, errors.New("no next result")
 			}
 			if next.Error != nil {
-				return next.Error
+				return primitive.Timestamp{}, next.Error
 			}
 
-			return next.Event.FullDocument.Unmarshal(&callReq)
+			return next.Event.ClusterTime, next.Event.FullDocument.Unmarshal(&callReq)
 		}
 	}
-	if err := getFirstResult(); err != nil {
+	clusterTime, err := getFirstResult()
+	if err != nil {
 		return nil, err
 	}
 	recvOfferSuccessful = true
 	cleanup()
 
-	rt := cs.ResumeToken()
+	// Working around https://jira.mongodb.org/browse/SERVER-71565. Ideally we'd just use
+	// cs.ResumeToken() and SetResumeAfter.
+	if clusterTime.I == math.MaxUint32 {
+		clusterTime.T++
+		clusterTime.I = 0
+	} else {
+		clusterTime.I++
+	}
 	cs, err = queue.coll.Watch(ctx, []bson.D{
 		{
 			{"$match", bson.D{
@@ -372,7 +385,7 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 		},
 	}, options.ChangeStream().
 		SetFullDocument(options.UpdateLookup).
-		SetResumeAfter(rt))
+		SetStartAtOperationTime(&clusterTime))
 	if err != nil {
 		return nil, err
 	}
@@ -403,14 +416,19 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 		callerDoneCtx:    callerDoneCtx,
 	}
 	setErr := func(errToSet error) {
+		if !(errors.Is(errToSet, context.Canceled) || errors.Is(errToSet, context.DeadlineExceeded)) {
+			queue.logger.Errorw("error in RecvOffer", "error", errToSet, "id", callReq.ID)
+		}
 		_, err := queue.coll.UpdateOne(
 			ctx,
 			bson.D{
 				{webrtcCallIDField, callReq.ID},
 			},
-			bson.D{{"$set", bson.D{{webrtcCallAnsweredField, errToSet}}}},
+			bson.D{{"$set", bson.D{{webrtcCallAnswererErrorField, errToSet.Error()}}}},
 		)
-		utils.UncheckedError(err)
+		if err != nil {
+			queue.logger.Errorw("error updating error for RecvOffer", "error", errToSet, "id", callReq.ID)
+		}
 	}
 	sendCandidate := func(cand webrtc.ICECandidateInit) bool {
 		select {
