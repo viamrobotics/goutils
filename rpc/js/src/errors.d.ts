@@ -1,6 +1,6 @@
 export declare class ConnectionClosedError extends Error {
     constructor(msg: string);
-    static IsError(error: any): boolean;
+    static isError(error: any): boolean;
 }
 export declare class GRPCError extends Error {
     readonly code: number;
