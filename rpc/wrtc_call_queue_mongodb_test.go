@@ -3,16 +3,14 @@ package rpc
 import (
 	"testing"
 
-	"github.com/edaniels/golog"
 	"go.viam.com/test"
 
 	"go.viam.com/utils/testutils"
 )
 
 func TestMongoDBWebRTCCallQueue(t *testing.T) {
-	logger := golog.NewTestLogger(t)
 	client := testutils.BackingMongoDBClient(t)
-	callQueue, err := NewMongoDBWebRTCCallQueue(client, logger)
+	callQueue, err := NewMongoDBWebRTCCallQueue(client)
 	test.That(t, err, test.ShouldBeNil)
 
 	testWebRTCCallQueue(t, callQueue)
