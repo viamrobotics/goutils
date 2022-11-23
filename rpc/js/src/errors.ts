@@ -4,7 +4,7 @@ export class ConnectionClosedError extends Error {
         Object.setPrototypeOf(this, ConnectionClosedError.prototype);
     }
 
-    static IsError(error: any): boolean {
+    static isError(error: any): boolean {
         if (error instanceof ConnectionClosedError) {
             return true;
         }
