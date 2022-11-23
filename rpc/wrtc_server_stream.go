@@ -292,10 +292,13 @@ func (s *webrtcServerStream) processHeaders(headers *webrtcpb.RequestHeaders) {
 }
 
 func (s *webrtcServerStream) processMessage(msg *webrtcpb.RequestMessage) {
+	s.webrtcBaseStream.mu.Lock()
 	if s.recvClosed {
+		s.webrtcBaseStream.mu.Unlock()
 		s.logger.Error("message received after EOS")
 		return
 	}
+	s.webrtcBaseStream.mu.Unlock()
 	if msg.HasMessage {
 		if msg.PacketMessage == nil {
 			s.closeWithRecvError(errors.New("expected RequestMessage.PacketMessgae to not be nil but it was"))
