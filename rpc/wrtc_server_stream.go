@@ -360,12 +360,15 @@ func (s *webrtcServerStream) closeWithSendError(err error) error {
 }
 
 func (s *webrtcServerStream) writeHeaders() error {
+	s.webrtcBaseStream.mu.Lock()
 	if !s.headersWritten {
 		s.headersWritten = true
+		s.webrtcBaseStream.mu.Unlock()
 		return s.ch.writeHeaders(s.stream, &webrtcpb.ResponseHeaders{
 			Metadata: metadataToProto(s.header),
 		})
 	}
+	s.webrtcBaseStream.mu.Unlock()
 	return nil
 }
 
