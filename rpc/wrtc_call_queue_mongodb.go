@@ -141,7 +141,7 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 
 	// need to watch before insertion to avoid a race
 	sendCtx, sendCtxCancel := utils.MergeContext(ctx, queue.cancelCtx)
-	csNext := mongoutils.ChangeStreamBackground(sendCtx, cs)
+	csNext, _ := mongoutils.ChangeStreamBackground(sendCtx, cs)
 
 	var ctxDeadlineExceedViaCS bool
 	cleanup := func() {
@@ -308,7 +308,7 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 	}
 
 	recvOfferCtx, recvOfferCtxCancel := utils.MergeContext(ctx, queue.cancelCtx)
-	csOfferNext := mongoutils.ChangeStreamBackground(recvOfferCtx, cs)
+	csOfferNext, rt := mongoutils.ChangeStreamBackground(recvOfferCtx, cs)
 
 	cleanup := func() {
 		defer func() {
@@ -336,32 +336,31 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 	})
 	var callReq mongodbWebRTCCall
 	err = result.Decode(&callReq)
-	if err != nil && !errors.Is(err, mongo.ErrNoDocuments) {
-		return nil, err
-	}
-
-	getFirstResult := func() error {
-		if err == nil {
-			return nil
+	if err != nil {
+		if !errors.Is(err, mongo.ErrNoDocuments) {
+			return nil, err
 		}
+		getFirstResult := func() error {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case next, ok := <-csOfferNext:
+				if !ok {
+					return errors.New("no next result")
+				}
+				rt = next.ResumeToken
+				if next.Error != nil {
+					return next.Error
+				}
 
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case next, ok := <-csOfferNext:
-			if !ok {
-				return errors.New("no next result")
+				return next.Event.FullDocument.Unmarshal(&callReq)
 			}
-			if next.Error != nil {
-				return next.Error
-			}
-
-			return next.Event.FullDocument.Unmarshal(&callReq)
+		}
+		if err := getFirstResult(); err != nil {
+			return nil, err
 		}
 	}
-	if err := getFirstResult(); err != nil {
-		return nil, err
-	}
+
 	recvOfferSuccessful = true
 	cleanup()
 
@@ -375,13 +374,16 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 		},
 	}, options.ChangeStream().
 		SetFullDocument(options.UpdateLookup).
-		SetResumeAfter(cs.ResumeToken()))
+		// We will resume from the point that either the change stream started (if FindOne worked)
+		// or from the most recent change event containing the call request.
+		SetResumeAfter(rt),
+	)
 	if err != nil {
 		return nil, err
 	}
 
 	recvCtx, recvCtxCancel := utils.MergeContextWithTimeout(ctx, queue.cancelCtx, getDefaultOfferDeadline())
-	csNext := mongoutils.ChangeStreamBackground(recvCtx, cs)
+	csNext, _ := mongoutils.ChangeStreamBackground(recvCtx, cs)
 
 	cleanup = func() {
 		defer func() {
@@ -440,7 +442,34 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 		defer cleanup()
 
 		candLen := len(callReq.CallerCandidates)
+		latestReq := callReq
 		for {
+			// because of our usage of update lookup being a full document,
+			// there's a chance that we get the document with enough information
+			// to process the call. Therefore, we process the current info and then
+			// wait for more events.
+
+			if latestReq.CallerError != "" {
+				exchange.callerErr = errors.New(latestReq.CallerError)
+				return
+			}
+
+			if len(latestReq.CallerCandidates) > candLen {
+				prevCandLen := candLen
+				newCandLen := len(latestReq.CallerCandidates) - candLen
+				candLen += newCandLen
+				for i := 0; i < newCandLen; i++ {
+					cand := iceCandidateFromMongo(latestReq.CallerCandidates[prevCandLen+i])
+					if !sendCandidate(cand) {
+						return
+					}
+				}
+			}
+
+			if latestReq.CallerDone {
+				return
+			}
+
 			next, ok := <-csNext
 			if !ok {
 				return
@@ -455,27 +484,7 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 				setErr(err)
 				return
 			}
-
-			if callUpdate.CallerError != "" {
-				exchange.callerErr = errors.New(callUpdate.CallerError)
-				return
-			}
-
-			if len(callUpdate.CallerCandidates) > candLen {
-				prevCandLen := candLen
-				newCandLen := len(callUpdate.CallerCandidates) - candLen
-				candLen += newCandLen
-				for i := 0; i < newCandLen; i++ {
-					cand := iceCandidateFromMongo(callUpdate.CallerCandidates[prevCandLen+i])
-					if !sendCandidate(cand) {
-						return
-					}
-				}
-			}
-
-			if callUpdate.CallerDone {
-				return
-			}
+			latestReq = callUpdate
 		}
 	})
 	successful = true
