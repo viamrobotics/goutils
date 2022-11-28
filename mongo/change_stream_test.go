@@ -109,8 +109,6 @@ func TestChangeStreamBackgroundResumeTokenAdvancement(t *testing.T) {
 		test.That(t, <-errCh, test.ShouldBeNil)
 		test.That(t, next.ResumeToken, test.ShouldNotBeNil)
 		test.That(t, currentToken, test.ShouldNotResemble, next.ResumeToken)
-		test.That(t, currentToken, test.ShouldNotResemble, cs.ResumeToken())
-		currentToken = cs.ResumeToken()
 		var retDoc bson.D
 		test.That(t, next.Event.FullDocument.Unmarshal(&retDoc), test.ShouldBeNil)
 		test.That(t, retDoc, test.ShouldResemble, docs[i])
