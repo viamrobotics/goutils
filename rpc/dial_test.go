@@ -31,10 +31,26 @@ import (
 	"go.viam.com/utils/testutils"
 )
 
-func TestDial(t *testing.T) {
+func TestDialWithMemoryQueue(t *testing.T) {
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
+	signalingCallQueue := NewMemoryWebRTCCallQueue(logger)
+	testDial(t, signalingCallQueue, logger)
+	test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
+}
 
+func TestDialWithMongoDBQueue(t *testing.T) {
+	testutils.SkipUnlessInternet(t)
+	logger := golog.NewTestLogger(t)
+	client := testutils.BackingMongoDBClient(t)
+	signalingCallQueue, err := NewMongoDBWebRTCCallQueue(client, logger)
+	test.That(t, err, test.ShouldBeNil)
+	testDial(t, signalingCallQueue, logger)
+	test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
+}
+
+//nolint:thelper
+func testDial(t *testing.T, signalingCallQueue WebRTCCallQueue, logger golog.Logger) {
 	ctx1, cancel1 := context.WithTimeout(context.Background(), time.Second*2)
 	defer cancel1()
 	_, err := Dial(ctx1, "127.0.0.1:1", logger, WithInsecure())
@@ -193,11 +209,11 @@ func TestDial(t *testing.T) {
 			)
 			test.That(t, err, test.ShouldBeNil)
 
-			signalingCallQueue := NewMemoryWebRTCCallQueue()
+			signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, logger, externalSignalingHosts...)
 			test.That(t, rpcServerExternal.RegisterServiceServer(
 				context.Background(),
 				&webrtcpb.SignalingService_ServiceDesc,
-				NewWebRTCSignalingServer(signalingCallQueue, nil, externalSignalingHosts...),
+				signalingServer,
 				webrtcpb.RegisterSignalingServiceHandlerFromEndpoint,
 			), test.ShouldBeNil)
 
@@ -468,7 +484,7 @@ func TestDial(t *testing.T) {
 			test.That(t, rpcServerExternal.Stop(), test.ShouldBeNil)
 			err = <-errChan
 			test.That(t, err, test.ShouldBeNil)
-			test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
+			signalingServer.Close()
 		})
 	}
 }

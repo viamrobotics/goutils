@@ -9,8 +9,12 @@ import (
 
 	"github.com/edaniels/golog"
 	"github.com/pion/webrtc/v3"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.viam.com/test"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 
 	echopb "go.viam.com/utils/proto/rpc/examples/echo/v1"
 	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
@@ -18,13 +22,28 @@ import (
 	"go.viam.com/utils/testutils"
 )
 
-func TestWebRTCClientServer(t *testing.T) {
+func TestWebRTCClientServerWithMemoryQueue(t *testing.T) {
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
+	signalingCallQueue := NewMemoryWebRTCCallQueue(logger)
+	testWebRTCClientServer(t, signalingCallQueue, logger)
+	test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
+}
 
-	queue := NewMemoryWebRTCCallQueue()
-	defer queue.Close()
-	signalingServer := NewWebRTCSignalingServer(queue, nil)
+func TestWebRTCClientServerWithMongoDBQueue(t *testing.T) {
+	testutils.SkipUnlessInternet(t)
+	logger := golog.NewTestLogger(t)
+	client := testutils.BackingMongoDBClient(t)
+	signalingCallQueue, err := NewMongoDBWebRTCCallQueue(client, logger)
+	test.That(t, err, test.ShouldBeNil)
+	testWebRTCClientServer(t, signalingCallQueue, logger)
+	test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
+}
+
+//nolint:thelper
+func testWebRTCClientServer(t *testing.T, signalingCallQueue WebRTCCallQueue, logger golog.Logger) {
+	signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, logger)
+	defer signalingServer.Close()
 
 	grpcListener, err := net.Listen("tcp", "localhost:0")
 	test.That(t, err, test.ShouldBeNil)
@@ -83,6 +102,394 @@ func TestWebRTCClientServer(t *testing.T) {
 			}
 		})
 	}
+
+	webrtcServer.Stop()
+	answerer.Stop()
+	grpcServer.Stop()
+	test.That(t, <-serveDone, test.ShouldBeNil)
+}
+
+func TestWebRTCClientDialCancelWithMemoryQueue(t *testing.T) {
+	testutils.SkipUnlessInternet(t)
+	logger := golog.NewTestLogger(t)
+	signalingCallQueue := NewMemoryWebRTCCallQueue(logger)
+	testWebRTCClientDialCancel(t, signalingCallQueue, logger)
+	test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
+}
+
+func TestWebRTCClientDialCancelWithMongoDBQueue(t *testing.T) {
+	testutils.SkipUnlessInternet(t)
+	logger := golog.NewTestLogger(t)
+	client := testutils.BackingMongoDBClient(t)
+	signalingCallQueue, err := NewMongoDBWebRTCCallQueue(client, logger)
+	test.That(t, err, test.ShouldBeNil)
+	testWebRTCClientDialCancel(t, signalingCallQueue, logger)
+	test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
+}
+
+//nolint:thelper
+func testWebRTCClientDialCancel(t *testing.T, signalingCallQueue WebRTCCallQueue, logger golog.Logger) {
+	signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, logger)
+	defer signalingServer.Close()
+
+	grpcListener, err := net.Listen("tcp", "localhost:0")
+	test.That(t, err, test.ShouldBeNil)
+	grpcServer := grpc.NewServer()
+	grpcServer.RegisterService(&webrtcpb.SignalingService_ServiceDesc, signalingServer)
+
+	serveDone := make(chan error)
+	go func() {
+		serveDone <- grpcServer.Serve(grpcListener)
+	}()
+
+	webrtcServer := newWebRTCServer(logger)
+	webrtcServer.RegisterService(&echopb.EchoService_ServiceDesc, &echoserver.Server{})
+
+	grpcConn, err := DialDirectGRPC(context.Background(), grpcListener.Addr().String(), logger, WithInsecure())
+	test.That(t, err, test.ShouldBeNil)
+	defer grpcConn.Close()
+
+	signalingClient := webrtcpb.NewSignalingServiceClient(grpcConn)
+	md := metadata.New(nil)
+	host := primitive.NewObjectID().Hex()
+	md.Append(RPCHostMetadataField, host)
+	answerCtx := metadata.NewOutgoingContext(context.Background(), md)
+	answerClient, err := signalingClient.Answer(answerCtx)
+	test.That(t, err, test.ShouldBeNil)
+
+	cancelCtx, cancel := context.WithCancel(context.Background())
+
+	dialErrCh := make(chan error)
+	go func() {
+		_, err := DialWebRTC(
+			cancelCtx,
+			grpcListener.Addr().String(),
+			host,
+			logger,
+			WithWebRTCOptions(DialWebRTCOptions{
+				SignalingInsecure: true,
+			}),
+		)
+		dialErrCh <- err
+	}()
+
+	_, err = answerClient.Recv()
+	test.That(t, err, test.ShouldBeNil)
+
+	cancel()
+
+	dialErr := <-dialErrCh
+	test.That(t, dialErr.Error(), test.ShouldContainSubstring, context.Canceled.Error())
+
+	offerUpdate, err := answerClient.Recv()
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, offerUpdate.GetError().String(), test.ShouldContainSubstring, context.Canceled.Error())
+
+	webrtcServer.Stop()
+	grpcServer.Stop()
+	test.That(t, <-serveDone, test.ShouldBeNil)
+}
+
+func TestWebRTCClientDialReflectAnswererErrorWithMemoryQueue(t *testing.T) {
+	testutils.SkipUnlessInternet(t)
+	logger := golog.NewTestLogger(t)
+	signalingCallQueue := NewMemoryWebRTCCallQueue(logger)
+	testWebRTCClientDialReflectAnswererError(t, signalingCallQueue, logger)
+	test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
+}
+
+func TestWebRTCClientDialReflectAnswererErrorWithMongoDBQueue(t *testing.T) {
+	testutils.SkipUnlessInternet(t)
+	logger := golog.NewTestLogger(t)
+	client := testutils.BackingMongoDBClient(t)
+	signalingCallQueue, err := NewMongoDBWebRTCCallQueue(client, logger)
+	test.That(t, err, test.ShouldBeNil)
+	testWebRTCClientDialReflectAnswererError(t, signalingCallQueue, logger)
+	test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
+}
+
+//nolint:thelper
+func testWebRTCClientDialReflectAnswererError(t *testing.T, signalingCallQueue WebRTCCallQueue, logger golog.Logger) {
+	signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, logger)
+	defer signalingServer.Close()
+
+	grpcListener, err := net.Listen("tcp", "localhost:0")
+	test.That(t, err, test.ShouldBeNil)
+	grpcServer := grpc.NewServer()
+	grpcServer.RegisterService(&webrtcpb.SignalingService_ServiceDesc, signalingServer)
+
+	serveDone := make(chan error)
+	go func() {
+		serveDone <- grpcServer.Serve(grpcListener)
+	}()
+
+	webrtcServer := newWebRTCServer(logger)
+	webrtcServer.RegisterService(&echopb.EchoService_ServiceDesc, &echoserver.Server{})
+
+	grpcConn, err := DialDirectGRPC(context.Background(), grpcListener.Addr().String(), logger, WithInsecure())
+	test.That(t, err, test.ShouldBeNil)
+	defer grpcConn.Close()
+
+	signalingClient := webrtcpb.NewSignalingServiceClient(grpcConn)
+	md := metadata.New(nil)
+	host := primitive.NewObjectID().Hex()
+	md.Append(RPCHostMetadataField, host)
+	answerCtx := metadata.NewOutgoingContext(context.Background(), md)
+	answerClient, err := signalingClient.Answer(answerCtx)
+	test.That(t, err, test.ShouldBeNil)
+
+	dialErrCh := make(chan error)
+	go func() {
+		_, err := DialWebRTC(
+			context.Background(),
+			grpcListener.Addr().String(),
+			host,
+			logger,
+			WithWebRTCOptions(DialWebRTCOptions{
+				SignalingInsecure: true,
+			}),
+		)
+		dialErrCh <- err
+	}()
+
+	offer, err := answerClient.Recv()
+	test.That(t, err, test.ShouldBeNil)
+
+	test.That(t, answerClient.Send(&webrtcpb.AnswerResponse{
+		Uuid: offer.Uuid,
+		Stage: &webrtcpb.AnswerResponse_Init{
+			Init: &webrtcpb.AnswerResponseInitStage{
+				Sdp: "hehehee",
+			},
+		},
+	}), test.ShouldBeNil)
+
+	dialErr := <-dialErrCh
+	test.That(t, dialErr.Error(), test.ShouldContainSubstring, "illegal")
+
+	offerUpdate, err := answerClient.Recv()
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, offerUpdate.GetError().String(), test.ShouldContainSubstring, "illegal")
+
+	webrtcServer.Stop()
+	grpcServer.Stop()
+	test.That(t, <-serveDone, test.ShouldBeNil)
+}
+
+func TestWebRTCClientDialConcurrentWithMemoryQueue(t *testing.T) {
+	testutils.SkipUnlessInternet(t)
+	logger := golog.NewTestLogger(t)
+	signalingCallQueue := NewMemoryWebRTCCallQueue(logger)
+	testWebRTCClientDialConcurrent(t, signalingCallQueue, logger)
+	test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
+}
+
+func TestWebRTCClientDialConcurrentWithMongoDBQueue(t *testing.T) {
+	testutils.SkipUnlessInternet(t)
+	logger := golog.NewTestLogger(t)
+	client := testutils.BackingMongoDBClient(t)
+	signalingCallQueue, err := NewMongoDBWebRTCCallQueue(client, logger)
+	test.That(t, err, test.ShouldBeNil)
+	testWebRTCClientDialConcurrent(t, signalingCallQueue, logger)
+	test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
+}
+
+//nolint:thelper
+func testWebRTCClientDialConcurrent(t *testing.T, signalingCallQueue WebRTCCallQueue, logger golog.Logger) {
+	signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, logger)
+	defer signalingServer.Close()
+
+	grpcListener, err := net.Listen("tcp", "localhost:0")
+	test.That(t, err, test.ShouldBeNil)
+	grpcServer := grpc.NewServer()
+	grpcServer.RegisterService(&webrtcpb.SignalingService_ServiceDesc, signalingServer)
+
+	serveDone := make(chan error)
+	go func() {
+		serveDone <- grpcServer.Serve(grpcListener)
+	}()
+
+	webrtcServer := newWebRTCServer(logger)
+	webrtcServer.RegisterService(&echopb.EchoService_ServiceDesc, &echoserver.Server{})
+
+	grpcConn, err := DialDirectGRPC(context.Background(), grpcListener.Addr().String(), logger, WithInsecure())
+	test.That(t, err, test.ShouldBeNil)
+	defer grpcConn.Close()
+
+	signalingClient := webrtcpb.NewSignalingServiceClient(grpcConn)
+	md := metadata.New(nil)
+	host := primitive.NewObjectID().Hex()
+	md.Append(RPCHostMetadataField, host)
+	answerCtx := metadata.NewOutgoingContext(context.Background(), md)
+	answerClient1, err := signalingClient.Answer(answerCtx)
+	test.That(t, err, test.ShouldBeNil)
+	answerClient2, err := signalingClient.Answer(answerCtx)
+	test.That(t, err, test.ShouldBeNil)
+
+	dialErrCh := make(chan error, 2)
+	go func() {
+		cc, err := DialWebRTC(
+			context.Background(),
+			grpcListener.Addr().String(),
+			host,
+			logger,
+			WithWebRTCOptions(DialWebRTCOptions{
+				SignalingInsecure: true,
+			}),
+		)
+		if cc != nil {
+			cc.Close()
+		}
+		dialErrCh <- err
+	}()
+	go func() {
+		cc, err := DialWebRTC(
+			context.Background(),
+			grpcListener.Addr().String(),
+			host,
+			logger,
+			WithWebRTCOptions(DialWebRTCOptions{
+				SignalingInsecure: true,
+			}),
+		)
+		if cc != nil {
+			cc.Close()
+		}
+		dialErrCh <- err
+	}()
+
+	offer1, err := answerClient1.Recv()
+	test.That(t, err, test.ShouldBeNil)
+
+	offer2, err := answerClient2.Recv()
+	test.That(t, err, test.ShouldBeNil)
+
+	test.That(t, offer1.Uuid, test.ShouldNotEqual, offer2.Uuid)
+
+	test.That(t, answerClient1.Send(&webrtcpb.AnswerResponse{
+		Uuid: offer1.Uuid,
+		Stage: &webrtcpb.AnswerResponse_Init{
+			Init: &webrtcpb.AnswerResponseInitStage{
+				Sdp: "hehehee",
+			},
+		},
+	}), test.ShouldBeNil)
+
+	dialErr := <-dialErrCh
+	test.That(t, dialErr.Error(), test.ShouldContainSubstring, "illegal")
+
+	offerUpdate, err := answerClient1.Recv()
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, offerUpdate.Uuid, test.ShouldEqual, offer1.Uuid)
+	test.That(t, offerUpdate.GetError().String(), test.ShouldContainSubstring, "illegal")
+
+	test.That(t, answerClient2.Send(&webrtcpb.AnswerResponse{
+		Uuid: offer2.Uuid,
+		Stage: &webrtcpb.AnswerResponse_Error{
+			Error: &webrtcpb.AnswerResponseErrorStage{
+				Status: status.New(codes.DataLoss, "whoops").Proto(),
+			},
+		},
+	}), test.ShouldBeNil)
+
+	dialErr = <-dialErrCh
+	test.That(t, dialErr.Error(), test.ShouldContainSubstring, "whoops")
+
+	_, err = answerClient2.Recv()
+	test.That(t, err, test.ShouldNotBeNil)
+	test.That(t, err.Error(), test.ShouldContainSubstring, context.Canceled.Error())
+
+	webrtcServer.Stop()
+	grpcServer.Stop()
+	test.That(t, <-serveDone, test.ShouldBeNil)
+}
+
+func TestWebRTCClientAnswerConcurrentWithMemoryQueue(t *testing.T) {
+	testutils.SkipUnlessInternet(t)
+	logger := golog.NewTestLogger(t)
+	signalingCallQueue := NewMemoryWebRTCCallQueue(logger)
+	testWebRTCClientAnswerConcurrent(t, signalingCallQueue, logger)
+	test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
+}
+
+func TestWebRTCClientAnswerConcurrentWithMongoDBQueue(t *testing.T) {
+	testutils.SkipUnlessInternet(t)
+	logger := golog.NewTestLogger(t)
+	client := testutils.BackingMongoDBClient(t)
+	signalingCallQueue, err := NewMongoDBWebRTCCallQueue(client, logger)
+	test.That(t, err, test.ShouldBeNil)
+	testWebRTCClientAnswerConcurrent(t, signalingCallQueue, logger)
+	test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
+}
+
+//nolint:thelper
+func testWebRTCClientAnswerConcurrent(t *testing.T, signalingCallQueue WebRTCCallQueue, logger golog.Logger) {
+	signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, logger)
+	defer signalingServer.Close()
+
+	grpcListener, err := net.Listen("tcp", "localhost:0")
+	test.That(t, err, test.ShouldBeNil)
+	grpcServer := grpc.NewServer()
+	grpcServer.RegisterService(&webrtcpb.SignalingService_ServiceDesc, signalingServer)
+
+	serveDone := make(chan error)
+	go func() {
+		serveDone <- grpcServer.Serve(grpcListener)
+	}()
+
+	webrtcServer := newWebRTCServer(logger)
+	webrtcServer.RegisterService(&echopb.EchoService_ServiceDesc, &echoserver.Server{})
+
+	host := primitive.NewObjectID().Hex()
+
+	answerer := newWebRTCSignalingAnswerer(
+		grpcListener.Addr().String(),
+		[]string{host},
+		webrtcServer,
+		[]DialOption{WithInsecure()},
+		webrtc.Configuration{},
+		logger,
+	)
+	answerer.Start()
+
+	grpcConn, err := DialDirectGRPC(context.Background(), grpcListener.Addr().String(), logger, WithInsecure())
+	test.That(t, err, test.ShouldBeNil)
+	defer grpcConn.Close()
+	signalingClient := webrtcpb.NewSignalingServiceClient(grpcConn)
+	md := metadata.New(nil)
+	md.Append(RPCHostMetadataField, host)
+	callCtx := metadata.NewOutgoingContext(context.Background(), md)
+
+	pc1, _, err := newPeerConnectionForClient(context.Background(), webrtc.Configuration{}, true, logger)
+	test.That(t, err, test.ShouldBeNil)
+	defer pc1.Close()
+
+	encodedSDP1, err := encodeSDP(pc1.LocalDescription())
+	test.That(t, err, test.ShouldBeNil)
+
+	pc2, _, err := newPeerConnectionForClient(context.Background(), webrtc.Configuration{}, true, logger)
+	test.That(t, err, test.ShouldBeNil)
+	defer pc2.Close()
+
+	encodedSDP2, err := encodeSDP(pc2.LocalDescription())
+	test.That(t, err, test.ShouldBeNil)
+
+	callClient1, err := signalingClient.Call(callCtx, &webrtcpb.CallRequest{
+		Sdp: encodedSDP1,
+	})
+	test.That(t, err, test.ShouldBeNil)
+	callClient2, err := signalingClient.Call(callCtx, &webrtcpb.CallRequest{
+		Sdp: encodedSDP2,
+	})
+	test.That(t, err, test.ShouldBeNil)
+
+	answer1, err := callClient1.Recv()
+	test.That(t, err, test.ShouldBeNil)
+
+	answer2, err := callClient2.Recv()
+	test.That(t, err, test.ShouldBeNil)
+
+	test.That(t, answer1.Uuid, test.ShouldNotEqual, answer2.Uuid)
 
 	webrtcServer.Stop()
 	answerer.Stop()

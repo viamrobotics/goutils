@@ -19,13 +19,28 @@ import (
 	"go.viam.com/utils/testutils"
 )
 
-func TestWebRTCSignaling(t *testing.T) {
+func TestWebRTCSignalingWithMemoryQueue(t *testing.T) {
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
+	signalingCallQueue := NewMemoryWebRTCCallQueue(logger)
+	testWebRTCSignaling(t, signalingCallQueue, logger)
+	test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
+}
 
-	queue := NewMemoryWebRTCCallQueue()
-	defer queue.Close()
-	signalingServer := NewWebRTCSignalingServer(queue, nil)
+func TestWebRTCSignalingWithMongoDBQueue(t *testing.T) {
+	testutils.SkipUnlessInternet(t)
+	logger := golog.NewTestLogger(t)
+	client := testutils.BackingMongoDBClient(t)
+	signalingCallQueue, err := NewMongoDBWebRTCCallQueue(client, logger)
+	test.That(t, err, test.ShouldBeNil)
+	testWebRTCSignaling(t, signalingCallQueue, logger)
+	test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
+}
+
+//nolint:thelper
+func testWebRTCSignaling(t *testing.T, signalingCallQueue WebRTCCallQueue, logger golog.Logger) {
+	signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, logger)
+	defer signalingServer.Close()
 
 	grpcListener, err := net.Listen("tcp", "localhost:0")
 	test.That(t, err, test.ShouldBeNil)

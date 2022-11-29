@@ -3,7 +3,6 @@ package server
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"sync"
 
@@ -63,7 +62,6 @@ func (srv *Server) Echo(ctx context.Context, req *echopb.EchoRequest) (*echopb.E
 			expectedAuthEntity = "somespecialinterface"
 		}
 		if srv.ContextAuthEntity(ctx) != expectedAuthEntity {
-			fmt.Println("hmm", srv.ContextAuthEntity(ctx))
 			return nil, errors.New("unauthenticated or unauthorized")
 		}
 		if srv.ContextAuthClaims(ctx) != nil {

@@ -2,11 +2,11 @@ package rpc
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/pion/webrtc/v3"
-	"github.com/pkg/errors"
 )
 
 // do not change this unless the MongoDB TTL is also modified in advance.
@@ -109,6 +109,14 @@ type WebRTCCallAnswer struct {
 
 const noActiveOfferStr = "no active offer"
 
-func newInactiveOfferErr(uuid string) error {
-	return errors.Errorf("%s for %q", noActiveOfferStr, uuid)
+func newInactiveOfferErr(uuid string) inactiveOfferError {
+	return inactiveOfferError{uuid}
+}
+
+type inactiveOfferError struct {
+	uuid string
+}
+
+func (e inactiveOfferError) Error() string {
+	return fmt.Sprintf("%s for %q", noActiveOfferStr, e.uuid)
 }

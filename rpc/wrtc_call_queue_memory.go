@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/edaniels/golog"
 	"github.com/google/uuid"
 	"github.com/pion/webrtc/v3"
 	"github.com/pkg/errors"
@@ -26,26 +27,28 @@ type memoryWebRTCCallQueue struct {
 
 	uuidDeterministic        bool
 	uuidDeterministicCounter int64
+	logger                   golog.Logger
 }
 
 // NewMemoryWebRTCCallQueue returns a new, empty in-memory call queue.
-func NewMemoryWebRTCCallQueue() WebRTCCallQueue {
-	return newMemoryWebRTCCallQueue(false)
+func NewMemoryWebRTCCallQueue(logger golog.Logger) WebRTCCallQueue {
+	return newMemoryWebRTCCallQueue(false, logger)
 }
 
 // newMemoryWebRTCCallQueueTest returns a new, empty in-memory call queue for testing.
 // It uses predictable UUIDs.
-func newMemoryWebRTCCallQueueTest() *memoryWebRTCCallQueue {
-	return newMemoryWebRTCCallQueue(true)
+func newMemoryWebRTCCallQueueTest(logger golog.Logger) *memoryWebRTCCallQueue {
+	return newMemoryWebRTCCallQueue(true, logger)
 }
 
-func newMemoryWebRTCCallQueue(uuidDeterministic bool) *memoryWebRTCCallQueue {
+func newMemoryWebRTCCallQueue(uuidDeterministic bool, logger golog.Logger) *memoryWebRTCCallQueue {
 	cancelCtx, cancelFunc := context.WithCancel(context.Background())
 	queue := &memoryWebRTCCallQueue{
 		hostQueues:        map[string]*singleWebRTCHostQueue{},
 		cancelCtx:         cancelCtx,
 		cancelFunc:        cancelFunc,
 		uuidDeterministic: uuidDeterministic,
+		logger:            logger,
 	}
 	queue.activeBackgroundWorkers.Add(1)
 	ticker := time.NewTicker(5 * time.Second)
@@ -190,6 +193,12 @@ func (queue *memoryWebRTCCallQueue) SendOfferError(ctx context.Context, host, uu
 		hostQueue.mu.Unlock()
 		return newInactiveOfferErr(uuid)
 	}
+	if offer.callerDoneCtx.Err() != nil {
+		// already done
+		hostQueue.mu.Unlock()
+		//nolint:nilerr
+		return nil
+	}
 	offer.callerErr = err
 	offer.callerDoneCancel()
 	delete(hostQueue.activeOffers, uuid)
@@ -215,7 +224,7 @@ func (queue *memoryWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []strin
 	}
 }
 
-// Close cancels all actives offers and waits to cleanly close all background workers.
+// Close cancels all active offers and waits to cleanly close all background workers.
 func (queue *memoryWebRTCCallQueue) Close() error {
 	queue.cancelFunc()
 	queue.activeBackgroundWorkers.Wait()

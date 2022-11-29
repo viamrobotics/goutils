@@ -113,6 +113,7 @@ type simpleServer struct {
 	serviceServerCancels    []func()
 	serviceServers          []interface{}
 	signalingCallQueue      WebRTCCallQueue
+	signalingServer         *WebRTCSignalingServer
 	authRSAPrivKey          *rsa.PrivateKey
 	internalUUID            string
 	internalCreds           Credentials
@@ -510,12 +511,13 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 
 		if sOpts.webrtcOpts.EnableInternalSignaling {
 			logger.Debug("will run internal signaling service")
-			signalingCallQueue := NewMemoryWebRTCCallQueue()
+			signalingCallQueue := NewMemoryWebRTCCallQueue(logger)
 			server.signalingCallQueue = signalingCallQueue
+			server.signalingServer = NewWebRTCSignalingServer(signalingCallQueue, nil, logger, internalSignalingHosts...)
 			if err := server.RegisterServiceServer(
 				context.Background(),
 				&webrtcpb.SignalingService_ServiceDesc,
-				NewWebRTCSignalingServer(signalingCallQueue, nil, internalSignalingHosts...),
+				server.signalingServer,
 				webrtcpb.RegisterSignalingServiceHandlerFromEndpoint,
 			); err != nil {
 				return nil, err
@@ -705,6 +707,9 @@ func (ss *simpleServer) Stop() error {
 	ss.stopped = true
 	ss.mu.Unlock()
 	var err error
+	if ss.signalingServer != nil {
+		ss.signalingServer.Close()
+	}
 	if ss.signalingCallQueue != nil {
 		err = multierr.Combine(err, ss.signalingCallQueue.Close())
 	}
