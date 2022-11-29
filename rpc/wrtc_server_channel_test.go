@@ -31,9 +31,10 @@ func TestWebRTCServerChannel(t *testing.T) {
 	server := newWebRTCServer(logger)
 	// use signaling server just as some random service to test against.
 	// It helps that it is in our package.
-	queue := newMemoryWebRTCCallQueueTest()
+	queue := newMemoryWebRTCCallQueueTest(logger)
 	defer queue.Close()
-	signalServer := NewWebRTCSignalingServer(queue, nil)
+	signalServer := NewWebRTCSignalingServer(queue, nil, logger)
+	defer signalServer.Close()
 	server.RegisterService(
 		&webrtcpb.SignalingService_ServiceDesc,
 		signalServer,
@@ -214,7 +215,7 @@ func TestWebRTCServerChannel(t *testing.T) {
 			Stream: &webrtcpb.Stream{Id: 4},
 			Type: &webrtcpb.Response_Trailers{
 				Trailers: &webrtcpb.ResponseTrailers{
-					Status: ErrorToStatus(errors.New("ohno")).Proto(),
+					Status: ErrorToStatus(errors.New("error from answerer: ohno")).Proto(),
 				},
 			},
 		},
@@ -262,9 +263,10 @@ func TestWebRTCServerChannelResetStream(t *testing.T) {
 	server := newWebRTCServer(logger)
 	// use signaling server just as some random service to test against.
 	// It helps that it is in our package.
-	queue := newMemoryWebRTCCallQueueTest()
+	queue := newMemoryWebRTCCallQueueTest(logger)
 	defer queue.Close()
-	signalServer := NewWebRTCSignalingServer(queue, nil)
+	signalServer := NewWebRTCSignalingServer(queue, nil, logger)
+	defer signalServer.Close()
 	server.RegisterService(
 		&webrtcpb.SignalingService_ServiceDesc,
 		signalServer,

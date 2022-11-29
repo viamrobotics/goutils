@@ -281,6 +281,7 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferError(ctx context.Context, host, u
 	updateResult, err := queue.coll.UpdateOne(ctx, bson.D{
 		{webrtcCallIDField, uuid},
 		{webrtcCallHostField, host},
+		{webrtcCallCallerDoneField, bson.D{{"$ne", true}}},
 	}, bson.D{{"$set", bson.D{{webrtcCallCallerErrorField, err.Error()}}}})
 	if err != nil {
 		return err
@@ -326,14 +327,19 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 	}()
 
 	// but also check first if there is anything for us.
-	// It is okay if we find something that someone else is working on answering
-	// since we will eventually fail to connect with one peer. We also expect
-	// only one host to try receiving at a time anyway.
-	result := queue.coll.FindOne(ctx, bson.D{
-		{webrtcCallHostField, bson.D{{"$in", hosts}}},
-		{webrtcCallAnsweredField, false},
-		{webrtcCallStartedAtField, bson.D{{"$gt", time.Now().Add(-getDefaultOfferDeadline())}}},
-	})
+	result := queue.coll.FindOneAndUpdate(
+		ctx,
+		bson.D{
+			{webrtcCallHostField, bson.D{{"$in", hosts}}},
+			{webrtcCallCallerErrorField, bson.D{{"$exists", false}}},
+			{webrtcCallAnsweredField, false},
+			{webrtcCallStartedAtField, bson.D{{"$gt", time.Now().Add(-getDefaultOfferDeadline())}}},
+		},
+		bson.D{
+			{"$set", bson.D{
+				{webrtcCallAnsweredField, true},
+			}},
+		})
 	var callReq mongodbWebRTCCall
 	err = result.Decode(&callReq)
 	if err != nil {
@@ -341,19 +347,47 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 			return nil, err
 		}
 		getFirstResult := func() error {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case next, ok := <-csOfferNext:
-				if !ok {
-					return errors.New("no next result")
-				}
-				rt = next.ResumeToken
-				if next.Error != nil {
-					return next.Error
+			for {
+				if err := ctx.Err(); err != nil {
+					return err
 				}
 
-				return next.Event.FullDocument.Unmarshal(&callReq)
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case next, ok := <-csOfferNext:
+					if !ok {
+						return errors.New("no next result")
+					}
+					rt = next.ResumeToken
+					if next.Error != nil {
+						return next.Error
+					}
+
+					if err := next.Event.FullDocument.Unmarshal(&callReq); err != nil {
+						return err
+					}
+
+					// take the offer
+					result, err := queue.coll.UpdateOne(
+						ctx,
+						bson.D{
+							{webrtcCallIDField, callReq.ID},
+						},
+						bson.D{
+							{"$set", bson.D{
+								{webrtcCallAnsweredField, true},
+							}},
+						})
+					if err != nil {
+						return err
+					}
+					if result.MatchedCount == 1 && result.ModifiedCount == 1 {
+						return nil
+					}
+
+					// someone else took it; continue
+				}
 			}
 		}
 		if err := getFirstResult(); err != nil {
@@ -374,7 +408,7 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 		},
 	}, options.ChangeStream().
 		SetFullDocument(options.UpdateLookup).
-		// We will resume from the point that either the change stream started (if FindOne worked)
+		// We will resume from the point that either the change stream started (if FindOneAndUpdate worked)
 		// or from the most recent change event containing the call request.
 		SetResumeAfter(rt),
 	)
@@ -411,16 +445,31 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 		if !(errors.Is(errToSet, context.Canceled) || errors.Is(errToSet, context.DeadlineExceeded)) {
 			queue.logger.Errorw("error in RecvOffer", "error", errToSet, "id", callReq.ID)
 		}
-		_, err := queue.coll.UpdateOne(
-			ctx,
-			bson.D{
-				{webrtcCallIDField, callReq.ID},
-			},
-			bson.D{{"$set", bson.D{{webrtcCallAnswererErrorField, errToSet.Error()}}}},
-		)
-		if err != nil {
-			queue.logger.Errorw("error updating error for RecvOffer", "error", errToSet, "id", callReq.ID)
-		}
+		// we assume the number of goroutines is bounded by the gRPC server invoking this method.
+		queue.activeBackgroundWorkers.Add(1)
+		utils.PanicCapturingGo(func() {
+			queue.activeBackgroundWorkers.Done()
+
+			// we need a dedicated timeout since even if the server is shutting down,
+			// we want to notify other servers immediately, instead of waiting for a timeout.
+			sendCtx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+			defer cancel()
+
+			_, err := queue.coll.UpdateOne(
+				sendCtx,
+				bson.D{
+					{webrtcCallIDField, callReq.ID},
+				},
+				bson.D{{"$set", bson.D{{webrtcCallAnswererErrorField, errToSet.Error()}}}},
+			)
+			if err == nil {
+				return
+			}
+			var errInactive inactiveOfferError
+			if !errors.As(err, &errInactive) {
+				queue.logger.Errorw("error updating error for RecvOffer", "error", errToSet, "id", callReq.ID)
+			}
+		})
 	}
 	sendCandidate := func(cand webrtc.ICECandidateInit) bool {
 		select {
@@ -529,7 +578,7 @@ func iceCandidateToMongo(i *webrtc.ICECandidateInit) mongodbICECandidate {
 	return candidate
 }
 
-// Close cancels all actives offers and waits to cleanly close all background workers.
+// Close cancels all active offers and waits to cleanly close all background workers.
 func (queue *mongoDBWebRTCCallQueue) Close() error {
 	queue.cancelFunc()
 	queue.activeBackgroundWorkers.Wait()
@@ -578,7 +627,7 @@ func (resp *mongoDBWebRTCCallOfferExchange) CallerErr() error {
 }
 
 func (resp *mongoDBWebRTCCallOfferExchange) AnswererRespond(ctx context.Context, ans WebRTCCallAnswer) error {
-	toSet := bson.D{{webrtcCallAnsweredField, true}}
+	var toSet bson.D
 	var toPush bson.D
 	switch {
 	case ans.InitialSDP != nil:
@@ -591,9 +640,15 @@ func (resp *mongoDBWebRTCCallOfferExchange) AnswererRespond(ctx context.Context,
 		return errors.New("expected either SDP, ICE candidate, or error to be set")
 	}
 
-	update := bson.D{{"$set", toSet}}
+	var update bson.D
+	if len(toSet) > 0 {
+		update = append(update, bson.E{"$set", toSet})
+	}
 	if len(toPush) > 0 {
 		update = append(update, bson.E{"$push", toPush})
+	}
+	if len(update) == 0 {
+		return nil
 	}
 
 	updateResult, err := resp.coll.UpdateOne(

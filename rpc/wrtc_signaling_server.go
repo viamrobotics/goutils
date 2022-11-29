@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/edaniels/golog"
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc/codes"
@@ -32,6 +33,11 @@ type WebRTCSignalingServer struct {
 	hostICEServers       map[string]hostICEServers
 	webrtcConfigProvider WebRTCConfigProvider
 	forHosts             map[string]struct{}
+
+	activeBackgroundWorkers sync.WaitGroup
+	cancelCtx               context.Context
+	cancelFunc              func()
+	logger                  golog.Logger
 }
 
 // NewWebRTCSignalingServer makes a new signaling server that uses the given
@@ -41,17 +47,23 @@ type WebRTCSignalingServer struct {
 func NewWebRTCSignalingServer(
 	callQueue WebRTCCallQueue,
 	webrtcConfigProvider WebRTCConfigProvider,
+	logger golog.Logger,
 	forHosts ...string,
 ) *WebRTCSignalingServer {
 	forHostsSet := make(map[string]struct{}, len(forHosts))
 	for _, host := range forHosts {
 		forHostsSet[host] = struct{}{}
 	}
+
+	cancelCtx, cancelFunc := context.WithCancel(context.Background())
 	return &WebRTCSignalingServer{
 		callQueue:            callQueue,
 		hostICEServers:       map[string]hostICEServers{},
 		webrtcConfigProvider: webrtcConfigProvider,
 		forHosts:             forHostsSet,
+		cancelCtx:            cancelCtx,
+		cancelFunc:           cancelFunc,
+		logger:               logger,
 	}
 }
 
@@ -111,10 +123,11 @@ func (srv *WebRTCSignalingServer) validateHosts(hosts ...string) error {
 }
 
 // Call is a request/offer to start a caller with the connected answerer.
-func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcpb.SignalingService_CallServer) error {
+func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcpb.SignalingService_CallServer) (callErr error) {
 	ctx := server.Context()
 	ctx, cancel := context.WithTimeout(ctx, getDefaultOfferDeadline())
 	defer cancel()
+
 	host, err := HostFromCtx(ctx)
 	if err != nil {
 		return err
@@ -122,11 +135,50 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 	if err := srv.validateHosts(host); err != nil {
 		return err
 	}
-	uuid, respCh, respDone, cancel, err := srv.callQueue.SendOfferInit(ctx, host, req.Sdp, req.DisableTrickle)
+
+	uuid, respCh, respDone, sendCancel, err := srv.callQueue.SendOfferInit(ctx, host, req.Sdp, req.DisableTrickle)
 	if err != nil {
 		return err
 	}
-	defer cancel()
+	defer sendCancel()
+
+	defer func() {
+		var errToSend error
+
+		if callErr == nil {
+			// check if we had any cancel prior to completing
+			select {
+			case <-srv.cancelCtx.Done():
+				errToSend = srv.cancelCtx.Err()
+			case <-ctx.Done():
+				errToSend = ctx.Err()
+			default:
+				return
+			}
+		} else {
+			errToSend = callErr
+		}
+
+		// we assume the number of goroutines is bounded by the gRPC server invoking this method.
+		srv.activeBackgroundWorkers.Add(1)
+		utils.PanicCapturingGo(func() {
+			srv.activeBackgroundWorkers.Done()
+
+			// we need a dedicated timeout since even if the server is shutting down,
+			// we want to notify other servers immediately, instead of waiting for a timeout.
+			sendCtx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+			defer cancel()
+
+			err := srv.callQueue.SendOfferError(sendCtx, host, uuid, errToSend)
+			if err == nil {
+				return
+			}
+			var errInactive inactiveOfferError
+			if !errors.As(err, &errInactive) {
+				srv.logger.Errorw("error sending offer error", "id", uuid, "error", err)
+			}
+		})
+	}()
 
 	var haveInit bool
 	for {
@@ -142,7 +194,7 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 		case resp = <-respCh:
 		}
 		if resp.Err != nil {
-			return resp.Err
+			return fmt.Errorf("error from answerer: %w", resp.Err)
 		}
 
 		if !haveInit && resp.InitialSDP == nil {
@@ -199,6 +251,10 @@ func (srv *WebRTCSignalingServer) CallUpdate(ctx context.Context, req *webrtcpb.
 		if err := srv.callQueue.SendOfferUpdate(ctx, host, req.Uuid, cand); err != nil {
 			return nil, err
 		}
+	case *webrtcpb.CallUpdateRequest_Error:
+		if err := srv.callQueue.SendOfferError(ctx, host, req.Uuid, status.ErrorProto(req.GetError())); err != nil {
+			return nil, err
+		}
 	case *webrtcpb.CallUpdateRequest_Done:
 		if err := srv.callQueue.SendOfferDone(ctx, host, req.Uuid); err != nil {
 			return nil, err
@@ -250,7 +306,8 @@ func (srv *WebRTCSignalingServer) clearAdditionalICEServers(hosts []string) {
 	srv.mu.Unlock()
 }
 
-// Answer listens on call/offer queue forever responding with SDPs to agreed to calls.
+// Answer listens on call/offer queue for a single call responding with a corresponding SDP
+// and candidate updates/errors.
 // Note: See SinalingAnswer.answer for the complementary side of this process.
 func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_AnswerServer) error {
 	ctx := server.Context()
@@ -441,4 +498,10 @@ func (srv *WebRTCSignalingServer) OptionalWebRTCConfig(
 	return &webrtcpb.OptionalWebRTCConfigResponse{Config: &webrtcpb.WebRTCConfig{
 		AdditionalIceServers: iceServers,
 	}}, nil
+}
+
+// Close cancels all active workers and waits to cleanly close all background workers.
+func (srv *WebRTCSignalingServer) Close() {
+	srv.cancelFunc()
+	srv.activeBackgroundWorkers.Wait()
 }

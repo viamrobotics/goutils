@@ -64,7 +64,7 @@ func newWebRTCSignalingAnswerer(
 }
 
 const (
-	defaultMaxAnswerers   = 1
+	defaultMaxAnswerers   = 2
 	answererReconnectWait = time.Second
 )
 
@@ -190,10 +190,6 @@ func (ans *webrtcSignalingAnswerer) Stop() {
 // attempts to establish a WebRTC connection with the caller via ICE. Once established,
 // the designated WebRTC data channel is passed off to the underlying Server which
 // is then used as the server end of a gRPC connection.
-// Note: right now the implementation of WebRTCSignalingAnswerer and SignalingServer are bound
-// to each other in that only one offer is completely answered at a time. In order to
-// change this, this should really be answerAll and hold the state of all active
-// offers (by UUID).
 func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_AnswerClient) (err error) {
 	resp, err := client.Recv()
 	if err != nil {
