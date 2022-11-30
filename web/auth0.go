@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
@@ -117,6 +118,8 @@ type callbackHandler struct {
 	logger golog.Logger
 }
 
+const auth0RedirectStateCookieName = "auth0_redirect_state"
+
 func (h *callbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
@@ -124,12 +127,33 @@ func (h *callbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx, span := trace.StartSpan(ctx, r.URL.Path)
 	defer span.End()
 
-	session, err := h.state.sessions.Get(r, true)
+	stateCookie, err := r.Cookie(auth0RedirectStateCookieName)
+	if HandleError(w, err, h.logger, "getting redirect cookie") {
+		return
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     auth0RedirectStateCookieName,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		Secure:   r.TLS != nil,
+		SameSite: http.SameSiteLaxMode,
+		HttpOnly: true,
+	})
+	stateParts := strings.SplitN(stateCookie.Value, ":", 2)
+	if len(stateParts) != 2 {
+		w.WriteHeader(http.StatusBadRequest)
+		_, err := w.Write([]byte("invalid state parameter"))
+		utils.UncheckedError(err)
+		return
+	}
+
+	session, err := h.state.sessions.store.Get(r.Context(), stateParts[0])
 	if HandleError(w, err, h.logger, "getting session") {
 		return
 	}
 
-	if r.URL.Query().Get("state") != session.Data["state"] {
+	if r.URL.Query().Get("state") != stateParts[1] {
 		http.Error(w, "Invalid state parameter", http.StatusBadRequest)
 		return
 	}
@@ -158,7 +182,13 @@ func (h *callbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, backto, http.StatusSeeOther)
+	_, err = w.Write([]byte(fmt.Sprintf(`<html>
+<head>
+<meta http-equiv="refresh" content="0;URL='%s'"/>
+</head>
+</html>
+`, backto)))
+	utils.UncheckedError(err)
 }
 
 // Handle programmatically generated access + id tokens
@@ -286,7 +316,15 @@ func (h *loginHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if HandleError(w, err, h.logger, "error getting session") {
 		return
 	}
-	session.Data["state"] = state
+	http.SetCookie(w, &http.Cookie{
+		Name:     auth0RedirectStateCookieName,
+		Value:    fmt.Sprintf("%s:%s", session.id, state),
+		Path:     "/",
+		MaxAge:   60,
+		Secure:   r.TLS != nil,
+		SameSite: http.SameSiteLaxMode,
+		HttpOnly: true,
+	})
 
 	if r.FormValue("backto") != "" {
 		session.Data["backto"] = r.FormValue("backto")

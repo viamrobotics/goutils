@@ -107,6 +107,7 @@ func (sm *SessionManager) DeleteSession(ctx context.Context, r *http.Request, w 
 		MaxAge:   -1,
 		Secure:   r.TLS != nil,
 		SameSite: http.SameSiteStrictMode,
+		HttpOnly: true,
 	})
 
 	c, err := r.Cookie(sm.cookieName)
@@ -139,6 +140,7 @@ func (s *Session) Save(ctx context.Context, r *http.Request, w http.ResponseWrit
 			MaxAge:   86400 * 7,
 			Secure:   r.TLS != nil,
 			SameSite: http.SameSiteStrictMode,
+			HttpOnly: true,
 		})
 		s.isNew = false
 	}
