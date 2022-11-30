@@ -38,6 +38,7 @@ var (
 	mongodbWebRTCCallQueueDBName      = "rpc"
 	mongodbWebRTCCallQueueCollName    = "calls"
 	mongodbWebRTCCallQueueExpireAfter = int32(getDefaultOfferDeadline().Seconds())
+	mongodbWebRTCCallQueueExpireName  = "rpc_call_expire"
 	mongodbWebRTCCallQueueIndexes     = []mongo.IndexModel{
 		{
 			Keys: bson.D{
@@ -49,6 +50,7 @@ var (
 				{webrtcCallStartedAtField, 1},
 			},
 			Options: &options.IndexOptions{
+				Name:               &mongodbWebRTCCallQueueExpireName,
 				ExpireAfterSeconds: &mongodbWebRTCCallQueueExpireAfter,
 			},
 		},

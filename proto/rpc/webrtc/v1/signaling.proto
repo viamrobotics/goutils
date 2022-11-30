@@ -12,6 +12,11 @@ service SignalingService {
 	// Call makes an offer to a client that it expects an answer to. The host
 	// of the client in question should be identified in the rpc-host metadata
 	// field.
+	// Note: Based on how this is a server streaming responnse to the caller,
+	// we do not have a good way of knowing if the caller has disappeared.
+	// Depending on answerer timeouts and concurrency limits, this can result in
+	// hangs on the answerer waiting for a connection to establish, which in turn
+	// can result in the caller waiting for an answerer to be listening.
 	rpc Call(CallRequest) returns (stream CallResponse) {
 		option (google.api.http) = {
 			post: "/rpc/webrtc/v1/call"

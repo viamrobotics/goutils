@@ -9,10 +9,10 @@ import (
 	"github.com/pion/webrtc/v3"
 )
 
-// do not change this unless the MongoDB TTL is also modified in advance.
+// WARNING: do not change this unless the MongoDB TTL is also modified in advance.
 var (
 	_defaultOfferDeadlineMu sync.Mutex
-	_defaultOfferDeadline   = 20 * time.Second
+	_defaultOfferDeadline   = 10 * time.Second
 )
 
 func getDefaultOfferDeadline() time.Duration {
