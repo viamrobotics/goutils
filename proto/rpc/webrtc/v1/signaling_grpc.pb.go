@@ -21,6 +21,11 @@ type SignalingServiceClient interface {
 	// Call makes an offer to a client that it expects an answer to. The host
 	// of the client in question should be identified in the rpc-host metadata
 	// field.
+	// Note: Based on how this is a server streaming responnse to the caller,
+	// we do not have a good way of knowing if the caller has disappeared.
+	// Depending on answerer timeouts and concurrency limits, this can result in
+	// hangs on the answerer waiting for a connection to establish, which in turn
+	// can result in the caller waiting for an answerer to be listening.
 	Call(ctx context.Context, in *CallRequest, opts ...grpc.CallOption) (SignalingService_CallClient, error)
 	// CallUpdate is used to send additional info in relation to a Call.
 	// The host of the client for the call in question should be identified
@@ -133,6 +138,11 @@ type SignalingServiceServer interface {
 	// Call makes an offer to a client that it expects an answer to. The host
 	// of the client in question should be identified in the rpc-host metadata
 	// field.
+	// Note: Based on how this is a server streaming responnse to the caller,
+	// we do not have a good way of knowing if the caller has disappeared.
+	// Depending on answerer timeouts and concurrency limits, this can result in
+	// hangs on the answerer waiting for a connection to establish, which in turn
+	// can result in the caller waiting for an answerer to be listening.
 	Call(*CallRequest, SignalingService_CallServer) error
 	// CallUpdate is used to send additional info in relation to a Call.
 	// The host of the client for the call in question should be identified
