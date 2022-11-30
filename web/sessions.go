@@ -100,7 +100,14 @@ func (sm *SessionManager) Get(r *http.Request, createIfNotExist bool) (*Session,
 
 // DeleteSession deletes a session.
 func (sm *SessionManager) DeleteSession(ctx context.Context, r *http.Request, w http.ResponseWriter) {
-	http.SetCookie(w, &http.Cookie{Name: sm.cookieName, Value: "deleted", MaxAge: -1})
+	http.SetCookie(w, &http.Cookie{
+		Name:     sm.cookieName,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		Secure:   r.TLS != nil,
+		SameSite: http.SameSiteStrictMode,
+	})
 
 	c, err := r.Cookie(sm.cookieName)
 	if err == nil {
@@ -126,10 +133,12 @@ func (sm *SessionManager) newID() (string, error) {
 func (s *Session) Save(ctx context.Context, r *http.Request, w http.ResponseWriter) error {
 	if s.isNew {
 		http.SetCookie(w, &http.Cookie{
-			Name:   s.manager.cookieName,
-			Value:  s.id,
-			MaxAge: 86400 * 7,
-			Secure: r.TLS != nil,
+			Name:     s.manager.cookieName,
+			Value:    s.id,
+			Path:     "/",
+			MaxAge:   86400 * 7,
+			Secure:   r.TLS != nil,
+			SameSite: http.SameSiteStrictMode,
 		})
 		s.isNew = false
 	}
