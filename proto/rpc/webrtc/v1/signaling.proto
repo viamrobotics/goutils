@@ -4,6 +4,7 @@ option go_package = "go.viam.com/utils/proto/rpc/webrtc/v1";
 package proto.rpc.webrtc.v1;
 
 import "google/api/annotations.proto";
+import "google/protobuf/timestamp.proto";
 import "google/rpc/status.proto";
 
 // A SignalingService provides the means to have one client "call" another
@@ -121,6 +122,7 @@ message WebRTCConfig {
 message AnswerRequestInitStage {
 	string sdp = 1;
 	WebRTCConfig optional_config = 2;
+	optional google.protobuf.Timestamp deadline = 3;
 }
 
 // AnswerRequestUpdateStage is multiply used to trickle in ICE candidates to

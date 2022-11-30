@@ -24,6 +24,16 @@ func MergeContextWithTimeout(ctx, otherCtx context.Context, timeout time.Duratio
 	return mergeContexs(otherCtx, mergedCtx, mergedCtxCancel)
 }
 
+// MergeContextWithDeadline merges the two given contexts together and returns a new "child"
+// context parented by the first context that will be cancelled either by the
+// returned cancel function, when either of the two initial contexts are canceled,
+// or when the given deadline lapses.
+// Note: This implies that the values will only come from the first argument's context.
+func MergeContextWithDeadline(ctx, otherCtx context.Context, deadline time.Time) (context.Context, func()) {
+	mergedCtx, mergedCtxCancel := context.WithDeadline(ctx, deadline)
+	return mergeContexs(otherCtx, mergedCtx, mergedCtxCancel)
+}
+
 func mergeContexs(
 	otherCtx context.Context,
 	mergedCtx context.Context,

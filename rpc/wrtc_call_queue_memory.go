@@ -88,6 +88,7 @@ type memoryWebRTCCallOfferInit struct {
 	uuid               string
 	sdp                string
 	disableTrickle     bool
+	deadline           time.Time
 	callerCandidates   chan webrtc.ICECandidateInit
 	answererResponses  chan<- WebRTCCallAnswer
 	answererDoneCtx    context.Context
@@ -112,11 +113,13 @@ func (queue *memoryWebRTCCallQueue) SendOfferInit(
 		newUUID = uuid.NewString()
 	}
 	answererResponses := make(chan WebRTCCallAnswer)
-	sendCtx, sendCtxCancel := context.WithTimeout(queue.cancelCtx, getDefaultOfferDeadline())
+	offerDeadline := time.Now().Add(getDefaultOfferDeadline())
+	sendCtx, sendCtxCancel := context.WithDeadline(queue.cancelCtx, offerDeadline)
 	offer := memoryWebRTCCallOfferInit{
 		uuid:               newUUID,
 		sdp:                sdp,
 		disableTrickle:     disableTrickle,
+		deadline:           offerDeadline,
 		callerCandidates:   make(chan webrtc.ICECandidateInit),
 		answererResponses:  answererResponses,
 		answererDoneCtx:    sendCtx,
@@ -249,6 +252,10 @@ func (resp *memoryWebRTCCallOfferExchange) SDP() string {
 
 func (resp *memoryWebRTCCallOfferExchange) DisableTrickleICE() bool {
 	return resp.offer.disableTrickle
+}
+
+func (resp *memoryWebRTCCallOfferExchange) Deadline() time.Time {
+	return resp.offer.deadline
 }
 
 func (resp *memoryWebRTCCallOfferExchange) CallerCandidates() <-chan webrtc.ICECandidateInit {

@@ -347,7 +347,7 @@ func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 		return err
 	}
 
-	offerCtx, offerCtxCancel := context.WithTimeout(ctx, getDefaultOfferDeadline())
+	offerCtx, offerCtxCancel := context.WithDeadline(ctx, offer.Deadline())
 	var answererStoppedExchange bool
 	callerLoop := func() error {
 		defer func() {

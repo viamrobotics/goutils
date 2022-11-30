@@ -3,7 +3,7 @@ package rpc
 import (
 	"context"
 	"fmt"
-	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/pion/webrtc/v3"
@@ -11,21 +11,27 @@ import (
 
 // WARNING: do not change this unless the MongoDB TTL is also modified in advance.
 var (
-	_defaultOfferDeadlineMu sync.Mutex
-	_defaultOfferDeadline   = 10 * time.Second
+	_defaultOfferDeadline                     = 10 * time.Second
+	_defaultOfferDeadlineCloseToExpiredFactor = .2
+	_defaultOfferDeadlineCloseToExpired       = calcDefaultOfferDeadlineClose(_defaultOfferDeadline)
 )
 
+func calcDefaultOfferDeadlineClose(from time.Duration) time.Duration {
+	return time.Second * time.Duration(from.Seconds()*_defaultOfferDeadlineCloseToExpiredFactor)
+}
+
 func getDefaultOfferDeadline() time.Duration {
-	_defaultOfferDeadlineMu.Lock()
-	defer _defaultOfferDeadlineMu.Unlock()
-	return _defaultOfferDeadline
+	return time.Duration(atomic.LoadInt64((*int64)(&_defaultOfferDeadline)))
+}
+
+func getDefaultOfferCloseToDeadline() time.Duration {
+	return time.Duration(atomic.LoadInt64((*int64)(&_defaultOfferDeadlineCloseToExpired)))
 }
 
 func setDefaultOfferDeadline(deafultOfferDeadline time.Duration) func() {
-	_defaultOfferDeadlineMu.Lock()
-	prevDefaultOfferDeadline := _defaultOfferDeadline
-	_defaultOfferDeadline = deafultOfferDeadline
-	_defaultOfferDeadlineMu.Unlock()
+	prevDefaultOfferDeadline := getDefaultOfferDeadline()
+	atomic.StoreInt64((*int64)(&_defaultOfferDeadline), int64(deafultOfferDeadline))
+	atomic.StoreInt64((*int64)(&_defaultOfferDeadlineCloseToExpired), int64(calcDefaultOfferDeadlineClose(deafultOfferDeadline)))
 	return func() {
 		setDefaultOfferDeadline(prevDefaultOfferDeadline)
 	}
@@ -74,6 +80,9 @@ type WebRTCCallOffer interface {
 	// DisableTrickleICE indicates if Trickle ICE should be used. Currently, both
 	// sides must both respect this setting.
 	DisableTrickleICE() bool
+
+	// Deadline returns how long this offer has to live.
+	Deadline() time.Time
 }
 
 // A WebRTCCallOfferExchange is used by an answerer to respond to a call offer with an

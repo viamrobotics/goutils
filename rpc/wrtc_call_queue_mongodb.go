@@ -328,6 +328,19 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 		cleanup()
 	}()
 
+	// We would like to answer all calls within their deadline but there is some amount of time required to
+	// connect. That estimated time to connect is subtracted off the window so that we do not grab any
+	// offers that are about to expire.
+	// Example:
+	// An offer that starts at T=2 and expires at 12.
+	// T | 1 2 3 4 5 6  7 8 9 10 11 12 13 14 15 16  17 18 19 20
+	//       O         (    [        E              C]
+	//       ^         ^    ^        ^               ^
+	//     Start    Window  |      Expire     Check from now window bound
+	//                      |
+	//             Window with estimated connect time
+	startedAtWindow := time.Now().Add(-getDefaultOfferDeadline()).Add(getDefaultOfferCloseToDeadline())
+
 	// but also check first if there is anything for us.
 	result := queue.coll.FindOneAndUpdate(
 		ctx,
@@ -335,7 +348,7 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 			{webrtcCallHostField, bson.D{{"$in", hosts}}},
 			{webrtcCallCallerErrorField, bson.D{{"$exists", false}}},
 			{webrtcCallAnsweredField, false},
-			{webrtcCallStartedAtField, bson.D{{"$gt", time.Now().Add(-getDefaultOfferDeadline())}}},
+			{webrtcCallStartedAtField, bson.D{{"$gt", startedAtWindow}}},
 		},
 		bson.D{
 			{"$set", bson.D{
@@ -404,7 +417,10 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 	cs, err = queue.coll.Watch(ctx, []bson.D{
 		{
 			{"$match", bson.D{
-				{"operationType", mongoutils.ChangeEventOperationTypeUpdate},
+				{"operationType", bson.D{{"$in", []interface{}{
+					mongoutils.ChangeEventOperationTypeUpdate,
+					mongoutils.ChangeEventOperationTypeDelete,
+				}}}},
 				{fmt.Sprintf("documentKey.%s", webrtcCallIDField), callReq.ID},
 			}},
 		},
@@ -418,7 +434,9 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 		return nil, err
 	}
 
-	recvCtx, recvCtxCancel := utils.MergeContextWithTimeout(ctx, queue.cancelCtx, getDefaultOfferDeadline())
+	offerDeadline := callReq.StartedAt.Add(getDefaultOfferDeadline())
+
+	recvCtx, recvCtxCancel := utils.MergeContextWithDeadline(ctx, queue.cancelCtx, offerDeadline)
 	csNext, _ := mongoutils.ChangeStreamBackground(recvCtx, cs)
 
 	cleanup = func() {
@@ -442,6 +460,7 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 		coll:             queue.coll,
 		callerCandidates: make(chan webrtc.ICECandidateInit),
 		callerDoneCtx:    callerDoneCtx,
+		deadline:         offerDeadline,
 	}
 	setErr := func(errToSet error) {
 		if !(errors.Is(errToSet, context.Canceled) || errors.Is(errToSet, context.DeadlineExceeded)) {
@@ -530,6 +549,11 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 				return
 			}
 
+			if next.Event.OperationType == mongoutils.ChangeEventOperationTypeDelete {
+				exchange.callerErr = errors.New("offer expired")
+				return
+			}
+
 			var callUpdate mongodbWebRTCCall
 			if err := next.Event.FullDocument.Unmarshal(&callUpdate); err != nil {
 				setErr(err)
@@ -593,6 +617,7 @@ type mongoDBWebRTCCallOfferExchange struct {
 	callerCandidates chan webrtc.ICECandidateInit
 	callerDoneCtx    context.Context
 	callerErr        error
+	deadline         time.Time
 }
 
 func (resp *mongoDBWebRTCCallOfferExchange) UUID() string {
@@ -605,6 +630,10 @@ func (resp *mongoDBWebRTCCallOfferExchange) SDP() string {
 
 func (resp *mongoDBWebRTCCallOfferExchange) DisableTrickleICE() bool {
 	return resp.call.DisableTrickle
+}
+
+func (resp *mongoDBWebRTCCallOfferExchange) Deadline() time.Time {
+	return resp.deadline
 }
 
 func (resp *mongoDBWebRTCCallOfferExchange) CallerCandidates() <-chan webrtc.ICECandidateInit {
