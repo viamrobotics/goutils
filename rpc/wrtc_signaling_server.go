@@ -14,6 +14,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"go.viam.com/utils"
 	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
@@ -341,6 +342,7 @@ func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 					AdditionalIceServers: iceServers,
 					DisableTrickle:       offer.DisableTrickleICE(),
 				},
+				Deadline: timestamppb.New(offer.Deadline()),
 			},
 		},
 	}); err != nil {
