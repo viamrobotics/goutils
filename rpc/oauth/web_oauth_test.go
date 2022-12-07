@@ -37,10 +37,11 @@ func TestWebOauth(t *testing.T) {
 	test.That(t, keyset.Add(publicKeyForWebAuth), test.ShouldBeTrue)
 
 	expectedAudience := "api.example.com"
+	expectedAudienceOther := "api2.example.com"
 	expectedUser := "user@example.com"
 	opts := WebOAuthOptions{
-		AllowedAudience: expectedAudience,
-		KeyProvider:     jwks.NewStaticJWKKeyProvider(keyset),
+		AllowedAudiences: []string{expectedAudience, expectedAudienceOther},
+		KeyProvider:      jwks.NewStaticJWKKeyProvider(keyset),
 		EntityVerifier: func(ctx context.Context, entity string) (interface{}, error) {
 			test.That(t, entity, test.ShouldEqual, expectedUser)
 			return "somespecialinterface", nil
@@ -107,6 +108,15 @@ func TestWebOauth(t *testing.T) {
 			test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
 		})
 
+		t.Run("with valid access token using second aud", func(t *testing.T) {
+			accessToken, err := SignWebAuthAccessToken(privKeyForWebAuth, expectedUser, expectedAudienceOther, "iss", "key-id-1")
+			test.That(t, err, test.ShouldBeNil)
+
+			echoResp, err := makeAuthRequest(accessToken)
+			test.That(t, err, test.ShouldBeNil)
+			test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
+		})
+
 		t.Run("with invalid aud access token claim", func(t *testing.T) {
 			accessToken, err := SignWebAuthAccessToken(privKeyForWebAuth, expectedUser, "not-valid-aud", "iss", "key-id-1")
 			test.That(t, err, test.ShouldBeNil)
@@ -162,9 +172,9 @@ func TestWebOauthWithNilVerifyEntity(t *testing.T) {
 	expectedUser := "user@example.com"
 
 	opts := WebOAuthOptions{
-		AllowedAudience: expectedAudience,
-		KeyProvider:     jwks.NewStaticJWKKeyProvider(keyset),
-		Logger:          logger,
+		AllowedAudiences: []string{expectedAudience},
+		KeyProvider:      jwks.NewStaticJWKKeyProvider(keyset),
+		Logger:           logger,
 	}
 	rpcServer, err := rpc.NewServer(logger, WithWebOAuthTokenAuthHandler(opts))
 	test.That(t, err, test.ShouldBeNil)

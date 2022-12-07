@@ -35,6 +35,14 @@ type KeyProvider interface {
 	// LookupKey should return a PublicKey based on the given key ID. Return an error if not
 	// found or any other error.
 	LookupKey(ctx context.Context, kid string) (*rsa.PublicKey, error)
+
+	// Fetch returns the full KeySet as a cloned keyset, any modifcations are only applied locally.
+	Fetch(ctx context.Context) (KeySet, error)
+}
+
+// ParseKeySet parses a JSON keyset string into a KeySet.
+func ParseKeySet(input string) (KeySet, error) {
+	return jwk.ParseString(input)
 }
 
 // cachingKeyProvider is a key provider that looks up jwk url based on our auth0 config and
@@ -59,6 +67,16 @@ func (cp *cachingKeyProvider) LookupKey(ctx context.Context, kid string) (*rsa.P
 	}
 
 	return publicKeyFromKeySet(keyset, kid)
+}
+
+func (cp *cachingKeyProvider) Fetch(ctx context.Context) (KeySet, error) {
+	// loads keys from cache or refreshes if needed.
+	keyset, err := cp.ar.Fetch(ctx, cp.certsURL)
+	if err != nil {
+		return nil, err
+	}
+
+	return keyset.Clone()
 }
 
 // ensure interface is met.
@@ -107,6 +125,11 @@ func (p *staticKeySet) LookupKey(ctx context.Context, kid string) (*rsa.PublicKe
 
 func (p *staticKeySet) Close() error {
 	return nil
+}
+
+func (p *staticKeySet) Fetch(ctx context.Context) (KeySet, error) {
+	// clone to avoid any consumers making changes to the underlying keyset.
+	return p.keyset.Clone()
 }
 
 // NewStaticJWKKeyProvider create static key provider based on the keyset given.
