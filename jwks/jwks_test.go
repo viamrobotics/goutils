@@ -74,3 +74,28 @@ func createKeyToKeySet(t *testing.T, set jwk.Set, kid string) *rsa.PrivateKey {
 
 	return raw
 }
+
+func TestFetch(t *testing.T) {
+	set := jwk.NewSet()
+	ctx := context.Background()
+
+	createKeyToKeySet(t, set, "my-keyid-1")
+	createKeyToKeySet(t, set, "my-keyid-2")
+
+	address, closeFakeOIDC := ServeFakeOIDCEndpoint(t, set)
+	defer closeFakeOIDC()
+
+	keyProvider, err := NewCachingOIDCJWKKeyProvider(ctx, address)
+	test.That(t, err, test.ShouldBeNil)
+
+	defer keyProvider.Close()
+
+	keyset, err := keyProvider.Fetch(ctx)
+	test.That(t, err, test.ShouldBeNil)
+
+	_, ok := keyset.LookupKeyID("my-keyid-1")
+	test.That(t, ok, test.ShouldBeTrue)
+
+	_, ok = keyset.LookupKeyID("my-keyid-2")
+	test.That(t, ok, test.ShouldBeTrue)
+}

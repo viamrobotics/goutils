@@ -34,7 +34,7 @@ type webOAuthClaims struct {
 	rpc.JWTClaims
 
 	// The JWT must contain the aud claim otherwise it must be rejected.
-	allowedAudience string
+	allowedAudiences []string
 }
 
 func (c *webOAuthClaims) Entity() (string, error) {
@@ -47,7 +47,14 @@ func (c *webOAuthClaims) Entity() (string, error) {
 }
 
 func (c *webOAuthClaims) Valid() error {
-	if !c.RegisteredClaims.VerifyAudience(c.allowedAudience, true) {
+	audVerified := false
+	for _, allowdAud := range c.allowedAudiences {
+		if c.RegisteredClaims.VerifyAudience(allowdAud, true) {
+			audVerified = true
+			break
+		}
+	}
+	if !audVerified {
 		return errors.New("invalid aud")
 	}
 
@@ -59,7 +66,7 @@ var _ rpc.Claims = &webOAuthClaims{}
 // WebOAuthOptions options for the WebOauth handler.
 type WebOAuthOptions struct {
 	// Audience claim that must be within the "aud" JWT claims presented.
-	AllowedAudience string
+	AllowedAudiences []string
 
 	// Key provider used to provide public keys to validate the jwt basid on its "kid" header.
 	KeyProvider jwks.KeyProvider
@@ -102,7 +109,7 @@ func (a *webOAuthHandler) VerifyEntity(ctx context.Context, entity string) (inte
 func (a *webOAuthHandler) CreateClaims() rpc.Claims {
 	return &webOAuthClaims{
 		// used to valid the aud claim in the jwt.
-		allowedAudience: a.AllowedAudience,
+		allowedAudiences: a.AllowedAudiences,
 	}
 }
 
