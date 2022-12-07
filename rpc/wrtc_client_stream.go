@@ -263,8 +263,8 @@ func (s *webrtcClientStream) onResponse(resp *webrtcpb.Response) {
 }
 
 func (s *webrtcClientStream) processHeaders(headers *webrtcpb.ResponseHeaders) {
-	s.headers = metadataFromProto(headers.Metadata)
 	s.mu.Lock()
+	s.headers = metadataFromProto(headers.Metadata)
 	s.userCtx = metadata.NewIncomingContext(s.ctx, s.headers)
 	s.mu.Unlock()
 	close(s.headersReceived)

@@ -71,6 +71,9 @@ func (s *webrtcServerStream) Method() string {
 //   - The first response is sent out;
 //   - An RPC status is sent out (error or success).
 func (s *webrtcServerStream) SetHeader(header metadata.MD) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if s.headersWritten {
 		return errors.WithStack(ErrIllegalHeaderWrite)
 	}
@@ -363,9 +366,10 @@ func (s *webrtcServerStream) writeHeaders() error {
 	s.webrtcBaseStream.mu.Lock()
 	if !s.headersWritten {
 		s.headersWritten = true
+		protoHeaders := metadataToProto(s.header)
 		s.webrtcBaseStream.mu.Unlock()
 		return s.ch.writeHeaders(s.stream, &webrtcpb.ResponseHeaders{
-			Metadata: metadataToProto(s.header),
+			Metadata: protoHeaders,
 		})
 	}
 	s.webrtcBaseStream.mu.Unlock()
