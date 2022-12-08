@@ -13,13 +13,15 @@ import (
 
 // A ProcessConfig describes how to manage a system process.
 type ProcessConfig struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	Args      []string  `json:"args"`
-	CWD       string    `json:"cwd"`
-	OneShot   bool      `json:"one_shot"`
-	Log       bool      `json:"log"`
-	LogWriter io.Writer `json:"-"`
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	Args        []string  `json:"args"`
+	CWD         string    `json:"cwd"`
+	OneShot     bool      `json:"one_shot"`
+	Log         bool      `json:"log"`
+	LogWriter   io.Writer `json:"-"`
+	StopSignal  string    `json:"stop_signal"`
+	StopTimeout float64   `json:"stop_timeout_seconds"`
 }
 
 // Validate ensures all parts of the config are valid.

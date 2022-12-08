@@ -132,7 +132,7 @@ func TestManagedProcessStart(t *testing.T) {
 				Args: []string{
 					"-c",
 					fmt.Sprintf(
-						"trap \"echo world >> %[1]s\nexit 0\" SIGINT; echo hello >> %[1]s\nwhile true; do echo hey; sleep 1; done",
+						"trap \"echo world >> %[1]s\nexit 0\" SIGTERM; echo hello >> %[1]s\nwhile true; do echo hey; sleep 1; done",
 						temp.Name(),
 					),
 				},
@@ -218,7 +218,7 @@ func TestManagedProcessStop(t *testing.T) {
 
 		proc := NewManagedProcess(ProcessConfig{
 			Name: "bash",
-			Args: []string{"-c", fmt.Sprintf("trap \"exit 0\" SIGINT; echo hello >> %s\nwhile true; do echo hey; sleep 1; done", temp.Name())},
+			Args: []string{"-c", fmt.Sprintf("trap \"exit 0\" SIGTERM; echo hello >> %s\nwhile true; do echo hey; sleep 1; done", temp.Name())},
 		}, logger)
 		test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
 
@@ -229,7 +229,7 @@ func TestManagedProcessStop(t *testing.T) {
 
 		proc = NewManagedProcess(ProcessConfig{
 			Name: "bash",
-			Args: []string{"-c", fmt.Sprintf("trap \"exit 1\" SIGINT; echo hello >> %s\nwhile true; do echo hey; sleep 1; done", temp.Name())},
+			Args: []string{"-c", fmt.Sprintf("trap \"exit 1\" SIGTERM; echo hello >> %s\nwhile true; do echo hey; sleep 1; done", temp.Name())},
 		}, logger)
 		test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
 
@@ -241,7 +241,7 @@ func TestManagedProcessStop(t *testing.T) {
 
 		proc = NewManagedProcess(ProcessConfig{
 			Name: "bash",
-			Args: []string{"-c", fmt.Sprintf("trap \"echo woo\" SIGINT; echo hello >> %s\nwhile true; do echo hey; sleep 1; done", temp.Name())},
+			Args: []string{"-c", fmt.Sprintf("trap \"echo woo\" SIGTERM; echo hello >> %s\nwhile true; do echo hey; sleep 1; done", temp.Name())},
 		}, logger)
 		test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
 
