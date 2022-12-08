@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/edaniels/golog"
-	"github.com/lestrrat-go/jwx/jwk"
 	"go.viam.com/test"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -18,6 +17,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"go.viam.com/utils/jwks"
+	"go.viam.com/utils/jwks/jwksutils"
 	pb "go.viam.com/utils/proto/rpc/examples/echo/v1"
 	"go.viam.com/utils/rpc"
 	echoserver "go.viam.com/utils/rpc/examples/echo/server"
@@ -28,13 +28,8 @@ func TestWebOauth(t *testing.T) {
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
 
-	keyset := jwk.NewSet()
-	privKeyForWebAuth, err := rsa.GenerateKey(rand.Reader, 4096)
+	keyset, privKeys, err := jwksutils.NewTestKeySet(1)
 	test.That(t, err, test.ShouldBeNil)
-	publicKeyForWebAuth, err := jwk.New(privKeyForWebAuth.PublicKey)
-	test.That(t, err, test.ShouldBeNil)
-	publicKeyForWebAuth.Set(jwk.KeyIDKey, "key-id-1")
-	test.That(t, keyset.Add(publicKeyForWebAuth), test.ShouldBeTrue)
 
 	expectedAudience := "api.example.com"
 	expectedAudienceOther := "api2.example.com"
@@ -100,7 +95,7 @@ func TestWebOauth(t *testing.T) {
 		}
 
 		t.Run("with valid access token", func(t *testing.T) {
-			accessToken, err := SignWebAuthAccessToken(privKeyForWebAuth, expectedUser, expectedAudience, "iss", "key-id-1")
+			accessToken, err := SignWebAuthAccessToken(privKeys[0], expectedUser, expectedAudience, "iss", "key-id-1")
 			test.That(t, err, test.ShouldBeNil)
 
 			echoResp, err := makeAuthRequest(accessToken)
@@ -109,7 +104,7 @@ func TestWebOauth(t *testing.T) {
 		})
 
 		t.Run("with valid access token using second aud", func(t *testing.T) {
-			accessToken, err := SignWebAuthAccessToken(privKeyForWebAuth, expectedUser, expectedAudienceOther, "iss", "key-id-1")
+			accessToken, err := SignWebAuthAccessToken(privKeys[0], expectedUser, expectedAudienceOther, "iss", "key-id-1")
 			test.That(t, err, test.ShouldBeNil)
 
 			echoResp, err := makeAuthRequest(accessToken)
@@ -118,7 +113,7 @@ func TestWebOauth(t *testing.T) {
 		})
 
 		t.Run("with invalid aud access token claim", func(t *testing.T) {
-			accessToken, err := SignWebAuthAccessToken(privKeyForWebAuth, expectedUser, "not-valid-aud", "iss", "key-id-1")
+			accessToken, err := SignWebAuthAccessToken(privKeys[0], expectedUser, "not-valid-aud", "iss", "key-id-1")
 			test.That(t, err, test.ShouldBeNil)
 
 			_, err = makeAuthRequest(accessToken)
@@ -128,7 +123,7 @@ func TestWebOauth(t *testing.T) {
 		})
 
 		t.Run("with invalid kid access token claim", func(t *testing.T) {
-			accessToken, err := SignWebAuthAccessToken(privKeyForWebAuth, expectedUser, expectedAudience, "iss", "not-valid")
+			accessToken, err := SignWebAuthAccessToken(privKeys[0], expectedUser, expectedAudience, "iss", "not-valid")
 			test.That(t, err, test.ShouldBeNil)
 
 			_, err = makeAuthRequest(accessToken)
@@ -160,13 +155,8 @@ func TestWebOauthWithNilVerifyEntity(t *testing.T) {
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
 
-	keyset := jwk.NewSet()
-	privKeyForWebAuth, err := rsa.GenerateKey(rand.Reader, 4096)
+	keyset, privKeys, err := jwksutils.NewTestKeySet(1)
 	test.That(t, err, test.ShouldBeNil)
-	publicKeyForWebAuth, err := jwk.New(privKeyForWebAuth.PublicKey)
-	test.That(t, err, test.ShouldBeNil)
-	publicKeyForWebAuth.Set(jwk.KeyIDKey, "key-id-1")
-	test.That(t, keyset.Add(publicKeyForWebAuth), test.ShouldBeTrue)
 
 	expectedAudience := "api.example.com"
 	expectedUser := "user@example.com"
@@ -215,7 +205,7 @@ func TestWebOauthWithNilVerifyEntity(t *testing.T) {
 	}()
 	client := pb.NewEchoServiceClient(conn)
 
-	accessToken, err := SignWebAuthAccessToken(privKeyForWebAuth, expectedUser, expectedAudience, "iss", "key-id-1")
+	accessToken, err := SignWebAuthAccessToken(privKeys[0], expectedUser, expectedAudience, "iss", "key-id-1")
 	test.That(t, err, test.ShouldBeNil)
 
 	md := make(metadata.MD)
