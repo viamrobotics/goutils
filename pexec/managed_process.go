@@ -342,13 +342,13 @@ func (p *managedProcess) Stop() error {
 	// without a lock held.
 
 	p.logger.Infof("stopping process %d with %s", p.cmd.Process.Pid, p.stopSig.String())
-	// First let's try to interrupt the process.
+	// First let's try to directly signal the process.
 	if err := p.cmd.Process.Signal(p.stopSig); err != nil && !errors.Is(err, os.ErrProcessDone) {
 		return errors.Wrap(err, "error interrupting process")
 	}
 
 	// In case the process didn't stop, or left behind any orphan children in its process group,
-	// we send an int to everything in the process group after a brief wait.
+	// we now send a signal to everything in the process group after a brief wait.
 	timer := time.NewTimer(p.stopWaitInterval)
 	defer timer.Stop()
 	select {
