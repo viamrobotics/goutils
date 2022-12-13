@@ -115,6 +115,7 @@ type simpleServer struct {
 	signalingCallQueue      WebRTCCallQueue
 	signalingServer         *WebRTCSignalingServer
 	authRSAPrivKey          *rsa.PrivateKey
+	authRSAPrivKeyKID       string
 	internalUUID            string
 	internalCreds           Credentials
 	tlsAuthHandler          func(ctx context.Context, entities ...string) (interface{}, error)
@@ -194,13 +195,23 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 		MaxHeaderBytes: MaxMessageSize,
 	}
 
+	var authRSAPrivKeyThumbprint string
 	authRSAPrivKey := sOpts.authRSAPrivateKey
-	if !sOpts.unauthenticated && authRSAPrivKey == nil {
-		privKey, err := rsa.GenerateKey(rand.Reader, generatedRSAKeyBits)
+	if !sOpts.unauthenticated {
+		if authRSAPrivKey == nil {
+			privKey, err := rsa.GenerateKey(rand.Reader, generatedRSAKeyBits)
+			if err != nil {
+				return nil, err
+			}
+			authRSAPrivKey = privKey
+		}
+
+		// create KID from authRSAPrivKey, this is used as the KID in the JWT header. This KID can be useful when more
+		// than one KID is accepted.
+		authRSAPrivKeyThumbprint, err = RSAPublicKeyThumbprint(&authRSAPrivKey.PublicKey)
 		if err != nil {
 			return nil, err
 		}
-		authRSAPrivKey = privKey
 	}
 
 	internalCredsKey := make([]byte, 64)
@@ -229,6 +240,7 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 		httpServer:         httpServer,
 		grpcGatewayHandler: grpcGatewayHandler,
 		authRSAPrivKey:     authRSAPrivKey,
+		authRSAPrivKeyKID:  authRSAPrivKeyThumbprint,
 		internalUUID:       uuid.NewString(),
 		internalCreds: Credentials{
 			Type:    credentialsTypeInternal,

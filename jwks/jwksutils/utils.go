@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/edaniels/golog"
+	"github.com/golang-jwt/jwt/v4"
 	"github.com/lestrrat-go/jwx/jwk"
 	"go.viam.com/test"
 
@@ -38,7 +39,7 @@ func ServeFakeOIDCEndpoint(t *testing.T, keyset jwks.KeySet) (string, func()) {
 		TokenURL:    fmt.Sprintf("%s/oauth/token", baseURL),
 		JWKSURL:     fmt.Sprintf("%s/.well-known/jwks.json", baseURL),
 		UserInfoURL: fmt.Sprintf("%s/userinfo", baseURL),
-		Algorithms:  []string{"HS256", "RS256"},
+		Algorithms:  []string{jwt.SigningMethodRS256.Alg(), jwt.SigningMethodHS256.Alg()},
 	}
 
 	mux.Handle("/.well-known/openid-configuration", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -128,7 +129,7 @@ func NewTestKeySet(numberOfKeys int) (jwks.KeySet, []*rsa.PrivateKey, error) {
 			return nil, nil, err
 		}
 
-		err = jwkKey.Set("alg", "RSA256")
+		err = jwkKey.Set("alg", jwt.SigningMethodRS256.Alg())
 		if err != nil {
 			return nil, nil, err
 		}

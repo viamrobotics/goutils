@@ -88,7 +88,7 @@ func (ss *simpleServer) Authenticate(ctx context.Context, req *rpcpb.Authenticat
 		return nil, status.Errorf(codes.PermissionDenied, "failed to authenticate: %s", err.Error())
 	}
 
-	token, err := ss.signAccessTokenForEntity(forType, req.Entity, authMD)
+	token, err := ss.signAccessTokenForEntity(forType, req.Entity, req.Entity, authMD)
 	if err != nil {
 		return nil, err
 	}
@@ -99,12 +99,18 @@ func (ss *simpleServer) Authenticate(ctx context.Context, req *rpcpb.Authenticat
 }
 
 func (ss *simpleServer) AuthenticateTo(ctx context.Context, req *rpcpb.AuthenticateToRequest) (*rpcpb.AuthenticateToResponse, error) {
+	// Use the subject from the original authenticated call/payload.
+	subject, ok := ContextAuthSubject(ctx)
+	if !ok {
+		return nil, status.Error(codes.Internal, "subject should be available")
+	}
+
 	authMD, err := ss.authToHandler(ctx, req.Entity)
 	if err != nil {
 		return nil, err
 	}
 
-	token, err := ss.signAccessTokenForEntity(ss.authToType, req.Entity, authMD)
+	token, err := ss.signAccessTokenForEntity(ss.authToType, req.Entity, subject, authMD)
 	if err != nil {
 		return nil, err
 	}
@@ -116,13 +122,13 @@ func (ss *simpleServer) AuthenticateTo(ctx context.Context, req *rpcpb.Authentic
 
 func (ss *simpleServer) signAccessTokenForEntity(
 	forType CredentialsType,
-	entity string,
+	entity, subject string,
 	authMD map[string]string,
 ) (string, error) {
 	// TODO(RSDK-890): use the correct subject, not the audience (entity)
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, JWTClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
-			Subject:  entity,
+			Subject:  subject,
 			Audience: jwt.ClaimStrings{entity},
 		},
 		AuthCredentialsType: forType,
@@ -131,6 +137,10 @@ func (ss *simpleServer) signAccessTokenForEntity(
 		// TODO(GOUT-12): refresh token
 		// TODO(GOUT-9): more complete info
 	})
+
+	// Set the Key ID (kid) to allow the auth handlers to selectively choose which key was used
+	// to sign the token.
+	token.Header["kid"] = ss.authRSAPrivKeyKID
 
 	tokenString, err := token.SignedString(ss.authRSAPrivKey)
 	if err != nil {
