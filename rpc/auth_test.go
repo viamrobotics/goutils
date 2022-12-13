@@ -188,3 +188,18 @@ func TestWithPublicKeyProvider(t *testing.T) {
 	})
 	test.That(t, err, test.ShouldBeNil)
 }
+
+func TestRSAPublicKeyThumbprint(t *testing.T) {
+	privKey1, err := rsa.GenerateKey(rand.Reader, 512)
+	test.That(t, err, test.ShouldBeNil)
+
+	privKey2, err := rsa.GenerateKey(rand.Reader, 512)
+	test.That(t, err, test.ShouldBeNil)
+
+	thumbPrint1, err := RSAPublicKeyThumbprint(&privKey1.PublicKey)
+	test.That(t, err, test.ShouldBeNil)
+	thumbPrint2, err := RSAPublicKeyThumbprint(&privKey2.PublicKey)
+	test.That(t, err, test.ShouldBeNil)
+
+	test.That(t, thumbPrint1, test.ShouldNotResemble, thumbPrint2)
+}

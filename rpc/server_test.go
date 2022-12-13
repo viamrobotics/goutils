@@ -2,6 +2,8 @@ package rpc
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
@@ -14,6 +16,7 @@ import (
 	"time"
 
 	"github.com/edaniels/golog"
+	"github.com/golang-jwt/jwt/v4"
 	"go.viam.com/test"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -36,6 +39,9 @@ func TestServer(t *testing.T) {
 	_, certFile, keyFile, certPool, err := testutils.GenerateSelfSignedCertificate("localhost")
 	test.That(t, err, test.ShouldBeNil)
 
+	testPrivKey, err := rsa.GenerateKey(rand.Reader, 512)
+	test.That(t, err, test.ShouldBeNil)
+
 	hosts := []string{"yeehaw", "woahthere"}
 	for _, secure := range []bool{false, true} {
 		t.Run(fmt.Sprintf("with secure=%t", secure), func(t *testing.T) {
@@ -55,7 +61,9 @@ func TestServer(t *testing.T) {
 										return map[string]string{}, nil
 									}, func(ctx context.Context, entity string) (interface{}, error) {
 										return entity, nil
-									})))
+									})),
+									WithAuthRSAPrivateKey(testPrivKey),
+								)
 							} else {
 								serverOpts = append(serverOpts, WithUnauthenticated())
 							}
@@ -131,6 +139,15 @@ func TestServer(t *testing.T) {
 										Payload: "something",
 									}})
 								test.That(t, err, test.ShouldBeNil)
+
+								// Validate the JWT token/header from the Authenticate call.
+								token, err := jwt.Parse(authResp.AccessToken, func(token *jwt.Token) (interface{}, error) {
+									return &testPrivKey.PublicKey, nil
+								})
+								test.That(t, err, test.ShouldBeNil)
+								thumbprint, err := RSAPublicKeyThumbprint(&testPrivKey.PublicKey)
+								test.That(t, err, test.ShouldBeNil)
+								test.That(t, token.Header["kid"], test.ShouldEqual, thumbprint)
 
 								md := make(metadata.MD)
 								bearer = fmt.Sprintf("Bearer %s", authResp.AccessToken)

@@ -3,8 +3,6 @@ package oauth
 
 import (
 	"context"
-	"crypto/rsa"
-	"time"
 
 	"github.com/edaniels/golog"
 	"github.com/golang-jwt/jwt/v4"
@@ -44,6 +42,16 @@ func (c *webOAuthClaims) Entity() (string, error) {
 	}
 
 	return "", errors.New("missing email in rpc_auth_md")
+}
+
+func (c *webOAuthClaims) Subject() string {
+	entity, err := c.Entity()
+	if err != nil {
+		// fallback to subject of the claim
+		return c.RegisteredClaims.Subject
+	}
+
+	return entity
 }
 
 func (c *webOAuthClaims) Valid() error {
@@ -123,32 +131,4 @@ func (a *webOAuthHandler) TokenVerificationKey(token *jwt.Token) (ret interface{
 
 	// TODO: We should probably have the context passed from the auth process.
 	return a.KeyProvider.LookupKey(context.TODO(), keyID)
-}
-
-// SignWebAuthAccessToken returns an access jwt access token typically done by auth0 during access token flow.
-func SignWebAuthAccessToken(key *rsa.PrivateKey, entity, aud, iss, keyID string) (string, error) {
-	token := &jwt.Token{
-		Header: map[string]interface{}{
-			"typ": "JWT",
-			"alg": jwt.SigningMethodRS256.Alg(),
-			"kid": keyID,
-		},
-		Claims: rpc.JWTClaims{
-			RegisteredClaims: jwt.RegisteredClaims{
-				Audience: []string{aud},
-				Issuer:   iss,
-				// in prod this may not be 1:1 to the email. This is usually the user id
-				// from auth0
-				Subject:  entity,
-				IssuedAt: jwt.NewNumericDate(time.Now()),
-			},
-			AuthCredentialsType: CredentialsTypeOAuthWeb,
-			AuthMetadata: map[string]string{
-				"email": entity,
-			},
-		},
-		Method: jwt.SigningMethodRS256,
-	}
-
-	return token.SignedString(key)
 }
