@@ -341,7 +341,7 @@ func (p *managedProcess) Stop() error {
 	// p.cmd can no longer be modified rendering it safe to read
 	// without a lock held.
 
-	p.logger.Infof("stopping process %d with %s", p.cmd.Process.Pid, p.stopSig.String())
+	p.logger.Infof("stopping process %d with %s", p.cmd.Process.Pid, p.stopSig)
 	// First let's try to directly signal the process.
 	if err := p.cmd.Process.Signal(p.stopSig); err != nil && !errors.Is(err, os.ErrProcessDone) {
 		return errors.Wrap(err, "error interrupting process")
@@ -353,11 +353,12 @@ func (p *managedProcess) Stop() error {
 	defer timer.Stop()
 	select {
 	case <-timer.C:
-		p.logger.Infof("stopping entire process group %d with %s", p.cmd.Process.Pid, p.stopSig.String())
+		p.logger.Infof("stopping entire process group %d with %s", p.cmd.Process.Pid, p.stopSig)
 		if err := syscall.Kill(-p.cmd.Process.Pid, p.stopSig.(syscall.Signal)); err != nil && !errors.Is(err, os.ErrProcessDone) {
 			return errors.Wrap(err, "error interrupting process")
 		}
 	case <-p.managingCh:
+		timer.Stop()
 	}
 
 	// Lastly, kill everything in the process group that remains after a longer wait
@@ -370,6 +371,7 @@ func (p *managedProcess) Stop() error {
 			return errors.Wrap(err, "error killing process")
 		}
 	case <-p.managingCh:
+		timer2.Stop()
 	}
 	<-p.managingCh
 
