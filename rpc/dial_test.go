@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -1460,6 +1461,77 @@ func TestDialMutualTLSAuth(t *testing.T) {
 			})
 		})
 	}
+}
+
+func TestDialForceDirect(t *testing.T) {
+	logger := golog.NewTestLogger(t)
+	rpcServer, err := NewServer(
+		logger,
+		WithDisableMulticastDNS(),
+		WithWebRTCServerOptions(WebRTCServerOptions{Enable: false}),
+	)
+	test.That(t, err, test.ShouldBeNil)
+
+	httpListener, err := net.Listen("tcp", "localhost:0")
+	test.That(t, err, test.ShouldBeNil)
+
+	errChan := make(chan error)
+	go func() {
+		errChan <- rpcServer.Serve(httpListener)
+	}()
+
+	ctx1, cancel1 := context.WithTimeout(context.Background(), time.Second*2)
+	defer cancel1()
+	conn, err := Dial(ctx1, httpListener.Addr().String(), logger, WithForceDirectGRPC(), WithInsecure())
+	test.That(t, err, test.ShouldBeNil)
+	cancel1()
+	test.That(t, conn.Close(), test.ShouldBeNil)
+
+	test.That(t, rpcServer.Stop(), test.ShouldBeNil)
+	err = <-errChan
+	test.That(t, err, test.ShouldBeNil)
+}
+
+func TestDialUnix(t *testing.T) {
+	logger := golog.NewTestLogger(t)
+	rpcServer, err := NewServer(
+		logger,
+		WithDisableMulticastDNS(),
+		WithWebRTCServerOptions(WebRTCServerOptions{Enable: false}),
+	)
+	test.That(t, err, test.ShouldBeNil)
+
+	dir, err := os.MkdirTemp("", "viam-test-*")
+	test.That(t, err, test.ShouldBeNil)
+	defer func() {
+		test.That(t, os.RemoveAll(dir), test.ShouldBeNil)
+	}()
+	socketPath := dir + "/test.sock"
+
+	httpListener, err := net.Listen("unix", socketPath)
+	test.That(t, err, test.ShouldBeNil)
+
+	errChan := make(chan error)
+	go func() {
+		errChan <- rpcServer.Serve(httpListener)
+	}()
+
+	ctx1, cancel1 := context.WithTimeout(context.Background(), time.Second*2)
+	defer cancel1()
+	_, err = Dial(ctx1, socketPath, logger)
+	cancel1()
+	test.That(t, err, test.ShouldResemble, context.DeadlineExceeded)
+
+	ctx2, cancel2 := context.WithTimeout(context.Background(), time.Second*2)
+	defer cancel2()
+	conn, err := Dial(ctx2, "unix://"+socketPath, logger)
+	cancel2()
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, conn.Close(), test.ShouldBeNil)
+
+	test.That(t, rpcServer.Stop(), test.ShouldBeNil)
+	err = <-errChan
+	test.That(t, err, test.ShouldBeNil)
 }
 
 type injectSignalingServer struct {
