@@ -94,10 +94,17 @@ func dial(
 	tryLocal bool,
 ) (ClientConn, bool, error) {
 	var isJustDomain bool
-	if strings.ContainsRune(address, ':') {
-		isJustDomain = false
+	if strings.HasPrefix(address, "unix://") {
+		dOpts.mdnsOptions.Disable = true
+		dOpts.webrtcOpts.Disable = true
+		dOpts.insecure = true
+		dOpts.disableDirect = false
 	} else {
-		isJustDomain = net.ParseIP(address) == nil
+		if strings.ContainsRune(address, ':') {
+			isJustDomain = false
+		} else {
+			isJustDomain = net.ParseIP(address) == nil
+		}
 	}
 
 	if !dOpts.mdnsOptions.Disable && tryLocal && isJustDomain {

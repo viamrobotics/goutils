@@ -254,3 +254,12 @@ func WithStreamClientInterceptor(interceptor grpc.StreamClientInterceptor) DialO
 		}
 	})
 }
+
+// WithForceDirectGRPC forces direct dialing first.
+func WithForceDirectGRPC() DialOption {
+	return newFuncDialOption(func(o *dialOptions) {
+		o.mdnsOptions.Disable = true
+		o.webrtcOpts.Disable = true
+		o.disableDirect = false
+	})
+}
