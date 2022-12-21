@@ -6,8 +6,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"sync"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/edaniels/golog"
 	"github.com/fsnotify/fsnotify"
@@ -182,7 +185,9 @@ func TestManagedProcessManage(t *testing.T) {
 }
 
 func TestManagedProcessStop(t *testing.T) {
+	t.Parallel()
 	t.Run("stopping before start has no effect", func(t *testing.T) {
+		t.Parallel()
 		logger := golog.NewTestLogger(t)
 		proc := NewManagedProcess(ProcessConfig{
 			Name:    "bash",
@@ -194,6 +199,7 @@ func TestManagedProcessStop(t *testing.T) {
 		test.That(t, proc.Start(context.Background()), test.ShouldEqual, errAlreadyStopped)
 	})
 	t.Run("stopping a one shot does nothing", func(t *testing.T) {
+		t.Parallel()
 		logger := golog.NewTestLogger(t)
 		proc := NewManagedProcess(ProcessConfig{
 			Name:    "bash",
@@ -205,6 +211,7 @@ func TestManagedProcessStop(t *testing.T) {
 		test.That(t, proc.Start(context.Background()), test.ShouldEqual, errAlreadyStopped)
 	})
 	t.Run("stopping a managed process gives it a chance to finish", func(t *testing.T) {
+		t.Parallel()
 		logger := golog.NewTestLogger(t)
 
 		temp, err := os.CreateTemp("", "*.txt")
@@ -217,8 +224,9 @@ func TestManagedProcessStop(t *testing.T) {
 		watcher.Add(temp.Name())
 
 		proc := NewManagedProcess(ProcessConfig{
-			Name: "bash",
-			Args: []string{"-c", fmt.Sprintf("trap \"exit 0\" SIGTERM; echo hello >> %s\nwhile true; do echo hey; sleep 1; done", temp.Name())},
+			Name:        "bash",
+			Args:        []string{"-c", fmt.Sprintf("trap \"exit 0\" SIGTERM; echo hello >> %s\nwhile true; do echo hey; sleep 1; done", temp.Name())},
+			StopTimeout: time.Second * 5,
 		}, logger)
 		test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
 
@@ -240,8 +248,9 @@ func TestManagedProcessStop(t *testing.T) {
 		test.That(t, err.Error(), test.ShouldContainSubstring, "exit status 1")
 
 		proc = NewManagedProcess(ProcessConfig{
-			Name: "bash",
-			Args: []string{"-c", fmt.Sprintf("trap \"echo woo\" SIGTERM; echo hello >> %s\nwhile true; do echo hey; sleep 1; done", temp.Name())},
+			Name:        "bash",
+			Args:        []string{"-c", fmt.Sprintf("trap \"echo woo\" SIGTERM; echo hello >> %s\nwhile true; do echo hey; sleep 1; done", temp.Name())},
+			StopTimeout: time.Second * 3,
 		}, logger)
 		test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
 
@@ -249,6 +258,193 @@ func TestManagedProcessStop(t *testing.T) {
 
 		err = proc.Stop()
 		test.That(t, err, test.ShouldBeNil)
+	})
+	t.Run("stop signal selection", func(t *testing.T) {
+		t.Parallel()
+		logger := golog.NewTestLogger(t)
+
+		temp, err := os.CreateTemp("", "*.txt")
+		test.That(t, err, test.ShouldBeNil)
+		defer os.Remove(temp.Name())
+
+		watcher, err := fsnotify.NewWatcher()
+		test.That(t, err, test.ShouldBeNil)
+		defer watcher.Close()
+		watcher.Add(temp.Name())
+
+		bashScript := fmt.Sprintf(`
+			trap "exit 101" SIGHUP
+			trap "exit 102" SIGINT
+			trap "exit 103" SIGQUIT
+			trap "exit 106" SIGABRT
+			trap "exit 110" SIGUSR1
+			trap "exit 112" SIGUSR2
+			trap "exit 115" SIGTERM
+			echo hello >> %s
+			while true
+			do echo hey
+			sleep 1
+			done
+		`, temp.Name())
+
+		proc := NewManagedProcess(ProcessConfig{
+			Name: "bash",
+			Args: []string{"-c", bashScript},
+		}, logger)
+		test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
+		<-watcher.Events
+		err = proc.Stop()
+		test.That(t, err, test.ShouldNotBeNil)
+		test.That(t, err.Error(), test.ShouldContainSubstring, "exit status 115")
+
+		for _, signal := range []syscall.Signal{
+			syscall.SIGHUP,
+			syscall.SIGINT,
+			syscall.SIGQUIT,
+			syscall.SIGABRT,
+			syscall.SIGUSR1,
+			syscall.SIGUSR2,
+			syscall.SIGTERM,
+		} {
+			proc = NewManagedProcess(ProcessConfig{
+				Name:       "bash",
+				Args:       []string{"-c", bashScript},
+				StopSignal: signal,
+			}, logger)
+			test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
+			<-watcher.Events
+			err = proc.Stop()
+			test.That(t, err, test.ShouldNotBeNil)
+			test.That(t, err.Error(), test.ShouldContainSubstring, fmt.Sprintf("exit status %d", signal+100))
+		}
+	})
+	t.Run("stop wait signaling", func(t *testing.T) {
+		t.Parallel()
+		logger := golog.NewTestLogger(t)
+
+		temp1, err := os.CreateTemp("", "*.txt")
+		test.That(t, err, test.ShouldBeNil)
+		defer os.Remove(temp1.Name())
+
+		watcher1, err := fsnotify.NewWatcher()
+		test.That(t, err, test.ShouldBeNil)
+		defer watcher1.Close()
+		watcher1.Add(temp1.Name())
+
+		bashScript1 := fmt.Sprintf(`
+			trap "echo SIGTERM >> %s" SIGTERM
+			echo hello >> %s
+			while true
+			do echo hey
+			sleep 1
+			done
+		`, temp1.Name(), temp1.Name())
+
+		proc := NewManagedProcess(ProcessConfig{
+			Name:        "bash",
+			Args:        []string{"-c", bashScript1},
+			StopTimeout: time.Second * 5,
+		}, logger)
+		test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
+		<-watcher1.Events
+		test.That(t, proc.Stop(), test.ShouldBeNil)
+
+		reader1 := bufio.NewReader(temp1)
+		var numSignals uint
+		for {
+			line, err := reader1.ReadString('\n')
+			if err != nil {
+				break
+			}
+			if strings.Contains(line, "SIGTERM") {
+				numSignals++
+			}
+		}
+		test.That(t, numSignals, test.ShouldEqual, 2)
+	})
+	t.Run("stop wait signaling with children", func(t *testing.T) {
+		t.Parallel()
+		logger := golog.NewTestLogger(t)
+
+		temp1, err := os.CreateTemp("", "*.txt")
+		test.That(t, err, test.ShouldBeNil)
+		defer os.Remove(temp1.Name())
+
+		temp2, err := os.CreateTemp("", "*.txt")
+		test.That(t, err, test.ShouldBeNil)
+		defer os.Remove(temp2.Name())
+
+		temp3, err := os.CreateTemp("", "*.txt")
+		test.That(t, err, test.ShouldBeNil)
+		defer os.Remove(temp3.Name())
+
+		watcher1, err := fsnotify.NewWatcher()
+		test.That(t, err, test.ShouldBeNil)
+		defer watcher1.Close()
+		watcher1.Add(temp1.Name())
+
+		watcher2, err := fsnotify.NewWatcher()
+		test.That(t, err, test.ShouldBeNil)
+		defer watcher2.Close()
+		watcher2.Add(temp1.Name())
+
+		watcher3, err := fsnotify.NewWatcher()
+		test.That(t, err, test.ShouldBeNil)
+		defer watcher3.Close()
+		watcher3.Add(temp3.Name())
+
+		trapScript := `
+			trap "echo SIGTERM >> %s" SIGTERM
+			echo hello >> %s
+			while true
+			do echo hey
+			sleep 1
+			done
+		`
+
+		bashScript1 := fmt.Sprintf(trapScript, temp1.Name(), temp1.Name())
+		bashScript2 := fmt.Sprintf(trapScript, temp2.Name(), temp2.Name())
+		bashScriptParent := fmt.Sprintf(`
+			bash -c '%s' &
+			bash -c '%s' &
+			`+trapScript,
+			bashScript1,
+			bashScript2,
+			temp3.Name(),
+			temp3.Name(),
+		)
+
+		proc := NewManagedProcess(ProcessConfig{
+			Name:        "bash",
+			Args:        []string{"-c", bashScriptParent},
+			StopTimeout: time.Second * 5,
+		}, logger)
+		test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
+		<-watcher1.Events
+		<-watcher2.Events
+		<-watcher3.Events
+		test.That(t, proc.Stop(), test.ShouldBeNil)
+
+		countTerms := func(file *os.File) uint {
+			reader := bufio.NewReader(file)
+			var numSignals uint
+			for {
+				line, err := reader.ReadString('\n')
+				if err != nil {
+					break
+				}
+				if strings.Contains(line, "SIGTERM") {
+					numSignals++
+				}
+			}
+			return numSignals
+		}
+
+		// children should each get signaled only once, on the second stage
+		// where its assumed the parent has failed to pass/signal them in stage one
+		test.That(t, countTerms(temp1), test.ShouldEqual, 1)
+		test.That(t, countTerms(temp2), test.ShouldEqual, 1)
+		test.That(t, countTerms(temp3), test.ShouldEqual, 2)
 	})
 }
 

@@ -19,9 +19,6 @@ import (
 
 var errAlreadyStopped = errors.New("already stopped")
 
-// defaultStopTimeout is how long to wait in seconds (all stages) between first signaling and finally killing.
-const defaultStopTimeout = 10
-
 // A ManagedProcess controls the lifecycle of a single system process. Based on
 // its configuration, it will ensure the process is revived if it every unexpectedly
 // perishes.
@@ -41,31 +38,13 @@ type ManagedProcess interface {
 func NewManagedProcess(config ProcessConfig, logger golog.Logger) ManagedProcess {
 	logger = logger.Named(fmt.Sprintf("process.%s_%s", config.ID, config.Name))
 
-	var stopSig syscall.Signal
-	switch config.StopSignal {
-	case "HUP", "SIGHUP", "hangup", "1":
-		stopSig = syscall.SIGHUP
-	case "INT", "SIGINT", "interrupt", "2":
-		stopSig = syscall.SIGINT
-	case "QUIT", "SIGQUIT", "quit", "3":
-		stopSig = syscall.SIGQUIT
-	case "ABRT", "SIGABRT", "aborted", "abort", "6":
-		stopSig = syscall.SIGABRT
-	case "KILL", "SIGKILL", "killed", "kill", "9":
-		stopSig = syscall.SIGKILL
-	case "USR1", "SIGUSR1", "user defined signal 1", "10":
-		stopSig = syscall.SIGUSR1
-	case "USR2", "SIGUSR2", "user defined signal 2", "12":
-		stopSig = syscall.SIGUSR1
-	case "TERM", "SIGTERM", "terminated", "terminate", "15":
-		stopSig = syscall.SIGTERM
-	default:
-		stopSig = syscall.SIGTERM
+	if err := config.Validate("new managed process"); err != nil {
+		logger.Warn(err)
 	}
-
-	if config.StopTimeout == 0 {
-		config.StopTimeout = defaultStopTimeout
-	}
+	// SMURF: Or better to do this then the log/warn above?
+	// if config.StopSignal == nil {
+	//	config.StopSignal = syscall.SIGTERM
+	//}
 
 	return &managedProcess{
 		id:               config.ID,
@@ -76,8 +55,8 @@ func NewManagedProcess(config ProcessConfig, logger golog.Logger) ManagedProcess
 		shouldLog:        config.Log,
 		managingCh:       make(chan struct{}),
 		killCh:           make(chan struct{}),
-		stopSig:          stopSig,
-		stopWaitInterval: time.Duration(config.StopTimeout*0.33) * time.Second,
+		stopSig:          config.StopSignal,
+		stopWaitInterval: config.StopTimeout / time.Duration(3),
 		logger:           logger,
 		logWriter:        config.LogWriter,
 	}
@@ -341,10 +320,10 @@ func (p *managedProcess) Stop() error {
 	// p.cmd can no longer be modified rendering it safe to read
 	// without a lock held.
 
-	p.logger.Infof("stopping process %d with %s", p.cmd.Process.Pid, p.stopSig)
+	p.logger.Infof("stopping process %d with signal %s", p.cmd.Process.Pid, p.stopSig)
 	// First let's try to directly signal the process.
 	if err := p.cmd.Process.Signal(p.stopSig); err != nil && !errors.Is(err, os.ErrProcessDone) {
-		return errors.Wrap(err, "error interrupting process")
+		return errors.Wrapf(err, "error signaling process %d with signal %s", p.cmd.Process.Pid, p.stopSig)
 	}
 
 	// In case the process didn't stop, or left behind any orphan children in its process group,
@@ -353,9 +332,9 @@ func (p *managedProcess) Stop() error {
 	defer timer.Stop()
 	select {
 	case <-timer.C:
-		p.logger.Infof("stopping entire process group %d with %s", p.cmd.Process.Pid, p.stopSig)
+		p.logger.Infof("stopping entire process group %d with signal %s", p.cmd.Process.Pid, p.stopSig)
 		if err := syscall.Kill(-p.cmd.Process.Pid, p.stopSig.(syscall.Signal)); err != nil && !errors.Is(err, os.ErrProcessDone) {
-			return errors.Wrap(err, "error interrupting process")
+			return errors.Wrapf(err, "error signaling process group %d with signal %s", p.cmd.Process.Pid, p.stopSig)
 		}
 	case <-p.managingCh:
 		timer.Stop()
@@ -368,7 +347,7 @@ func (p *managedProcess) Stop() error {
 	case <-timer2.C:
 		p.logger.Infof("killing entire process group %d", p.cmd.Process.Pid)
 		if err := syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL); err != nil && !errors.Is(err, os.ErrProcessDone) {
-			return errors.Wrap(err, "error killing process")
+			return errors.Wrapf(err, "error killing process group %d", p.cmd.Process.Pid)
 		}
 	case <-p.managingCh:
 		timer2.Stop()

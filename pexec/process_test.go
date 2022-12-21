@@ -3,18 +3,23 @@ package pexec
 import (
 	"bytes"
 	"encoding/json"
+	"syscall"
 	"testing"
+	"time"
 
 	"go.viam.com/test"
 )
 
 func TestProcessConfigRoundTripJSON(t *testing.T) {
 	config := ProcessConfig{
-		Name:    "hello",
-		Args:    []string{"1", "2", "3"},
-		CWD:     "dir",
-		OneShot: true,
-		Log:     true,
+		ID:          "test",
+		Name:        "hello",
+		Args:        []string{"1", "2", "3"},
+		CWD:         "dir",
+		OneShot:     true,
+		Log:         true,
+		StopSignal:  syscall.SIGTERM,
+		StopTimeout: 250 * time.Millisecond,
 	}
 	md, err := json.Marshal(config)
 	test.That(t, err, test.ShouldBeNil)
@@ -40,7 +45,13 @@ func TestProcessConfigValidate(t *testing.T) {
 	err = invalidConfig.Validate("path")
 	test.That(t, err, test.ShouldNotBeNil)
 	test.That(t, err.Error(), test.ShouldContainSubstring, `"name" is required`)
-	invalidConfig.Name = "foo"
 
+	invalidConfig.Name = "foo"
+	invalidConfig.StopTimeout = 50
+	err = invalidConfig.Validate("path")
+	test.That(t, err, test.ShouldNotBeNil)
+	test.That(t, err.Error(), test.ShouldContainSubstring, `stop_timeout should not be less than 100ms`)
+
+	invalidConfig.StopTimeout = 0
 	test.That(t, invalidConfig.Validate("path"), test.ShouldBeNil)
 }
