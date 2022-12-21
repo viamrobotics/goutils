@@ -38,13 +38,13 @@ type ManagedProcess interface {
 func NewManagedProcess(config ProcessConfig, logger golog.Logger) ManagedProcess {
 	logger = logger.Named(fmt.Sprintf("process.%s_%s", config.ID, config.Name))
 
-	if err := config.Validate("new managed process"); err != nil {
-		logger.Warn(err)
+	if config.StopSignal == 0 {
+		config.StopSignal = syscall.SIGTERM
 	}
-	// SMURF: Or better to do this then the log/warn above?
-	// if config.StopSignal == nil {
-	//	config.StopSignal = syscall.SIGTERM
-	//}
+
+	if config.StopTimeout == 0 {
+		config.StopTimeout = defaultStopTimeout
+	}
 
 	return &managedProcess{
 		id:               config.ID,
@@ -76,7 +76,7 @@ type managedProcess struct {
 	stopped          bool
 	managingCh       chan struct{}
 	killCh           chan struct{}
-	stopSig          os.Signal
+	stopSig          syscall.Signal
 	stopWaitInterval time.Duration
 	lastWaitErr      error
 
@@ -333,7 +333,7 @@ func (p *managedProcess) Stop() error {
 	select {
 	case <-timer.C:
 		p.logger.Infof("stopping entire process group %d with signal %s", p.cmd.Process.Pid, p.stopSig)
-		if err := syscall.Kill(-p.cmd.Process.Pid, p.stopSig.(syscall.Signal)); err != nil && !errors.Is(err, os.ErrProcessDone) {
+		if err := syscall.Kill(-p.cmd.Process.Pid, p.stopSig); err != nil && !errors.Is(err, os.ErrProcessDone) {
 			return errors.Wrapf(err, "error signaling process group %d with signal %s", p.cmd.Process.Pid, p.stopSig)
 		}
 	case <-p.managingCh:

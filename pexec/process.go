@@ -8,7 +8,6 @@ package pexec
 import (
 	"encoding/json"
 	"io"
-	"os"
 	"syscall"
 	"time"
 
@@ -22,32 +21,27 @@ const defaultStopTimeout = time.Second * 10
 
 // A ProcessConfig describes how to manage a system process.
 type ProcessConfig struct {
-	ID          string        `json:"id"`
-	Name        string        `json:"name"`
-	Args        []string      `json:"args"`
-	CWD         string        `json:"cwd"`
-	OneShot     bool          `json:"one_shot"`
-	Log         bool          `json:"log"`
-	LogWriter   io.Writer     `json:"-"`
-	StopSignal  os.Signal     `json:"stop_signal"`
-	StopTimeout time.Duration `json:"stop_timeout"`
+	ID          string         `json:"id"`
+	Name        string         `json:"name"`
+	Args        []string       `json:"args"`
+	CWD         string         `json:"cwd"`
+	OneShot     bool           `json:"one_shot"`
+	Log         bool           `json:"log"`
+	LogWriter   io.Writer      `json:"-"`
+	StopSignal  syscall.Signal `json:"stop_signal"`
+	StopTimeout time.Duration  `json:"stop_timeout"`
 }
 
 // Validate ensures all parts of the config are valid.
 func (config *ProcessConfig) Validate(path string) error {
-	if config.StopTimeout == 0 {
-		config.StopTimeout = defaultStopTimeout
-	} else if config.StopTimeout <= 100*time.Millisecond {
-		return utils.NewConfigValidationError(path, errors.New("stop_timeout should not be less than 100ms"))
-	}
-	if config.StopSignal == nil {
-		config.StopSignal = syscall.SIGTERM
-	}
 	if config.ID == "" {
 		return utils.NewConfigValidationFieldRequiredError(path, "id")
 	}
 	if config.Name == "" {
 		return utils.NewConfigValidationFieldRequiredError(path, "name")
+	}
+	if config.StopTimeout < 100*time.Millisecond && config.StopTimeout != 0 {
+		return utils.NewConfigValidationError(path, errors.New("stop_timeout should not be less than 100ms"))
 	}
 	return nil
 }
@@ -90,7 +84,7 @@ func (config *ProcessConfig) UnmarshalJSON(data []byte) error {
 
 	switch temp.StopSignal {
 	case "":
-		config.StopSignal = syscall.SIGTERM
+		config.StopSignal = 0
 	case "HUP", "SIGHUP", "hangup", "1":
 		config.StopSignal = syscall.SIGHUP
 	case "INT", "SIGINT", "interrupt", "2":
@@ -117,7 +111,7 @@ func (config *ProcessConfig) UnmarshalJSON(data []byte) error {
 // MarshalJSON converts to json.
 func (config ProcessConfig) MarshalJSON() ([]byte, error) {
 	var stopSig string
-	if config.StopSignal != nil {
+	if config.StopSignal != 0 {
 		stopSig = config.StopSignal.String()
 	}
 	temp := configData{
