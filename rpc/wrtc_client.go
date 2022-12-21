@@ -58,6 +58,11 @@ type DialWebRTCOptions struct {
 	// SignalingCreds are used to authenticate the request to the signaling server.
 	SignalingCreds Credentials
 
+	// SignalingExternalAuthAuthMaterial is used when the credentials for the signaler
+	// have already been used to exchange an auth payload. In those cases this can be set
+	// to bypass the Authenticate/AuthenticateTo rpc auth flow.
+	SignalingExternalAuthAuthMaterial string
+
 	// DisableTrickleICE controls whether to disable Trickle ICE or not.
 	// Disabling Trickle ICE can slow down connection establishment.
 	DisableTrickleICE bool
@@ -120,6 +125,9 @@ func dialWebRTC(
 	dOptsCopy.externalAuthAddr = dOpts.webrtcOpts.SignalingExternalAuthAddress
 	dOptsCopy.externalAuthToEntity = dOpts.webrtcOpts.SignalingExternalAuthToEntity
 	dOptsCopy.externalAuthInsecure = dOpts.webrtcOpts.SignalingExternalAuthInsecure
+	dOptsCopy.externalAuthMaterial = dOpts.webrtcOpts.SignalingExternalAuthAuthMaterial
+
+	// ignore AuthEntity when auth material is available.
 	if dOptsCopy.authEntity == "" {
 		if dOptsCopy.externalAuthAddr == "" {
 			// if we are not doing external auth, then the entity is assumed to be the actual host.
@@ -144,7 +152,7 @@ func dialWebRTC(
 		err = multierr.Combine(err, conn.Close())
 	}()
 
-	logger.Debug("connected")
+	logger.Debugw("connected", "host", host)
 
 	md := metadata.New(map[string]string{RPCHostMetadataField: host})
 	signalCtx := metadata.NewOutgoingContext(dialCtx, md)

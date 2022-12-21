@@ -41,7 +41,11 @@ type dialOptions struct {
 	externalAuthAddr     string
 	externalAuthToEntity string
 	externalAuthInsecure bool
+	// static auth material used when an external auth service is used. This is also used for the signaler
+	// when the webrtc options are empty. See fixupWebRTCOptions.
+	externalAuthMaterial string
 
+	// static auth material used when directly connecting to the endpoint. If set all externalAuth options are ignored.
 	authMaterial string
 
 	// debug is helpful to turn on when the library isn't working quite right.
@@ -49,6 +53,8 @@ type dialOptions struct {
 	debug bool
 
 	mdnsOptions DialMulticastDNSOptions
+	// set when the connection is using mdns flow.
+	usingMDNS bool
 
 	disableDirect bool
 
@@ -159,6 +165,17 @@ func WithStaticAuthenticationMaterial(authMaterial string) DialOption {
 		o.authEntity = ""
 		o.creds = Credentials{}
 		o.authMaterial = authMaterial
+	})
+}
+
+// WithStaticExternalAuthenticationMaterial returns a DialOption which sets the already authenticated
+// material (opaque) to use for authenticated requests against an external auth service. Ignored if
+// WithStaticAuthenticationMaterial() is set.
+func WithStaticExternalAuthenticationMaterial(authMaterial string) DialOption {
+	return newFuncDialOption(func(o *dialOptions) {
+		o.authEntity = ""
+		o.creds = Credentials{}
+		o.externalAuthMaterial = authMaterial
 	})
 }
 
