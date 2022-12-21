@@ -19,9 +19,6 @@ import (
 
 var errAlreadyStopped = errors.New("already stopped")
 
-// waitInterrupt is how long to wait after interrupting to move onto killing.
-const waitInterrupt = 3 * time.Second
-
 // A ManagedProcess controls the lifecycle of a single system process. Based on
 // its configuration, it will ensure the process is revived if it every unexpectedly
 // perishes.
@@ -40,17 +37,28 @@ type ManagedProcess interface {
 // NewManagedProcess returns a new, unstarted, from the given configuration.
 func NewManagedProcess(config ProcessConfig, logger golog.Logger) ManagedProcess {
 	logger = logger.Named(fmt.Sprintf("process.%s_%s", config.ID, config.Name))
+
+	if config.StopSignal == 0 {
+		config.StopSignal = syscall.SIGTERM
+	}
+
+	if config.StopTimeout == 0 {
+		config.StopTimeout = defaultStopTimeout
+	}
+
 	return &managedProcess{
-		id:         config.ID,
-		name:       config.Name,
-		args:       config.Args,
-		cwd:        config.CWD,
-		oneShot:    config.OneShot,
-		shouldLog:  config.Log,
-		managingCh: make(chan struct{}),
-		killCh:     make(chan struct{}),
-		logger:     logger,
-		logWriter:  config.LogWriter,
+		id:               config.ID,
+		name:             config.Name,
+		args:             config.Args,
+		cwd:              config.CWD,
+		oneShot:          config.OneShot,
+		shouldLog:        config.Log,
+		managingCh:       make(chan struct{}),
+		killCh:           make(chan struct{}),
+		stopSig:          config.StopSignal,
+		stopWaitInterval: config.StopTimeout / time.Duration(3),
+		logger:           logger,
+		logWriter:        config.LogWriter,
 	}
 }
 
@@ -65,10 +73,12 @@ type managedProcess struct {
 	shouldLog bool
 	cmd       *exec.Cmd
 
-	stopped     bool
-	managingCh  chan struct{}
-	killCh      chan struct{}
-	lastWaitErr error
+	stopped          bool
+	managingCh       chan struct{}
+	killCh           chan struct{}
+	stopSig          syscall.Signal
+	stopWaitInterval time.Duration
+	lastWaitErr      error
 
 	logger    golog.Logger
 	logWriter io.Writer
@@ -310,22 +320,37 @@ func (p *managedProcess) Stop() error {
 	// p.cmd can no longer be modified rendering it safe to read
 	// without a lock held.
 
-	p.logger.Info("stopping")
-	// First let's try to interrupt the process.
-	if err := p.cmd.Process.Signal(os.Interrupt); err != nil && !errors.Is(err, os.ErrProcessDone) {
-		return errors.Wrap(err, "error interrupting process")
+	p.logger.Infof("stopping process %d with signal %s", p.cmd.Process.Pid, p.stopSig)
+	// First let's try to directly signal the process.
+	if err := p.cmd.Process.Signal(p.stopSig); err != nil && !errors.Is(err, os.ErrProcessDone) {
+		return errors.Wrapf(err, "error signaling process %d with signal %s", p.cmd.Process.Pid, p.stopSig)
 	}
 
 	// In case the process didn't stop, or left behind any orphan children in its process group,
-	// we send a kill to everything in the process group after a brief wait.
-	timer := time.NewTimer(waitInterrupt)
+	// we now send a signal to everything in the process group after a brief wait.
+	timer := time.NewTimer(p.stopWaitInterval)
 	defer timer.Stop()
 	select {
 	case <-timer.C:
-		if err := syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL); err != nil && !errors.Is(err, os.ErrProcessDone) {
-			return errors.Wrap(err, "error killing process")
+		p.logger.Infof("stopping entire process group %d with signal %s", p.cmd.Process.Pid, p.stopSig)
+		if err := syscall.Kill(-p.cmd.Process.Pid, p.stopSig); err != nil && !errors.Is(err, os.ErrProcessDone) {
+			return errors.Wrapf(err, "error signaling process group %d with signal %s", p.cmd.Process.Pid, p.stopSig)
 		}
 	case <-p.managingCh:
+		timer.Stop()
+	}
+
+	// Lastly, kill everything in the process group that remains after a longer wait
+	timer2 := time.NewTimer(p.stopWaitInterval * 2)
+	defer timer2.Stop()
+	select {
+	case <-timer2.C:
+		p.logger.Infof("killing entire process group %d", p.cmd.Process.Pid)
+		if err := syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL); err != nil && !errors.Is(err, os.ErrProcessDone) {
+			return errors.Wrapf(err, "error killing process group %d", p.cmd.Process.Pid)
+		}
+	case <-p.managingCh:
+		timer2.Stop()
 	}
 	<-p.managingCh
 
@@ -348,7 +373,7 @@ func (p *managedProcess) Stop() error {
 		// This can easily happen if the process does not handle interrupts gracefully
 		// and it won't provide us any exit code info.
 		switch p.lastWaitErr.Error() {
-		case "signal: interrupt", "signal: killed":
+		case "signal: interrupt", "signal: terminated", "signal: killed":
 			unknownStatus = true
 		}
 		if unknownStatus {

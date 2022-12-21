@@ -356,15 +356,15 @@ func TestProcessManagerStop(t *testing.T) {
 		watcher.Add(temp3.Name())
 
 		_, err = pm.AddProcessFromConfig(context.Background(), ProcessConfig{ID: "1", Name: "bash", Args: []string{
-			"-c", fmt.Sprintf("trap \"exit 0\" SIGINT; echo one >> %s\nwhile true; do echo hey1; sleep 1; done", temp1.Name()),
+			"-c", fmt.Sprintf("trap \"exit 0\" SIGTERM; echo one >> %s\nwhile true; do echo hey1; sleep 1; done", temp1.Name()),
 		}})
 		test.That(t, err, test.ShouldBeNil)
 		_, err = pm.AddProcessFromConfig(context.Background(), ProcessConfig{ID: "2", Name: "bash", Args: []string{
-			"-c", fmt.Sprintf("trap \"exit 0\" SIGINT; echo two >> %s\nwhile true; do echo hey2; sleep 1; done", temp2.Name()),
+			"-c", fmt.Sprintf("trap \"exit 0\" SIGTERM; echo two >> %s\nwhile true; do echo hey2; sleep 1; done", temp2.Name()),
 		}})
 		test.That(t, err, test.ShouldBeNil)
 		_, err = pm.AddProcessFromConfig(context.Background(), ProcessConfig{ID: "3", Name: "bash", Args: []string{
-			"-c", fmt.Sprintf("trap \"echo hey\" SIGINT; echo three >> %s\nwhile true; do echo hey3; sleep 1; done", temp3.Name()),
+			"-c", fmt.Sprintf("trap \"echo hey\" SIGTERM; echo three >> %s\nwhile true; do echo hey3; sleep 1; done", temp3.Name()),
 		}})
 		test.That(t, err, test.ShouldBeNil)
 		_, err = pm.AddProcessFromConfig(context.Background(), ProcessConfig{ID: "4", Name: "bash", Args: []string{
@@ -409,14 +409,22 @@ func TestProcessManagerStop(t *testing.T) {
 		watcher.Add(temp2.Name())
 
 		_, err = pm.AddProcessFromConfig(context.Background(), ProcessConfig{ID: "1", Name: "bash", Args: []string{
-			"-c", fmt.Sprintf("trap \"echo done >> %[1]s;exit 0\" SIGINT; echo one >> %[1]s\nwhile true; do echo hey1; sleep 1; done", temp1.Name()),
+			"-c",
+			fmt.Sprintf(
+				"trap \"echo done >> %[1]s;exit 0\" SIGTERM; echo one >> %[1]s\nwhile true; do echo hey1; sleep 1; done",
+				temp1.Name(),
+			),
 		}})
 		test.That(t, err, test.ShouldBeNil)
 		fp := &fakeProcess{id: "2", stopErr: true}
 		_, err = pm.AddProcess(context.Background(), fp, true)
 		test.That(t, err, test.ShouldBeNil)
 		_, err = pm.AddProcessFromConfig(context.Background(), ProcessConfig{ID: "3", Name: "bash", Args: []string{
-			"-c", fmt.Sprintf("trap \"echo done >> %[1]s;exit 0\" SIGINT; echo two >> %[1]s\nwhile true; do echo hey12 sleep 1; done", temp2.Name()),
+			"-c",
+			fmt.Sprintf(
+				"trap \"echo done >> %[1]s;exit 0\" SIGTERM; echo two >> %[1]s\nwhile true; do echo hey12 sleep 1; done",
+				temp2.Name(),
+			),
 		}})
 		test.That(t, err, test.ShouldBeNil)
 
