@@ -121,28 +121,20 @@ func dial(
 				// try WebRTC at same address
 				signalingAddress = address
 			}
-
-			var target string
-			var port uint16
-			if strings.Contains(signalingAddress, ":") {
-				host, portStr, err := net.SplitHostPort(signalingAddress)
-				if err != nil {
-					return nil, false, err
-				}
-				if strings.Contains(host, ":") {
-					host = fmt.Sprintf("[%s]", host)
-				}
-				target = host
-				portParsed, err := strconv.ParseUint(portStr, 10, 16)
-				if err != nil {
-					return nil, false, err
-				}
-				port = uint16(portParsed)
-			} else {
-				target = signalingAddress
-				port = 443
+			target, port, err := getWebRTCTargetFromAddressWithDefaults(signalingAddress)
+			if err != nil {
+				return nil, false, err
 			}
 			fixupWebRTCOptions(dOpts, target, port)
+
+			// When connecting to an external signaler for WebRTC, we assume we can use the external auth's material.
+			// This path is also called by an mdns direct connection and ignores that case.
+			// This will skip all Authenticate/AuthenticateTo calls for the signaler.
+			if !dOpts.usingMDNS && dOpts.authMaterial == "" && dOpts.webrtcOpts.SignalingExternalAuthAuthMaterial != "" {
+				logger.Debug("using signaling's external auth as auth material")
+				dOpts.authMaterial = dOpts.webrtcOpts.SignalingExternalAuthAuthMaterial
+				dOpts.creds = Credentials{}
+			}
 		}
 
 		if dOpts.debug {
@@ -247,10 +239,18 @@ func dialMulticastDNS(
 	}
 
 	dOptsCopy := *dOpts
+
+	// Let downstream calls know when mdns was used. This is helpful to inform
+	// when determining if we want to use the external auth credentials for the signaling
+	// in cases where the external signaling is the same as the external auth. For mdns
+	// this isn't the case.
+	dOptsCopy.usingMDNS = true
+
 	if dOptsCopy.mdnsOptions.RemoveAuthCredentials {
 		dOptsCopy.creds = Credentials{}
 		dOptsCopy.authEntity = ""
 		dOptsCopy.externalAuthToEntity = ""
+		dOptsCopy.externalAuthMaterial = ""
 	}
 
 	if hasWebRTC {
@@ -258,13 +258,14 @@ func dialMulticastDNS(
 		if dOptsCopy.mdnsOptions.RemoveAuthCredentials {
 			dOptsCopy.webrtcOpts.SignalingAuthEntity = ""
 			dOptsCopy.webrtcOpts.SignalingCreds = Credentials{}
+			dOptsCopy.webrtcOpts.SignalingExternalAuthAuthMaterial = ""
 		}
 	} else {
 		dOptsCopy.webrtcOpts.Disable = true
 	}
 	var tlsConfig *tls.Config
 	if dOptsCopy.tlsConfig == nil {
-		tlsConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+		tlsConfig = newDefaultTLSConfig()
 	} else {
 		tlsConfig = dOptsCopy.tlsConfig.Clone()
 	}
@@ -300,6 +301,9 @@ func fixupWebRTCOptions(dOpts *dialOptions, target string, port uint16) {
 	if dOpts.webrtcOpts.SignalingExternalAuthToEntity == "" {
 		dOpts.webrtcOpts.SignalingExternalAuthToEntity = dOpts.externalAuthToEntity
 	}
+	if dOpts.webrtcOpts.SignalingExternalAuthAuthMaterial == "" {
+		dOpts.webrtcOpts.SignalingExternalAuthAuthMaterial = dOpts.externalAuthMaterial
+	}
 
 	// It's always okay to pass over entity and credentials since next section
 	// will assume secure settings based on public internet or not.
@@ -317,4 +321,27 @@ func fixupWebRTCOptions(dOpts *dialOptions, target string, port uint16) {
 	if dOpts.webrtcOpts.SignalingCreds.Type == "" {
 		dOpts.webrtcOpts.SignalingCreds = dOpts.creds
 	}
+}
+
+func getWebRTCTargetFromAddressWithDefaults(signalingAddress string) (target string, port uint16, err error) {
+	if strings.Contains(signalingAddress, ":") {
+		host, portStr, err := net.SplitHostPort(signalingAddress)
+		if err != nil {
+			return "", 0, err
+		}
+		if strings.Contains(host, ":") {
+			host = fmt.Sprintf("[%s]", host)
+		}
+		target = host
+		portParsed, err := strconv.ParseUint(portStr, 10, 16)
+		if err != nil {
+			return "", 0, err
+		}
+		port = uint16(portParsed)
+	} else {
+		target = signalingAddress
+		port = 443
+	}
+
+	return target, port, nil
 }

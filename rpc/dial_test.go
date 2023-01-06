@@ -17,7 +17,6 @@ import (
 
 	"github.com/edaniels/golog"
 	"github.com/golang-jwt/jwt/v4"
-	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.uber.org/multierr"
@@ -506,6 +505,8 @@ func TestDialExternalAuth(t *testing.T) {
 	httpListenerExternal2, err := net.Listen("tcp", "localhost:0")
 	test.That(t, err, test.ShouldBeNil)
 
+	privKeyInternal, err := rsa.GenerateKey(rand.Reader, generatedRSAKeyBits)
+	test.That(t, err, test.ShouldBeNil)
 	privKeyExternal, err := rsa.GenerateKey(rand.Reader, generatedRSAKeyBits)
 	test.That(t, err, test.ShouldBeNil)
 	privKeyExternal2, err := rsa.GenerateKey(rand.Reader, generatedRSAKeyBits)
@@ -513,6 +514,7 @@ func TestDialExternalAuth(t *testing.T) {
 
 	rpcServerInternal, err := NewServer(
 		logger,
+		WithAuthRSAPrivateKey(privKeyInternal),
 		WithWebRTCServerOptions(WebRTCServerOptions{
 			Enable:                 true,
 			InternalSignalingHosts: []string{"yeehaw", internalAddr},
@@ -873,6 +875,61 @@ func TestDialExternalAuth(t *testing.T) {
 			test.That(t, ok, test.ShouldBeTrue)
 			test.That(t, gStatus.Code(), test.ShouldEqual, codes.Unknown)
 			test.That(t, gStatus.Message(), test.ShouldContainSubstring, "bad authed data")
+		})
+	})
+
+	t.Run("with signaling external auth material", func(t *testing.T) {
+		accessToken := signTestAuthToken(t, privKeyExternal, "aud1", "sub1", "fake")
+		opts := []DialOption{
+			WithInsecure(),
+			WithExternalAuthInsecure(),
+			WithStaticExternalAuthenticationMaterial(accessToken),
+			WithExternalAuth(httpListenerExternal.Addr().String(), "someent"),
+			WithWebRTCOptions(DialWebRTCOptions{
+				// disable auto detect, explicitly set external auth for signaler by passing
+				// sending external auth static auth material to the signaler.
+				AllowAutoDetectAuthOptions:        false,
+				SignalingServerAddress:            httpListenerInternal.Addr().String(),
+				SignalingExternalAuthAddress:      httpListenerExternal.Addr().String(),
+				SignalingAuthEntity:               "test",
+				SignalingExternalAuthToEntity:     "someent",
+				SignalingExternalAuthInsecure:     true,
+				SignalingExternalAuthAuthMaterial: accessToken,
+				SignalingInsecure:                 true,
+			}),
+		}
+		testExternalAuth(t, httpListenerInternal.Addr().String(), opts, logger, nil)
+	})
+
+	t.Run("with external auth material for external auth and signaler", func(t *testing.T) {
+		internalExternalAuthSrv.fail = false
+		accessToken := signTestAuthToken(t, privKeyInternal, "aud1", "sub1", "fake")
+		opts := []DialOption{
+			WithInsecure(),
+			WithExternalAuthInsecure(),
+			// used for both signaler and skips AuthenticateTo step
+			WithStaticExternalAuthenticationMaterial(accessToken),
+			WithExternalAuth(httpListenerInternal.Addr().String(), "someent"),
+		}
+		testExternalAuth(t, httpListenerInternal.Addr().String(), opts, logger, nil)
+	})
+
+	t.Run("with external auth material for external auth and signaler with invalid key", func(t *testing.T) {
+		internalExternalAuthSrv.fail = false
+		accessToken := signTestAuthToken(t, privKeyExternal2, "aud1", "sub1", "fake")
+		opts := []DialOption{
+			WithInsecure(),
+			WithExternalAuthInsecure(),
+			// used for both signaler and skips AuthenticateTo step
+			WithStaticExternalAuthenticationMaterial(accessToken),
+			WithExternalAuth(httpListenerInternal.Addr().String(), "someent"),
+		}
+		testExternalAuth(t, httpListenerInternal.Addr().String(), opts, logger, func(t *testing.T, err error) {
+			t.Helper()
+			gStatus, ok := status.FromError(err)
+			test.That(t, ok, test.ShouldBeTrue)
+			test.That(t, gStatus.Code(), test.ShouldEqual, codes.Unauthenticated)
+			test.That(t, gStatus.Message(), test.ShouldContainSubstring, "crypto/rsa: verification error")
 		})
 	})
 
@@ -1560,26 +1617,29 @@ type externalAuthServer struct {
 }
 
 func (svc *externalAuthServer) AuthenticateTo(
-	_ context.Context,
+	ctx context.Context,
 	req *rpcpb.AuthenticateToRequest,
 ) (*rpcpb.AuthenticateToResponse, error) {
 	if svc.fail {
-		return nil, errors.New("darn")
+		return nil, errors.New("darn 1")
 	}
 	if svc.expectedEnt != "" {
 		if svc.expectedEnt != req.Entity {
 			return nil, errors.New("nope unexpected")
 		}
 	} else if req.Entity != "someent" {
-		return nil, errors.New("nope")
+		return nil, errors.New("nope 2")
 	}
 	authMetadata := map[string]string{"some": "data"}
 	if svc.noMetadata {
 		authMetadata = nil
 	}
+
+	subject := MustContextAuthEntity(ctx).(string)
+
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, JWTClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
-			Subject:  uuid.NewString(),
+			Subject:  subject,
 			Audience: jwt.ClaimStrings{req.Entity},
 		},
 		AuthCredentialsType: CredentialsType("inter-node"),
@@ -1594,4 +1654,26 @@ func (svc *externalAuthServer) AuthenticateTo(
 	return &rpcpb.AuthenticateToResponse{
 		AccessToken: tokenString,
 	}, nil
+}
+
+func signTestAuthToken(t *testing.T, privKey *rsa.PrivateKey, aud, sub string, credType CredentialsType) string {
+	t.Helper()
+
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, JWTClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:  sub,
+			Audience: jwt.ClaimStrings{aud},
+		},
+		AuthCredentialsType: credType,
+		AuthMetadata:        map[string]string{},
+	})
+
+	var err error
+	token.Header["kid"], err = RSAPublicKeyThumbprint(&privKey.PublicKey)
+	test.That(t, err, test.ShouldBeNil)
+
+	tokenString, err := token.SignedString(privKey)
+	test.That(t, err, test.ShouldBeNil)
+
+	return tokenString
 }
