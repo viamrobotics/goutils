@@ -124,7 +124,7 @@ func dial(
 			// This path is also called by an mdns direct connection and ignores that case.
 			// This will skip all Authenticate/AuthenticateTo calls for the signaler.
 			if !dOpts.usingMDNS && dOpts.authMaterial == "" && dOpts.webrtcOpts.SignalingExternalAuthAuthMaterial != "" {
-				logger.Debugw("using singaling's external auth as auth material")
+				logger.Debug("using signaling's external auth as auth material")
 				dOpts.authMaterial = dOpts.webrtcOpts.SignalingExternalAuthAuthMaterial
 				dOpts.creds = Credentials{}
 			}
