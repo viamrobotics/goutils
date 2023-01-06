@@ -140,8 +140,8 @@ func (cd *cachedDialer) DialFunc(
 
 func (cd *cachedDialer) Close() error {
 	cd.mu.Lock()
-	// need a copy of cd.conns as we can't hold the lock, since .Close() fires the onUnref()
-	// which uses the same lock and directly modifies cd.conns
+	// need a copy of cd.conns as we can't hold the lock, since .Close() fires the onUnref() set (above) in DialFunc()
+	// that uses the same lock and directly modifies cd.conns when the dialer is reused at different layers (e.g. auth)
 	var conns []*refCountedConnWrapper
 	for _, c := range cd.conns {
 		conns = append(conns, c)
