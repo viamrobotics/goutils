@@ -140,9 +140,15 @@ func (cd *cachedDialer) DialFunc(
 
 func (cd *cachedDialer) Close() error {
 	cd.mu.Lock()
-	defer cd.mu.Unlock()
-	var err error
+	// need a copy of cd.conns as we can't hold the lock, since .Close() fires the onUnref()
+	// which uses the same lock and directly modifies cd.conns
+	var conns []*refCountedConnWrapper
 	for _, c := range cd.conns {
+		conns = append(conns, c)
+	}
+	cd.mu.Unlock()
+	var err error
+	for _, c := range conns {
 		if closeErr := c.actual.Close(); closeErr != nil && status.Convert(closeErr).Code() != codes.Canceled {
 			err = multierr.Combine(err, closeErr)
 		}
