@@ -148,6 +148,44 @@ func TestCachedDialer(t *testing.T) {
 	test.That(t, err, test.ShouldBeNil)
 }
 
+func TestCachedDialerDeadlock(t *testing.T) {
+	logger := golog.NewTestLogger(t)
+	rpcServer, err := NewServer(
+		logger,
+		WithAuthHandler(CredentialsTypeAPIKey, MakeSimpleAuthHandler([]string{"foo"}, "bar")),
+	)
+	test.That(t, err, test.ShouldBeNil)
+
+	httpListener, err := net.Listen("tcp", "localhost:0")
+	test.That(t, err, test.ShouldBeNil)
+
+	errChan := make(chan error)
+	go func() {
+		errChan <- rpcServer.Serve(httpListener)
+	}()
+
+	cachedDialer := NewCachedDialer()
+	ctx := ContextWithDialer(context.Background(), cachedDialer)
+
+	// leave connection open that will come from "multi" which ends up referring to a cached
+	// WebRTC or gRPC Direct connection.
+	_, err = Dial(
+		ctx,
+		httpListener.Addr().String(),
+		logger,
+		WithInsecure(),
+		WithDialDebug(),
+		WithEntityCredentials("foo", Credentials{Type: CredentialsTypeAPIKey, Payload: "bar"}),
+	)
+	test.That(t, err, test.ShouldBeNil)
+
+	test.That(t, cachedDialer.Close(), test.ShouldBeNil)
+
+	test.That(t, rpcServer.Stop(), test.ShouldBeNil)
+	err = <-errChan
+	test.That(t, err, test.ShouldBeNil)
+}
+
 func TestReffedConn(t *testing.T) {
 	tracking := &closeReffedConn{}
 	wrapper := newRefCountedConnWrapper("proto", tracking, nil)
