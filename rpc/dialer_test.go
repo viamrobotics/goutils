@@ -148,7 +148,6 @@ func TestCachedDialer(t *testing.T) {
 	test.That(t, err, test.ShouldBeNil)
 }
 
-// this replicates the deadlock in RSDK-1660.
 func TestCachedDialerDeadlock(t *testing.T) {
 	logger := golog.NewTestLogger(t)
 	rpcServer, err := NewServer(
@@ -168,6 +167,8 @@ func TestCachedDialerDeadlock(t *testing.T) {
 	cachedDialer := NewCachedDialer()
 	ctx := ContextWithDialer(context.Background(), cachedDialer)
 
+	// leave connection open that will come from "multi" which ends up referring to a cached
+	// WebRTC or gRPC Direct connection.
 	_, err = Dial(
 		ctx,
 		httpListener.Addr().String(),
@@ -178,7 +179,6 @@ func TestCachedDialerDeadlock(t *testing.T) {
 	)
 	test.That(t, err, test.ShouldBeNil)
 
-	// this would previously hang on lock contention
 	test.That(t, cachedDialer.Close(), test.ShouldBeNil)
 
 	test.That(t, rpcServer.Stop(), test.ShouldBeNil)
