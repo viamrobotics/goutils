@@ -315,7 +315,7 @@ func (ss *simpleServer) ensureAuthed(ctx context.Context) (string, interface{}, 
 
 	claimsSubject := claims.Subject()
 	if claimsSubject == "" {
-		return "", nil, errors.New("expected subject in claims")
+		return "", nil, status.Errorf(codes.Unauthenticated, "expected subject in claims")
 	}
 
 	// Pass the raw claims to VerifyEntity.
