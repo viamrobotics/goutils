@@ -451,14 +451,14 @@ func TestServerAuthJWTAudienceAndID(t *testing.T) {
 		test.That(t, err, test.ShouldBeNil)
 	})
 
-	for _, correctSubject := range []bool{false, true} {
-		t.Run(fmt.Sprintf("correctSubject=%t", correctSubject), func(t *testing.T) {
-			var subject string
-			if correctSubject {
-				subject = expectedSubject
-			} else {
-				subject = "really actually matters"
-			}
+	for _, subject := range []string{"", "really actually matters", expectedSubject} {
+		var testName string
+		if subject == "" {
+			testName = "noSubject"
+		} else {
+			testName = fmt.Sprintf("correctSubject=%t", expectedSubject == subject)
+		}
+		t.Run(testName, func(t *testing.T) {
 			for _, correctEntity := range []bool{false, true} {
 				t.Run(fmt.Sprintf("correctEntity=%t", correctEntity), func(t *testing.T) {
 					var aud string
@@ -484,7 +484,7 @@ func TestServerAuthJWTAudienceAndID(t *testing.T) {
 					ctx := metadata.NewOutgoingContext(context.Background(), md)
 
 					echoResp, err := client.Echo(ctx, &pb.EchoRequest{Message: "hello"})
-					if correctEntity && correctSubject {
+					if correctEntity && expectedSubject == subject {
 						test.That(t, err, test.ShouldBeNil)
 						test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
 					} else {
@@ -492,7 +492,11 @@ func TestServerAuthJWTAudienceAndID(t *testing.T) {
 						gStatus, ok := status.FromError(err)
 						test.That(t, ok, test.ShouldBeTrue)
 						test.That(t, gStatus.Code(), test.ShouldEqual, codes.Unauthenticated)
-						test.That(t, gStatus.Message(), test.ShouldContainSubstring, "cannot authenticate")
+						if subject == "" {
+							test.That(t, gStatus.Message(), test.ShouldContainSubstring, "expected subject in claims")
+						} else {
+							test.That(t, gStatus.Message(), test.ShouldContainSubstring, "cannot authenticate")
+						}
 					}
 				})
 			}

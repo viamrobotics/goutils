@@ -163,10 +163,7 @@ func (ss *simpleServer) authUnaryInterceptor(
 			return nil, err
 		}
 		ctx = ContextWithAuthEntity(ctx, authEntity)
-		// TODO(RSDK-896): make this unconditional
-		if authSubject != "" {
-			ctx = ContextWithAuthSubject(ctx, authSubject)
-		}
+		ctx = ContextWithAuthSubject(ctx, authSubject)
 	}
 	return handler(ctx, req)
 }
@@ -183,10 +180,7 @@ func (ss *simpleServer) authStreamInterceptor(
 			return err
 		}
 		ctx := ContextWithAuthEntity(serverStream.Context(), authEntity)
-		// TODO(RSDK-896): make this unconditional
-		if authSubject != "" {
-			ctx = ContextWithAuthSubject(ctx, authSubject)
-		}
+		ctx = ContextWithAuthSubject(ctx, authSubject)
 		serverStream = ctxWrappedServerStream{serverStream, ctx}
 	}
 	return handler(srv, serverStream)
@@ -319,11 +313,10 @@ func (ss *simpleServer) ensureAuthed(ctx context.Context) (string, interface{}, 
 		return "", nil, err
 	}
 
-	// TODO(RSDK-896): start enforcing this again
 	claimsSubject := claims.Subject()
-	// if claimsSubject == "" {
-	// 	return "", nil, errors.New("expected subject in claims")
-	// }
+	if claimsSubject == "" {
+		return "", nil, status.Errorf(codes.Unauthenticated, "expected subject in claims")
+	}
 
 	// Pass the raw claims to VerifyEntity.
 	entityInfo, err := handler.VerifyEntity(contextWithAuthClaims(ctx, claims), entity)
