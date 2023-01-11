@@ -1,6 +1,6 @@
 {
   "name": "@viamrobotics/rpc",
-  "version": "0.1.32",
+  "version": "0.1.33",
   "license": "Apache-2.0",
   "dependencies": {
     "@improbable-eng/grpc-web": "^0.13.0",
