@@ -18,6 +18,7 @@ import (
 
 	"github.com/Masterminds/sprig"
 	"github.com/edaniels/golog"
+	"github.com/golang-jwt/jwt/v4"
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 	"goji.io"
@@ -53,6 +54,7 @@ type Arguments struct {
 	APIKey             string            `flag:"api-key"`
 	ExternalAuthAddr   string            `flag:"external-auth-addr"`
 	ExternalAuth       bool              `flag:"external-auth"`
+	UseAccessToken     bool              `flag:"use-access-token"`
 }
 
 func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) error {
@@ -81,6 +83,7 @@ func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) error
 		argsParsed.APIKey,
 		argsParsed.ExternalAuthAddr,
 		argsParsed.ExternalAuth,
+		argsParsed.UseAccessToken,
 		logger,
 	)
 }
@@ -99,6 +102,7 @@ func runServer(
 	apiKey string,
 	externalAuthAddr string,
 	externalAuth bool,
+	useAccesssToken bool,
 	logger golog.Logger,
 ) (err error) {
 	var serverOpts []rpc.ServerOption
@@ -256,6 +260,7 @@ func runServer(
 			ExternalAuthAddr     string
 			ExternalAuthToEntity string
 			Credentials          map[string]interface{}
+			AccessToken          string // precomuted access token, bypasses credentials.
 		}
 		temp := Temp{
 			WebRTCHost:           rpcServer.InstanceNames()[0],
@@ -267,6 +272,14 @@ func runServer(
 				"type":    string(rpc.CredentialsTypeAPIKey),
 				"payload": apiKey,
 			}
+		}
+
+		if useAccesssToken {
+			precomputedToken, err := computeAccessToken(authPrivKey, listenerAddr, "sub1", rpc.CredentialsTypeAPIKey)
+			if err != nil {
+				panic(err)
+			}
+			temp.AccessToken = precomputedToken
 		}
 
 		if err := indexT.Execute(w, temp); err != nil {
@@ -332,4 +345,30 @@ func runServer(
 		return serveErr
 	}
 	return nil
+}
+
+func computeAccessToken(privKey *rsa.PrivateKey, aud, sub string, credType rpc.CredentialsType) (string, error) {
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, rpc.JWTClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:  sub,
+			Audience: jwt.ClaimStrings{aud},
+		},
+		AuthCredentialsType: credType,
+		AuthMetadata: map[string]string{
+			"email": sub,
+		},
+	})
+
+	var err error
+	token.Header["kid"], err = rpc.RSAPublicKeyThumbprint(&privKey.PublicKey)
+	if err != nil {
+		return "", err
+	}
+
+	tokenString, err := token.SignedString(privKey)
+	if err != nil {
+		return "", err
+	}
+
+	return tokenString, nil
 }

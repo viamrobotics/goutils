@@ -42,6 +42,23 @@ run-server-auth-external: build setup-auth
 		-tls-key=${ROOT_DIR}/etc/test_keys/localhost/key.pem \
 		-external-auth 8081
 
+run-server-auth-with-access-token: build setup-auth
+	go run server/cmd/main.go -instance-name=echo-server-external -api-key=supersecretkeyohmy \
+		-auth-private-key=${ROOT_DIR}/etc/test_keys/pkcs8.key \
+		-tls-cert=${ROOT_DIR}/etc/test_keys/localhost/cert.pem \
+		-tls-key=${ROOT_DIR}/etc/test_keys/localhost/key.pem \
+		-use-access-token
+
+run-server-auth-with-external-access-token: build setup-auth
+	go run server/cmd/main.go -instance-name=echo-server-external -api-key=supersecretkeyohmy \
+		-auth-private-key=${ROOT_DIR}/etc/test_keys/pkcs8.key \
+		-auth-public-key=${ROOT_DIR}/etc/test_keys/public-key.pem \
+		-tls-cert=${ROOT_DIR}/etc/test_keys/localhost/cert.pem \
+		-tls-key=${ROOT_DIR}/etc/test_keys/localhost/key.pem \
+		-use-access-token \
+		-external-auth-addr=https://localhost:8081 \
+		-external-auth 8081
+
 run-server-auth-internal-as-external: build setup-auth
 	go run server/cmd/main.go -instance-name=echo-server -api-key=supersecretkeyohmy \
 		-auth-public-key=${ROOT_DIR}/etc/test_keys/public-key.pem \

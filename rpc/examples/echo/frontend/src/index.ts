@@ -12,29 +12,39 @@ declare global {
 		creds?: Credentials;
 		externalAuthAddr?: string;
 		externalAuthToEntity?: string;
+		accessToken?: string;
 	}
 }
 
 async function getClients() {
 	const webrtcHost = window.webrtcHost;
 	const opts: DialOptions = {
-		credentials: window.creds,
 		externalAuthAddress: window.externalAuthAddr,
 		externalAuthToEntity: window.externalAuthToEntity,
 		webrtcOptions: {
 			disableTrickleICE: false,
-			signalingCredentials: window.creds,
 		}
 	};
+
+	if (!window.accessToken) {
+		opts.credentials = window.creds;
+		opts.webrtcOptions!.signalingCredentials = window.creds;
+	} else {
+		opts.accessToken = window.accessToken;
+	}
+
 	if (opts.externalAuthAddress) {
-		// we are authenticating against the external address and then
-		// we will authenticate for externalAuthToEntity.
-		opts.authEntity = opts.externalAuthAddress.replace(/^(.*:\/\/)/, '');
+		if (!window.accessToken) {
+			// we are authenticating against the external address and then
+			// we will authenticate for externalAuthToEntity.
+			opts.authEntity = opts.externalAuthAddress.replace(/^(.*:\/\/)/, '');
+		}
 
 		// do similar for WebRTC
 		opts.webrtcOptions!.signalingExternalAuthAddress = opts.externalAuthAddress;
 		opts.webrtcOptions!.signalingExternalAuthToEntity = opts.externalAuthToEntity;
 	}
+
 	console.log("WebRTC")
 	const webRTCConn = await dialWebRTC(thisHost, webrtcHost, opts);
 	const webrtcClient = new EchoServiceClient(webrtcHost, { transport: webRTCConn.transportFactory });
