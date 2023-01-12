@@ -118,7 +118,10 @@ type callbackHandler struct {
 	logger golog.Logger
 }
 
-const auth0RedirectStateCookieName = "auth0_redirect_state"
+const (
+	auth0RedirectStateCookieName   = "auth0_redirect_state"
+	auth0RedirectStateCookieMaxAge = time.Second * 60
+)
 
 func (h *callbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
@@ -320,7 +323,7 @@ func (h *loginHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Name:     auth0RedirectStateCookieName,
 		Value:    fmt.Sprintf("%s:%s", session.id, state),
 		Path:     "/",
-		MaxAge:   60,
+		MaxAge:   int(auth0RedirectStateCookieMaxAge.Seconds()),
 		Secure:   r.TLS != nil,
 		SameSite: http.SameSiteLaxMode,
 		HttpOnly: true,
