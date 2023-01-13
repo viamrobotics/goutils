@@ -413,35 +413,41 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 				break
 			}
 			for _, host := range instanceNames {
-				mdnsServer, err := zeroconf.RegisterProxy(
-					host,
-					"_rpc._tcp",
-					"local.",
-					mDNSAddress.Port,
-					hostname,
-					[]string{"127.0.0.1"},
-					supportedServices,
-					[]net.Interface{loopbackIfc},
-				)
-				if err != nil {
-					return nil, err
+				hosts := []string{host, strings.ReplaceAll(host, ".", "-")}
+				for _, host := range hosts {
+					mdnsServer, err := zeroconf.RegisterProxy(
+						host,
+						"_rpc._tcp",
+						"local.",
+						mDNSAddress.Port,
+						hostname,
+						[]string{"127.0.0.1"},
+						supportedServices,
+						[]net.Interface{loopbackIfc},
+					)
+					if err != nil {
+						return nil, err
+					}
+					server.mdnsServers = append(server.mdnsServers, mdnsServer)
 				}
-				server.mdnsServers = append(server.mdnsServers, mdnsServer)
 			}
 		} else {
 			for _, host := range instanceNames {
-				mdnsServer, err := zeroconf.RegisterDynamic(
-					host,
-					"_rpc._tcp",
-					"local.",
-					mDNSAddress.Port,
-					supportedServices,
-					nil,
-				)
-				if err != nil {
-					return nil, err
+				hosts := []string{host, strings.ReplaceAll(host, ".", "-")}
+				for _, host := range hosts {
+					mdnsServer, err := zeroconf.RegisterDynamic(
+						host,
+						"_rpc._tcp",
+						"local.",
+						mDNSAddress.Port,
+						supportedServices,
+						nil,
+					)
+					if err != nil {
+						return nil, err
+					}
+					server.mdnsServers = append(server.mdnsServers, mdnsServer)
 				}
-				server.mdnsServers = append(server.mdnsServers, mdnsServer)
 			}
 		}
 	}

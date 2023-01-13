@@ -199,31 +199,44 @@ func dialMulticastDNS(
 	logger golog.Logger,
 	dOpts *dialOptions,
 ) (ClientConn, bool, error) {
-	resolver, err := zeroconf.NewResolver(zeroconf.SelectIPRecordType(zeroconf.IPv4))
+	candidates := []string{address, strings.ReplaceAll(address, ".", "-")}
+	candidateLookup := func(ctx context.Context, candidates []string) (*zeroconf.ServiceEntry, error) {
+		resolver, err := zeroconf.NewResolver(zeroconf.SelectIPRecordType(zeroconf.IPv4))
+		if err != nil {
+			return nil, err
+		}
+		defer resolver.Shutdown()
+		for _, candidate := range candidates {
+			entries := make(chan *zeroconf.ServiceEntry)
+			lookupCtx, cancel := context.WithTimeout(ctx, 1*time.Second)
+			defer cancel()
+			if err := resolver.Lookup(lookupCtx, candidate, "_rpc._tcp", "local.", entries); err != nil {
+				logger.Errorw("error performing mDNS query", "error", err)
+				return nil, err
+			}
+			// entries gets closed after lookupCtx expires or there is a real entry
+			entry := <-entries
+			if entry != nil {
+				return entry, nil
+			}
+		}
+		return nil, nil
+	}
+	// lookup for candidates for backward compatibility
+	entry, err := candidateLookup(ctx, candidates)
 	if err != nil {
 		return nil, false, err
 	}
-	defer resolver.Shutdown()
-	entries := make(chan *zeroconf.ServiceEntry)
-	lookupCtx, cancel := context.WithTimeout(ctx, 1*time.Second)
-	defer cancel()
-
-	if err := resolver.Lookup(lookupCtx, address, "_rpc._tcp", "local.", entries); err != nil {
-		logger.Errorw("error performing mDNS query", "error", err)
-		return nil, false, nil
-	}
-
-	// entries gets closed after lookupCtx expires or there is a real entry
-	entry := <-entries
 	if entry == nil {
 		return nil, false, ctx.Err()
 	}
 	var hasGRPC, hasWebRTC bool
 	for _, field := range entry.Text {
-		if field == "grpc" {
+		// mdns service may advertise TXT field following https://datatracker.ietf.org/doc/html/rfc1464 (ex grpc=)
+		if strings.Contains(field, "grpc") {
 			hasGRPC = true
 		}
-		if field == "webrtc" {
+		if strings.Contains(field, "webrtc") {
 			hasWebRTC = true
 		}
 	}
