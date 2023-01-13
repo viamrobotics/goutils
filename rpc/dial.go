@@ -220,7 +220,7 @@ func dialMulticastDNS(
 				return entry, nil
 			}
 		}
-		return nil, errors.New("exhausted mDNS candidates")
+		return nil, ctx.Err()
 	}
 	// lookup for candidates for backward compatibility
 	entry, err := candidateLookup(ctx, candidates)
