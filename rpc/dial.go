@@ -220,15 +220,12 @@ func dialMulticastDNS(
 				return entry, nil
 			}
 		}
-		return nil, nil
+		return nil, errors.New("exhausted mDNS candidates")
 	}
 	// lookup for candidates for backward compatibility
 	entry, err := candidateLookup(ctx, candidates)
 	if err != nil {
 		return nil, false, err
-	}
-	if entry == nil {
-		return nil, false, ctx.Err()
 	}
 	var hasGRPC, hasWebRTC bool
 	for _, field := range entry.Text {
