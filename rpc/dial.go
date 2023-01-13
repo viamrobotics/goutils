@@ -224,7 +224,7 @@ func dialMulticastDNS(
 	}
 	// lookup for candidates for backward compatibility
 	entry, err := candidateLookup(ctx, candidates)
-	if err != nil {
+	if err != nil || entry == nil {
 		return nil, false, err
 	}
 	var hasGRPC, hasWebRTC bool
