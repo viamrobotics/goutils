@@ -1162,7 +1162,6 @@ func TestDialMulticastDNS(t *testing.T) {
 		test.That(t, rpcServer.Start(), test.ShouldBeNil)
 		test.That(t, rpcServer.InstanceNames(), test.ShouldHaveLength, 1)
 
-
 		conn, err := Dial(
 			context.Background(),
 			rpcServer.InstanceNames()[0],
@@ -1172,7 +1171,6 @@ func TestDialMulticastDNS(t *testing.T) {
 		)
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, conn.Close(), test.ShouldBeNil)
-
 
 		conn, err = Dial(
 			context.Background(),
