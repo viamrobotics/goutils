@@ -282,19 +282,28 @@ func TestManagedProcessStop(t *testing.T) {
 		watcher.Add(temp.Name())
 
 		bashScript := fmt.Sprintf(`
-			trap "exit 101" SIGHUP
-			trap "exit 102" SIGINT
-			trap "exit 103" SIGQUIT
-			trap "exit 106" SIGABRT
-			trap "exit 110" SIGUSR1
-			trap "exit 112" SIGUSR2
-			trap "exit 115" SIGTERM
+			trap "exit %d" SIGHUP
+			trap "exit %d" SIGINT
+			trap "exit %d" SIGQUIT
+			trap "exit %d" SIGABRT
+			trap "exit %d" SIGUSR1
+			trap "exit %d" SIGUSR2
+			trap "exit %d" SIGTERM
 			echo hello >> %s
 			while true
 			do echo hey
 			sleep 1
 			done
-		`, temp.Name())
+		`,
+			100+syscall.SIGHUP,
+			100+syscall.SIGINT,
+			100+syscall.SIGQUIT,
+			100+syscall.SIGABRT,
+			100+syscall.SIGUSR1,
+			100+syscall.SIGUSR2,
+			100+syscall.SIGTERM,
+			temp.Name(),
+		)
 
 		proc := NewManagedProcess(ProcessConfig{
 			Name: "bash",
@@ -315,16 +324,18 @@ func TestManagedProcessStop(t *testing.T) {
 			syscall.SIGUSR2,
 			syscall.SIGTERM,
 		} {
-			proc = NewManagedProcess(ProcessConfig{
-				Name:       "bash",
-				Args:       []string{"-c", bashScript},
-				StopSignal: signal,
-			}, logger)
-			test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
-			<-watcher.Events
-			err = proc.Stop()
-			test.That(t, err, test.ShouldNotBeNil)
-			test.That(t, err.Error(), test.ShouldContainSubstring, fmt.Sprintf("exit status %d", signal+100))
+			t.Run(fmt.Sprintf("sig=%d", signal), func(t *testing.T) {
+				proc = NewManagedProcess(ProcessConfig{
+					Name:       "bash",
+					Args:       []string{"-c", bashScript},
+					StopSignal: signal,
+				}, logger)
+				test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
+				<-watcher.Events
+				err = proc.Stop()
+				test.That(t, err, test.ShouldNotBeNil)
+				test.That(t, err.Error(), test.ShouldContainSubstring, fmt.Sprintf("exit status %d", signal+100))
+			})
 		}
 	})
 	t.Run("stop wait signaling", func(t *testing.T) {
