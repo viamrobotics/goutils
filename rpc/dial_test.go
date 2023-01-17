@@ -1152,6 +1152,41 @@ func TestDialMulticastDNS(t *testing.T) {
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
 
+	t.Run("fix mdns instance name", func(t *testing.T) {
+		rpcServer, err := NewServer(
+			logger,
+			WithUnauthenticated(),
+			WithInstanceNames("this.is.a.test.cloud"),
+		)
+		test.That(t, err, test.ShouldBeNil)
+		test.That(t, rpcServer.Start(), test.ShouldBeNil)
+		test.That(t, rpcServer.InstanceNames(), test.ShouldHaveLength, 1)
+
+		//test old instance name : this.is.a.test.cloud._rpc._tcp.local
+		conn, err := Dial(
+			context.Background(),
+			rpcServer.InstanceNames()[0],
+			logger,
+			WithInsecure(),
+			WithDialDebug(),
+		)
+		test.That(t, err, test.ShouldBeNil)
+		test.That(t, conn.Close(), test.ShouldBeNil)
+
+		//test fixed instance name : this-is-a-test-cloud._rpc._tcp.local
+		conn, err = Dial(
+			context.Background(),
+			strings.ReplaceAll(rpcServer.InstanceNames()[0], ".", "-"),
+			logger,
+			WithInsecure(),
+			WithDialDebug(),
+		)
+		test.That(t, err, test.ShouldBeNil)
+		test.That(t, conn.Close(), test.ShouldBeNil)
+		test.That(t, rpcServer.Stop(), test.ShouldBeNil)
+
+	})
+
 	t.Run("unauthenticated", func(t *testing.T) {
 		rpcServer, err := NewServer(
 			logger,
