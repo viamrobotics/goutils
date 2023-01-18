@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"runtime"
 	"testing"
 
 	"github.com/edaniels/golog"
@@ -11,6 +12,7 @@ import (
 	"go.viam.com/test"
 
 	"go.viam.com/utils"
+	"go.viam.com/utils/testutils"
 )
 
 func TestProcessManagerProcessIDs(t *testing.T) {
@@ -196,7 +198,7 @@ func TestProcessManagerStart(t *testing.T) {
 				ProcessConfig{
 					ID:   "1",
 					Name: "bash",
-					Args: []string{"-c", fmt.Sprintf(`echo hello >> %s`, temp.Name())}, OneShot: true,
+					Args: []string{"-c", fmt.Sprintf(`echo hello >> '%s'`, temp.Name())}, OneShot: true,
 				})
 			test.That(t, err, test.ShouldBeNil)
 
@@ -215,7 +217,7 @@ func TestProcessManagerStart(t *testing.T) {
 				ProcessConfig{
 					ID:   "2",
 					Name: "bash",
-					Args: []string{"-c", fmt.Sprintf(`echo hello >> %s`, temp.Name())}, OneShot: true,
+					Args: []string{"-c", fmt.Sprintf(`echo hello >> '%s'`, temp.Name())}, OneShot: true,
 				})
 			test.That(t, err, test.ShouldNotBeNil)
 			test.That(t, err.Error(), test.ShouldContainSubstring, "canceled")
@@ -223,25 +225,23 @@ func TestProcessManagerStart(t *testing.T) {
 				ProcessConfig{
 					ID:   "3",
 					Name: "bash",
-					Args: []string{"-c", fmt.Sprintf(`echo hello >> %s`, temp.Name())},
+					Args: []string{"-c", fmt.Sprintf(`echo hello >> '%s'`, temp.Name())},
 				})
 			test.That(t, err, test.ShouldBeNil)
 
 			// a "timed" ctx should only have an effect on one shots
 			ctx, cancel = context.WithCancel(context.Background())
 
-			temp1, err := os.CreateTemp("", "*.txt")
-			test.That(t, err, test.ShouldBeNil)
-			defer os.Remove(temp1.Name())
-			temp2, err := os.CreateTemp("", "*.txt")
-			test.That(t, err, test.ShouldBeNil)
-			defer os.Remove(temp2.Name())
+			tempFile1 := testutils.TempFile(t, "something.txt")
+			defer tempFile1.Close()
+			tempFile2 := testutils.TempFile(t, "something.txt")
+			defer tempFile2.Close()
 
 			watcher, err := fsnotify.NewWatcher()
 			test.That(t, err, test.ShouldBeNil)
 			defer watcher.Close()
-			watcher.Add(temp1.Name())
-			watcher.Add(temp2.Name())
+			watcher.Add(tempFile1.Name())
+			watcher.Add(tempFile2.Name())
 			go func() {
 				<-watcher.Events
 				<-watcher.Events
@@ -249,14 +249,18 @@ func TestProcessManagerStart(t *testing.T) {
 			}()
 
 			_, err = pm.AddProcessFromConfig(ctx, ProcessConfig{ID: "4", Name: "bash", Args: []string{
-				"-c", fmt.Sprintf("echo one >> %s\nwhile true; do echo hey1; sleep 1; done", temp1.Name()),
+				"-c", fmt.Sprintf("echo one >> '%s'\nwhile true; do echo hey1; sleep 1; done", tempFile1.Name()),
 			}})
 			test.That(t, err, test.ShouldBeNil)
 			_, err = pm.AddProcessFromConfig(ctx, ProcessConfig{ID: "5", Name: "bash", Args: []string{
-				"-c", fmt.Sprintf("echo two >> %s\nwhile true; do echo hey2; sleep 1; done", temp2.Name()),
+				"-c", fmt.Sprintf("echo two >> '%s'\nwhile true; do echo hey2; sleep 1; done", tempFile2.Name()),
 			}, OneShot: true})
 			test.That(t, err, test.ShouldNotBeNil)
-			test.That(t, err.Error(), test.ShouldContainSubstring, "killed")
+			if runtime.GOOS == "windows" {
+				test.That(t, err.Error(), test.ShouldContainSubstring, "exit status 1")
+			} else {
+				test.That(t, err.Error(), test.ShouldContainSubstring, "killed")
+			}
 		})
 	})
 
@@ -275,14 +279,14 @@ func TestProcessManagerStart(t *testing.T) {
 			ProcessConfig{
 				ID:   "1",
 				Name: "bash",
-				Args: []string{"-c", fmt.Sprintf(`echo hello >> %s`, temp.Name())}, OneShot: true,
+				Args: []string{"-c", fmt.Sprintf(`echo hello >> '%s'`, temp.Name())}, OneShot: true,
 			})
 		test.That(t, err, test.ShouldBeNil)
 		_, err = pm.AddProcessFromConfig(context.Background(),
 			ProcessConfig{
 				ID:   "2",
 				Name: "bash",
-				Args: []string{"-c", fmt.Sprintf(`echo world >> %s`, temp.Name())}, OneShot: true,
+				Args: []string{"-c", fmt.Sprintf(`echo world >> '%s'`, temp.Name())}, OneShot: true,
 			})
 		test.That(t, err, test.ShouldBeNil)
 
@@ -338,33 +342,30 @@ func TestProcessManagerStop(t *testing.T) {
 		logger := golog.NewTestLogger(t)
 		pm := NewProcessManager(logger)
 
-		temp1, err := os.CreateTemp("", "*.txt")
-		test.That(t, err, test.ShouldBeNil)
-		defer os.Remove(temp1.Name())
-		temp2, err := os.CreateTemp("", "*.txt")
-		test.That(t, err, test.ShouldBeNil)
-		defer os.Remove(temp2.Name())
-		temp3, err := os.CreateTemp("", "*.txt")
-		test.That(t, err, test.ShouldBeNil)
-		defer os.Remove(temp3.Name())
+		tempFile1 := testutils.TempFile(t, "something.txt")
+		defer tempFile1.Close()
+		tempFile2 := testutils.TempFile(t, "something.txt")
+		defer tempFile2.Close()
+		tempFile3 := testutils.TempFile(t, "something.txt")
+		defer tempFile3.Close()
 
 		watcher, err := fsnotify.NewWatcher()
 		test.That(t, err, test.ShouldBeNil)
 		defer watcher.Close()
-		watcher.Add(temp1.Name())
-		watcher.Add(temp2.Name())
-		watcher.Add(temp3.Name())
+		watcher.Add(tempFile1.Name())
+		watcher.Add(tempFile2.Name())
+		watcher.Add(tempFile3.Name())
 
 		_, err = pm.AddProcessFromConfig(context.Background(), ProcessConfig{ID: "1", Name: "bash", Args: []string{
-			"-c", fmt.Sprintf("trap \"exit 0\" SIGTERM; echo one >> %s\nwhile true; do echo hey1; sleep 1; done", temp1.Name()),
+			"-c", fmt.Sprintf("trap \"exit 0\" SIGTERM; echo one >> '%s'\nwhile true; do echo hey1; sleep 1; done", tempFile1.Name()),
 		}})
 		test.That(t, err, test.ShouldBeNil)
 		_, err = pm.AddProcessFromConfig(context.Background(), ProcessConfig{ID: "2", Name: "bash", Args: []string{
-			"-c", fmt.Sprintf("trap \"exit 0\" SIGTERM; echo two >> %s\nwhile true; do echo hey2; sleep 1; done", temp2.Name()),
+			"-c", fmt.Sprintf("trap \"exit 0\" SIGTERM; echo two >> '%s'\nwhile true; do echo hey2; sleep 1; done", tempFile2.Name()),
 		}})
 		test.That(t, err, test.ShouldBeNil)
 		_, err = pm.AddProcessFromConfig(context.Background(), ProcessConfig{ID: "3", Name: "bash", Args: []string{
-			"-c", fmt.Sprintf("trap \"echo hey\" SIGTERM; echo three >> %s\nwhile true; do echo hey3; sleep 1; done", temp3.Name()),
+			"-c", fmt.Sprintf("trap \"echo hey\" SIGTERM; echo three >> '%s'\nwhile true; do echo hey3; sleep 1; done", tempFile3.Name()),
 		}})
 		test.That(t, err, test.ShouldBeNil)
 		_, err = pm.AddProcessFromConfig(context.Background(), ProcessConfig{ID: "4", Name: "bash", Args: []string{
@@ -379,13 +380,13 @@ func TestProcessManagerStop(t *testing.T) {
 
 		test.That(t, pm.Stop(), test.ShouldBeNil)
 
-		rd, err := os.ReadFile(temp1.Name())
+		rd, err := os.ReadFile(tempFile1.Name())
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, string(rd), test.ShouldEqual, "one\n")
-		rd, err = os.ReadFile(temp2.Name())
+		rd, err = os.ReadFile(tempFile2.Name())
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, string(rd), test.ShouldEqual, "two\n")
-		rd, err = os.ReadFile(temp3.Name())
+		rd, err = os.ReadFile(tempFile3.Name())
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, string(rd), test.ShouldEqual, "three\n")
 	})
@@ -395,24 +396,22 @@ func TestProcessManagerStop(t *testing.T) {
 		pm := NewProcessManager(logger)
 		test.That(t, pm.Start(context.Background()), test.ShouldBeNil)
 
-		temp1, err := os.CreateTemp("", "*.txt")
-		test.That(t, err, test.ShouldBeNil)
-		defer os.Remove(temp1.Name())
-		temp2, err := os.CreateTemp("", "*.txt")
-		test.That(t, err, test.ShouldBeNil)
-		defer os.Remove(temp2.Name())
+		tempFile1 := testutils.TempFile(t, "something.txt")
+		defer tempFile1.Close()
+		tempFile2 := testutils.TempFile(t, "something.txt")
+		defer tempFile2.Close()
 
 		watcher, err := fsnotify.NewWatcher()
 		test.That(t, err, test.ShouldBeNil)
 		defer watcher.Close()
-		watcher.Add(temp1.Name())
-		watcher.Add(temp2.Name())
+		watcher.Add(tempFile1.Name())
+		watcher.Add(tempFile2.Name())
 
 		_, err = pm.AddProcessFromConfig(context.Background(), ProcessConfig{ID: "1", Name: "bash", Args: []string{
 			"-c",
 			fmt.Sprintf(
-				"trap \"echo done >> %[1]s;exit 0\" SIGTERM; echo one >> %[1]s\nwhile true; do echo hey1; sleep 1; done",
-				temp1.Name(),
+				"trap \"echo done >> '%[1]s';exit 0\" SIGTERM; echo one >> '%[1]s'\nwhile true; do echo hey1; sleep 1; done",
+				tempFile1.Name(),
 			),
 		}})
 		test.That(t, err, test.ShouldBeNil)
@@ -422,8 +421,8 @@ func TestProcessManagerStop(t *testing.T) {
 		_, err = pm.AddProcessFromConfig(context.Background(), ProcessConfig{ID: "3", Name: "bash", Args: []string{
 			"-c",
 			fmt.Sprintf(
-				"trap \"echo done >> %[1]s;exit 0\" SIGTERM; echo two >> %[1]s\nwhile true; do echo hey12 sleep 1; done",
-				temp2.Name(),
+				"trap \"echo done >> '%[1]s';exit 0\" SIGTERM; echo two >> '%[1]s'\nwhile true; do echo hey12 sleep 1; done",
+				tempFile2.Name(),
 			),
 		}})
 		test.That(t, err, test.ShouldBeNil)
@@ -435,8 +434,11 @@ func TestProcessManagerStop(t *testing.T) {
 		test.That(t, err, test.ShouldNotBeNil)
 		test.That(t, err.Error(), test.ShouldContainSubstring, "stop")
 
-		<-watcher.Events
-		<-watcher.Events
+		if runtime.GOOS != "windows" {
+			// we will never see these in windows
+			<-watcher.Events
+			<-watcher.Events
+		}
 	})
 }
 

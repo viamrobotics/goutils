@@ -3,6 +3,7 @@ package pexec
 import (
 	"bytes"
 	"encoding/json"
+	"runtime"
 	"syscall"
 	"testing"
 	"time"
@@ -25,7 +26,17 @@ func TestProcessConfigRoundTripJSON(t *testing.T) {
 	test.That(t, err, test.ShouldBeNil)
 
 	var rt ProcessConfig
-	test.That(t, json.Unmarshal(md, &rt), test.ShouldBeNil)
+	err = json.Unmarshal(md, &rt)
+	if runtime.GOOS == "windows" {
+		test.That(t, err, test.ShouldNotBeNil)
+		test.That(t, err.Error(), test.ShouldContainSubstring, "not supported")
+
+		config.StopSignal = 0
+		md, err = json.Marshal(config)
+		test.That(t, err, test.ShouldBeNil)
+	} else {
+		test.That(t, err, test.ShouldBeNil)
+	}
 	test.That(t, rt, test.ShouldResemble, config)
 
 	var rtLower ProcessConfig

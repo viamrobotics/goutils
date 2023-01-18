@@ -103,12 +103,16 @@ func (p *managedProcess) Start(ctx context.Context) error {
 	default:
 	}
 
+	if _, err := exec.LookPath(p.name); err != nil {
+		return err
+	}
+
 	if p.oneShot {
 		// Here we use the context since we block on waiting for the command
 		// to finish running.
 		//nolint:gosec
 		cmd := exec.CommandContext(ctx, p.name, p.args...)
-		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		cmd.SysProcAttr = sysProcAttr()
 		cmd.Dir = p.cwd
 		var runErr error
 		if p.shouldLog || p.logWriter != nil {
@@ -139,7 +143,7 @@ func (p *managedProcess) Start(ctx context.Context) error {
 	// use the CommandContext variant.
 	//nolint:gosec
 	cmd := exec.Command(p.name, p.args...)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.SysProcAttr = sysProcAttr()
 	cmd.Dir = p.cwd
 
 	var stdOut, stdErr io.ReadCloser
@@ -320,37 +324,9 @@ func (p *managedProcess) Stop() error {
 	// p.cmd can no longer be modified rendering it safe to read
 	// without a lock held.
 
-	p.logger.Infof("stopping process %d with signal %s", p.cmd.Process.Pid, p.stopSig)
-	// First let's try to directly signal the process.
-	if err := p.cmd.Process.Signal(p.stopSig); err != nil && !errors.Is(err, os.ErrProcessDone) {
-		return errors.Wrapf(err, "error signaling process %d with signal %s", p.cmd.Process.Pid, p.stopSig)
-	}
-
-	// In case the process didn't stop, or left behind any orphan children in its process group,
-	// we now send a signal to everything in the process group after a brief wait.
-	timer := time.NewTimer(p.stopWaitInterval)
-	defer timer.Stop()
-	select {
-	case <-timer.C:
-		p.logger.Infof("stopping entire process group %d with signal %s", p.cmd.Process.Pid, p.stopSig)
-		if err := syscall.Kill(-p.cmd.Process.Pid, p.stopSig); err != nil && !errors.Is(err, os.ErrProcessDone) {
-			return errors.Wrapf(err, "error signaling process group %d with signal %s", p.cmd.Process.Pid, p.stopSig)
-		}
-	case <-p.managingCh:
-		timer.Stop()
-	}
-
-	// Lastly, kill everything in the process group that remains after a longer wait
-	timer2 := time.NewTimer(p.stopWaitInterval * 2)
-	defer timer2.Stop()
-	select {
-	case <-timer2.C:
-		p.logger.Infof("killing entire process group %d", p.cmd.Process.Pid)
-		if err := syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL); err != nil && !errors.Is(err, os.ErrProcessDone) {
-			return errors.Wrapf(err, "error killing process group %d", p.cmd.Process.Pid)
-		}
-	case <-p.managingCh:
-		timer2.Stop()
+	forceKilled, err := p.kill()
+	if err != nil {
+		return err
 	}
 	<-p.managingCh
 
@@ -370,12 +346,7 @@ func (p *managedProcess) Stop() error {
 			}
 		}
 
-		// This can easily happen if the process does not handle interrupts gracefully
-		// and it won't provide us any exit code info.
-		switch p.lastWaitErr.Error() {
-		case "signal: interrupt", "signal: terminated", "signal: killed":
-			unknownStatus = true
-		}
+		unknownStatus = unknownStatus || isWaitErrUnknown(p.lastWaitErr.Error(), forceKilled)
 		if unknownStatus {
 			p.logger.Debug("unable to check exit status")
 			return nil

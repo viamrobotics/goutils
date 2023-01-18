@@ -21,15 +21,15 @@ const defaultStopTimeout = time.Second * 10
 
 // A ProcessConfig describes how to manage a system process.
 type ProcessConfig struct {
-	ID          string         `json:"id"`
-	Name        string         `json:"name"`
-	Args        []string       `json:"args"`
-	CWD         string         `json:"cwd"`
-	OneShot     bool           `json:"one_shot"`
-	Log         bool           `json:"log"`
-	LogWriter   io.Writer      `json:"-"`
-	StopSignal  syscall.Signal `json:"stop_signal"`
-	StopTimeout time.Duration  `json:"stop_timeout"`
+	ID          string
+	Name        string
+	Args        []string
+	CWD         string
+	OneShot     bool
+	Log         bool
+	LogWriter   io.Writer
+	StopSignal  syscall.Signal
+	StopTimeout time.Duration
 }
 
 // Validate ensures all parts of the config are valid.
@@ -54,8 +54,8 @@ type configData struct {
 	CWD         string   `json:"cwd"`
 	OneShot     bool     `json:"one_shot"`
 	Log         bool     `json:"log"`
-	StopSignal  string   `json:"stop_signal"`
-	StopTimeout string   `json:"stop_timeout"`
+	StopSignal  string   `json:"stop_signal,omitempty"`
+	StopTimeout string   `json:"stop_timeout,omitempty"`
 }
 
 // UnmarshalJSON parses incoming json.
@@ -82,28 +82,11 @@ func (config *ProcessConfig) UnmarshalJSON(data []byte) error {
 		config.StopTimeout = dur
 	}
 
-	switch temp.StopSignal {
-	case "":
-		config.StopSignal = 0
-	case "HUP", "SIGHUP", "hangup", "1":
-		config.StopSignal = syscall.SIGHUP
-	case "INT", "SIGINT", "interrupt", "2":
-		config.StopSignal = syscall.SIGINT
-	case "QUIT", "SIGQUIT", "quit", "3":
-		config.StopSignal = syscall.SIGQUIT
-	case "ABRT", "SIGABRT", "aborted", "abort", "6":
-		config.StopSignal = syscall.SIGABRT
-	case "KILL", "SIGKILL", "killed", "kill", "9":
-		config.StopSignal = syscall.SIGKILL
-	case "USR1", "SIGUSR1", "user defined signal 1", "10":
-		config.StopSignal = syscall.SIGUSR1
-	case "USR2", "SIGUSR2", "user defined signal 2", "12":
-		config.StopSignal = syscall.SIGUSR1
-	case "TERM", "SIGTERM", "terminated", "terminate", "15":
-		config.StopSignal = syscall.SIGTERM
-	default:
-		return errors.New("unknown stop_signal name")
+	stopSig, err := parseSignal(temp.StopSignal, "stop_signal")
+	if err != nil {
+		return err
 	}
+	config.StopSignal = stopSig
 
 	return nil
 }

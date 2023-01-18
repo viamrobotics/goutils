@@ -29,3 +29,13 @@ func TempDir(dir, pattern string) (string, error) {
 	}
 	return dir, err
 }
+
+// TempFile returns a new unique temporary file using the given name.
+func TempFile(t *testing.T, name string) *os.File {
+	t.Helper()
+	tempFile := filepath.Join(t.TempDir(), name)
+	//nolint:gosec
+	f, err := os.Create(tempFile)
+	test.That(t, err, test.ShouldBeNil)
+	return f
+}
