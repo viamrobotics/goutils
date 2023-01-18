@@ -24,7 +24,7 @@ func SignWebAuthAccessToken(key *rsa.PrivateKey, entity, aud, iss, keyID string)
 				Audience: []string{aud},
 				Issuer:   iss,
 				// in prod this may not be 1:1 to the email. This is usually the user id from auth0. For testing ensure it does not
-				// match the email of the the entity.
+				// match the email of the entity.
 				Subject:  fmt.Sprintf("viam/%s", entity),
 				IssuedAt: jwt.NewNumericDate(time.Now()),
 			},

@@ -30,7 +30,10 @@ var (
 		{"pointer map", pointerMap, map[string]interface{}{"foo": map[string]interface{}{"x": 1.1, "y": 2.2, "z": 3.3}}},
 		{"nested map", nestedMap, map[string]interface{}{"foo": map[string]interface{}{"bar": "bar2"}}},
 		{"struct map", structMap, map[string]interface{}{"foo": map[string]interface{}{"x": 1.1, "y": 2.2, "z": 3.3}}},
-		{"struct map map", structMapMap, map[string]interface{}{"foo": map[string]interface{}{"status": map[string]interface{}{"foo": "bar"}}}},
+		{
+			"struct map of map", structMapMap,
+			map[string]interface{}{"foo": map[string]interface{}{"status": map[string]interface{}{"foo": "bar"}}},
+		},
 	}
 )
 

@@ -220,7 +220,7 @@ func WithDebug() ServerOption {
 // WithTLSAuthHandler returns a ServerOption which when TLS info is available to a connection, it will
 // authenticate the given entities in the event that no other authentication has been established via
 // the standard auth handler. Optionally, verifyEntity may be specified which can do further entity
-// checking and return return opaque info about the entity that will be bound to the context accessible
+// checking and return opaque info about the entity that will be bound to the context accessible
 // via ContextAuthEntity.
 func WithTLSAuthHandler(entities []string, verifyEntity func(ctx context.Context, entities ...string) (interface{}, error)) ServerOption {
 	return newFuncServerOption(func(o *serverOptions) error {
@@ -310,7 +310,7 @@ func WithUnknownServiceHandler(streamHandler grpc.StreamHandler) ServerOption {
 	})
 }
 
-// WithStatsHandler returns a ServerOption which sets the the stats handler on the
+// WithStatsHandler returns a ServerOption which sets the stats handler on the
 // DialOption that specifies the stats handler for all the RPCs and underlying network
 // connections.
 func WithStatsHandler(handler stats.Handler) ServerOption {

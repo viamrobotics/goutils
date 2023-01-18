@@ -69,7 +69,7 @@ type dialOptions struct {
 // DialMulticastDNSOptions dictate any special settings to apply while dialing via mDNS.
 type DialMulticastDNSOptions struct {
 	// Disable disables mDNS service discovery for other robots. You may want to use this
-	// if you do not trust the network you're in to to truthfully advertise services. That
+	// if you do not trust the network you're in to truthfully advertise services. That
 	// being said, if this is a concern, you should use TLS server verification.
 	Disable bool
 
@@ -239,7 +239,7 @@ func WithDisableDirectGRPC() DialOption {
 	})
 }
 
-// WithDialStatsHandler returns a DialOption which sets the the stats handler on the
+// WithDialStatsHandler returns a DialOption which sets the stats handler on the
 // DialOption that specifies the stats handler for all the RPCs and underlying network
 // connections.
 func WithDialStatsHandler(handler stats.Handler) DialOption {

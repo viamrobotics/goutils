@@ -24,6 +24,15 @@ For example, try running a simple echo server with:
 make example-echo/run-server
 ```
 
+## Windows Support
+
+### Development Dependencies
+
+* bash (from https://gitforwindows.org/ is good)
+* gcc (see https://www.msys2.org/)
+
+Support is not well tested yet.
+
 ## License 
 Copyright 2021-2022 Viam Inc.
 

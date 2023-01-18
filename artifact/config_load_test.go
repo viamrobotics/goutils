@@ -161,8 +161,7 @@ func TestLoadConfigFromFile(t *testing.T) {
 	t.Run("not found", func(t *testing.T) {
 		dir := t.TempDir()
 		_, err := LoadConfigFromFile(filepath.Join(dir, "config.json"))
-		test.That(t, err, test.ShouldNotBeNil)
-		test.That(t, err.Error(), test.ShouldContainSubstring, "no such")
+		test.That(t, os.IsNotExist(err), test.ShouldBeTrue)
 	})
 
 	t.Run("without tree", func(t *testing.T) {

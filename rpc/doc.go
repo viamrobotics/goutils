@@ -43,7 +43,7 @@ request client certificates. This will not negatively affect any UI hosted (peer
 the server's GRPCHandler because since that handler will only use the tls.Config of the http.Server hosting it,
 separate from the internal one.
 
-# Authentication
+# Authentication Modes
 
 Authentication into gRPC works by configuring a server with a series of authentication handlers provided
 by this framework. When one authentication handler is enabled, all requests must be authenticated, except
@@ -83,7 +83,7 @@ Expiration of JWTs is not yet handled/support; see:
 - https://github.com/viamrobotics/goutils/issues/11
 - https://github.com/viamrobotics/goutils/issues/13
 
-# Authorization
+# Authorization Modes
 
 Authorization is strictly not handled by this framework. It's up to your registered services/methods
 to handle authorization.

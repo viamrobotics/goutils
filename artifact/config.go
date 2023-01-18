@@ -2,7 +2,6 @@ package artifact
 
 import (
 	"encoding/json"
-	"path/filepath"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -16,11 +15,7 @@ var (
 
 	// DefaultCachePath is the default relative location to store all cached
 	// files (by hash).
-	DefaultCachePath = filepath.Join(DotDir, "cache")
-
-	// DefaultRootPath is the default relative location to store artifacts pulled
-	// from the tree.
-	DefaultRootPath = filepath.Join(DotDir, "data")
+	DefaultCachePath = "cache"
 )
 
 // DefaultSourcePullSizeLimitBytes is the limit where if a normal pull happens,
