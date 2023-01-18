@@ -10,6 +10,8 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -1595,7 +1597,16 @@ func TestDialUnix(t *testing.T) {
 	defer func() {
 		test.That(t, os.RemoveAll(dir), test.ShouldBeNil)
 	}()
-	socketPath := dir + "/test.sock"
+	socketPath := filepath.ToSlash(filepath.Join(dir, "test.sock"))
+	if runtime.GOOS == "windows" {
+		// on windows, we need to craft a good enough looking URL for gRPC which
+		// means we need to take out the volume which will have the current drive
+		// be used. In a client server relationship for windows dialing, this must
+		// be known. That is, if this is a multi process UDS, then for the purposes
+		// of dialing without any resolver modifications to gRPC, they must initially
+		// agree on using the same drive.
+		socketPath = socketPath[2:]
+	}
 
 	httpListener, err := net.Listen("unix", socketPath)
 	test.That(t, err, test.ShouldBeNil)

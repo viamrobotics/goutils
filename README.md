@@ -26,10 +26,11 @@ make example-echo/run-server
 
 ## Windows Support
 
+Windows 10 22H2 and up.
+
 ### Development Dependencies
 
 * bash (from https://gitforwindows.org/ is good)
-* gcc (see https://www.msys2.org/)
 
 Support is not well tested yet.
 
