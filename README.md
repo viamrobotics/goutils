@@ -34,6 +34,10 @@ Windows 10 22H2 and up.
 
 Support is not well tested yet.
 
+### Known Issues
+
+* rpc: ICE between local connections found via ICE mDNS appear to be flaky in the establishment phase.
+
 ## License 
 Copyright 2021-2022 Viam Inc.
 

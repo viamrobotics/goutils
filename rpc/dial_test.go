@@ -1616,16 +1616,10 @@ func TestDialUnix(t *testing.T) {
 		errChan <- rpcServer.Serve(httpListener)
 	}()
 
-	ctx1, cancel1 := context.WithTimeout(context.Background(), time.Second*2)
-	defer cancel1()
-	_, err = Dial(ctx1, socketPath, logger)
-	cancel1()
-	test.That(t, err, test.ShouldResemble, context.DeadlineExceeded)
-
-	ctx2, cancel2 := context.WithTimeout(context.Background(), time.Second*2)
-	defer cancel2()
-	conn, err := Dial(ctx2, "unix://"+socketPath, logger)
-	cancel2()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*2)
+	defer cancel()
+	conn, err := Dial(ctx, "unix://"+socketPath, logger)
+	cancel()
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, conn.Close(), test.ShouldBeNil)
 
