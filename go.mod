@@ -15,7 +15,7 @@ require (
 	github.com/coreos/go-oidc/v3 v3.1.0
 	github.com/edaniels/golinters v0.0.5-0.20210512224240-495d3b8eed19
 	github.com/edaniels/golog v0.0.0-20220930140416-6e52e83a97fc
-	github.com/edaniels/zeroconf v1.0.2
+	github.com/edaniels/zeroconf v1.0.4
 	github.com/fatih/color v1.13.0
 	github.com/fsnotify/fsnotify v1.5.4
 	github.com/fullstorydev/grpcurl v1.8.0
