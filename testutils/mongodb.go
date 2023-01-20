@@ -130,11 +130,11 @@ func backingMongoDBClient() (*mongo.Client, error) {
 }
 
 // BackingMongoDBClient returns a backing MongoDB client to use.
-func BackingMongoDBClient(t *testing.T) *mongo.Client {
-	t.Helper()
+func BackingMongoDBClient(tb testing.TB) *mongo.Client {
+	tb.Helper()
 	client, err := backingMongoDBClient()
 	if err != nil {
-		skipWithError(t, err)
+		skipWithError(tb, err)
 		return nil
 	}
 	return client

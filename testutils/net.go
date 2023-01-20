@@ -23,10 +23,10 @@ import (
 var waitDur = 5 * time.Second
 
 // ReserveRandomListener returns a new TCP listener at a random port.
-func ReserveRandomListener(t *testing.T) *net.TCPListener {
-	t.Helper()
+func ReserveRandomListener(tb testing.TB) *net.TCPListener {
+	tb.Helper()
 	listener, err := net.ListenTCP("tcp", &net.TCPAddr{Port: 0})
-	test.That(t, err, test.ShouldBeNil)
+	test.That(tb, err, test.ShouldBeNil)
 	return listener
 }
 

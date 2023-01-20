@@ -16,23 +16,23 @@ var (
 	internetConnected *bool
 )
 
-func skipWithError(t *testing.T, err error) {
-	t.Helper()
+func skipWithError(tb testing.TB, err error) {
+	tb.Helper()
 	if noSkip {
-		t.Fatal(err)
+		tb.Fatal(err)
 		return
 	}
-	t.Skip(err)
+	tb.Skip(err)
 }
 
 // SkipUnlessInternet verifies there is an internet connection.
-func SkipUnlessInternet(t *testing.T) {
-	t.Helper()
+func SkipUnlessInternet(tb testing.TB) {
+	tb.Helper()
 	if internetConnected == nil {
 		var connected bool
 		conn, err := net.Dial("tcp", "mozilla.org:80")
 		if err == nil {
-			test.That(t, conn.Close(), test.ShouldBeNil)
+			test.That(tb, conn.Close(), test.ShouldBeNil)
 			connected = true
 		}
 		internetConnected = &connected
@@ -40,7 +40,7 @@ func SkipUnlessInternet(t *testing.T) {
 	if *internetConnected {
 		return
 	}
-	skipWithError(t, errors.New("internet not connected"))
+	skipWithError(tb, errors.New("internet not connected"))
 }
 
 func artifactGoogleCreds() (string, error) {
@@ -52,21 +52,21 @@ func artifactGoogleCreds() (string, error) {
 }
 
 // SkipUnlessArtifactGoogleCreds verifies google credentials are available for artifact.
-func SkipUnlessArtifactGoogleCreds(t *testing.T) {
-	t.Helper()
+func SkipUnlessArtifactGoogleCreds(tb testing.TB) {
+	tb.Helper()
 	_, err := artifactGoogleCreds()
 	if err == nil {
 		return
 	}
-	skipWithError(t, err)
+	skipWithError(tb, err)
 }
 
 // ArtifactGoogleCreds returns the google credentials for artifact.
-func ArtifactGoogleCreds(t *testing.T) string {
-	t.Helper()
+func ArtifactGoogleCreds(tb testing.TB) string {
+	tb.Helper()
 	creds, err := artifactGoogleCreds()
 	if err != nil {
-		skipWithError(t, err)
+		skipWithError(tb, err)
 		return ""
 	}
 	return creds
@@ -82,21 +82,21 @@ func backingMongoDBURI() (string, error) {
 }
 
 // SkipUnlessBackingMongoDBURI verifies there is a backing MongoDB URI to use.
-func SkipUnlessBackingMongoDBURI(t *testing.T) {
-	t.Helper()
+func SkipUnlessBackingMongoDBURI(tb testing.TB) {
+	tb.Helper()
 	_, err := backingMongoDBURI()
 	if err == nil {
 		return
 	}
-	skipWithError(t, err)
+	skipWithError(tb, err)
 }
 
 // BackingMongoDBURI returns the backing MongoDB URI to use.
-func BackingMongoDBURI(t *testing.T) string {
-	t.Helper()
+func BackingMongoDBURI(tb testing.TB) string {
+	tb.Helper()
 	mongoURI, err := backingMongoDBURI()
 	if err != nil {
-		skipWithError(t, err)
+		skipWithError(tb, err)
 		return ""
 	}
 	return mongoURI

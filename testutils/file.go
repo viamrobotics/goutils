@@ -10,10 +10,10 @@ import (
 )
 
 // TempDirT creates a temporary directory and fails the test if it cannot.
-func TempDirT(t *testing.T, dir, pattern string) string {
-	t.Helper()
+func TempDirT(tb testing.TB, dir, pattern string) string {
+	tb.Helper()
 	tempDir, err := TempDir(dir, pattern)
-	test.That(t, err, test.ShouldBeNil)
+	test.That(tb, err, test.ShouldBeNil)
 	return tempDir
 }
 
@@ -31,11 +31,11 @@ func TempDir(dir, pattern string) (string, error) {
 }
 
 // TempFile returns a new unique temporary file using the given name.
-func TempFile(t *testing.T, name string) *os.File {
-	t.Helper()
-	tempFile := filepath.Join(t.TempDir(), name)
+func TempFile(tb testing.TB, name string) *os.File {
+	tb.Helper()
+	tempFile := filepath.Join(tb.TempDir(), name)
 	//nolint:gosec
 	f, err := os.Create(tempFile)
-	test.That(t, err, test.ShouldBeNil)
+	test.That(tb, err, test.ShouldBeNil)
 	return f
 }
