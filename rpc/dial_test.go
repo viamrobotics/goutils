@@ -10,6 +10,8 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -1595,7 +1597,16 @@ func TestDialUnix(t *testing.T) {
 	defer func() {
 		test.That(t, os.RemoveAll(dir), test.ShouldBeNil)
 	}()
-	socketPath := dir + "/test.sock"
+	socketPath := filepath.ToSlash(filepath.Join(dir, "test.sock"))
+	if runtime.GOOS == "windows" {
+		// on windows, we need to craft a good enough looking URL for gRPC which
+		// means we need to take out the volume which will have the current drive
+		// be used. In a client server relationship for windows dialing, this must
+		// be known. That is, if this is a multi process UDS, then for the purposes
+		// of dialing without any resolver modifications to gRPC, they must initially
+		// agree on using the same drive.
+		socketPath = socketPath[2:]
+	}
 
 	httpListener, err := net.Listen("unix", socketPath)
 	test.That(t, err, test.ShouldBeNil)
@@ -1605,16 +1616,10 @@ func TestDialUnix(t *testing.T) {
 		errChan <- rpcServer.Serve(httpListener)
 	}()
 
-	ctx1, cancel1 := context.WithTimeout(context.Background(), time.Second*2)
-	defer cancel1()
-	_, err = Dial(ctx1, socketPath, logger)
-	cancel1()
-	test.That(t, err, test.ShouldResemble, context.DeadlineExceeded)
-
-	ctx2, cancel2 := context.WithTimeout(context.Background(), time.Second*2)
-	defer cancel2()
-	conn, err := Dial(ctx2, "unix://"+socketPath, logger)
-	cancel2()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*2)
+	defer cancel()
+	conn, err := Dial(ctx, "unix://"+socketPath, logger)
+	cancel()
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, conn.Close(), test.ShouldBeNil)
 

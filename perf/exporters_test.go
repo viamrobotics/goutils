@@ -15,6 +15,8 @@ import (
 )
 
 // ExampleNewGrpcStatsHandler shows how to create a new gRPC server with intrumentation for metrics/spans.
+//
+//nolint:testableexamples
 func ExampleNewGrpcStatsHandler() {
 	logger := golog.NewDevelopmentLogger("perf-example")
 
@@ -44,6 +46,8 @@ func ExampleNewGrpcStatsHandler() {
 }
 
 // ExampleWrapHTTPHandlerForStats shows how to create a new HTTP server with intrumentation for metrics/spans.
+//
+//nolint:testableexamples
 func ExampleWrapHTTPHandlerForStats() {
 	ctx := context.Background()
 
@@ -87,6 +91,8 @@ func ExampleWrapHTTPHandlerForStats() {
 }
 
 // ExampleNewRoundTripperWithStats shows how to instrument a new HTTP client with metrics.
+//
+//nolint:testableexamples
 func ExampleNewRoundTripperWithStats() {
 	logger := golog.NewDevelopmentLogger("perf-example")
 	client := &http.Client{

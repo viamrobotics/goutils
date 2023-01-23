@@ -75,7 +75,7 @@ func NewCloudExporter(opts CloudOptions) (Exporter, error) {
 		// for a limited subset of resource types when creating custom metrics. The default "Global"
 		// is vauge, `generic_node` is better but doesn't have built in label for version/module.
 		// GAE is essentially Cloud Run application under the hood and the resource lables with the
-		// the type match to Cloud Run. With a vauge resource type we need to add lables on each metric
+		// type match to Cloud Run. With a vauge resource type we need to add lables on each metric
 		// which makes the UI in Cloud Monitoring a little hard to reason about the labels on the
 		// metric vs resource.
 		//

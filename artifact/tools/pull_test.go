@@ -25,7 +25,7 @@ func TestPull(t *testing.T) {
 			"type": "fs",
 			"path": "%s"
 		}
-	}`, sourcePath)), 0o644), test.ShouldBeNil)
+	}`, strings.ReplaceAll(sourcePath, "\\", "\\\\"))), 0o644), test.ShouldBeNil)
 	treePath := filepath.Join(dir, artifact.DotDir, artifact.TreeName)
 	test.That(t, os.WriteFile(treePath, []byte(`{
 		"one": {
@@ -83,7 +83,7 @@ func TestPullLimit(t *testing.T) {
 			"path": "%s"
 		},
 		"source_pull_size_limit": 3
-	}`, sourcePath)), 0o644), test.ShouldBeNil)
+	}`, strings.ReplaceAll(sourcePath, "\\", "\\\\"))), 0o644), test.ShouldBeNil)
 	treePath := filepath.Join(dir, artifact.DotDir, artifact.TreeName)
 	test.That(t, os.WriteFile(treePath, []byte(`{
 		"one": {

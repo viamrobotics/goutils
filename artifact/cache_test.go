@@ -69,6 +69,7 @@ func TestCache(t *testing.T) {
 		reader, err := cache.Load("hash1")
 		test.That(t, err, test.ShouldBeNil)
 		rd, err := io.ReadAll(reader)
+		test.That(t, reader.Close(), test.ShouldBeNil)
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, string(rd), test.ShouldEqual, "hello")
 
@@ -123,12 +124,14 @@ func TestCache(t *testing.T) {
 		reader, err = cache.Load(barHash)
 		test.That(t, err, test.ShouldBeNil)
 		rd, err = io.ReadAll(reader)
+		test.That(t, reader.Close(), test.ShouldBeNil)
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, string(rd), test.ShouldResemble, barContent)
 
 		reader, err = cache.Load(bapHash)
 		test.That(t, err, test.ShouldBeNil)
 		rd, err = io.ReadAll(reader)
+		test.That(t, reader.Close(), test.ShouldBeNil)
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, string(rd), test.ShouldResemble, bapContent)
 
@@ -141,6 +144,7 @@ func TestCache(t *testing.T) {
 		reader, err = cache.Load(bapHash)
 		test.That(t, err, test.ShouldBeNil)
 		rd, err = io.ReadAll(reader)
+		test.That(t, reader.Close(), test.ShouldBeNil)
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, string(rd), test.ShouldResemble, bapContent)
 
@@ -164,13 +168,11 @@ func TestCache(t *testing.T) {
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, cache.Clean(), test.ShouldBeNil)
 		_, err = os.Stat(deletePath)
-		test.That(t, err, test.ShouldNotBeNil)
-		test.That(t, err.Error(), test.ShouldContainSubstring, "no such")
+		test.That(t, os.IsNotExist(err), test.ShouldBeTrue)
 
 		test.That(t, os.RemoveAll(cache.NewPath("/")), test.ShouldBeNil)
 		_, err = os.Stat(bapPath)
-		test.That(t, err, test.ShouldNotBeNil)
-		test.That(t, err.Error(), test.ShouldContainSubstring, "no such")
+		test.That(t, os.IsNotExist(err), test.ShouldBeTrue)
 
 		_, err = cache.Ensure("baz/bap", true)
 		test.That(t, err, test.ShouldBeNil)
@@ -179,8 +181,7 @@ func TestCache(t *testing.T) {
 		test.That(t, string(rd), test.ShouldEqual, newBapContent)
 
 		_, err = os.Stat(barPath)
-		test.That(t, err, test.ShouldNotBeNil)
-		test.That(t, err.Error(), test.ShouldContainSubstring, "no such")
+		test.That(t, os.IsNotExist(err), test.ShouldBeTrue)
 
 		_, err = cache.Ensure("/", true)
 		test.That(t, err, test.ShouldBeNil)

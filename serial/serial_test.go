@@ -1,6 +1,7 @@
 package serial
 
 import (
+	"os"
 	"testing"
 
 	"go.viam.com/test"
@@ -9,5 +10,5 @@ import (
 func TestOpen(t *testing.T) {
 	_, err := Open("")
 	test.That(t, err, test.ShouldNotBeNil)
-	test.That(t, err.Error(), test.ShouldContainSubstring, "no such")
+	test.That(t, os.IsNotExist(err), test.ShouldBeTrue)
 }

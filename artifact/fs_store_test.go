@@ -10,8 +10,7 @@ import (
 
 func TestNewFileSystemStore(t *testing.T) {
 	_, err := NewStore(&FileSystemStoreConfig{})
-	test.That(t, err, test.ShouldNotBeNil)
-	test.That(t, err.Error(), test.ShouldContainSubstring, "no such file")
+	test.That(t, os.IsNotExist(err), test.ShouldBeTrue)
 
 	dir := t.TempDir()
 	newDir := filepath.Join(dir, "new")

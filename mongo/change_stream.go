@@ -45,7 +45,7 @@ type ChangeEventNamespace struct {
 	Collection string `bson:"coll"`
 }
 
-// ChangeEventTo is used when when operationType is rename; This document displays the
+// ChangeEventTo is used when operationType is rename; This document displays the
 // new name for the ns collection. This document is omitted for all other values of operationType.
 type ChangeEventTo ChangeEventNamespace
 

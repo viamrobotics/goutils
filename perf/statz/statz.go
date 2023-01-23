@@ -156,7 +156,7 @@ func createAndRegisterOpenCensusMetric(name string, measure stats.Measure, agg *
 	tagKeys := tagKeysFromConfig(&cfg)
 
 	// We do this twice to ensure the ordering of the key
-	// is not changed when when we use it in labelKeys. OpenCensus
+	// is not changed when we use it in labelKeys. OpenCensus
 	// seems to reorder the TagKeys and we cannot reliably use it.
 	tagKeysForLabels := tagKeysFromConfig(&cfg)
 

@@ -4,8 +4,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"os"
-	"path/filepath"
 
 	"github.com/edaniels/golog"
 	"github.com/fatih/color"
@@ -50,6 +48,7 @@ func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) (err 
 	}
 	switch topArgsParsed.Command {
 	case commandNameClean:
+		//nolint:contextcheck
 		if err := tools.Clean(); err != nil {
 			logger.Fatal(err)
 		}
@@ -58,10 +57,12 @@ func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) (err 
 		if err := utils.ParseFlags(utils.StringSliceRemove(args, 1), &pullArgsParsed); err != nil {
 			return err
 		}
+		//nolint:contextcheck
 		if err := tools.Pull(pullArgsParsed.TreePath, pullArgsParsed.All); err != nil {
 			logger.Fatal(err)
 		}
 	case commandNamePush:
+		//nolint:contextcheck
 		if err := tools.Push(); err != nil {
 			logger.Fatal(err)
 		}
@@ -70,15 +71,12 @@ func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) (err 
 		if err := utils.ParseFlags(utils.StringSliceRemove(args, 1), &removeArgsParsed); err != nil {
 			return err
 		}
-		filePath, err := makePathToArtifact(removeArgsParsed.Path)
-		if err != nil {
-			logger.Fatal(err)
-		}
-
-		if err := tools.Remove(filePath); err != nil {
+		//nolint:contextcheck
+		if err := tools.Remove(removeArgsParsed.Path); err != nil {
 			logger.Fatal(err)
 		}
 	case commandNameStatus:
+		//nolint:contextcheck
 		status, err := tools.Status()
 		if err != nil {
 			logger.Fatal(err)
@@ -114,23 +112,4 @@ func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) (err 
 		return errors.New("usage: artifact <clean|pull|push|rm|status>")
 	}
 	return nil
-}
-
-func makePathToArtifact(filePath string) (string, error) {
-	if filePath == "" {
-		return "", nil
-	}
-	if filepath.IsAbs(filePath) {
-		return filePath, nil
-	}
-	wd, err := os.Getwd()
-	if err != nil {
-		return "", err
-	}
-	absPath, err := filepath.Abs(wd)
-	if err != nil {
-		return "", err
-	}
-	filePath = filepath.Join(absPath, filePath)
-	return filePath, nil
 }

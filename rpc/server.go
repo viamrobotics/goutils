@@ -785,6 +785,7 @@ func (ss *simpleServer) RegisterServiceServer(
 	ss.serviceServers = append(ss.serviceServers, svcServer)
 	ss.grpcServer.RegisterService(svcDesc, svcServer)
 	if ss.webrtcServer != nil {
+		//nolint:contextcheck
 		ss.webrtcServer.RegisterService(svcDesc, svcServer)
 	}
 	if len(svcHandlers) != 0 {

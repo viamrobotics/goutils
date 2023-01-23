@@ -18,21 +18,22 @@ import (
 
 //nolint:dupl
 func TestMainMain(t *testing.T) {
-	// all other setups do not need to undo; just this one.
 	_, mainUndo := artifact.TestSetupGlobalCache(t)
 	defer mainUndo()
 
+	var unsetup func()
+
 	before := func(t *testing.T, _ golog.Logger, _ *testutils.ContextualMainExecution) {
-		t.Helper()
-		dir, _ := artifact.TestSetupGlobalCache(t)
+		dir, innerUnsetup := artifact.TestSetupGlobalCache(t)
+		unsetup = innerUnsetup
 		test.That(t, os.MkdirAll(filepath.Join(dir, artifact.DotDir), 0o755), test.ShouldBeNil)
 		confPath := filepath.Join(dir, artifact.DotDir, artifact.ConfigName)
 		test.That(t, os.WriteFile(confPath, []byte(`{}`), 0o644), test.ShouldBeNil)
 	}
 
 	pullBeforeWithLimit := func(t *testing.T, limit bool) {
-		t.Helper()
-		dir, _ := artifact.TestSetupGlobalCache(t)
+		dir, innerUnsetup := artifact.TestSetupGlobalCache(t)
+		unsetup = innerUnsetup
 		test.That(t, os.MkdirAll(filepath.Join(dir, artifact.DotDir), 0o755), test.ShouldBeNil)
 		confPath := filepath.Join(dir, artifact.DotDir, artifact.ConfigName)
 		sourcePath := filepath.Join(dir, "source")
@@ -44,14 +45,14 @@ func TestMainMain(t *testing.T) {
 				"path": "%s"
 			},
 			"source_pull_size_limit": 3
-		}`, sourcePath)), 0o644), test.ShouldBeNil)
+		}`, strings.ReplaceAll(sourcePath, "\\", "\\\\"))), 0o644), test.ShouldBeNil)
 		} else {
 			test.That(t, os.WriteFile(confPath, []byte(fmt.Sprintf(`{
 			"source_store": {
 				"type": "fs",
 				"path": "%s"
 			}
-		}`, sourcePath)), 0o644), test.ShouldBeNil)
+		}`, strings.ReplaceAll(sourcePath, "\\", "\\\\"))), 0o644), test.ShouldBeNil)
 		}
 		treePath := filepath.Join(dir, artifact.DotDir, artifact.TreeName)
 		test.That(t, os.WriteFile(treePath, []byte(`{
@@ -78,18 +79,16 @@ func TestMainMain(t *testing.T) {
 		test.That(t, store.Store("baz", strings.NewReader("bazcontent")), test.ShouldBeNil)
 	}
 	pullBefore := func(t *testing.T, _ golog.Logger, _ *testutils.ContextualMainExecution) {
-		t.Helper()
 		pullBeforeWithLimit(t, false)
 	}
 
 	pullLimitBefore := func(t *testing.T, _ golog.Logger, _ *testutils.ContextualMainExecution) {
-		t.Helper()
 		pullBeforeWithLimit(t, true)
 	}
 
 	pushBefore := func(t *testing.T, _ golog.Logger, _ *testutils.ContextualMainExecution) {
-		t.Helper()
-		dir, _ := artifact.TestSetupGlobalCache(t)
+		dir, innerUnsetup := artifact.TestSetupGlobalCache(t)
+		unsetup = innerUnsetup
 		test.That(t, os.MkdirAll(filepath.Join(dir, artifact.DotDir), 0o755), test.ShouldBeNil)
 		confPath := filepath.Join(dir, artifact.DotDir, artifact.ConfigName)
 		test.That(t, os.WriteFile(confPath, []byte(`{}`), 0o644), test.ShouldBeNil)
@@ -103,8 +102,8 @@ func TestMainMain(t *testing.T) {
 	}
 
 	removeBefore := func(t *testing.T, _ golog.Logger, _ *testutils.ContextualMainExecution) {
-		t.Helper()
-		dir, _ := artifact.TestSetupGlobalCache(t)
+		dir, innerUnsetup := artifact.TestSetupGlobalCache(t)
+		unsetup = innerUnsetup
 		test.That(t, os.MkdirAll(filepath.Join(dir, artifact.DotDir), 0o755), test.ShouldBeNil)
 		confPath := filepath.Join(dir, artifact.DotDir, artifact.ConfigName)
 		test.That(t, os.WriteFile(confPath, []byte(`{}`), 0o644), test.ShouldBeNil)
@@ -119,8 +118,8 @@ func TestMainMain(t *testing.T) {
 	}
 
 	statusBefore := func(t *testing.T, _ golog.Logger, _ *testutils.ContextualMainExecution) {
-		t.Helper()
-		dir, _ := artifact.TestSetupGlobalCache(t)
+		dir, innerUnsetup := artifact.TestSetupGlobalCache(t)
+		unsetup = innerUnsetup
 		test.That(t, os.MkdirAll(filepath.Join(dir, artifact.DotDir), 0o755), test.ShouldBeNil)
 		confPath := filepath.Join(dir, artifact.DotDir, artifact.ConfigName)
 		test.That(t, os.WriteFile(confPath, []byte(`{}`), 0o644), test.ShouldBeNil)
@@ -133,16 +132,19 @@ func TestMainMain(t *testing.T) {
 		test.That(t, os.WriteFile(otherFilePath, []byte("world"), 0o644), test.ShouldBeNil)
 	}
 
+	teardown := func(t *testing.T, _ *observer.ObservedLogs) {
+		unsetup()
+	}
+
 	testutils.TestMain(t, mainWithArgs, []testutils.MainTestCase{
 		{"no args", nil, "clean|pull|push|rm|status", nil, nil, nil},
 		{"unknown", []string{"unknown"}, "clean|pull|push|rm|status", nil, nil, nil},
-		{"clean nothing", []string{"clean"}, "", before, nil, nil},
+		{"clean nothing", []string{"clean"}, "", before, nil, teardown},
 		{
 			"clean something",
 			[]string{"clean"},
 			"",
 			func(t *testing.T, logger golog.Logger, exec *testutils.ContextualMainExecution) {
-				t.Helper()
 				before(t, logger, exec)
 
 				filePath := artifact.MustNewPath("some/file")
@@ -151,7 +153,7 @@ func TestMainMain(t *testing.T) {
 				_, err := os.Stat(filePath)
 				test.That(t, err, test.ShouldBeNil)
 			}, nil, func(t *testing.T, _ *observer.ObservedLogs) {
-				t.Helper()
+				defer unsetup()
 				filePath := artifact.MustNewPath("some/file")
 				_, err := os.Stat(filePath)
 				test.That(t, err, test.ShouldNotBeNil)
@@ -163,10 +165,9 @@ func TestMainMain(t *testing.T) {
 			[]string{"pull"},
 			"",
 			func(t *testing.T, logger golog.Logger, exec *testutils.ContextualMainExecution) {
-				t.Helper()
 				pullBefore(t, logger, exec)
 			}, nil, func(t *testing.T, _ *observer.ObservedLogs) {
-				t.Helper()
+				defer unsetup()
 				_, err := os.Stat(artifact.MustNewPath("one/two"))
 				test.That(t, err, test.ShouldBeNil)
 				_, err = os.Stat(artifact.MustNewPath("one/three"))
@@ -180,10 +181,9 @@ func TestMainMain(t *testing.T) {
 			[]string{"pull", "one/two"},
 			"",
 			func(t *testing.T, logger golog.Logger, exec *testutils.ContextualMainExecution) {
-				t.Helper()
 				pullBefore(t, logger, exec)
 			}, nil, func(t *testing.T, _ *observer.ObservedLogs) {
-				t.Helper()
+				defer unsetup()
 				_, err := os.Stat(artifact.MustNewPath("one/two"))
 				test.That(t, err, test.ShouldBeNil)
 				_, err = os.Stat(artifact.MustNewPath("one/three"))
@@ -197,10 +197,9 @@ func TestMainMain(t *testing.T) {
 			[]string{"pull"},
 			"",
 			func(t *testing.T, logger golog.Logger, exec *testutils.ContextualMainExecution) {
-				t.Helper()
 				pullLimitBefore(t, logger, exec)
 			}, nil, func(t *testing.T, _ *observer.ObservedLogs) {
-				t.Helper()
+				defer unsetup()
 				_, err := os.Stat(artifact.MustNewPath("one/two"))
 				test.That(t, err, test.ShouldNotBeNil)
 				_, err = os.Stat(artifact.MustNewPath("one/three"))
@@ -214,10 +213,9 @@ func TestMainMain(t *testing.T) {
 			[]string{"pull", "one/two"},
 			"",
 			func(t *testing.T, logger golog.Logger, exec *testutils.ContextualMainExecution) {
-				t.Helper()
 				pullLimitBefore(t, logger, exec)
 			}, nil, func(t *testing.T, _ *observer.ObservedLogs) {
-				t.Helper()
+				defer unsetup()
 				_, err := os.Stat(artifact.MustNewPath("one/two"))
 				test.That(t, err, test.ShouldNotBeNil)
 				_, err = os.Stat(artifact.MustNewPath("one/three"))
@@ -231,10 +229,9 @@ func TestMainMain(t *testing.T) {
 			[]string{"pull", "--all"},
 			"",
 			func(t *testing.T, logger golog.Logger, exec *testutils.ContextualMainExecution) {
-				t.Helper()
 				pullLimitBefore(t, logger, exec)
 			}, nil, func(t *testing.T, _ *observer.ObservedLogs) {
-				t.Helper()
+				defer unsetup()
 				_, err := os.Stat(artifact.MustNewPath("one/two"))
 				test.That(t, err, test.ShouldBeNil)
 				_, err = os.Stat(artifact.MustNewPath("one/three"))
@@ -248,10 +245,9 @@ func TestMainMain(t *testing.T) {
 			[]string{"push"},
 			"",
 			func(t *testing.T, logger golog.Logger, exec *testutils.ContextualMainExecution) {
-				t.Helper()
 				pushBefore(t, logger, exec)
 			}, nil, func(t *testing.T, _ *observer.ObservedLogs) {
-				t.Helper()
+				defer unsetup()
 				filePath := artifact.MustNewPath("some/file")
 				otherFilePath := artifact.MustNewPath("some/other_file")
 
@@ -274,11 +270,9 @@ func TestMainMain(t *testing.T) {
 			[]string{"rm", "some/file"},
 			"",
 			func(t *testing.T, logger golog.Logger, exec *testutils.ContextualMainExecution) {
-				t.Helper()
 				removeBefore(t, logger, exec)
-				test.That(t, os.Chdir(artifact.MustNewPath("/")), test.ShouldBeNil)
 			}, nil, func(t *testing.T, _ *observer.ObservedLogs) {
-				t.Helper()
+				defer unsetup()
 				filePath := artifact.MustNewPath("some/file")
 				otherFilePath := artifact.MustNewPath("some/other_file")
 
@@ -300,11 +294,9 @@ func TestMainMain(t *testing.T) {
 			[]string{"rm", "some/unknown_file"},
 			"",
 			func(t *testing.T, logger golog.Logger, exec *testutils.ContextualMainExecution) {
-				t.Helper()
 				removeBefore(t, logger, exec)
-				test.That(t, os.Chdir(artifact.MustNewPath("/")), test.ShouldBeNil)
 			}, nil, func(t *testing.T, _ *observer.ObservedLogs) {
-				t.Helper()
+				defer unsetup()
 				filePath := artifact.MustNewPath("some/file")
 				otherFilePath := artifact.MustNewPath("some/other_file")
 
@@ -322,11 +314,9 @@ func TestMainMain(t *testing.T) {
 			},
 		},
 		{"remove root does nothing", []string{"rm", "/"}, "", func(t *testing.T, logger golog.Logger, exec *testutils.ContextualMainExecution) {
-			t.Helper()
 			removeBefore(t, logger, exec)
-			test.That(t, os.Chdir(artifact.MustNewPath("/")), test.ShouldBeNil)
 		}, nil, func(t *testing.T, _ *observer.ObservedLogs) {
-			t.Helper()
+			defer unsetup()
 			filePath := artifact.MustNewPath("some/file")
 			otherFilePath := artifact.MustNewPath("some/other_file")
 
@@ -343,11 +333,11 @@ func TestMainMain(t *testing.T) {
 			test.That(t, err, test.ShouldBeNil)
 		}},
 		{"status", []string{"status"}, "", before, nil, func(t *testing.T, logs *observer.ObservedLogs) {
-			t.Helper()
+			defer unsetup()
 			test.That(t, len(logs.FilterMessageSnippet("").All()), test.ShouldEqual, 0)
 		}},
 		{"status unstored", []string{"status"}, "", statusBefore, nil, func(t *testing.T, logs *observer.ObservedLogs) {
-			t.Helper()
+			defer unsetup()
 			filePath := artifact.MustNewPath("some/file")
 			otherFilePath := artifact.MustNewPath("some/other_file")
 
@@ -359,13 +349,13 @@ func TestMainMain(t *testing.T) {
 			test.That(t, messages[0].Message, test.ShouldContainSubstring, otherFilePath)
 		}},
 		{"status modified", []string{"status"}, "", func(t *testing.T, logger golog.Logger, exec *testutils.ContextualMainExecution) {
-			t.Helper()
+			defer unsetup()
 			statusBefore(t, logger, exec)
 			test.That(t, tools.Push(), test.ShouldBeNil)
 			otherFilePath := artifact.MustNewPath("some/other_file")
 			test.That(t, os.WriteFile(otherFilePath, []byte("changes"), 0o644), test.ShouldBeNil)
 		}, nil, func(t *testing.T, logs *observer.ObservedLogs) {
-			t.Helper()
+			defer unsetup()
 			filePath := artifact.MustNewPath("some/file")
 			otherFilePath := artifact.MustNewPath("some/other_file")
 
@@ -381,7 +371,6 @@ func TestMainMain(t *testing.T) {
 			[]string{"status"},
 			"",
 			func(t *testing.T, logger golog.Logger, exec *testutils.ContextualMainExecution) {
-				t.Helper()
 				statusBefore(t, logger, exec)
 				test.That(t, tools.Push(), test.ShouldBeNil)
 				otherFilePath := artifact.MustNewPath("some/other_file")
@@ -390,7 +379,7 @@ func TestMainMain(t *testing.T) {
 				test.That(t, os.MkdirAll(filepath.Dir(newFilePath), 0o755), test.ShouldBeNil)
 				test.That(t, os.WriteFile(newFilePath, []byte("newwwww"), 0o644), test.ShouldBeNil)
 			}, nil, func(t *testing.T, logs *observer.ObservedLogs) {
-				t.Helper()
+				defer unsetup()
 				filePath := artifact.MustNewPath("some/file")
 				otherFilePath := artifact.MustNewPath("some/other_file")
 				newFilePath := artifact.MustNewPath("some/new_file")
