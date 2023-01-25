@@ -120,7 +120,7 @@ type callbackHandler struct {
 
 const (
 	auth0RedirectStateCookieName   = "auth0_redirect_state"
-	auth0RedirectStateCookieMaxAge = time.Second * 60
+	auth0RedirectStateCookieMaxAge = time.Minute * 10
 )
 
 func (h *callbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
