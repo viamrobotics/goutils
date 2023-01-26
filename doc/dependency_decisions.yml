@@ -69,6 +69,14 @@
     :license_links: https://github.com/xdg-go/stringprep/blob/eb5c8f240eb1ea3fe0144fd4d3e0c305492d8eb1/LICENSE
     :versions: []
     :when: 2022-08-15 15:50:08.659677721 Z
+- - :license
+  - github.com/opencensus-integrations/gomongowrapper
+  - Apache License 2.0
+  - :who:
+    :why: 'TODO(RSDK-583): why is license finder unable to detect this license automatically?'
+    :license_links: https://github.com/opencensus-integrations/gomongowrapper/blob/master/LICENSE
+    :versions: []
+    :when: 2023-01-26 08:50:08.659677721 Z
 - - :permit
   - GPLv3
   - :who:
