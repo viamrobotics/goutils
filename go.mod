@@ -29,6 +29,7 @@ require (
 	github.com/jacobsa/go-serial v0.0.0-20180131005756-15cf729a72d4
 	github.com/lestrrat-go/jwx v1.2.25
 	github.com/mitchellh/mapstructure v1.5.0
+	github.com/opencensus-integrations/gomongowrapper v0.0.3
 	github.com/pion/ice/v2 v2.2.6
 	github.com/pion/interceptor v0.1.11
 	github.com/pion/logging v0.2.2

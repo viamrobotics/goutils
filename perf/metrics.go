@@ -9,5 +9,6 @@ func registerApplicationViews() error {
 	return multierr.Combine(
 		registerGrpcViews(),
 		registerHTTPViews(),
+		registerMongoDBViews(),
 	)
 }
