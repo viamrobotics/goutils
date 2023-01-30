@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"runtime"
 	"runtime/debug"
 	"sync"
 	"syscall"
@@ -181,4 +182,66 @@ func SelectContextOrWaitChan(ctx context.Context, c <-chan time.Time) bool {
 	case <-c:
 	}
 	return true
+}
+
+// SlowGoroutineWatcherAfterContext is used to monitor if a goroutine is going "slow".
+// It will first wait for the given context to be done and then kick off
+// a wait based on 'dur'. If 'dur' elapses before the cancel func is called, then
+// currently running goroutines will be dumped. The returned channel can be used to wait for
+// this background goroutine to finish.
+func SlowGoroutineWatcherAfterContext(
+	ctx context.Context,
+	dur time.Duration,
+	slowMsg string,
+	logger golog.Logger,
+) (<-chan struct{}, func()) {
+	return slowGoroutineWatcher(ctx, dur, slowMsg, logger)
+}
+
+// SlowGoroutineWatcher is used to monitor if a goroutine is going "slow".
+// It will first kick off a wait based on 'dur'. If 'dur' elapses before the cancel func is called,
+// then currently running goroutines will be dumped. The returned channel can be used to wait for
+// this background goroutine to finish.
+func SlowGoroutineWatcher(
+	dur time.Duration,
+	slowMsg string,
+	logger golog.Logger,
+) (<-chan struct{}, func()) {
+	//nolint:staticcheck
+	return slowGoroutineWatcher(nil, dur, slowMsg, logger)
+}
+
+func slowGoroutineWatcher(
+	ctx context.Context,
+	dur time.Duration,
+	slowMsg string,
+	logger golog.Logger,
+) (<-chan struct{}, func()) {
+	slowWatcher := make(chan struct{})
+	slowWatcherCtx, slowWatcherCancel := context.WithCancel(context.Background())
+	PanicCapturingGo(func() {
+		defer close(slowWatcher)
+		if ctx != nil {
+			select {
+			case <-ctx.Done():
+			case <-slowWatcherCtx.Done():
+				return
+			}
+		}
+		if !SelectContextOrWait(slowWatcherCtx, dur) {
+			return
+		}
+
+		buf := make([]byte, 1024)
+		for {
+			n := runtime.Stack(buf, true)
+			if n < len(buf) {
+				buf = buf[:n]
+				break
+			}
+			buf = make([]byte, 2*len(buf))
+		}
+		logger.Warn(slowMsg, "\n", string(buf))
+	})
+	return slowWatcher, slowWatcherCancel
 }

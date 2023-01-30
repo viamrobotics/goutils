@@ -206,3 +206,44 @@ func TestManagedGo(t *testing.T) {
 	})
 	<-done
 }
+
+func TestSlowGoroutineWatcher(t *testing.T) {
+	logger, observedLogs := golog.NewObservedTestLogger(t)
+	ch, cancel := SlowGoroutineWatcher(2*time.Second, "hello", logger)
+	cancel()
+	<-ch
+	test.That(t, observedLogs.All(), test.ShouldHaveLength, 0)
+
+	ch, cancel = SlowGoroutineWatcher(2*time.Second, "hello", logger)
+	<-ch
+	cancel()
+	test.That(t, len(observedLogs.All()), test.ShouldBeGreaterThan, 0)
+	test.That(t, observedLogs.All()[0].Message, test.ShouldContainSubstring, "hello")
+	test.That(t, observedLogs.All()[0].Message, test.ShouldContainSubstring, "[chan receive]")
+	test.That(t, observedLogs.All()[0].Message, test.ShouldContainSubstring, "go.viam.com/utils.TestSlowGoroutineWatcher(")
+}
+
+func TestSlowGoroutineWatcherAfterContext(t *testing.T) {
+	logger, observedLogs := golog.NewObservedTestLogger(t)
+	ch, cancel := SlowGoroutineWatcherAfterContext(context.Background(), 2*time.Second, "hello", logger)
+	cancel()
+	<-ch
+	test.That(t, observedLogs.All(), test.ShouldHaveLength, 0)
+
+	ctx, ctxCancel := context.WithCancel(context.Background())
+	ch, cancel = SlowGoroutineWatcherAfterContext(ctx, 2*time.Second, "hello", logger)
+	ctxCancel()
+	cancel()
+	<-ch
+	test.That(t, observedLogs.All(), test.ShouldHaveLength, 0)
+
+	ctx, ctxCancel = context.WithCancel(context.Background())
+	ch, cancel = SlowGoroutineWatcherAfterContext(ctx, 2*time.Second, "hello", logger)
+	ctxCancel()
+	<-ch
+	cancel()
+	test.That(t, len(observedLogs.All()), test.ShouldBeGreaterThan, 0)
+	test.That(t, observedLogs.All()[0].Message, test.ShouldContainSubstring, "hello")
+	test.That(t, observedLogs.All()[0].Message, test.ShouldContainSubstring, "[chan receive]")
+	test.That(t, observedLogs.All()[0].Message, test.ShouldContainSubstring, "go.viam.com/utils.TestSlowGoroutineWatcherAfterContext(")
+}
