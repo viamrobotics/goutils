@@ -197,6 +197,7 @@ func (p *managedProcess) manage(stdOut, stdErr io.ReadCloser) {
 	var activeLoggers sync.WaitGroup
 	if p.shouldLog || p.logWriter != nil {
 		logPipe := func(name string, pipe io.ReadCloser, isErr bool) {
+			logger := p.logger.Named(name)
 			defer activeLoggers.Done()
 			pipeR := bufio.NewReader(pipe)
 			logWriterError := false
@@ -215,9 +216,9 @@ func (p *managedProcess) manage(stdOut, stdErr io.ReadCloser) {
 				}
 				if p.shouldLog {
 					if isErr {
-						p.logger.Errorw("output", "name", name, "data", string(line))
+						logger.Error("\n⌞ " + string(line))
 					} else {
-						p.logger.Infow("output", "name", name, "data", string(line))
+						logger.Info("\n⌞ " + string(line))
 					}
 				}
 				if p.logWriter != nil && !logWriterError {
