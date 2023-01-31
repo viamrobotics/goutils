@@ -216,9 +216,9 @@ func (p *managedProcess) manage(stdOut, stdErr io.ReadCloser) {
 				}
 				if p.shouldLog {
 					if isErr {
-						logger.Error("\n⌞ " + string(line))
+						logger.Error("\n\\_ " + string(line))
 					} else {
-						logger.Info("\n⌞ " + string(line))
+						logger.Info("\n\\_ " + string(line))
 					}
 				}
 				if p.logWriter != nil && !logWriterError {
