@@ -26,7 +26,9 @@ func parseSignal(sigStr, name string) (syscall.Signal, error) {
 }
 
 func sysProcAttr() *syscall.SysProcAttr {
-	return &syscall.SysProcAttr{}
+	return &syscall.SysProcAttr{
+		CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP,
+	}
 }
 
 func (p *managedProcess) kill() (bool, error) {

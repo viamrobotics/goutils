@@ -38,6 +38,10 @@ Support is not well tested yet.
 
 * rpc: ICE between local connections found via ICE mDNS appear to be flaky in the establishment phase.
 
+## License check
+
+See https://github.com/viamrobotics/rdk#license-check for instructions on how update our license policy.
+
 ## License 
 Copyright 2021-2022 Viam Inc.
 
