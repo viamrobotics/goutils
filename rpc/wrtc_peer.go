@@ -2,12 +2,14 @@ package rpc
 
 import (
 	"context"
+	"errors"
 	"io"
 	"sync"
 
 	"github.com/edaniels/golog"
 	"github.com/pion/ice/v2"
 	"github.com/pion/interceptor"
+	"github.com/pion/sctp"
 	"github.com/pion/webrtc/v3"
 	"go.uber.org/multierr"
 
@@ -340,6 +342,9 @@ func getWebRTCPeerConnectionStats(peerConnection *webrtc.PeerConnection) webrtcP
 
 func initialDataChannelOnError(pc io.Closer, logger golog.Logger) func(err error) {
 	return func(err error) {
+		if errors.Is(err, sctp.ErrResetPacketInStateNotExist) {
+			return
+		}
 		logger.Errorw("premature data channel error before WebRTC channel association", "error", err)
 		utils.UncheckedError(pc.Close())
 	}

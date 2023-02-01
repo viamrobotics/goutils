@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/edaniels/golog"
+	"github.com/pion/sctp"
 	"github.com/pion/webrtc/v3"
 	"google.golang.org/protobuf/proto"
 
@@ -162,6 +163,9 @@ func (ch *webrtcBaseChannel) onChannelClose() {
 }
 
 func (ch *webrtcBaseChannel) onChannelError(err error) {
+	if errors.Is(err, sctp.ErrResetPacketInStateNotExist) {
+		return
+	}
 	ch.logger.Errorw("channel error", "error", err)
 	if err := ch.closeWithReason(err); err != nil {
 		ch.logger.Errorw("error closing channel", "error", err)
