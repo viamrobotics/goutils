@@ -201,7 +201,7 @@ func dialMulticastDNS(
 ) (ClientConn, bool, error) {
 	candidates := []string{address, strings.ReplaceAll(address, ".", "-")}
 	candidateLookup := func(ctx context.Context, candidates []string) (*zeroconf.ServiceEntry, error) {
-		resolver, err := zeroconf.NewResolver(zeroconf.SelectIPRecordType(zeroconf.IPv4))
+		resolver, err := zeroconf.NewResolver(logger, zeroconf.SelectIPRecordType(zeroconf.IPv4))
 		if err != nil {
 			return nil, err
 		}

@@ -424,6 +424,7 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 						[]string{"127.0.0.1"},
 						supportedServices,
 						[]net.Interface{loopbackIfc},
+						logger,
 					)
 					if err != nil {
 						return nil, err
@@ -442,6 +443,7 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 						mDNSAddress.Port,
 						supportedServices,
 						nil,
+						logger,
 					)
 					if err != nil {
 						return nil, err
