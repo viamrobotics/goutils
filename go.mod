@@ -30,11 +30,11 @@ require (
 	github.com/lestrrat-go/jwx v1.2.25
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/opencensus-integrations/gomongowrapper v0.0.3
-	github.com/pion/ice/v2 v2.2.14
+	github.com/pion/ice/v2 v2.2.16
 	github.com/pion/interceptor v0.1.11
 	github.com/pion/logging v0.2.2
 	github.com/pion/sctp v1.8.6
-	github.com/pion/webrtc/v3 v3.1.52
+	github.com/pion/webrtc/v3 v3.1.53
 	github.com/pkg/errors v0.9.1
 	github.com/pseudomuto/protoc-gen-doc v1.3.2
 	github.com/rs/cors v1.8.2
@@ -200,7 +200,7 @@ require (
 	github.com/phayes/checkstyle v0.0.0-20170904204023-bfd46e6a821d // indirect
 	github.com/pion/datachannel v1.5.5 // indirect
 	github.com/pion/dtls/v2 v2.1.5 // indirect
-	github.com/pion/mdns v0.0.6 // indirect
+	github.com/pion/mdns v0.0.7 // indirect
 	github.com/pion/randutil v0.1.0 // indirect
 	github.com/pion/rtcp v1.2.10 // indirect
 	github.com/pion/rtp v1.7.13 // indirect
