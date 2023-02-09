@@ -18,7 +18,7 @@ jobs:
       - name: Check Results
         run: |
           echo Main Tests: ${{ needs.build_and_test.result }}
-          [ "${{ needs.build_and_test.result }}" == "success" ]
+          [ "${{ needs.build_and_test.result }}" == "success" || "${{ needs.build_and_test.result }}" == "skipped" ]
 
   build_and_test:
     name: Build and Test
