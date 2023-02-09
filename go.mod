@@ -290,4 +290,4 @@ require (
 )
 
 // vulns
-require github.com/gin-gonic/gin v1.7.0 // indirect
+require github.com/gin-gonic/gin v1.7.7 // indirect
