@@ -11,8 +11,8 @@ This is a set of go utilities you can use via importing `go.viam.com/utils`.
 ## Examples
 
 This library includes examples that demonstrate grpc functionality for a variety of contexts - see links for more information:
-* [echo](https://github.com/viamrobotics/goutils/blob/main/rpc/example/echo/README.md)
-* [fileupload](https://github.com/viamrobotics/goutils/blob/main/rpc/example/fileupload/README.md)
+* [echo](https://github.com/viamrobotics/goutils/blob/main/rpc/examples/echo/README.md)
+* [fileupload](https://github.com/viamrobotics/goutils/blob/main/rpc/examples/fileupload/README.md)
 
 As a convenience, you can run the `make` recipes for these examples from the root of this repository via:
 ```
