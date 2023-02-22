@@ -28,14 +28,17 @@ var (
 	_ rpc.TokenCustomClaimProvider = &webOAuthHandler{}
 )
 
-type webOAuthClaims struct {
+// WebOAuthClaims is the claims struct used during WebOauth flows. Validates the audience matches one of the allowed audiences set.
+type WebOAuthClaims struct {
 	rpc.JWTClaims
 
 	// The JWT must contain the aud claim otherwise it must be rejected.
 	allowedAudiences []string
 }
 
-func (c *webOAuthClaims) Entity() (string, error) {
+// Entity returns the Viam Entity. This is the  user's email and not always the subject of the JWTs. If rpc_auth_md.email is not set a
+// error is returned.
+func (c *WebOAuthClaims) Entity() (string, error) {
 	// Claim `sub` will contain the Auth0 userid not the basic email.
 	if email, ok := c.Metadata()["email"]; ok {
 		return email, nil
@@ -44,7 +47,9 @@ func (c *webOAuthClaims) Entity() (string, error) {
 	return "", errors.New("missing email in rpc_auth_md")
 }
 
-func (c *webOAuthClaims) Subject() string {
+// Subject returns the Viam Entity. This is the  user's email and not always the subject of the JWTs. If not available falls back to the
+// jwt's subject.
+func (c *WebOAuthClaims) Subject() string {
 	entity, err := c.Entity()
 	if err != nil {
 		// fallback to subject of the claim
@@ -54,7 +59,8 @@ func (c *webOAuthClaims) Subject() string {
 	return entity
 }
 
-func (c *webOAuthClaims) Valid() error {
+// Valid returns true if the audience matches one of the allowed audiences set and all other standard claims are valid.
+func (c *WebOAuthClaims) Valid() error {
 	audVerified := false
 	for _, allowdAud := range c.allowedAudiences {
 		if c.RegisteredClaims.VerifyAudience(allowdAud, true) {
@@ -69,7 +75,7 @@ func (c *webOAuthClaims) Valid() error {
 	return c.JWTClaims.Valid()
 }
 
-var _ rpc.Claims = &webOAuthClaims{}
+var _ rpc.Claims = &WebOAuthClaims{}
 
 // WebOAuthOptions options for the WebOauth handler.
 type WebOAuthOptions struct {
@@ -115,7 +121,7 @@ func (a *webOAuthHandler) VerifyEntity(ctx context.Context, entity string) (inte
 }
 
 func (a *webOAuthHandler) CreateClaims() rpc.Claims {
-	return &webOAuthClaims{
+	return &WebOAuthClaims{
 		// used to valid the aud claim in the jwt.
 		allowedAudiences: a.AllowedAudiences,
 	}
