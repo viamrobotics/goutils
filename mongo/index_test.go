@@ -21,6 +21,7 @@ func TestEnsureIndexes(t *testing.T) {
 	barIndexName := "bar"
 	expireAfter := int32(2)
 	test.That(t, mongoutils.EnsureIndexes(
+		context.Background(),
 		coll,
 		mongo.IndexModel{Keys: bson.D{{"foo", 1}}},
 		mongo.IndexModel{Keys: bson.D{{"bar", 1}}, Options: &options.IndexOptions{
@@ -29,6 +30,7 @@ func TestEnsureIndexes(t *testing.T) {
 		}},
 	), test.ShouldBeNil)
 	test.That(t, mongoutils.EnsureIndexes(
+		context.Background(),
 		coll,
 		mongo.IndexModel{Keys: bson.D{{"foo", 1}}},
 		mongo.IndexModel{Keys: bson.D{{"bar", 1}}, Options: &options.IndexOptions{
@@ -37,6 +39,7 @@ func TestEnsureIndexes(t *testing.T) {
 		}},
 	), test.ShouldBeNil)
 	err := mongoutils.EnsureIndexes(
+		context.Background(),
 		coll,
 		mongo.IndexModel{Keys: bson.D{{"foo", 1}}},
 		mongo.IndexModel{Keys: bson.D{{"bar", 1}}},

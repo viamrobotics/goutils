@@ -1,3 +1,4 @@
+// Package perf exposes application performance utilities.
 package perf
 
 import (
@@ -147,32 +148,4 @@ func (r *gaeResource) MonitoredResource() (resType string, labels map[string]str
 		"instance_id": r.instanceID,
 		"location":    r.location,
 	}
-}
-
-// NewDevelopmentExporter creates a new exporter that outputs the console.
-func NewDevelopmentExporter() Exporter {
-	return &developmentExporter{
-		trace: newNiceLoggingSpanExporter(),
-	}
-}
-
-type developmentExporter struct {
-	trace trace.Exporter
-}
-
-// Starts the applications stats/span monitoring. Registers views and starts trace/metric exporters to console.
-func (e *developmentExporter) Start() error {
-	if err := registerApplicationViews(); err != nil {
-		return err
-	}
-
-	trace.RegisterExporter(e.trace)
-	trace.ApplyConfig(trace.Config{DefaultSampler: trace.AlwaysSample()})
-
-	return nil
-}
-
-// Stop all exporting.
-func (e *developmentExporter) Stop() {
-	trace.UnregisterExporter(e.trace)
 }

@@ -31,7 +31,9 @@ var uploadLatency = statz.NewDistribution2[string, bool]("datasync/uploaded_late
 }, statz.LatencyDistribution)
 
 func main() {
-	exporter := perf.NewDevelopmentExporter()
+	exporter := perf.NewDevelopmentExporterWithOptions(perf.DevelopmentExporterOptions{
+		ReportingInterval: time.Second,
+	})
 	if err := exporter.Start(); err != nil {
 		golog.Global().Panicf("Failed to start: %s", err)
 		return
