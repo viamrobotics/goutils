@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -123,11 +124,35 @@ func (e *DevelopmentExporter) ExportMetrics(ctx context.Context, metrics []*metr
 		if len(metric.TimeSeries) == 0 {
 			continue
 		}
-		ts := metric.TimeSeries[0]
-		if len(ts.Points) == 0 {
+		if len(metric.Descriptor.LabelKeys) == 0 {
+			if len(metric.TimeSeries) == 0 || len(metric.TimeSeries[0].Points) == 0 {
+				continue
+			}
+			metricsTransform[metric.Descriptor.Name] = transformPoint(metric.TimeSeries[0].Points[0])
 			continue
 		}
-		metricsTransform[metric.Descriptor.Name] = transformPoint(ts.Points[0])
+
+		var pointVals []interface{}
+		for _, ts := range metric.TimeSeries {
+			if len(ts.Points) == 0 {
+				continue
+			}
+			labels := make([][]string, 0, len(metric.Descriptor.LabelKeys))
+			for idx, key := range metric.Descriptor.LabelKeys {
+				labels = append(labels, []string{key.Key, ts.LabelValues[idx].Value})
+			}
+			if len(labels) == 1 {
+				pointVals = append(pointVals, map[string]interface{}{
+					strings.Join(labels[0], ":"): transformPoint(ts.Points[0]),
+				})
+				continue
+			}
+			pointVals = append(pointVals, map[string]interface{}{
+				"labels": labels,
+				"value":  transformPoint(ts.Points[0]),
+			})
+		}
+		metricsTransform[metric.Descriptor.Name] = pointVals
 	}
 	md, err := json.MarshalIndent(metricsTransform, "", "  ")
 	if err != nil {
