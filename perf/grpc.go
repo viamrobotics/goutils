@@ -3,7 +3,6 @@ package perf
 import (
 	"go.opencensus.io/plugin/ocgrpc"
 	"go.opencensus.io/stats/view"
-	"go.opencensus.io/trace"
 	"google.golang.org/grpc/stats"
 )
 
@@ -23,8 +22,5 @@ func registerGrpcViews() error {
 func NewGrpcStatsHandler() stats.Handler {
 	return &ocgrpc.ServerHandler{
 		IsPublicEndpoint: true,
-		StartOptions: trace.StartOptions{
-			Sampler: trace.AlwaysSample(),
-		},
 	}
 }

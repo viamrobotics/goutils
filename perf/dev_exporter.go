@@ -37,6 +37,9 @@ type DevelopmentExporterOptions struct {
 
 	// MetricsDisabled determines if metrics reporting is disabled or not.
 	MetricsDisabled bool
+
+	// TracesDisabled determines if trace reporting is disabled or not.
+	TracesDisabled bool
 }
 
 type mySpanInfo struct {
@@ -68,20 +71,30 @@ func (e *DevelopmentExporter) Start() error {
 		return err
 	}
 
-	trace.RegisterExporter(e)
-	e.initReaderOnce.Do(func() {
-		var err error
-		e.ir, err = metricexport.NewIntervalReader(&metricexport.Reader{}, e)
-		utils.UncheckedError(err)
-	})
-	e.ir.ReportingInterval = e.o.ReportingInterval
-	return e.ir.Start()
+	if !e.o.TracesDisabled {
+		trace.RegisterExporter(e)
+		trace.ApplyConfig(trace.Config{DefaultSampler: trace.AlwaysSample()})
+	}
+	if !e.o.MetricsDisabled {
+		e.initReaderOnce.Do(func() {
+			var err error
+			e.ir, err = metricexport.NewIntervalReader(&metricexport.Reader{}, e)
+			utils.UncheckedError(err)
+		})
+		e.ir.ReportingInterval = e.o.ReportingInterval
+		return e.ir.Start()
+	}
+	return nil
 }
 
 // Stop stops the metric and span data exporter.
 func (e *DevelopmentExporter) Stop() {
-	trace.UnregisterExporter(e)
-	e.ir.Stop()
+	if !e.o.TracesDisabled {
+		trace.UnregisterExporter(e)
+	}
+	if !e.o.MetricsDisabled {
+		e.ir.Stop()
+	}
 }
 
 // Close closes any files that were opened for logging.

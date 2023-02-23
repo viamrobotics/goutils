@@ -6,12 +6,8 @@ import (
 	"strings"
 	"sync"
 
-	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/event"
 	"go.opencensus.io/trace"
-	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
-
-	"go.viam.com/utils"
 )
 
 func registerMongoDBViews() error {
@@ -48,17 +44,27 @@ type monitor struct {
 
 func (m *monitor) Started(ctx context.Context, evt *event.CommandStartedEvent) {
 	connString := connectionString(evt)
-	b, err := bson.MarshalExtJSON(evt.Command, false, false)
-	if err != nil {
-		utils.UncheckedError(err)
-		return
-	}
-	_, span := trace.StartSpan(ctx, evt.CommandName, trace.WithSampler(m.cfg.sampler))
-	span.AddAttributes(trace.StringAttribute(ext.DBInstance, evt.DatabaseName),
+	attrs := []trace.Attribute{
 		trace.StringAttribute("db.system", "mongodb"),
-		trace.StringAttribute("db.operation", string(b)),
+		trace.StringAttribute("db.name", evt.DatabaseName),
+		trace.StringAttribute("db.operation", evt.CommandName),
 		trace.StringAttribute("db.connection_string", connString),
-	)
+	}
+	var collStr string
+	if cmdVal, err := evt.Command.LookupErr(evt.CommandName); err == nil {
+		if str, ok := cmdVal.StringValueOK(); ok {
+			collStr = str
+			attrs = append(attrs, trace.StringAttribute("db.mongodb.collection", collStr))
+		}
+	}
+	var spanName string
+	if collStr == "" {
+		spanName = fmt.Sprintf("%s::%s", evt.DatabaseName, evt.CommandName)
+	} else {
+		spanName = fmt.Sprintf("%s::%s::%s", evt.DatabaseName, collStr, evt.CommandName)
+	}
+	_, span := trace.StartSpan(ctx, spanName, trace.WithSampler(m.cfg.sampler))
+	span.AddAttributes(attrs...)
 	key := spanKey{
 		ConnectionID: evt.ConnectionID,
 		RequestID:    evt.RequestID,

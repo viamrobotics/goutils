@@ -5,7 +5,6 @@ import (
 
 	"go.opencensus.io/plugin/ochttp"
 	"go.opencensus.io/stats/view"
-	"go.opencensus.io/trace"
 )
 
 // See https://opencensus.io/guides/http/go/net_http/server/
@@ -32,9 +31,6 @@ func WrapHTTPHandlerForStats(h http.Handler) http.Handler {
 	return &ochttp.Handler{
 		Handler:          h,
 		IsPublicEndpoint: true,
-		StartOptions: trace.StartOptions{
-			Sampler: trace.AlwaysSample(),
-		},
 	}
 }
 

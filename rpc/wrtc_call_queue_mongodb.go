@@ -62,9 +62,9 @@ var (
 // TODO(GOUT-6): more efficient, multiplexed change streams;
 // uniquely identify host ephemerally
 // TODO(GOUT-5): max queue size.
-func NewMongoDBWebRTCCallQueue(client *mongo.Client, logger golog.Logger) (WebRTCCallQueue, error) {
+func NewMongoDBWebRTCCallQueue(ctx context.Context, client *mongo.Client, logger golog.Logger) (WebRTCCallQueue, error) {
 	coll := client.Database(mongodbWebRTCCallQueueDBName).Collection(mongodbWebRTCCallQueueCollName)
-	if err := mongoutils.EnsureIndexes(context.Background(), coll, mongodbWebRTCCallQueueIndexes...); err != nil {
+	if err := mongoutils.EnsureIndexes(ctx, coll, mongodbWebRTCCallQueueIndexes...); err != nil {
 		return nil, err
 	}
 	cancelCtx, cancelFunc := context.WithCancel(context.Background())
