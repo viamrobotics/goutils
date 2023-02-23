@@ -43,6 +43,27 @@ func contextualMain(main func(ctx context.Context, args []string, logger golog.L
 		signal.Notify(quitC, syscall.SIGQUIT)
 		ctx = ContextWithQuitSignal(ctx, quitC)
 	}
+	infoC := make(chan os.Signal, 1)
+	signal.Notify(infoC, syscall.SIGINFO)
+
+	var signalWatcher sync.WaitGroup
+	signalWatcher.Add(1)
+	defer signalWatcher.Wait()
+	ManagedGo(func() {
+		for range infoC {
+			buf := make([]byte, 1024)
+			for {
+				n := runtime.Stack(buf, true)
+				if n < len(buf) {
+					buf = buf[:n]
+					break
+				}
+				buf = make([]byte, 2*len(buf))
+			}
+			logger.Warn(string(buf))
+		}
+	}, signalWatcher.Done)
+
 	readyC := make(chan struct{})
 	ctx = ContextWithReadyFunc(ctx, readyC)
 	if err := FilterOutError(main(ctx, os.Args, logger), context.Canceled); err != nil {
