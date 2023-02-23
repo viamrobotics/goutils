@@ -2,10 +2,12 @@
 package main
 
 import (
+	"context"
 	"math/rand"
 	"time"
 
 	"github.com/edaniels/golog"
+	"go.opencensus.io/trace"
 
 	"go.viam.com/utils/perf"
 	"go.viam.com/utils/perf/statz"
@@ -31,12 +33,16 @@ var uploadLatency = statz.NewDistribution2[string, bool]("datasync/uploaded_late
 }, statz.LatencyDistribution)
 
 func main() {
-	exporter := perf.NewDevelopmentExporter()
+	exporter := perf.NewDevelopmentExporterWithOptions(perf.DevelopmentExporterOptions{
+		ReportingInterval: time.Second,
+	})
 	if err := exporter.Start(); err != nil {
 		golog.Global().Panicf("Failed to start: %s", err)
 		return
 	}
 	defer exporter.Stop()
+
+	_, span := trace.StartSpan(context.Background(), "upload")
 
 	// Record 100 fake latency values between 0 and 5 seconds.
 	for i := 0; i < 25; i++ {
@@ -47,6 +53,8 @@ func main() {
 		uploadLatency.Observe(ms, "binary", true)
 		time.Sleep(100 * time.Millisecond)
 	}
+
+	span.End()
 
 	time.Sleep(64 * time.Second)
 }

@@ -45,7 +45,7 @@ func TestDialWithMongoDBQueue(t *testing.T) {
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
 	client := testutils.BackingMongoDBClient(t)
-	signalingCallQueue, err := NewMongoDBWebRTCCallQueue(client, logger)
+	signalingCallQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), client, logger)
 	test.That(t, err, test.ShouldBeNil)
 	testDial(t, signalingCallQueue, logger)
 	test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
