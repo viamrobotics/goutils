@@ -37,20 +37,23 @@ func ContextualMainQuit(main func(ctx context.Context, args []string, logger gol
 
 func contextualMain(main func(ctx context.Context, args []string, logger golog.Logger) error, quitSignal bool, logger golog.Logger) {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 	if quitSignal {
 		quitC := make(chan os.Signal, 1)
 		signal.Notify(quitC, syscall.SIGQUIT)
 		ctx = ContextWithQuitSignal(ctx, quitC)
 	}
-	infoC := make(chan os.Signal, 1)
-	signal.Notify(infoC, syscall.SIGUSR1)
+	usr1C := make(chan os.Signal, 1)
+	signal.Notify(usr1C, syscall.SIGUSR1)
 
 	var signalWatcher sync.WaitGroup
 	signalWatcher.Add(1)
 	defer signalWatcher.Wait()
+	defer stop()
 	ManagedGo(func() {
-		for range infoC {
+		for {
+			if !SelectContextOrWaitChan(ctx, usr1C) {
+				return
+			}
 			buf := make([]byte, 1024)
 			for {
 				n := runtime.Stack(buf, true)
@@ -65,8 +68,8 @@ func contextualMain(main func(ctx context.Context, args []string, logger golog.L
 	}, signalWatcher.Done)
 
 	readyC := make(chan struct{})
-	ctx = ContextWithReadyFunc(ctx, readyC)
-	if err := FilterOutError(main(ctx, os.Args, logger), context.Canceled); err != nil {
+	readyCtx := ContextWithReadyFunc(ctx, readyC)
+	if err := FilterOutError(main(readyCtx, os.Args, logger), context.Canceled); err != nil {
 		fatal(logger, err)
 	}
 }
@@ -191,7 +194,7 @@ func SelectContextOrWait(ctx context.Context, dur time.Duration) bool {
 // SelectContextOrWaitChan either terminates because the given context is done
 // or the given time channel is received on. It returns true if the channel
 // was received on.
-func SelectContextOrWaitChan(ctx context.Context, c <-chan time.Time) bool {
+func SelectContextOrWaitChan[T any](ctx context.Context, c <-chan T) bool {
 	select {
 	case <-ctx.Done():
 		return false
