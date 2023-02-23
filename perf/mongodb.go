@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"go.mongodb.org/mongo-driver/event"
 	"go.opencensus.io/trace"
@@ -137,28 +138,38 @@ func connectionString(evt *event.CommandStartedEvent) string {
 
 // NewMongoDBPoolMonitor creates a new mongodb pool event PoolMonitor.
 func NewMongoDBPoolMonitor() *event.PoolMonitor {
+	var totalWaitingToCheckOut atomic.Int64
+	var totalCheckedOut atomic.Int64
+	var totalCreated atomic.Int64
 	return &event.PoolMonitor{
 		Event: func(e *event.PoolEvent) {
 			switch e.Type {
 			case event.GetStarted:
-				mongodbConnectionPoolStates.Inc(e.Address, "total_waiting_to_check_out")
+				totalWaitingToCheckOut.Add(1)
+				mongodbConnectionPoolStates.Set(e.Address, "total_waiting_to_check_out", totalWaitingToCheckOut.Load())
 			case event.GetSucceeded:
-				mongodbConnectionPoolStates.Inc(e.Address, "total_checked_out")
-				mongodbConnectionPoolStates.IncBy(e.Address, "total_waiting_to_check_out", -1)
+				totalCheckedOut.Add(1)
+				totalWaitingToCheckOut.Add(-1)
+				mongodbConnectionPoolStates.Set(e.Address, "total_checked_out", totalCheckedOut.Load())
+				mongodbConnectionPoolStates.Set(e.Address, "total_waiting_to_check_out", totalWaitingToCheckOut.Load())
 			case event.GetFailed:
-				mongodbConnectionPoolStates.IncBy(e.Address, "total_waiting_to_check_out", -1)
+				totalWaitingToCheckOut.Add(-1)
+				mongodbConnectionPoolStates.Set(e.Address, "total_waiting_to_check_out", totalWaitingToCheckOut.Load())
 			case event.ConnectionReturned:
-				mongodbConnectionPoolStates.IncBy(e.Address, "total_checked_out", -1)
+				totalCheckedOut.Add(-1)
+				mongodbConnectionPoolStates.Set(e.Address, "total_checked_out", totalCheckedOut.Load())
 			case event.ConnectionCreated:
-				mongodbConnectionPoolStates.Inc(e.Address, "total_created")
+				totalCreated.Add(1)
+				mongodbConnectionPoolStates.Set(e.Address, "total_created", totalCreated.Load())
 			case event.ConnectionClosed:
-				mongodbConnectionPoolStates.IncBy(e.Address, "total_created", -1)
+				totalCreated.Add(-1)
+				mongodbConnectionPoolStates.Set(e.Address, "total_created", totalCreated.Load())
 			}
 		},
 	}
 }
 
-var mongodbConnectionPoolStates = statz.NewSummation2[string, string]("mongodb/connections", statz.MetricConfig{
+var mongodbConnectionPoolStates = statz.NewGauge2[string, string]("mongodb/connections", statz.MetricConfig{
 	Description: "The number of waiting requests for connection check out.",
 	Unit:        units.Dimensionless,
 	Labels: []statz.Label{
