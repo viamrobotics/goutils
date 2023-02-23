@@ -8,6 +8,9 @@ import (
 
 	"go.mongodb.org/mongo-driver/event"
 	"go.opencensus.io/trace"
+
+	"go.viam.com/utils/perf/statz"
+	"go.viam.com/utils/perf/statz/units"
 )
 
 func registerMongoDBViews() error {
@@ -131,3 +134,35 @@ func connectionString(evt *event.CommandStartedEvent) string {
 	}
 	return hostname + ":" + port
 }
+
+// NewMongoDBPoolMonitor creates a new mongodb pool event PoolMonitor.
+func NewMongoDBPoolMonitor() *event.PoolMonitor {
+	return &event.PoolMonitor{
+		Event: func(e *event.PoolEvent) {
+			switch e.Type {
+			case event.GetStarted:
+				mongodbConnectionPoolStates.Inc(e.Address, "total_waiting_to_check_out")
+			case event.GetSucceeded:
+				mongodbConnectionPoolStates.Inc(e.Address, "total_checked_out")
+				mongodbConnectionPoolStates.IncBy(e.Address, "total_waiting_to_check_out", -1)
+			case event.GetFailed:
+				mongodbConnectionPoolStates.IncBy(e.Address, "total_waiting_to_check_out", -1)
+			case event.ConnectionReturned:
+				mongodbConnectionPoolStates.IncBy(e.Address, "total_checked_out", -1)
+			case event.ConnectionCreated:
+				mongodbConnectionPoolStates.Inc(e.Address, "total_created")
+			case event.ConnectionClosed:
+				mongodbConnectionPoolStates.IncBy(e.Address, "total_created", -1)
+			}
+		},
+	}
+}
+
+var mongodbConnectionPoolStates = statz.NewSummation2[string, string]("mongodb/connections", statz.MetricConfig{
+	Description: "The number of waiting requests for connection check out.",
+	Unit:        units.Dimensionless,
+	Labels: []statz.Label{
+		{Name: "connection_string", Description: "MongoDB Connection String"},
+		{Name: "state", Description: "Pool State"},
+	},
+})
