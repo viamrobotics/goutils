@@ -44,7 +44,7 @@ func contextualMain(main func(ctx context.Context, args []string, logger golog.L
 		ctx = ContextWithQuitSignal(ctx, quitC)
 	}
 	infoC := make(chan os.Signal, 1)
-	signal.Notify(infoC, syscall.SIGINFO)
+	signal.Notify(infoC, syscall.SIGUSR1)
 
 	var signalWatcher sync.WaitGroup
 	signalWatcher.Add(1)
