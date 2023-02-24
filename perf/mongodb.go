@@ -14,11 +14,6 @@ import (
 	"go.viam.com/utils/perf/statz/units"
 )
 
-func registerMongoDBViews() error {
-	// TODO(erd): add views
-	return nil
-}
-
 // from https://github.com/entropyx/mongo-opencensus
 
 type config struct {

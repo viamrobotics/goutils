@@ -19,6 +19,7 @@ import (
 
 	"github.com/edaniels/golog"
 	"github.com/golang-jwt/jwt/v4"
+	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.uber.org/multierr"
@@ -45,7 +46,7 @@ func TestDialWithMongoDBQueue(t *testing.T) {
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
 	client := testutils.BackingMongoDBClient(t)
-	signalingCallQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), client, logger)
+	signalingCallQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), uuid.NewString(), 50, client, logger)
 	test.That(t, err, test.ShouldBeNil)
 	testDial(t, signalingCallQueue, logger)
 	test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)

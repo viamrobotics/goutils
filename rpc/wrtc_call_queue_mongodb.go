@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/edaniels/golog"
@@ -11,35 +12,120 @@ import (
 	"github.com/pion/webrtc/v3"
 	"github.com/pkg/errors"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.uber.org/multierr"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"go.viam.com/utils"
 	mongoutils "go.viam.com/utils/mongo"
+	"go.viam.com/utils/perf/statz"
+	"go.viam.com/utils/perf/statz/units"
 )
 
 func init() {
-	mongoutils.MustRegisterNamespace(&mongodbWebRTCCallQueueDBName, &mongodbWebRTCCallQueueCollName)
+	mongoutils.MustRegisterNamespace(&mongodbWebRTCCallQueueDBName, &mongodbWebRTCCallQueueCallsCollName)
+	mongoutils.MustRegisterNamespace(&mongodbWebRTCCallQueueDBName, &mongodbWebRTCCallQueueOperatorsCollName)
 }
+
+var (
+	callChangeStreamFailures = statz.NewCounter1[string]("rpc.webrtc/call_change_stream_failures", statz.MetricConfig{
+		Description: "The number of failures making a change stream to listen to calls.",
+		Unit:        units.Dimensionless,
+		Labels: []statz.Label{
+			{Name: "operator_id", Description: "The queue operator ID."},
+		},
+	})
+
+	exchangeChannelAtCapacity = statz.NewCounter1[string]("rpc.webrtc/exchange_channel_at_capacity", statz.MetricConfig{
+		Description: "The number of times a call exchange has it max channel capacity.",
+		Unit:        units.Dimensionless,
+		Labels: []statz.Label{
+			{Name: "operator_id", Description: "The queue operator ID."},
+		},
+	})
+
+	activeHosts = statz.NewGauge1[string]("rpc.webrtc/active_hosts", statz.MetricConfig{
+		Description: "The number of hosts waiting for a call to come in or processing a call.",
+		Unit:        units.Dimensionless,
+		Labels: []statz.Label{
+			{Name: "operator_id", Description: "The queue operator ID."},
+		},
+	})
+)
 
 // A mongoDBWebRTCCallQueue is an MongoDB implementation of a call queue designed to be used for
 // multi-node, distributed deployments.
 type mongoDBWebRTCCallQueue struct {
-	activeBackgroundWorkers sync.WaitGroup
-	coll                    *mongo.Collection
-	logger                  golog.Logger
+	operatorID                         string
+	hostCallerQueueSizeMatchAggStage   bson.D
+	hostAnswererQueueSizeMatchAggStage bson.D
+	activeBackgroundWorkers            sync.WaitGroup
+	callsColl                          *mongo.Collection
+	operatorsColl                      *mongo.Collection
+	logger                             golog.Logger
 
 	cancelCtx  context.Context
 	cancelFunc func()
+
+	csStateMu                   sync.RWMutex
+	csManagerSeq                atomic.Uint64
+	csLastEventClusterTime      primitive.Timestamp
+	csLastResumeToken           bson.Raw
+	csTrackingHosts             utils.StringSet
+	csAnswerersWaitingForNextCS []func()
+	csStateUpdates              chan changeStreamStateUpdate
+	csCtxCancel                 func()
+
+	// 1 caller/answerer -> 1 caller id -> 1 event stream
+	callExchangeSubs map[string]map[*mongodbCallExchange]struct{}
+
+	// M answerer -> N hosts -> 1 event stream
+	waitingForCallSubs map[string]map[chan mongodbCallEvent]struct{}
+}
+
+type changeStreamStateUpdate struct {
+	ChangeStream <-chan mongoutils.ChangeEventResult
+	ResumeToken  bson.Raw
+	ClusterTime  primitive.Timestamp
 }
 
 // Database and collection names used by the mongoDBWebRTCCallQueue.
 var (
-	mongodbWebRTCCallQueueDBName      = "rpc"
-	mongodbWebRTCCallQueueCollName    = "calls"
-	mongodbWebRTCCallQueueExpireAfter = int32(getDefaultOfferDeadline().Seconds())
-	mongodbWebRTCCallQueueExpireName  = "rpc_call_expire"
-	mongodbWebRTCCallQueueIndexes     = []mongo.IndexModel{
+	mongodbWebRTCCallQueueDBName             = "rpc"
+	mongodbWebRTCCallQueueCallsCollName      = "calls"
+	mongodbWebRTCCallQueueOperatorsCollName  = "operators"
+	mongodbWebRTCCallQueueRPCCallExpireName  = "rpc_call_expire"
+	mongodbWebRTCCallQueueOperatorExpireName = "operator_expire"
+)
+
+// this probably matches defaultMaxAnswerers on the signaling answerer.
+const maxHostAnswerersSize = 2
+
+// NewMongoDBWebRTCCallQueue returns a new MongoDB based call queue where calls are transferred
+// through the given client. The operator ID must be unique (e.g. a hostname, container ID, UUID, etc.).
+// Currently, the queue can grow to an unbounded size in terms of goroutines in memory but it is expected
+// that this code is run in an auto scaling environment that bounds how many incoming requests there can
+// be. The given max queue size specifies how many big a queue can be for a given host; the size is used
+// as an approximation and at times may exceed the max as a performance/consistency balance of being
+// a distributed queue.
+func NewMongoDBWebRTCCallQueue(
+	ctx context.Context,
+	operatorID string,
+	maxHostCallers uint64,
+	client *mongo.Client,
+	logger golog.Logger,
+) (WebRTCCallQueue, error) {
+	if operatorID == "" {
+		return nil, errors.New("expected non-empty operatorID")
+	}
+	callsColl := client.Database(mongodbWebRTCCallQueueDBName).Collection(mongodbWebRTCCallQueueCallsCollName)
+	operatorsColl := client.Database(mongodbWebRTCCallQueueDBName).Collection(mongodbWebRTCCallQueueOperatorsCollName)
+
+	mongodbWebRTCCallQueueExpireAfter := int32(getDefaultOfferDeadline().Seconds())
+	mongodbWebRTCCallQueueCallsIndexes := []mongo.IndexModel{
 		{
 			Keys: bson.D{
 				{webrtcCallHostField, 1},
@@ -50,30 +136,98 @@ var (
 				{webrtcCallStartedAtField, 1},
 			},
 			Options: &options.IndexOptions{
-				Name:               &mongodbWebRTCCallQueueExpireName,
+				Name:               &mongodbWebRTCCallQueueRPCCallExpireName,
 				ExpireAfterSeconds: &mongodbWebRTCCallQueueExpireAfter,
 			},
 		},
 	}
-)
 
-// NewMongoDBWebRTCCallQueue returns a new MongoDB based call queue where calls are transferred
-// through the given client.
-// TODO(GOUT-6): more efficient, multiplexed change streams;
-// uniquely identify host ephemerally
-// TODO(GOUT-5): max queue size.
-func NewMongoDBWebRTCCallQueue(ctx context.Context, client *mongo.Client, logger golog.Logger) (WebRTCCallQueue, error) {
-	coll := client.Database(mongodbWebRTCCallQueueDBName).Collection(mongodbWebRTCCallQueueCollName)
-	if err := mongoutils.EnsureIndexes(ctx, coll, mongodbWebRTCCallQueueIndexes...); err != nil {
+	expireAfterSecondsZero := int32(0)
+	mongodbWebRTCCallQueueOperatorsIndexes := []mongo.IndexModel{
+		{
+			Keys: bson.D{
+				// queries on this wont be covered but we don't expect the fetch size to be very big.
+				// the results of aggs around this field can also be cached if need be.
+				{webrtcOperatorHostsHostCombinedField, 1},
+			},
+		},
+		{
+			Keys: bson.D{
+				{webrtcOperatorExpireAtField, 1},
+			},
+			Options: &options.IndexOptions{
+				Name:               &mongodbWebRTCCallQueueOperatorExpireName,
+				ExpireAfterSeconds: &expireAfterSecondsZero,
+			},
+		},
+	}
+
+	if err := mongoutils.EnsureIndexes(ctx, callsColl, mongodbWebRTCCallQueueCallsIndexes...); err != nil {
 		return nil, err
 	}
+	if err := mongoutils.EnsureIndexes(ctx, operatorsColl, mongodbWebRTCCallQueueOperatorsIndexes...); err != nil {
+		return nil, err
+	}
+
+	if _, err := operatorsColl.InsertOne(ctx, bson.D{
+		{webrtcOperatorIDField, operatorID},
+		{webrtcOperatorExpireAtField, time.Now().Add(operatorHeartbeatWindow)},
+	}); err != nil {
+		return nil, err
+	}
+
 	cancelCtx, cancelFunc := context.WithCancel(context.Background())
-	return &mongoDBWebRTCCallQueue{
-		coll:       coll,
-		cancelCtx:  cancelCtx,
-		cancelFunc: cancelFunc,
-		logger:     logger,
-	}, nil
+	queue := &mongoDBWebRTCCallQueue{
+		operatorID: operatorID,
+		hostCallerQueueSizeMatchAggStage: bson.D{{"$match", bson.D{
+			{"caller_size", bson.D{{"$gte", maxHostCallers}}},
+		}}},
+		hostAnswererQueueSizeMatchAggStage: bson.D{{"$match", bson.D{
+			{"answerer_size", bson.D{{"$gte", maxHostAnswerersSize}}},
+		}}},
+		callsColl:     callsColl,
+		operatorsColl: operatorsColl,
+		cancelCtx:     cancelCtx,
+		cancelFunc:    cancelFunc,
+		logger:        logger.With("operator_id", operatorID),
+
+		csStateUpdates:     make(chan changeStreamStateUpdate),
+		callExchangeSubs:   map[string]map[*mongodbCallExchange]struct{}{},
+		waitingForCallSubs: map[string]map[chan mongodbCallEvent]struct{}{},
+	}
+
+	queue.activeBackgroundWorkers.Add(2)
+	utils.ManagedGo(queue.operatorLivenessLoop, queue.activeBackgroundWorkers.Done)
+	utils.ManagedGo(queue.changeStreamManager, queue.activeBackgroundWorkers.Done)
+
+	// wait for change stream to startup once before we start processing anything
+	// since we need good track of resume tokens / cluster times initially
+	// to keep an ordering.
+	startOnce := make(chan struct{})
+	var startOnceSync sync.Once
+
+	queue.activeBackgroundWorkers.Add(1)
+	utils.ManagedGo(func() {
+		defer queue.csManagerSeq.Add(1) // helpful on panicked restart
+		select {
+		case <-queue.cancelCtx.Done():
+			return
+		case newState := <-queue.csStateUpdates:
+			queue.processClusterEventState(newState.ResumeToken, newState.ClusterTime)
+			startOnceSync.Do(func() {
+				close(startOnce)
+			})
+			queue.subscriptionManager(newState.ChangeStream)
+		}
+	}, queue.activeBackgroundWorkers.Done)
+
+	select {
+	case <-queue.cancelCtx.Done():
+		return nil, multierr.Combine(queue.Close(), queue.cancelCtx.Err())
+	case <-startOnce:
+	}
+
+	return queue, nil
 }
 
 type mongodbICECandidate struct {
@@ -85,6 +239,8 @@ type mongodbICECandidate struct {
 
 type mongodbWebRTCCall struct {
 	ID                 string                `bson:"_id"`
+	CallerOperatorID   string                `bson:"caller_operator_id"`
+	AnswererOperatorID string                `bson:"answerer_operator_id"`
 	Host               string                `bson:"host"`
 	StartedAt          time.Time             `bson:"started_at"`
 	CallerSDP          string                `bson:"caller_sdp"`
@@ -101,6 +257,8 @@ type mongodbWebRTCCall struct {
 
 const (
 	webrtcCallIDField                 = "_id"
+	webrtcCallCallerOperatorIDField   = "caller_operator_id"
+	webrtcCallAnswererOperatorIDField = "answerer_operator_id"
 	webrtcCallHostField               = "host"
 	webrtcCallStartedAtField          = "started_at"
 	webrtcCallCallerCandidatesField   = "caller_candidates"
@@ -111,7 +269,505 @@ const (
 	webrtcCallAnswererCandidatesField = "answerer_candidates"
 	webrtcCallAnswererDoneField       = "answerer_done"
 	webrtcCallAnswererErrorField      = "answerer_error"
+
+	webrtcOperatorIDField                        = "_id"
+	webrtcOperatorHostsField                     = "hosts"
+	webrtcOperatorHostsHostField                 = "host"
+	webrtcOperatorHostsCallerSizeField           = "caller_size"
+	webrtcOperatorHostsAnswererSizeField         = "answerer_size"
+	webrtcOperatorExpireAtField                  = "expire_at"
+	webrtcOperatorHostsHostCombinedField         = webrtcOperatorHostsField + "." + webrtcOperatorHostsHostField
+	webrtcOperatorHostsCallerSizeCombinedField   = webrtcOperatorHostsField + "." + webrtcOperatorHostsCallerSizeField
+	webrtcOperatorHostsAnswererSizeCombinedField = webrtcOperatorHostsField + "." + webrtcOperatorHostsAnswererSizeField
 )
+
+type mongodbCallExchange struct {
+	Host string
+	Chan chan<- mongodbCallEvent
+	Side string // "caller" or "answerer"
+}
+
+type mongodbCallEvent struct {
+	Call    mongodbWebRTCCall
+	Error   error
+	Expired bool
+}
+
+const (
+	operatorStateUpdateInterval = time.Second
+	operatorHeartbeatWindow     = time.Second * 10
+)
+
+// The operatorLivenessLoop keeps the distributed queue aware of this operator is existence in
+// addition to the hosts its listening to calls for in order to keep track of eventually
+// consistent queue maximums.
+func (queue *mongoDBWebRTCCallQueue) operatorLivenessLoop() {
+	ticker := time.NewTicker(operatorStateUpdateInterval)
+	defer ticker.Stop()
+	for {
+		if !utils.SelectContextOrWaitChan(queue.cancelCtx, ticker.C) {
+			return
+		}
+
+		type callerAnswererQueueSizes struct {
+			Caller   uint64
+			Answerer uint64
+		}
+		queue.csStateMu.RLock()
+		hosts := make(map[string]callerAnswererQueueSizes, len(queue.waitingForCallSubs)+len(queue.callExchangeSubs))
+		for host, waiting := range queue.waitingForCallSubs {
+			sizes := hosts[host]
+			sizes.Answerer += uint64(len(waiting))
+			hosts[host] = sizes
+		}
+		for _, exchanges := range queue.callExchangeSubs {
+			for exchange := range exchanges {
+				sizes := hosts[exchange.Host]
+				if exchange.Side == "caller" {
+					sizes.Caller++
+				} else {
+					// when an answerer is initially done waiting, we will
+					// account for it here as it becomes an exchanger.
+					sizes.Answerer++
+				}
+				hosts[exchange.Host] = sizes
+			}
+		}
+		queue.csStateMu.RUnlock()
+
+		hostSizes := make(bson.A, 0, len(hosts))
+		for host, sizes := range hosts {
+			hostSizes = append(hostSizes, bson.D{
+				{webrtcOperatorHostsHostField, host},
+				{webrtcOperatorHostsCallerSizeField, sizes.Caller},
+				{webrtcOperatorHostsAnswererSizeField, sizes.Answerer},
+			})
+		}
+
+		if _, err := queue.operatorsColl.UpdateOne(queue.cancelCtx, bson.D{{webrtcOperatorIDField, queue.operatorID}}, bson.D{
+			{
+				"$set",
+				bson.D{
+					{webrtcOperatorExpireAtField, time.Now().Add(operatorHeartbeatWindow)},
+					{webrtcOperatorHostsField, hostSizes},
+				},
+			},
+		}); err != nil {
+			if !errors.Is(err, context.Canceled) {
+				queue.logger.Errorw("failed to update operator document for self", "error", err)
+			}
+		}
+	}
+}
+
+// The changeStreamManager is responsible for maintaining a change stream that is always updating
+// its query in response to new answerers making themselves available for calls. It helps
+// efficiently swap out new change streams while an old one may still be in use by the subscriptionManager.
+// It also is resilient to crashes so long as the idempotency principles of the queue stay in place.
+func (queue *mongoDBWebRTCCallQueue) changeStreamManager() {
+	ticker := time.NewTicker(operatorStateUpdateInterval)
+	defer ticker.Stop()
+	defer func() {
+		if queue.csCtxCancel != nil {
+			queue.csCtxCancel()
+		}
+	}()
+	var lastSeq uint64
+	var ranOnce bool
+	for {
+		// Note(erd): this could use condition variables instead in order to be efficient about
+		// change stream restarts, but it does not feel worth the complexity right now :o)
+		if !utils.SelectContextOrWaitChan(queue.cancelCtx, ticker.C) {
+			return
+		}
+
+		currSeq := queue.csManagerSeq.Load()
+		if ranOnce && lastSeq == currSeq {
+			continue
+		}
+		lastSeq = currSeq
+		ranOnce = true
+
+		queue.csStateMu.Lock()
+		hosts := make([]string, 0, len(queue.waitingForCallSubs))
+		for host := range queue.waitingForCallSubs {
+			hosts = append(hosts, host)
+		}
+		readyFuncs := make([]func(), len(queue.csAnswerersWaitingForNextCS))
+		copy(readyFuncs, queue.csAnswerersWaitingForNextCS)
+		queue.csAnswerersWaitingForNextCS = nil
+
+		csOpts := options.ChangeStream().SetFullDocument(options.UpdateLookup)
+
+		// only one can ever be set
+		if len(queue.csLastResumeToken) != 0 {
+			csOpts.SetStartAfter(queue.csLastResumeToken)
+		}
+		if !queue.csLastEventClusterTime.IsZero() {
+			ctCopy := queue.csLastEventClusterTime
+			csOpts.SetStartAtOperationTime(&ctCopy)
+		}
+		queue.csStateMu.Unlock()
+
+		cs, err := queue.callsColl.Watch(queue.cancelCtx, []bson.D{
+			{
+				{"$match", bson.D{
+					{"operationType", bson.D{{"$in", []interface{}{
+						mongoutils.ChangeEventOperationTypeInsert,
+						mongoutils.ChangeEventOperationTypeUpdate,
+						mongoutils.ChangeEventOperationTypeDelete,
+						mongoutils.ChangeEventOperationTypeInvalidate, // this will be caught for us as an error
+					}}}},
+					// On the caller side, we want to listen for anything for this operator; so listen
+					// for updates and deletes on caller_operator_id. All call updates are relevant to us
+					// so there is no need to listen for call ids.
+					// On the answerer side, we want to initially listen for an insert based on all relevant
+					// hosts since we do not want to have the caller query for eventually consistent operator
+					// liveness updates. Instead, we will assume that the hosts here changes often but that
+					// the answerer in RecvOffer will check for an incoming call out of band while this
+					// change stream updates and keeps itself in sync time-wise with a resume token.
+					{"$or", []interface{}{
+						bson.D{{fmt.Sprintf("fullDocument.%s", webrtcCallCallerOperatorIDField), queue.operatorID}},
+						bson.D{{fmt.Sprintf("fullDocument.%s", webrtcCallAnswererOperatorIDField), queue.operatorID}},
+						bson.D{{fmt.Sprintf("fullDocument.%s", webrtcCallHostField), bson.D{{"$in", hosts}}}},
+					}},
+				}},
+			},
+		}, csOpts)
+		if err != nil {
+			// TODO(erd): one of these errors is probably falling off the change stream in
+			// which case we must ditch the token and carry on. unlikely but possible. this will
+			// destroy some exchanges.
+			callChangeStreamFailures.Inc(queue.operatorID)
+			queue.csManagerSeq.Add(1)
+			queue.logger.Errorw("failed to create calls change stream", "error", err)
+			continue
+		}
+
+		for _, readyFunc := range readyFuncs {
+			readyFunc()
+		}
+		queue.csStateMu.Lock()
+		queue.csTrackingHosts = utils.NewStringSet(hosts...)
+		queue.csStateMu.Unlock()
+		activeHosts.Set(queue.operatorID, int64(len(hosts)))
+
+		nextCSCtx, nextCSCtxCancel := context.WithCancel(queue.cancelCtx)
+		csNext, resumeToken, clusterTime := mongoutils.ChangeStreamBackground(nextCSCtx, cs)
+
+		// TODO(erd): detecting needs restart... play with mongo going up and down!
+
+		select {
+		case <-queue.cancelCtx.Done():
+			nextCSCtxCancel()
+			return
+		case queue.csStateUpdates <- changeStreamStateUpdate{
+			ChangeStream: csNext,
+			ResumeToken:  resumeToken,
+			ClusterTime:  clusterTime,
+		}:
+			// close old; goroutine may linger a bit
+			if queue.csCtxCancel != nil {
+				queue.csCtxCancel()
+			}
+			queue.csCtxCancel = nextCSCtxCancel
+		}
+	}
+}
+
+func (queue *mongoDBWebRTCCallQueue) processClusterEventState(
+	newResumeToken bson.Raw,
+	newClusterTime primitive.Timestamp,
+) bool {
+	queue.csStateMu.Lock()
+	if !newClusterTime.IsZero() {
+		if queue.csLastEventClusterTime.T > newClusterTime.T ||
+			(queue.csLastEventClusterTime.T == newClusterTime.T &&
+				queue.csLastEventClusterTime.I >= newClusterTime.I) {
+			queue.csStateMu.Unlock()
+			// we have seen it; skip
+			return false
+		}
+		// some real event happened, so make sure we start at this time, not the
+		// resume token, the next time we create a change stream.
+		queue.csLastEventClusterTime = newClusterTime
+		queue.csLastResumeToken = nil
+	} else if len(newResumeToken) != 0 {
+		// otherwise no event happened and we want to start after this resume token
+		queue.csLastResumeToken = newResumeToken
+		queue.csLastEventClusterTime = primitive.Timestamp{}
+	}
+	queue.csStateMu.Unlock()
+	return true
+}
+
+func (queue *mongoDBWebRTCCallQueue) processNextSubscriptionEvent(next mongoutils.ChangeEventResult, ok bool) bool {
+	if !ok {
+		// we do not really expect this to happen due to the order of events between
+		// this manager in the changeStreamManager. So signal we need a new
+		// change stream probably.
+		queue.csManagerSeq.Add(1)
+		return true
+	}
+
+	if next.Error != nil {
+		queue.logger.Errorw("error getting next event in change stream", "error", next.Error)
+
+		if errors.Is(next.Error, mongoutils.ErrChangeStreamInvalidateEvent) {
+			queue.processClusterEventState(next.ResumeToken, primitive.Timestamp{})
+		}
+		// this is more likely to be some issue that is happening on MongoDB. It could
+		// also be a context cancellation. Either way, we will signal we need a new
+		// change stream and the next iteration of the loop will go back to normal
+		// ideally. We will log though just in case.
+		queue.csManagerSeq.Add(1)
+		return true
+	}
+
+	// This is atomic but we still do not want to process the same event twice if
+	// we are reopening a change stream and it is behind one. We rely on the idempotency of
+	// updates to calls in addition to atomic call acquistion semantics to guarantee this.
+	if !queue.processClusterEventState(next.ResumeToken, next.Event.ClusterTime) {
+		return false
+	}
+
+	var callResp mongodbWebRTCCall
+	if err := next.Event.FullDocument.Unmarshal(&callResp); err != nil {
+		queue.logger.Errorw("failed to unmarshal call document", "error", err)
+		return false
+	}
+
+	if callResp.Host == "" {
+		queue.logger.Errorw("unexpected call with no host", "id", callResp.ID)
+		return false
+	}
+
+	// This message sending pass must be as fast possible and for that reason we use select defaults.
+	// In the event default cases happen, we have determined to either have hit some terminal case
+	// in the exchange or too many messages have been sent. Either way we should log and monitor these.
+	func() {
+		queue.csStateMu.RLock()
+		defer queue.csStateMu.RUnlock()
+
+		if next.Event.OperationType == mongoutils.ChangeEventOperationTypeInsert {
+			if _, ok := queue.csTrackingHosts[callResp.Host]; !ok {
+				//  not interestsed in this
+				return
+			}
+			answererQueues := queue.waitingForCallSubs[callResp.Host]
+			if len(answererQueues) == 0 {
+				queue.logger.Debugw("no answerer is around for this new call; the next answerer will find the document instead", "host", callResp.Host)
+				return
+			}
+			event := mongodbCallEvent{Call: callResp}
+			for queue := range answererQueues {
+				select {
+				case queue <- event:
+					return
+				default:
+				}
+			}
+			queue.logger.Warnw(
+				"all answerers for host too busy to answer call",
+				"id", callResp.ID,
+				"host",
+				callResp.Host,
+			)
+		}
+
+		if next.Event.OperationType == mongoutils.ChangeEventOperationTypeUpdate ||
+			next.Event.OperationType == mongoutils.ChangeEventOperationTypeDelete {
+			exchangeChans := queue.callExchangeSubs[callResp.ID]
+			if len(exchangeChans) == 0 {
+				queue.logger.Debugw("no call exchangers remain for", "id", callResp.ID, "host", callResp.Host)
+				return
+			}
+			var event mongodbCallEvent
+			if next.Event.OperationType == mongoutils.ChangeEventOperationTypeUpdate {
+				event.Call = callResp
+			} else {
+				event.Expired = true
+			}
+			for exchangeChan := range exchangeChans {
+				select {
+				case exchangeChan.Chan <- event:
+				default:
+					exchangeChannelAtCapacity.Inc(queue.operatorID)
+					queue.logger.Debugw("failed to notify exchange channel of call update",
+						"id", callResp.ID, "host", callResp.Host, "side", exchangeChan.Side)
+				}
+			}
+		}
+	}()
+
+	return false
+}
+
+func (queue *mongoDBWebRTCCallQueue) subscriptionManager(currentCS <-chan mongoutils.ChangeEventResult) {
+	var waitForNextCS bool
+	for {
+		if queue.cancelCtx.Err() != nil {
+			return
+		}
+		if waitForNextCS {
+			// we want to block here so that we do not keep receiving bad events.
+			waitForNextCS = false
+			select {
+			case <-queue.cancelCtx.Done():
+				return
+			case newState := <-queue.csStateUpdates:
+				currentCS = newState.ChangeStream
+				continue
+			}
+		} else {
+			// otherwise we can do a quick check.
+			select {
+			case <-queue.cancelCtx.Done():
+				return
+			case next, ok := <-currentCS: // try and make some progress at least once
+				waitForNextCS = queue.processNextSubscriptionEvent(next, ok)
+				if waitForNextCS { // something bad happened and we requested/need a new CS
+					continue
+				}
+			default:
+			}
+		}
+
+		// finally allow accepting a new change stream while checking for events.
+		select {
+		case <-queue.cancelCtx.Done():
+			return
+		case newState := <-queue.csStateUpdates:
+			currentCS = newState.ChangeStream
+			continue
+		case next, ok := <-currentCS:
+			waitForNextCS = queue.processNextSubscriptionEvent(next, ok)
+			if waitForNextCS { // something bad happened and we requested/need a new CS
+				continue
+			}
+		}
+	}
+}
+
+// subscribeToCall allows for a caller or answerer to subscribe for events related to the given call id. It
+// does not wait for any operator change stream updates since calls are attached to operator IDs that will
+// always receive corresponding updates.
+func (queue *mongoDBWebRTCCallQueue) subscribeToCall(host, callID, side string) (<-chan mongodbCallEvent, func()) {
+	queue.csStateMu.Lock()
+	defer queue.csStateMu.Unlock()
+
+	// 50 is a very high amount of events that is unlikely to happen. If it does, we consider it an error
+	// and will log/drop devents.
+	queueSub := make(chan mongodbCallEvent, 50)
+	exchangeSubs, ok := queue.callExchangeSubs[callID]
+	if !ok {
+		exchangeSubs = map[*mongodbCallExchange]struct{}{}
+		queue.callExchangeSubs[callID] = exchangeSubs
+	}
+	exchange := &mongodbCallExchange{Host: host, Chan: queueSub, Side: side}
+	exchangeSubs[exchange] = struct{}{}
+	return queueSub, func() {
+		queue.csStateMu.Lock()
+		defer queue.csStateMu.Unlock()
+		delete(exchangeSubs, exchange)
+		if len(exchangeSubs) == 0 {
+			delete(queue.callExchangeSubs, callID)
+		}
+	}
+}
+
+// subscribeForCallOnHosts allows an answerer to subscribe for events related to the given hosts. It returns
+// once this operator's change stream is tracking the hosts.
+func (queue *mongoDBWebRTCCallQueue) subscribeForCallOnHosts(ctx context.Context, hosts []string) (<-chan mongodbCallEvent, func(), error) {
+	queue.csStateMu.Lock()
+	subQueue := make(chan mongodbCallEvent, 1)
+	ready := make(chan struct{})
+
+	var alreadyTrackedCount int
+	for _, host := range hosts {
+		if _, ok := queue.csTrackingHosts[host]; ok {
+			alreadyTrackedCount++
+		}
+		hostSubs, ok := queue.waitingForCallSubs[host]
+		if !ok {
+			hostSubs = map[chan mongodbCallEvent]struct{}{}
+			queue.waitingForCallSubs[host] = hostSubs
+		}
+		hostSubs[subQueue] = struct{}{}
+	}
+
+	unsub := func() {
+		queue.csStateMu.Lock()
+		defer queue.csStateMu.Unlock()
+		for _, host := range hosts {
+			delete(queue.waitingForCallSubs[host], subQueue)
+			if len(queue.waitingForCallSubs[host]) == 0 {
+				delete(queue.waitingForCallSubs, host)
+			}
+		}
+	}
+
+	if alreadyTrackedCount == len(hosts) {
+		queue.csStateMu.Unlock()
+		return subQueue, unsub, nil
+	}
+
+	queue.csAnswerersWaitingForNextCS = append(queue.csAnswerersWaitingForNextCS, func() {
+		close(ready)
+	})
+	queue.csStateMu.Unlock()
+	queue.csManagerSeq.Add(1)
+
+	select {
+	case <-ctx.Done():
+		unsub()
+		return nil, nil, ctx.Err()
+	case <-ready:
+		return subQueue, unsub, nil
+	}
+}
+
+var (
+	projectStage   = bson.D{{"$project", bson.D{{webrtcOperatorHostsField, 1}, {"_id", 0}}}}
+	unwindAggStage = bson.D{{"$unwind", "$" + webrtcOperatorHostsField}}
+	groupAggStage  = bson.D{{"$group", bson.D{
+		{"_id", "$" + webrtcOperatorHostsHostCombinedField},
+		{"caller_size", bson.D{{"$sum", "$" + webrtcOperatorHostsCallerSizeCombinedField}}},
+		{"answerer_size", bson.D{{"$sum", "$" + webrtcOperatorHostsAnswererSizeCombinedField}}},
+	}}}
+)
+
+var errTooManyConns = status.Error(codes.Unavailable, "too many connection attempts; please wait a bit try again")
+
+func (queue *mongoDBWebRTCCallQueue) checkHostQueueSize(ctx context.Context, forCaller bool, hosts ...string) error {
+	hostsMatch := bson.D{
+		{"$match", bson.D{{webrtcOperatorHostsHostCombinedField, bson.D{{"$in", hosts}}}}},
+	}
+	pipeline := []interface{}{
+		hostsMatch,
+		projectStage,
+		unwindAggStage,
+		hostsMatch,
+		groupAggStage,
+	}
+	if forCaller {
+		pipeline = append(pipeline, queue.hostCallerQueueSizeMatchAggStage)
+	} else {
+		pipeline = append(pipeline, queue.hostAnswererQueueSizeMatchAggStage)
+	}
+	cursor, err := queue.operatorsColl.Aggregate(ctx, pipeline)
+	if err != nil {
+		return err
+	}
+	var ret []interface{}
+	if err := cursor.All(ctx, &ret); err != nil {
+		return err
+	}
+	if len(ret) == 0 {
+		return nil
+	}
+	return errTooManyConns
+}
 
 // SendOfferInit initializes an offer associated with the given SDP to the given host.
 // It returns a UUID to track/authenticate the offer over time, the initial SDP for the
@@ -122,38 +778,30 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 	host, sdp string,
 	disableTrickle bool,
 ) (string, <-chan WebRTCCallAnswer, <-chan struct{}, func(), error) {
-	newUUID := uuid.NewString()
-	call := mongodbWebRTCCall{
-		ID:        newUUID,
-		Host:      host,
-		CallerSDP: sdp,
-	}
-
-	cs, err := queue.coll.Watch(ctx, []bson.D{
-		{
-			{"$match", bson.D{
-				{"operationType", mongoutils.ChangeEventOperationTypeUpdate},
-				{fmt.Sprintf("documentKey.%s", webrtcCallIDField), call.ID},
-			}},
-		},
-	}, options.ChangeStream().SetFullDocument(options.UpdateLookup))
-	if err != nil {
+	if err := queue.checkHostQueueSize(ctx, true, host); err != nil {
 		return "", nil, nil, nil, err
 	}
 
-	// need to watch before insertion to avoid a race
-	sendCtx, sendCtxCancel := utils.MergeContext(ctx, queue.cancelCtx)
-	csNext, _ := mongoutils.ChangeStreamBackground(sendCtx, cs)
+	newUUID := uuid.NewString()
+	call := mongodbWebRTCCall{
+		ID:               newUUID,
+		CallerOperatorID: queue.operatorID,
+		Host:             host,
+		CallerSDP:        sdp,
+	}
 
-	var ctxDeadlineExceedViaCS bool
+	events, unsubscribe := queue.subscribeToCall(host, call.ID, "caller")
+
+	offerDeadline := time.Now().Add(getDefaultOfferDeadline())
+	sendCtx, sendCtxCancel := context.WithDeadline(ctx, offerDeadline)
+
+	// need to watch before insertion to avoid a race
+	sendAndQueueCtx, sendAndQueueCtxCancel := utils.MergeContext(sendCtx, queue.cancelCtx)
+
 	cleanup := func() {
-		defer func() {
-			for range csNext {
-			}
-		}()
-		if !ctxDeadlineExceedViaCS {
-			defer sendCtxCancel()
-		}
+		sendAndQueueCtxCancel()
+		sendCtxCancel()
+		unsubscribe()
 	}
 	var successful bool
 	defer func() {
@@ -164,17 +812,14 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 	}()
 
 	call.StartedAt = time.Now()
-	if _, err := queue.coll.InsertOne(ctx, call); err != nil {
+	if _, err := queue.callsColl.InsertOne(sendAndQueueCtx, call); err != nil {
 		return "", nil, nil, nil, err
 	}
 
 	answererResponses := make(chan WebRTCCallAnswer, 1)
 	sendAnswer := func(answer WebRTCCallAnswer) bool {
-		if answer.Err != nil && errors.Is(answer.Err, context.DeadlineExceeded) {
-			ctxDeadlineExceedViaCS = true
-		}
 		select {
-		case <-sendCtx.Done():
+		case <-sendAndQueueCtx.Done():
 			// try once more
 			select {
 			case answererResponses <- answer:
@@ -188,17 +833,22 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 	queue.activeBackgroundWorkers.Add(1)
 	utils.PanicCapturingGo(func() {
 		defer queue.activeBackgroundWorkers.Done()
-		defer func() {
-			cleanup()
-		}()
+		defer cleanup()
 		defer close(answererResponses)
 
 		haveInitSDP := false
 		candLen := len(call.AnswererCandidates)
 		for {
-			next, ok := <-csNext
-			if !ok {
+			if sendAndQueueCtx.Err() != nil {
+				sendAnswer(WebRTCCallAnswer{Err: sendAndQueueCtx.Err()})
 				return
+			}
+			var next mongodbCallEvent
+			select {
+			case <-sendAndQueueCtx.Done():
+				sendAnswer(WebRTCCallAnswer{Err: sendAndQueueCtx.Err()})
+				return
+			case next = <-events:
 			}
 
 			if next.Error != nil {
@@ -206,11 +856,7 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 				return
 			}
 
-			var callResp mongodbWebRTCCall
-			if err := next.Event.FullDocument.Unmarshal(&callResp); err != nil {
-				sendAnswer(WebRTCCallAnswer{Err: err})
-				return
-			}
+			callResp := next.Call
 
 			if callResp.AnswererError != "" {
 				sendAnswer(WebRTCCallAnswer{Err: errors.New(callResp.AnswererError)})
@@ -242,13 +888,13 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 		}
 	})
 	successful = true
-	return newUUID, answererResponses, sendCtx.Done(), sendCtxCancel, nil
+	return newUUID, answererResponses, sendAndQueueCtx.Done(), sendAndQueueCtxCancel, nil
 }
 
 // SendOfferUpdate updates the offer associated with the given UUID with a newly discovered
 // ICE candidate.
 func (queue *mongoDBWebRTCCallQueue) SendOfferUpdate(ctx context.Context, host, uuid string, candidate webrtc.ICECandidateInit) error {
-	updateResult, err := queue.coll.UpdateOne(ctx, bson.D{
+	updateResult, err := queue.callsColl.UpdateOne(ctx, bson.D{
 		{webrtcCallIDField, uuid},
 		{webrtcCallHostField, host},
 	}, bson.D{{"$push", bson.D{{webrtcCallCallerCandidatesField, iceCandidateToMongo(&candidate)}}}})
@@ -264,7 +910,7 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferUpdate(ctx context.Context, host, 
 // SendOfferDone informs the queue that the offer associated with the UUID is done sending any
 // more information.
 func (queue *mongoDBWebRTCCallQueue) SendOfferDone(ctx context.Context, host, uuid string) error {
-	updateResult, err := queue.coll.UpdateOne(ctx, bson.D{
+	updateResult, err := queue.callsColl.UpdateOne(ctx, bson.D{
 		{webrtcCallIDField, uuid},
 		{webrtcCallHostField, host},
 	}, bson.D{{"$set", bson.D{{webrtcCallCallerDoneField, true}}}})
@@ -280,7 +926,7 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferDone(ctx context.Context, host, uu
 // SendOfferError informs the queue that the offer associated with the UUID has encountered
 // an error from the sender side.
 func (queue *mongoDBWebRTCCallQueue) SendOfferError(ctx context.Context, host, uuid string, err error) error {
-	updateResult, err := queue.coll.UpdateOne(ctx, bson.D{
+	updateResult, err := queue.callsColl.UpdateOne(ctx, bson.D{
 		{webrtcCallIDField, uuid},
 		{webrtcCallHostField, host},
 		{webrtcCallCallerDoneField, bson.D{{"$ne", true}}},
@@ -297,28 +943,19 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferError(ctx context.Context, host, u
 // RecvOffer receives the next offer for the given host. It should respond with an answer
 // once a decision is made.
 func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []string) (WebRTCCallOfferExchange, error) {
-	// Start watching for an offer inserted
-	cs, err := queue.coll.Watch(ctx, []bson.D{
-		{
-			{"$match", bson.D{
-				{"operationType", mongoutils.ChangeEventOperationTypeInsert},
-				{fmt.Sprintf("fullDocument.%s", webrtcCallHostField), bson.D{{"$in", hosts}}},
-			}},
-		},
-	}, options.ChangeStream().SetFullDocument(options.UpdateLookup))
-	if err != nil {
+	if err := queue.checkHostQueueSize(ctx, false, hosts...); err != nil {
 		return nil, err
 	}
 
 	recvOfferCtx, recvOfferCtxCancel := utils.MergeContext(ctx, queue.cancelCtx)
-	csOfferNext, rt := mongoutils.ChangeStreamBackground(recvOfferCtx, cs)
+	events, callUnsubscribe, err := queue.subscribeForCallOnHosts(recvOfferCtx, hosts)
+	if err != nil {
+		return nil, err
+	}
 
 	cleanup := func() {
-		defer func() {
-			for range csOfferNext {
-			}
-		}()
-		defer recvOfferCtxCancel()
+		recvOfferCtxCancel()
+		callUnsubscribe()
 	}
 	var recvOfferSuccessful bool
 	defer func() {
@@ -342,8 +979,8 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 	startedAtWindow := time.Now().Add(-getDefaultOfferDeadline()).Add(getDefaultOfferCloseToDeadline())
 
 	// but also check first if there is anything for us.
-	result := queue.coll.FindOneAndUpdate(
-		ctx,
+	result := queue.callsColl.FindOneAndUpdate(
+		recvOfferCtx,
 		bson.D{
 			{webrtcCallHostField, bson.D{{"$in", hosts}}},
 			{webrtcCallCallerErrorField, bson.D{{"$exists", false}}},
@@ -352,6 +989,7 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 		},
 		bson.D{
 			{"$set", bson.D{
+				{webrtcCallAnswererOperatorIDField, queue.operatorID},
 				{webrtcCallAnsweredField, true},
 			}},
 		})
@@ -363,34 +1001,32 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 		}
 		getFirstResult := func() error {
 			for {
-				if err := ctx.Err(); err != nil {
+				if err := recvOfferCtx.Err(); err != nil {
 					return err
 				}
 
 				select {
-				case <-ctx.Done():
-					return ctx.Err()
-				case next, ok := <-csOfferNext:
+				case <-recvOfferCtx.Done():
+					return recvOfferCtx.Err()
+				case next, ok := <-events:
 					if !ok {
 						return errors.New("no next result")
 					}
-					rt = next.ResumeToken
 					if next.Error != nil {
 						return next.Error
 					}
 
-					if err := next.Event.FullDocument.Unmarshal(&callReq); err != nil {
-						return err
-					}
+					callReq = next.Call
 
 					// take the offer
-					result, err := queue.coll.UpdateOne(
-						ctx,
+					result, err := queue.callsColl.UpdateOne(
+						recvOfferCtx,
 						bson.D{
 							{webrtcCallIDField, callReq.ID},
 						},
 						bson.D{
 							{"$set", bson.D{
+								{webrtcCallAnswererOperatorIDField, queue.operatorID},
 								{webrtcCallAnsweredField, true},
 							}},
 						})
@@ -413,38 +1049,15 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 	recvOfferSuccessful = true
 	cleanup()
 
-	// This is broken in 6.0 because of https://jira.mongodb.org/browse/SERVER-71565.
-	cs, err = queue.coll.Watch(ctx, []bson.D{
-		{
-			{"$match", bson.D{
-				{"operationType", bson.D{{"$in", []interface{}{
-					mongoutils.ChangeEventOperationTypeUpdate,
-					mongoutils.ChangeEventOperationTypeDelete,
-				}}}},
-				{fmt.Sprintf("documentKey.%s", webrtcCallIDField), callReq.ID},
-			}},
-		},
-	}, options.ChangeStream().
-		SetFullDocument(options.UpdateLookup).
-		// We will resume from the point that either the change stream started (if FindOneAndUpdate worked)
-		// or from the most recent change event containing the call request.
-		SetResumeAfter(rt),
-	)
-	if err != nil {
-		return nil, err
-	}
+	events, exchangeUnsubscribe := queue.subscribeToCall(callReq.Host, callReq.ID, "answerer")
 
 	offerDeadline := callReq.StartedAt.Add(getDefaultOfferDeadline())
 
 	recvCtx, recvCtxCancel := utils.MergeContextWithDeadline(ctx, queue.cancelCtx, offerDeadline)
-	csNext, _ := mongoutils.ChangeStreamBackground(recvCtx, cs)
 
 	cleanup = func() {
-		defer func() {
-			for range csNext {
-			}
-		}()
-		defer recvCtxCancel()
+		recvCtxCancel()
+		exchangeUnsubscribe()
 	}
 	var successful bool
 	defer func() {
@@ -457,7 +1070,7 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 	callerDoneCtx, callerDoneCancel := context.WithCancel(context.Background())
 	exchange := mongoDBWebRTCCallOfferExchange{
 		call:             callReq,
-		coll:             queue.coll,
+		coll:             queue.callsColl,
 		callerCandidates: make(chan webrtc.ICECandidateInit),
 		callerDoneCtx:    callerDoneCtx,
 		deadline:         offerDeadline,
@@ -473,11 +1086,11 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 
 			// we need a dedicated timeout since even if the server is shutting down,
 			// we want to notify other servers immediately, instead of waiting for a timeout.
-			sendCtx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+			updateCtx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 			defer cancel()
 
-			_, err := queue.coll.UpdateOne(
-				sendCtx,
+			_, err := queue.callsColl.UpdateOne(
+				updateCtx,
 				bson.D{
 					{webrtcCallIDField, callReq.ID},
 				},
@@ -515,7 +1128,7 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 		latestReq := callReq
 		for {
 			// because of our usage of update lookup being a full document,
-			// there's a chance that we get the document with enough information
+			// there is a chance that we get the document with enough information
 			// to process the call. Therefore, we process the current info and then
 			// wait for more events.
 
@@ -540,26 +1153,31 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 				return
 			}
 
-			next, ok := <-csNext
-			if !ok {
-				return
-			}
-			if next.Error != nil {
-				setErr(next.Error)
+			if err := recvCtx.Err(); err != nil {
+				setErr(recvCtx.Err())
 				return
 			}
 
-			if next.Event.OperationType == mongoutils.ChangeEventOperationTypeDelete {
-				exchange.callerErr = errors.New("offer expired")
+			select {
+			case <-recvCtx.Done():
+				setErr(recvCtx.Err())
 				return
-			}
+			case next, ok := <-events:
+				if !ok {
+					return
+				}
+				if next.Error != nil {
+					setErr(next.Error)
+					return
+				}
 
-			var callUpdate mongodbWebRTCCall
-			if err := next.Event.FullDocument.Unmarshal(&callUpdate); err != nil {
-				setErr(err)
-				return
+				if next.Expired {
+					exchange.callerErr = errors.New("offer expired")
+					return
+				}
+
+				latestReq = next.Call
 			}
-			latestReq = callUpdate
 		}
 	})
 	successful = true

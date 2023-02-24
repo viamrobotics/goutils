@@ -12,25 +12,24 @@ import (
 	"go.viam.com/test"
 )
 
-func testWebRTCCallQueue(t *testing.T, callQueue WebRTCCallQueue) {
-	t.Helper()
+func testWebRTCCallQueue(t *testing.T, setupQueues func(t *testing.T) (WebRTCCallQueue, WebRTCCallQueue, func())) {
 	t.Run("sending an offer for too long should signal done", func(t *testing.T) {
+		callerQueue, _, teardown := setupQueues(t)
+		defer teardown()
+
 		undo := setDefaultOfferDeadline(time.Second)
 		defer undo()
 
 		host := primitive.NewObjectID().Hex()
-		done := make(chan struct{})
-		defer func() { <-done }()
-		go func() {
-			callQueue.RecvOffer(context.Background(), []string{host})
-			close(done)
-		}()
-		_, _, ansCtx, _, err := callQueue.SendOfferInit(context.Background(), host, "somesdp", false)
+		_, _, ansCtx, _, err := callerQueue.SendOfferInit(context.Background(), host, "somesdp", false)
 		test.That(t, err, test.ShouldBeNil)
 		<-ansCtx
 	})
 
 	t.Run("recv can get caller updates and done", func(t *testing.T) {
+		callerQueue, answererQueue, teardown := setupQueues(t)
+		defer teardown()
+
 		host := primitive.NewObjectID().Hex()
 		recvErrCh := make(chan error)
 		recvCandCh := make(chan webrtc.ICECandidateInit)
@@ -58,7 +57,7 @@ func testWebRTCCallQueue(t *testing.T, callQueue WebRTCCallQueue) {
 		done := make(chan struct{})
 		defer func() { <-done }()
 		go func() {
-			offer, err := callQueue.RecvOffer(context.Background(), []string{host})
+			offer, err := answererQueue.RecvOffer(context.Background(), []string{host})
 			if err != nil {
 				recvErrCh <- err
 				return
@@ -74,7 +73,7 @@ func testWebRTCCallQueue(t *testing.T, callQueue WebRTCCallQueue) {
 			close(done)
 		}()
 
-		newUUID, answers, answersDone, cancel, err := callQueue.SendOfferInit(context.Background(), host, "hello", false)
+		newUUID, answers, answersDone, cancel, err := callerQueue.SendOfferInit(context.Background(), host, "hello", false)
 		defer cancel()
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, newUUID, test.ShouldNotBeEmpty)
@@ -88,14 +87,17 @@ func testWebRTCCallQueue(t *testing.T, callQueue WebRTCCallQueue) {
 		test.That(t, <-recvErrCh, test.ShouldBeNil)
 		<-answersDone
 		test.That(t, <-recvErrCh, test.ShouldBeNil)
-		test.That(t, callQueue.SendOfferUpdate(context.Background(), host, newUUID, *c2), test.ShouldBeNil)
+		test.That(t, callerQueue.SendOfferUpdate(context.Background(), host, newUUID, *c2), test.ShouldBeNil)
 		test.That(t, <-recvCandCh, test.ShouldResemble, *c2)
-		test.That(t, callQueue.SendOfferUpdate(context.Background(), host, newUUID, *c3), test.ShouldBeNil)
+		test.That(t, callerQueue.SendOfferUpdate(context.Background(), host, newUUID, *c3), test.ShouldBeNil)
 		test.That(t, <-recvCandCh, test.ShouldResemble, *c3)
-		test.That(t, callQueue.SendOfferDone(context.Background(), host, newUUID), test.ShouldBeNil)
+		test.That(t, callerQueue.SendOfferDone(context.Background(), host, newUUID), test.ShouldBeNil)
 	})
 
 	t.Run("recv can get caller updates and error", func(t *testing.T) {
+		callerQueue, answererQueue, teardown := setupQueues(t)
+		defer teardown()
+
 		host := primitive.NewObjectID().Hex()
 		recvErrCh := make(chan error)
 		recvCandCh := make(chan webrtc.ICECandidateInit)
@@ -123,7 +125,7 @@ func testWebRTCCallQueue(t *testing.T, callQueue WebRTCCallQueue) {
 		done := make(chan struct{})
 		defer func() { <-done }()
 		go func() {
-			offer, err := callQueue.RecvOffer(context.Background(), []string{host})
+			offer, err := answererQueue.RecvOffer(context.Background(), []string{host})
 			if err != nil {
 				recvErrCh <- err
 				return
@@ -140,7 +142,7 @@ func testWebRTCCallQueue(t *testing.T, callQueue WebRTCCallQueue) {
 			close(done)
 		}()
 
-		newUUID, answers, answersDone, cancel, err := callQueue.SendOfferInit(context.Background(), host, "hello", false)
+		newUUID, answers, answersDone, cancel, err := callerQueue.SendOfferInit(context.Background(), host, "hello", false)
 		defer cancel()
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, newUUID, test.ShouldNotBeEmpty)
@@ -154,17 +156,20 @@ func testWebRTCCallQueue(t *testing.T, callQueue WebRTCCallQueue) {
 		test.That(t, <-recvErrCh, test.ShouldBeNil)
 		<-answersDone
 		test.That(t, <-recvErrCh, test.ShouldBeNil)
-		test.That(t, callQueue.SendOfferUpdate(context.Background(), host, newUUID, *c2), test.ShouldBeNil)
+		test.That(t, callerQueue.SendOfferUpdate(context.Background(), host, newUUID, *c2), test.ShouldBeNil)
 		test.That(t, <-recvCandCh, test.ShouldResemble, *c2)
-		test.That(t, callQueue.SendOfferUpdate(context.Background(), host, newUUID, *c3), test.ShouldBeNil)
+		test.That(t, callerQueue.SendOfferUpdate(context.Background(), host, newUUID, *c3), test.ShouldBeNil)
 		test.That(t, <-recvCandCh, test.ShouldResemble, *c3)
-		test.That(t, callQueue.SendOfferError(context.Background(), host, newUUID, errors.New("whoops")), test.ShouldBeNil)
+		test.That(t, callerQueue.SendOfferError(context.Background(), host, newUUID, errors.New("whoops")), test.ShouldBeNil)
 		test.That(t, <-recvErrCh, test.ShouldBeError, errors.New("whoops"))
 	})
 
 	t.Run("canceling an offer should eventually close answerer responses", func(t *testing.T) {
+		callerQueue, _, teardown := setupQueues(t)
+		defer teardown()
+
 		host := primitive.NewObjectID().Hex()
-		newUUID, _, answersDone, cancel, err := callQueue.SendOfferInit(context.Background(), host, "hello", false)
+		newUUID, _, answersDone, cancel, err := callerQueue.SendOfferInit(context.Background(), host, "hello", false)
 		cancel()
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, newUUID, test.ShouldNotBeEmpty)
@@ -172,6 +177,9 @@ func testWebRTCCallQueue(t *testing.T, callQueue WebRTCCallQueue) {
 	})
 
 	t.Run("sending successfully with an sdp", func(t *testing.T) {
+		callerQueue, answererQueue, teardown := setupQueues(t)
+		defer teardown()
+
 		hosts := []string{primitive.NewObjectID().Hex(), primitive.NewObjectID().Hex()}
 		for idx, host := range hosts {
 			t.Run(fmt.Sprintf("%d", idx), func(t *testing.T) {
@@ -188,7 +196,7 @@ func testWebRTCCallQueue(t *testing.T, callQueue WebRTCCallQueue) {
 				done := make(chan struct{})
 				defer func() { <-done }()
 				go func() {
-					offer, err := callQueue.RecvOffer(context.Background(), hosts)
+					offer, err := answererQueue.RecvOffer(context.Background(), hosts)
 					if err != nil {
 						recvErrCh <- err
 						return
@@ -201,7 +209,7 @@ func testWebRTCCallQueue(t *testing.T, callQueue WebRTCCallQueue) {
 					close(done)
 				}()
 
-				newUUID, answers, answersDone, cancel, err := callQueue.SendOfferInit(context.Background(), host, "hello", false)
+				newUUID, answers, answersDone, cancel, err := callerQueue.SendOfferInit(context.Background(), host, "hello", false)
 				defer cancel()
 				test.That(t, err, test.ShouldBeNil)
 				test.That(t, newUUID, test.ShouldNotBeEmpty)
@@ -220,12 +228,15 @@ func testWebRTCCallQueue(t *testing.T, callQueue WebRTCCallQueue) {
 	})
 
 	t.Run("sending successfully with an error", func(t *testing.T) {
+		callerQueue, answererQueue, teardown := setupQueues(t)
+		defer teardown()
+
 		host := primitive.NewObjectID().Hex()
 		recvErrCh := make(chan error)
 		done := make(chan struct{})
 		defer func() { <-done }()
 		go func() {
-			offer, err := callQueue.RecvOffer(context.Background(), []string{host})
+			offer, err := answererQueue.RecvOffer(context.Background(), []string{host})
 			if err != nil {
 				recvErrCh <- err
 				return
@@ -236,7 +247,7 @@ func testWebRTCCallQueue(t *testing.T, callQueue WebRTCCallQueue) {
 			close(done)
 		}()
 
-		newUUID, answers, answersDone, cancel, err := callQueue.SendOfferInit(context.Background(), host, "hello", false)
+		newUUID, answers, answersDone, cancel, err := callerQueue.SendOfferInit(context.Background(), host, "hello", false)
 		defer cancel()
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, newUUID, test.ShouldNotBeEmpty)
@@ -247,6 +258,9 @@ func testWebRTCCallQueue(t *testing.T, callQueue WebRTCCallQueue) {
 	})
 
 	t.Run("receiving from a host not sent to should not work", func(t *testing.T) {
+		callerQueue, answererQueue, teardown := setupQueues(t)
+		defer teardown()
+
 		undo := setDefaultOfferDeadline(10 * time.Second)
 		defer undo()
 
@@ -257,14 +271,14 @@ func testWebRTCCallQueue(t *testing.T, callQueue WebRTCCallQueue) {
 			// should be ample time in tests
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			_, err := callQueue.RecvOffer(ctx, []string{primitive.NewObjectID().Hex()})
+			_, err := answererQueue.RecvOffer(ctx, []string{primitive.NewObjectID().Hex()})
 			recvErrCh <- err
 			close(done)
 		}()
 
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		_, _, ansCtx, _, err := callQueue.SendOfferInit(ctx, primitive.NewObjectID().Hex(), "hello", false)
+		_, _, ansCtx, _, err := callerQueue.SendOfferInit(ctx, primitive.NewObjectID().Hex(), "hello", false)
 		test.That(t, err, test.ShouldBeNil)
 		<-ansCtx
 		recvErr := <-recvErrCh
