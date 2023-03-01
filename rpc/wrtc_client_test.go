@@ -27,8 +27,10 @@ func TestWebRTCClientServerWithMemoryQueue(t *testing.T) {
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
 	signalingCallQueue := NewMemoryWebRTCCallQueue(logger)
+	defer func() {
+		test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
+	}()
 	testWebRTCClientServer(t, signalingCallQueue, logger)
-	test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
 }
 
 func TestWebRTCClientServerWithMongoDBQueue(t *testing.T) {
@@ -37,8 +39,10 @@ func TestWebRTCClientServerWithMongoDBQueue(t *testing.T) {
 	client := testutils.BackingMongoDBClient(t)
 	signalingCallQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), uuid.NewString(), 50, client, logger)
 	test.That(t, err, test.ShouldBeNil)
+	defer func() {
+		test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
+	}()
 	testWebRTCClientServer(t, signalingCallQueue, logger)
-	test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
 }
 
 //nolint:thelper
@@ -114,8 +118,10 @@ func TestWebRTCClientDialCancelWithMemoryQueue(t *testing.T) {
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
 	signalingCallQueue := NewMemoryWebRTCCallQueue(logger)
+	defer func() {
+		test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
+	}()
 	testWebRTCClientDialCancel(t, signalingCallQueue, logger)
-	test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
 }
 
 func TestWebRTCClientDialCancelWithMongoDBQueue(t *testing.T) {
@@ -124,8 +130,10 @@ func TestWebRTCClientDialCancelWithMongoDBQueue(t *testing.T) {
 	client := testutils.BackingMongoDBClient(t)
 	signalingCallQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), uuid.NewString(), 50, client, logger)
 	test.That(t, err, test.ShouldBeNil)
+	defer func() {
+		test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
+	}()
 	testWebRTCClientDialCancel(t, signalingCallQueue, logger)
-	test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
 }
 
 //nolint:thelper
@@ -195,8 +203,10 @@ func TestWebRTCClientDialReflectAnswererErrorWithMemoryQueue(t *testing.T) {
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
 	signalingCallQueue := NewMemoryWebRTCCallQueue(logger)
+	defer func() {
+		test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
+	}()
 	testWebRTCClientDialReflectAnswererError(t, signalingCallQueue, logger)
-	test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
 }
 
 func TestWebRTCClientDialReflectAnswererErrorWithMongoDBQueue(t *testing.T) {
@@ -205,8 +215,10 @@ func TestWebRTCClientDialReflectAnswererErrorWithMongoDBQueue(t *testing.T) {
 	client := testutils.BackingMongoDBClient(t)
 	signalingCallQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), uuid.NewString(), 50, client, logger)
 	test.That(t, err, test.ShouldBeNil)
+	defer func() {
+		test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
+	}()
 	testWebRTCClientDialReflectAnswererError(t, signalingCallQueue, logger)
-	test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
 }
 
 //nolint:thelper
@@ -281,8 +293,10 @@ func TestWebRTCClientDialConcurrentWithMemoryQueue(t *testing.T) {
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
 	signalingCallQueue := NewMemoryWebRTCCallQueue(logger)
+	defer func() {
+		test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
+	}()
 	testWebRTCClientDialConcurrent(t, signalingCallQueue, logger)
-	test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
 }
 
 func TestWebRTCClientDialConcurrentWithMongoDBQueue(t *testing.T) {
@@ -291,8 +305,10 @@ func TestWebRTCClientDialConcurrentWithMongoDBQueue(t *testing.T) {
 	client := testutils.BackingMongoDBClient(t)
 	signalingCallQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), uuid.NewString(), 50, client, logger)
 	test.That(t, err, test.ShouldBeNil)
+	defer func() {
+		test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
+	}()
 	testWebRTCClientDialConcurrent(t, signalingCallQueue, logger)
-	test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
 }
 
 //nolint:thelper
@@ -409,8 +425,10 @@ func TestWebRTCClientAnswerConcurrentWithMemoryQueue(t *testing.T) {
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
 	signalingCallQueue := NewMemoryWebRTCCallQueue(logger)
+	defer func() {
+		test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
+	}()
 	testWebRTCClientAnswerConcurrent(t, signalingCallQueue, logger)
-	test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
 }
 
 func TestWebRTCClientAnswerConcurrentWithMongoDBQueue(t *testing.T) {
@@ -419,8 +437,10 @@ func TestWebRTCClientAnswerConcurrentWithMongoDBQueue(t *testing.T) {
 	client := testutils.BackingMongoDBClient(t)
 	signalingCallQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), uuid.NewString(), 50, client, logger)
 	test.That(t, err, test.ShouldBeNil)
+	defer func() {
+		test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
+	}()
 	testWebRTCClientAnswerConcurrent(t, signalingCallQueue, logger)
-	test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
 }
 
 //nolint:thelper

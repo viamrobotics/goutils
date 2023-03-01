@@ -38,8 +38,10 @@ func TestDialWithMemoryQueue(t *testing.T) {
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
 	signalingCallQueue := NewMemoryWebRTCCallQueue(logger)
+	defer func() {
+		test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
+	}()
 	testDial(t, signalingCallQueue, logger)
-	test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
 }
 
 func TestDialWithMongoDBQueue(t *testing.T) {
@@ -48,8 +50,10 @@ func TestDialWithMongoDBQueue(t *testing.T) {
 	client := testutils.BackingMongoDBClient(t)
 	signalingCallQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), uuid.NewString(), 50, client, logger)
 	test.That(t, err, test.ShouldBeNil)
+	defer func() {
+		test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
+	}()
 	testDial(t, signalingCallQueue, logger)
-	test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
 }
 
 //nolint:thelper
