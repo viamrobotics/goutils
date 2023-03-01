@@ -81,6 +81,109 @@ func NewCounter4[T1, T2 labelContraint,
 	}
 }
 
+//// Int64 Summations - Create a summation at the package level.
+//
+// var uploadsInFlightCounter = statz.NewSummation1[string]("datasync/uploads_in_flight", statz.MetricConfig{
+// 		Description: "The number of requests in flight",
+// 		Unit:        units.Dimensionless,
+// 		Labels: []statz.Label{
+// 			{Name: "type", Description: "The data type (file|binary|tabular)."},
+// 		},
+//  })
+//
+// Usage:
+// uploadsInFlightCounter.IncBy(“uploadType”, 5)
+// uploadsInFlightCounter.IncBy(“uploadType”, -5)
+//
+
+// NewSummation0 creates a new summation metric with 0 labels.
+func NewSummation0(name string, cfg MetricConfig) Summation0 {
+	return Summation0{
+		wrapper: createSummationWrapper(name, cfg),
+	}
+}
+
+// NewSummation1 creates a new summation metric with 1 labels.
+func NewSummation1[T1 labelContraint](name string, cfg MetricConfig) Summation1[T1] {
+	return Summation1[T1]{
+		wrapper: createSummationWrapper(name, cfg),
+	}
+}
+
+// NewSummation2 creates a new summation metric with 2 labels.
+func NewSummation2[T1, T2 labelContraint](name string, cfg MetricConfig) Summation2[T1, T2] {
+	return Summation2[T1, T2]{
+		wrapper: createSummationWrapper(name, cfg),
+	}
+}
+
+// NewSummation3 creates a new summation metric with 3 labels.
+func NewSummation3[T1, T2, T3 labelContraint](name string, cfg MetricConfig) Summation3[T1, T2, T3] {
+	return Summation3[T1, T2, T3]{
+		wrapper: createSummationWrapper(name, cfg),
+	}
+}
+
+// NewSummation4 creates a new summation metric with 4 labels.
+func NewSummation4[T1, T2 labelContraint,
+	T3, T4 labelContraint](name string, cfg MetricConfig,
+) Summation4[T1, T2, T3, T4] {
+	return Summation4[T1, T2, T3, T4]{
+		wrapper: createSummationWrapper(name, cfg),
+	}
+}
+
+//// Int64 Gauges - Create a gauge at the package level.
+//
+// var uploadsInFlightCounter = statz.NewGauge1[string]("datasync/uploads_in_flight", statz.MetricConfig{
+// 		Description: "The number of requests in flight",
+// 		Unit:        units.Dimensionless,
+// 		Labels: []statz.Label{
+// 			{Name: "type", Description: "The data type (file|binary|tabular)."},
+// 		},
+//  })
+//
+// Usage:
+// uploadsInFlightCounter.Set(“uploadType”, 5)
+//
+
+// NewGauge0 creates a new gauge metric with 0 labels.
+func NewGauge0(name string, cfg MetricConfig) Gauge0 {
+	return Gauge0{
+		wrapper: createGaugeWrapper(name, cfg),
+	}
+}
+
+// NewGauge1 creates a new gauge metric with 1 labels.
+func NewGauge1[T1 labelContraint](name string, cfg MetricConfig) Gauge1[T1] {
+	return Gauge1[T1]{
+		wrapper: createGaugeWrapper(name, cfg),
+	}
+}
+
+// NewGauge2 creates a new gauge metric with 2 labels.
+func NewGauge2[T1, T2 labelContraint](name string, cfg MetricConfig) Gauge2[T1, T2] {
+	return Gauge2[T1, T2]{
+		wrapper: createGaugeWrapper(name, cfg),
+	}
+}
+
+// NewGauge3 creates a new gauge metric with 3 labels.
+func NewGauge3[T1, T2, T3 labelContraint](name string, cfg MetricConfig) Gauge3[T1, T2, T3] {
+	return Gauge3[T1, T2, T3]{
+		wrapper: createGaugeWrapper(name, cfg),
+	}
+}
+
+// NewGauge4 creates a new gauge metric with 4 labels.
+func NewGauge4[T1, T2 labelContraint,
+	T3, T4 labelContraint](name string, cfg MetricConfig,
+) Gauge4[T1, T2, T3, T4] {
+	return Gauge4[T1, T2, T3, T4]{
+		wrapper: createGaugeWrapper(name, cfg),
+	}
+}
+
 //// Float64 Distribution - Create a distribution at the package level.
 //
 // var uploadLatency = statz.Distribution2[string, bool]("datasync/uploaded_latency", statz.MetricConfig{

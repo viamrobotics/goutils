@@ -5,9 +5,13 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"go.mongodb.org/mongo-driver/event"
 	"go.opencensus.io/trace"
+
+	"go.viam.com/utils/perf/statz"
+	"go.viam.com/utils/perf/statz/units"
 )
 
 func registerMongoDBViews() error {
@@ -131,3 +135,45 @@ func connectionString(evt *event.CommandStartedEvent) string {
 	}
 	return hostname + ":" + port
 }
+
+// NewMongoDBPoolMonitor creates a new mongodb pool event PoolMonitor.
+func NewMongoDBPoolMonitor() *event.PoolMonitor {
+	var totalWaitingToCheckOut atomic.Int64
+	var totalCheckedOut atomic.Int64
+	var totalCreated atomic.Int64
+	return &event.PoolMonitor{
+		Event: func(e *event.PoolEvent) {
+			switch e.Type {
+			case event.GetStarted:
+				totalWaitingToCheckOut.Add(1)
+				mongodbConnectionPoolStates.Set(e.Address, "total_waiting_to_check_out", totalWaitingToCheckOut.Load())
+			case event.GetSucceeded:
+				totalCheckedOut.Add(1)
+				totalWaitingToCheckOut.Add(-1)
+				mongodbConnectionPoolStates.Set(e.Address, "total_checked_out", totalCheckedOut.Load())
+				mongodbConnectionPoolStates.Set(e.Address, "total_waiting_to_check_out", totalWaitingToCheckOut.Load())
+			case event.GetFailed:
+				totalWaitingToCheckOut.Add(-1)
+				mongodbConnectionPoolStates.Set(e.Address, "total_waiting_to_check_out", totalWaitingToCheckOut.Load())
+			case event.ConnectionReturned:
+				totalCheckedOut.Add(-1)
+				mongodbConnectionPoolStates.Set(e.Address, "total_checked_out", totalCheckedOut.Load())
+			case event.ConnectionCreated:
+				totalCreated.Add(1)
+				mongodbConnectionPoolStates.Set(e.Address, "total_created", totalCreated.Load())
+			case event.ConnectionClosed:
+				totalCreated.Add(-1)
+				mongodbConnectionPoolStates.Set(e.Address, "total_created", totalCreated.Load())
+			}
+		},
+	}
+}
+
+var mongodbConnectionPoolStates = statz.NewGauge2[string, string]("mongodb/connections", statz.MetricConfig{
+	Description: "The number of waiting requests for connection check out.",
+	Unit:        units.Dimensionless,
+	Labels: []statz.Label{
+		{Name: "connection_string", Description: "MongoDB Connection String"},
+		{Name: "state", Description: "Pool State"},
+	},
+})

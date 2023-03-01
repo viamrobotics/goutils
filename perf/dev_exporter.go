@@ -20,8 +20,8 @@ import (
 	"go.viam.com/utils"
 )
 
-// DevelopmentExporter exports metrics and span to log file.
-type DevelopmentExporter struct {
+// developmentExporter exports metrics and span to log file.
+type developmentExporter struct {
 	mu             sync.Mutex
 	children       map[string][]mySpanInfo
 	reader         *metricexport.Reader
@@ -59,7 +59,7 @@ func NewDevelopmentExporter() Exporter {
 
 // NewDevelopmentExporterWithOptions creates a new log exporter with the given options.
 func NewDevelopmentExporterWithOptions(options DevelopmentExporterOptions) Exporter {
-	return &DevelopmentExporter{
+	return &developmentExporter{
 		children: map[string][]mySpanInfo{},
 		reader:   metricexport.NewReader(),
 		o:        options,
@@ -67,7 +67,7 @@ func NewDevelopmentExporterWithOptions(options DevelopmentExporterOptions) Expor
 }
 
 // Start starts the metric and span data exporter.
-func (e *DevelopmentExporter) Start() error {
+func (e *developmentExporter) Start() error {
 	if err := registerApplicationViews(); err != nil {
 		return err
 	}
@@ -89,7 +89,7 @@ func (e *DevelopmentExporter) Start() error {
 }
 
 // Stop stops the metric and span data exporter.
-func (e *DevelopmentExporter) Stop() {
+func (e *developmentExporter) Stop() {
 	if !e.o.TracesDisabled {
 		trace.UnregisterExporter(e)
 	}
@@ -99,11 +99,11 @@ func (e *DevelopmentExporter) Stop() {
 }
 
 // Close closes any files that were opened for logging.
-func (e *DevelopmentExporter) Close() {
+func (e *developmentExporter) Close() {
 }
 
 // ExportMetrics exports to log.
-func (e *DevelopmentExporter) ExportMetrics(ctx context.Context, metrics []*metricdata.Metric) error {
+func (e *developmentExporter) ExportMetrics(ctx context.Context, metrics []*metricdata.Metric) error {
 	metricsTransform := make(map[string]interface{}, len(metrics))
 
 	transformPoint := func(point metricdata.Point) interface{} {
@@ -162,7 +162,7 @@ func (e *DevelopmentExporter) ExportMetrics(ctx context.Context, metrics []*metr
 	return nil
 }
 
-func (e *DevelopmentExporter) printTree(root, padding string) {
+func (e *developmentExporter) printTree(root, padding string) {
 	for _, s := range e.children[root] {
 		log.Printf("%s %s\n", padding, s.toPrint)
 		e.printTree(s.id, padding+"  ")
@@ -171,7 +171,7 @@ func (e *DevelopmentExporter) printTree(root, padding string) {
 }
 
 // ExportSpan exports a SpanData to log.
-func (e *DevelopmentExporter) ExportSpan(sd *trace.SpanData) {
+func (e *developmentExporter) ExportSpan(sd *trace.SpanData) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 

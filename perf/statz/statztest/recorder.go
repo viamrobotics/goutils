@@ -35,6 +35,32 @@ func (r *CounterRecorder) Value(labelKeyValuePairs ...string) int64 {
 	return p.Value.(int64)
 }
 
+type SummationRecorder struct {
+	recorder
+}
+
+func (r *SummationRecorder) Value(labelKeyValuePairs ...string) int64 {
+	p, ok := r.getPoint(labelKeyValuePairs...)
+	if !ok {
+		// This is expected before the metric is recorded the first time.
+		return 0
+	}
+	return p.Value.(int64)
+}
+
+type GaugeRecorder struct {
+	recorder
+}
+
+func (r *GaugeRecorder) Value(labelKeyValuePairs ...string) int64 {
+	p, ok := r.getPoint(labelKeyValuePairs...)
+	if !ok {
+		// This is expected before the metric is recorded the first time.
+		return 0
+	}
+	return p.Value.(int64)
+}
+
 type DistributionRecorder struct {
 	recorder
 }
@@ -55,6 +81,32 @@ func NewCounterRecorder(metricName string) *CounterRecorder {
 	exporter := metrictest.NewExporter(metricReader)
 
 	return &CounterRecorder{
+		recorder: recorder{
+			metricName: metricName,
+			reader:     metricReader,
+			exporter:   exporter,
+		},
+	}
+}
+
+func NewSummationRecorder(metricName string) *SummationRecorder {
+	metricReader := metricexport.NewReader()
+	exporter := metrictest.NewExporter(metricReader)
+
+	return &SummationRecorder{
+		recorder: recorder{
+			metricName: metricName,
+			reader:     metricReader,
+			exporter:   exporter,
+		},
+	}
+}
+
+func NewGaugeRecorder(metricName string) *GaugeRecorder {
+	metricReader := metricexport.NewReader()
+	exporter := metrictest.NewExporter(metricReader)
+
+	return &GaugeRecorder{
 		recorder: recorder{
 			metricName: metricName,
 			reader:     metricReader,
