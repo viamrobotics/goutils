@@ -1068,8 +1068,8 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 						return false, nil
 					}
 
-					// Someone else took it; take it from the top. you would
-					// expect you can just keep receiving on events but since
+					// Someone else took it; take it from the top. You would
+					// expect you can just keep receiving on events, but since
 					// the underlying change stream is shared and we do not
 					// want to block often while delivering new calls, we use
 					// buffered channels to deliver events meaning once this
@@ -1081,10 +1081,10 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 					// gets dropped for the reasons just mentioned. That means
 					// we need to subscribe once more but more importantly,
 					// run the findOneAndUpdate again. If each caller/answerer
-					// had their own change streaming, the buffering would be
-					// done on the MongoDB side but that has its own performance
-					// downsides that were explored in previous versions of this
-					// code.
+					// had their own change streams, the buffering would be
+					// done on the MongoDB database side but that has its own
+					// performance downsides that were explored in previous versions
+					// of this code.
 					return true, nil
 				}
 			}
