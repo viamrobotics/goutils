@@ -1032,7 +1032,7 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 		err = result.Decode(&callReq)
 		if err != nil {
 			if !errors.Is(err, mongo.ErrNoDocuments) {
-				return callReq, false, err
+				return mongodbWebRTCCall{}, false, err
 			}
 			getFirstResult := func() (bool, error) {
 				if err := recvOfferCtx.Err(); err != nil {
