@@ -311,6 +311,8 @@ func TestWebRTCClientDialConcurrentWithMongoDBQueue(t *testing.T) {
 	testWebRTCClientDialConcurrent(t, signalingCallQueue, logger)
 }
 
+// this is a good integration test against mongoDBWebRTCCallQueue
+//
 //nolint:thelper
 func testWebRTCClientDialConcurrent(t *testing.T, signalingCallQueue WebRTCCallQueue, logger golog.Logger) {
 	signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, logger)
@@ -345,6 +347,7 @@ func testWebRTCClientDialConcurrent(t *testing.T, signalingCallQueue WebRTCCallQ
 
 	dialErrCh := make(chan error, 2)
 	go func() {
+		t.Log("starting dial 1")
 		cc, err := DialWebRTC(
 			context.Background(),
 			grpcListener.Addr().String(),
@@ -360,6 +363,7 @@ func testWebRTCClientDialConcurrent(t *testing.T, signalingCallQueue WebRTCCallQ
 		dialErrCh <- err
 	}()
 	go func() {
+		t.Log("starting dial 2")
 		cc, err := DialWebRTC(
 			context.Background(),
 			grpcListener.Addr().String(),
@@ -375,9 +379,11 @@ func testWebRTCClientDialConcurrent(t *testing.T, signalingCallQueue WebRTCCallQ
 		dialErrCh <- err
 	}()
 
+	t.Log("answer client 1 is receiving")
 	offer1, err := answerClient1.Recv()
 	test.That(t, err, test.ShouldBeNil)
 
+	t.Log("answer client 2 is receiving")
 	offer2, err := answerClient2.Recv()
 	test.That(t, err, test.ShouldBeNil)
 

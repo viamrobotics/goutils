@@ -39,6 +39,14 @@ var (
 		},
 	})
 
+	callAnswererTooBusy = statz.NewCounter1[string]("rpc.webrtc/call_answerer_too_busy", statz.MetricConfig{
+		Description: "The number of times all answerers were too busy to handle a new call.",
+		Unit:        units.Dimensionless,
+		Labels: []statz.Label{
+			{Name: "operator_id", Description: "The queue operator ID."},
+		},
+	})
+
 	exchangeChannelAtCapacity = statz.NewCounter1[string]("rpc.webrtc/exchange_channel_at_capacity", statz.MetricConfig{
 		Description: "The number of times a call exchange has it max channel capacity.",
 		Unit:        units.Dimensionless,
@@ -83,7 +91,7 @@ type mongoDBWebRTCCallQueue struct {
 	callExchangeSubs map[string]map[*mongodbCallExchange]struct{}
 
 	// M answerer -> N hosts -> 1 event stream
-	waitingForCallSubs map[string]map[chan mongodbCallEvent]struct{}
+	waitingForNewCallSubs map[string]map[*mongodbNewCallEventHandler]struct{}
 }
 
 type changeStreamStateUpdate struct {
@@ -191,9 +199,9 @@ func NewMongoDBWebRTCCallQueue(
 		cancelFunc:    cancelFunc,
 		logger:        logger.With("operator_id", operatorID),
 
-		csStateUpdates:     make(chan changeStreamStateUpdate),
-		callExchangeSubs:   map[string]map[*mongodbCallExchange]struct{}{},
-		waitingForCallSubs: map[string]map[chan mongodbCallEvent]struct{}{},
+		csStateUpdates:        make(chan changeStreamStateUpdate),
+		callExchangeSubs:      map[string]map[*mongodbCallExchange]struct{}{},
+		waitingForNewCallSubs: map[string]map[*mongodbNewCallEventHandler]struct{}{},
 	}
 
 	queue.activeBackgroundWorkers.Add(2)
@@ -281,6 +289,24 @@ const (
 	webrtcOperatorHostsAnswererSizeCombinedField = webrtcOperatorHostsField + "." + webrtcOperatorHostsAnswererSizeField
 )
 
+type mongodbNewCallEventHandler struct {
+	eventChan   chan<- mongodbCallEvent // expected buffered cap 1
+	receiveOnce sync.Once
+}
+
+func (newCall *mongodbNewCallEventHandler) Send(event mongodbCallEvent) bool {
+	var sent bool
+	newCall.receiveOnce.Do(func() {
+		// should always work
+		select {
+		case newCall.eventChan <- event:
+			sent = true
+		default:
+		}
+	})
+	return sent
+}
+
 type mongodbCallExchange struct {
 	Host string
 	Chan chan<- mongodbCallEvent
@@ -314,8 +340,8 @@ func (queue *mongoDBWebRTCCallQueue) operatorLivenessLoop() {
 			Answerer uint64
 		}
 		queue.csStateMu.RLock()
-		hosts := make(map[string]callerAnswererQueueSizes, len(queue.waitingForCallSubs)+len(queue.callExchangeSubs))
-		for host, waiting := range queue.waitingForCallSubs {
+		hosts := make(map[string]callerAnswererQueueSizes, len(queue.waitingForNewCallSubs)+len(queue.callExchangeSubs))
+		for host, waiting := range queue.waitingForNewCallSubs {
 			sizes := hosts[host]
 			sizes.Answerer += uint64(len(waiting))
 			hosts[host] = sizes
@@ -389,8 +415,8 @@ func (queue *mongoDBWebRTCCallQueue) changeStreamManager() {
 		ranOnce = true
 
 		queue.csStateMu.Lock()
-		hosts := make([]string, 0, len(queue.waitingForCallSubs))
-		for host := range queue.waitingForCallSubs {
+		hosts := make([]string, 0, len(queue.waitingForNewCallSubs))
+		for host := range queue.waitingForNewCallSubs {
 			hosts = append(hosts, host)
 		}
 		readyFuncs := make([]func(), len(queue.csAnswerersWaitingForNextCS))
@@ -435,9 +461,6 @@ func (queue *mongoDBWebRTCCallQueue) changeStreamManager() {
 			},
 		}, csOpts)
 		if err != nil {
-			// TODO(erd): one of these errors is probably falling off the change stream in
-			// which case we must ditch the token and carry on. unlikely but possible. this will
-			// destroy some exchanges.
 			callChangeStreamFailures.Inc(queue.operatorID)
 			queue.csManagerSeq.Add(1)
 			queue.logger.Errorw("failed to create calls change stream", "error", err)
@@ -454,8 +477,6 @@ func (queue *mongoDBWebRTCCallQueue) changeStreamManager() {
 
 		nextCSCtx, nextCSCtxCancel := context.WithCancel(queue.cancelCtx)
 		csNext, resumeToken, clusterTime := mongoutils.ChangeStreamBackground(nextCSCtx, cs)
-
-		// TODO(erd): detecting needs restart... play with mongo going up and down!
 
 		select {
 		case <-queue.cancelCtx.Done():
@@ -551,22 +572,24 @@ func (queue *mongoDBWebRTCCallQueue) processNextSubscriptionEvent(next mongoutil
 
 		if next.Event.OperationType == mongoutils.ChangeEventOperationTypeInsert {
 			if _, ok := queue.csTrackingHosts[callResp.Host]; !ok {
-				//  not interestsed in this
+				// not interestsed in this
 				return
 			}
-			answererQueues := queue.waitingForCallSubs[callResp.Host]
-			if len(answererQueues) == 0 {
+			answerChans := queue.waitingForNewCallSubs[callResp.Host]
+			if len(answerChans) == 0 {
 				queue.logger.Debugw("no answerer is around for this new call; the next answerer will find the document instead", "host", callResp.Host)
 				return
 			}
 			event := mongodbCallEvent{Call: callResp}
-			for queue := range answererQueues {
-				select {
-				case queue <- event:
+			for answerChan := range answerChans {
+				// we will send on this channel just once and it will eventually
+				// unsubscribe. We are not concerned with looping over channels
+				// we have already sent once on.
+				if answerChan.Send(event) {
 					return
-				default:
 				}
 			}
+			callAnswererTooBusy.Inc(queue.operatorID)
 			queue.logger.Warnw(
 				"all answerers for host too busy to answer call",
 				"id", callResp.ID,
@@ -658,15 +681,15 @@ func (queue *mongoDBWebRTCCallQueue) subscribeToCall(host, callID, side string) 
 
 	// 50 is a very high amount of events that is unlikely to happen. If it does, we consider it an error
 	// and will log/drop devents.
-	queueSub := make(chan mongodbCallEvent, 50)
+	exchangeChan := make(chan mongodbCallEvent, 50)
 	exchangeSubs, ok := queue.callExchangeSubs[callID]
 	if !ok {
 		exchangeSubs = map[*mongodbCallExchange]struct{}{}
 		queue.callExchangeSubs[callID] = exchangeSubs
 	}
-	exchange := &mongodbCallExchange{Host: host, Chan: queueSub, Side: side}
+	exchange := &mongodbCallExchange{Host: host, Chan: exchangeChan, Side: side}
 	exchangeSubs[exchange] = struct{}{}
-	return queueSub, func() {
+	return exchangeChan, func() {
 		queue.csStateMu.Lock()
 		defer queue.csStateMu.Unlock()
 		delete(exchangeSubs, exchange)
@@ -676,40 +699,47 @@ func (queue *mongoDBWebRTCCallQueue) subscribeToCall(host, callID, side string) 
 	}
 }
 
-// subscribeForCallOnHosts allows an answerer to subscribe for events related to the given hosts. It returns
-// once this operator's change stream is tracking the hosts.
-func (queue *mongoDBWebRTCCallQueue) subscribeForCallOnHosts(ctx context.Context, hosts []string) (<-chan mongodbCallEvent, func(), error) {
+// subscribeForNewCallOnHosts allows an answerer to subscribe for new calls on any of the given hosts. It returns
+// once this operator's change stream is tracking the hosts. The channel will have an event on it once
+// any of the hosts receives a call and it is also routed to this subscriber.
+func (queue *mongoDBWebRTCCallQueue) subscribeForNewCallOnHosts(
+	ctx context.Context,
+	hosts []string,
+) (<-chan mongodbCallEvent, func(), error) {
 	queue.csStateMu.Lock()
-	subQueue := make(chan mongodbCallEvent, 1)
+	subChan := make(chan mongodbCallEvent, 1)
 	ready := make(chan struct{})
+	callEventHandler := &mongodbNewCallEventHandler{
+		eventChan: subChan,
+	}
 
 	var alreadyTrackedCount int
 	for _, host := range hosts {
 		if _, ok := queue.csTrackingHosts[host]; ok {
 			alreadyTrackedCount++
 		}
-		hostSubs, ok := queue.waitingForCallSubs[host]
+		hostSubs, ok := queue.waitingForNewCallSubs[host]
 		if !ok {
-			hostSubs = map[chan mongodbCallEvent]struct{}{}
-			queue.waitingForCallSubs[host] = hostSubs
+			hostSubs = map[*mongodbNewCallEventHandler]struct{}{}
+			queue.waitingForNewCallSubs[host] = hostSubs
 		}
-		hostSubs[subQueue] = struct{}{}
+		hostSubs[callEventHandler] = struct{}{}
 	}
 
 	unsub := func() {
 		queue.csStateMu.Lock()
 		defer queue.csStateMu.Unlock()
 		for _, host := range hosts {
-			delete(queue.waitingForCallSubs[host], subQueue)
-			if len(queue.waitingForCallSubs[host]) == 0 {
-				delete(queue.waitingForCallSubs, host)
+			delete(queue.waitingForNewCallSubs[host], callEventHandler)
+			if len(queue.waitingForNewCallSubs[host]) == 0 {
+				delete(queue.waitingForNewCallSubs, host)
 			}
 		}
 	}
 
 	if alreadyTrackedCount == len(hosts) {
 		queue.csStateMu.Unlock()
-		return subQueue, unsub, nil
+		return subChan, unsub, nil
 	}
 
 	queue.csAnswerersWaitingForNextCS = append(queue.csAnswerersWaitingForNextCS, func() {
@@ -723,7 +753,7 @@ func (queue *mongoDBWebRTCCallQueue) subscribeForCallOnHosts(ctx context.Context
 		unsub()
 		return nil, nil, ctx.Err()
 	case <-ready:
-		return subQueue, unsub, nil
+		return subChan, unsub, nil
 	}
 }
 
@@ -948,72 +978,69 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 	}
 
 	recvOfferCtx, recvOfferCtxCancel := utils.MergeContext(ctx, queue.cancelCtx)
-	events, callUnsubscribe, err := queue.subscribeForCallOnHosts(recvOfferCtx, hosts)
-	if err != nil {
-		return nil, err
-	}
-
-	cleanup := func() {
-		recvOfferCtxCancel()
-		callUnsubscribe()
-	}
-	var recvOfferSuccessful bool
-	defer func() {
-		if recvOfferSuccessful {
-			return
+	waitForNewCall := func() (mongodbWebRTCCall, bool, error) {
+		events, callUnsubscribe, err := queue.subscribeForNewCallOnHosts(recvOfferCtx, hosts)
+		if err != nil {
+			return mongodbWebRTCCall{}, false, err
 		}
-		cleanup()
-	}()
 
-	// We would like to answer all calls within their deadline but there is some amount of time required to
-	// connect. That estimated time to connect is subtracted off the window so that we do not grab any
-	// offers that are about to expire.
-	// Example:
-	// An offer that starts at T=2 and expires at 12.
-	// T | 1 2 3 4 5 6  7 8 9 10 11 12 13 14 15 16  17 18 19 20
-	//       O         (    [        E              C]
-	//       ^         ^    ^        ^               ^
-	//     Start    Window  |      Expire     Check from now window bound
-	//                      |
-	//             Window with estimated connect time
-	startedAtWindow := time.Now().Add(-getDefaultOfferDeadline()).Add(getDefaultOfferCloseToDeadline())
-
-	// but also check first if there is anything for us.
-	result := queue.callsColl.FindOneAndUpdate(
-		recvOfferCtx,
-		bson.D{
-			{webrtcCallHostField, bson.D{{"$in", hosts}}},
-			{webrtcCallCallerErrorField, bson.D{{"$exists", false}}},
-			{webrtcCallAnsweredField, false},
-			{webrtcCallStartedAtField, bson.D{{"$gt", startedAtWindow}}},
-		},
-		bson.D{
-			{"$set", bson.D{
-				{webrtcCallAnswererOperatorIDField, queue.operatorID},
-				{webrtcCallAnsweredField, true},
-			}},
-		})
-	var callReq mongodbWebRTCCall
-	err = result.Decode(&callReq)
-	if err != nil {
-		if !errors.Is(err, mongo.ErrNoDocuments) {
-			return nil, err
+		cleanup := func() {
+			recvOfferCtxCancel()
+			callUnsubscribe()
 		}
-		getFirstResult := func() error {
-			for {
+		var recvOfferSuccessful bool
+		defer func() {
+			if recvOfferSuccessful {
+				return
+			}
+			cleanup()
+		}()
+
+		// We would like to answer all calls within their deadline but there is some amount of time required to
+		// connect. That estimated time to connect is subtracted off the window so that we do not grab any
+		// offers that are about to expire.
+		// Example:
+		// An offer that starts at T=2 and expires at 12.
+		// T | 1 2 3 4 5 6  7 8 9 10 11 12 13 14 15 16  17 18 19 20
+		//       O         (    [        E              C]
+		//       ^         ^    ^        ^               ^
+		//     Start    Window  |      Expire     Check from now window bound
+		//                      |
+		//             Window with estimated connect time
+		startedAtWindow := time.Now().Add(-getDefaultOfferDeadline()).Add(getDefaultOfferCloseToDeadline())
+
+		// but also check first if there is anything for us.
+		result := queue.callsColl.FindOneAndUpdate(
+			recvOfferCtx,
+			bson.D{
+				{webrtcCallHostField, bson.D{{"$in", hosts}}},
+				{webrtcCallCallerErrorField, bson.D{{"$exists", false}}},
+				{webrtcCallAnsweredField, false},
+				{webrtcCallStartedAtField, bson.D{{"$gt", startedAtWindow}}},
+			},
+			bson.D{
+				{"$set", bson.D{
+					{webrtcCallAnswererOperatorIDField, queue.operatorID},
+					{webrtcCallAnsweredField, true},
+				}},
+			})
+		var callReq mongodbWebRTCCall
+		err = result.Decode(&callReq)
+		if err != nil {
+			if !errors.Is(err, mongo.ErrNoDocuments) {
+				return callReq, false, err
+			}
+			getFirstResult := func() (bool, error) {
 				if err := recvOfferCtx.Err(); err != nil {
-					return err
+					return false, err
 				}
 
 				select {
 				case <-recvOfferCtx.Done():
-					return recvOfferCtx.Err()
-				case next, ok := <-events:
-					if !ok {
-						return errors.New("no next result")
-					}
+					return false, recvOfferCtx.Err()
+				case next := <-events:
 					if next.Error != nil {
-						return next.Error
+						return false, next.Error
 					}
 
 					callReq = next.Call
@@ -1031,23 +1058,60 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 							}},
 						})
 					if err != nil {
-						return err
+						return false, err
 					}
 					if result.MatchedCount == 1 && result.ModifiedCount == 1 {
-						return nil
+						return false, nil
 					}
 
-					// someone else took it; continue
+					// Someone else took it; take it from the top. you would
+					// expect you can just keep receiving on events but since
+					// the underlying change stream is shared and we do not
+					// want to block often while delivering new calls, we use
+					// buffered channels to deliver events meaning once this
+					// receive is done over here, the channel frees up again.
+					// If you look at mongodbNewCallEventHandler.Send, you will
+					// see we limit the send to happening once. That means
+					// if this is the only answerer at the time the new call
+					// comes in and we are around here in the code, the event
+					// gets dropped for the reasons just mentioned. That means
+					// we need to subscribe once more but more importantly,
+					// run the findOneAndUpdate again. If each caller/answerer
+					// had their own change streaming, the buffering would be
+					// done on the MongoDB side but that has its own performance
+					// downsides that were explored in previous versions of this
+					// code.
+					return true, nil
 				}
 			}
+			retry, err := getFirstResult()
+			if err != nil {
+				return mongodbWebRTCCall{}, false, err
+			}
+			if retry {
+				return mongodbWebRTCCall{}, true, err
+			}
 		}
-		if err := getFirstResult(); err != nil {
-			return nil, err
-		}
+
+		recvOfferSuccessful = true
+		cleanup()
+
+		return callReq, false, nil
 	}
 
-	recvOfferSuccessful = true
-	cleanup()
+	var callReq mongodbWebRTCCall
+	for {
+		var retry bool
+		var err error
+		callReq, retry, err = waitForNewCall()
+		if err != nil {
+			return nil, err
+		}
+		if retry {
+			continue
+		}
+		break
+	}
 
 	events, exchangeUnsubscribe := queue.subscribeToCall(callReq.Host, callReq.ID, "answerer")
 
@@ -1055,7 +1119,7 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 
 	recvCtx, recvCtxCancel := utils.MergeContextWithDeadline(ctx, queue.cancelCtx, offerDeadline)
 
-	cleanup = func() {
+	cleanup := func() {
 		recvCtxCancel()
 		exchangeUnsubscribe()
 	}
@@ -1162,10 +1226,7 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 			case <-recvCtx.Done():
 				setErr(recvCtx.Err())
 				return
-			case next, ok := <-events:
-				if !ok {
-					return
-				}
+			case next := <-events:
 				if next.Error != nil {
 					setErr(next.Error)
 					return
