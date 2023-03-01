@@ -582,9 +582,13 @@ func (queue *mongoDBWebRTCCallQueue) processNextSubscriptionEvent(next mongoutil
 			}
 			event := mongodbCallEvent{Call: callResp}
 			for answerChan := range answerChans {
-				// we will send on this channel just once and it will eventually
+				// We will send on this channel just once and it will eventually
 				// unsubscribe. We are not concerned with looping over channels
-				// we have already sent once on.
+				// we have already sent once on. For rationale behind this,
+				// look at the comments in RecvOffer around using events. Briefly
+				// though, we want to send the events as fast as possible as mentioned
+				// above and cannot block on the send to see if the receiver locked
+				// the document.
 				if answerChan.Send(event) {
 					return
 				}
