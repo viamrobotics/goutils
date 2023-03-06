@@ -32,7 +32,7 @@ func init() {
 
 var (
 	callChangeStreamFailures = statz.NewCounter1[string]("rpc.webrtc/call_change_stream_failures", statz.MetricConfig{
-		Description: "The number of failures making a change stream to listen to calls.",
+		Description: "The number of times making a change stream fails.",
 		Unit:        units.Dimensionless,
 		Labels: []statz.Label{
 			{Name: "operator_id", Description: "The queue operator ID."},
@@ -324,8 +324,8 @@ const (
 	operatorHeartbeatWindow     = time.Second * 10
 )
 
-// The operatorLivenessLoop keeps the distributed queue aware of this operator is existence in
-// addition to the hosts its listening to calls for in order to keep track of eventually
+// The operatorLivenessLoop keeps the distributed queue aware of this operator's existence, in
+// addition to the hosts its listening to calls for, in order to keep track of eventually
 // consistent queue maximums.
 func (queue *mongoDBWebRTCCallQueue) operatorLivenessLoop() {
 	ticker := time.NewTicker(operatorStateUpdateInterval)
@@ -572,7 +572,8 @@ func (queue *mongoDBWebRTCCallQueue) processNextSubscriptionEvent(next mongoutil
 
 		if next.Event.OperationType == mongoutils.ChangeEventOperationTypeInsert {
 			if _, ok := queue.csTrackingHosts[callResp.Host]; !ok {
-				// not interestsed in this
+				// no one connected to this operator is currently subscribed to insert
+				// events for this host; skip
 				return
 			}
 			answerChans := queue.waitingForNewCallSubs[callResp.Host]
