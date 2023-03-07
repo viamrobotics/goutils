@@ -190,8 +190,10 @@ func NewMongoDBWebRTCCallQueue(
 		hostCallerQueueSizeMatchAggStage: bson.D{{"$match", bson.D{
 			{"caller_size", bson.D{{"$gte", maxHostCallers}}},
 		}}},
+		// we use maxHostAnswerersSize * 2 to accommodate an answerer that
+		// immedeiately reconnects
 		hostAnswererQueueSizeMatchAggStage: bson.D{{"$match", bson.D{
-			{"answerer_size", bson.D{{"$gte", maxHostAnswerersSize}}},
+			{"answerer_size", bson.D{{"$gte", maxHostAnswerersSize * 2}}},
 		}}},
 		callsColl:     callsColl,
 		operatorsColl: operatorsColl,
@@ -772,7 +774,7 @@ var (
 	}}}
 )
 
-var errTooManyConns = status.Error(codes.Unavailable, "too many connection attempts; please wait a bit try again")
+var errTooManyConns = status.Error(codes.Unavailable, "too many connection attempts; please wait a bit and try again")
 
 func (queue *mongoDBWebRTCCallQueue) checkHostQueueSize(ctx context.Context, forCaller bool, hosts ...string) error {
 	hostsMatch := bson.D{

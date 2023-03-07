@@ -2,6 +2,7 @@ package rpc
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -30,7 +31,8 @@ func TestMongoDBWebRTCCallQueue(t *testing.T) {
 func TestMongoDBWebRTCCallQueueMulti(t *testing.T) {
 	client := testutils.BackingMongoDBClient(t)
 
-	const maxCallerQueueSize = 3
+	// we will use this to be able to have enough callers matched to answerers
+	const maxCallerQueueSize = (maxHostAnswerersSize * 2)
 	setupQueues := func(t *testing.T) (WebRTCCallQueue, WebRTCCallQueue, func()) {
 		t.Helper()
 		logger := golog.NewTestLogger(t)
@@ -48,6 +50,9 @@ func TestMongoDBWebRTCCallQueueMulti(t *testing.T) {
 	testWebRTCCallQueue(t, setupQueues)
 
 	t.Run("max queue size", func(t *testing.T) {
+		undo := setDefaultOfferDeadline(time.Minute)
+		defer undo()
+
 		callerQueue, answererQueue, teardown := setupQueues(t)
 		defer teardown()
 
@@ -55,7 +60,17 @@ func TestMongoDBWebRTCCallQueueMulti(t *testing.T) {
 		defer cancel()
 		host := primitive.NewObjectID().Hex()
 
+		// see comment in NewMongoDBWebRTCCallQueue for hostAnswererQueueSizeMatchAggStage
+		exchanges := make([]WebRTCCallOfferExchange, 0, maxHostAnswerersSize*2)
+		defer func() {
+			for _, exchange := range exchanges {
+				test.That(t, exchange.AnswererDone(ctx), test.ShouldBeNil)
+				<-exchange.CallerDone()
+			}
+		}()
+
 		type offerState struct {
+			CallID string
 			Done   <-chan struct{}
 			Cancel func()
 		}
@@ -64,64 +79,76 @@ func TestMongoDBWebRTCCallQueueMulti(t *testing.T) {
 			for _, offer := range offers {
 				offer.Cancel()
 				<-offer.Done
+				test.That(t, callerQueue.SendOfferError(ctx, host, offer.CallID, errors.New("whoops")), test.ShouldBeNil)
 			}
 		}()
 
 		t.Logf("start up %d callers (the max)", maxCallerQueueSize)
 		for i := 0; i < maxCallerQueueSize; i++ {
-			_, _, respDone, cancel, err := callerQueue.SendOfferInit(ctx, host, "somesdp", false)
+			callID, _, respDone, cancel, err := callerQueue.SendOfferInit(ctx, host, "somesdp", false)
 			test.That(t, err, test.ShouldBeNil)
-			offers = append(offers, offerState{Done: respDone, Cancel: cancel})
+			t.Logf("sent offer %d=%s", i, callID)
+			offers = append(offers, offerState{CallID: callID, Done: respDone, Cancel: cancel})
 			time.Sleep(2 * time.Second)
 		}
 
-		t.Logf("the next caller should fail from either queue")
+		t.Log("the next caller should fail from either queue")
 		_, _, _, _, err := callerQueue.SendOfferInit(ctx, host, "somesdp", false)
 		test.That(t, err, test.ShouldResemble, errTooManyConns)
 		_, _, _, _, err = answererQueue.SendOfferInit(ctx, host, "somesdp", false)
 		test.That(t, err, test.ShouldResemble, errTooManyConns)
 
-		t.Logf("but canceling one should allow the next")
+		t.Logf("but canceling one (%s) should allow the next", offers[0].CallID)
 		offers[0].Cancel()
 		<-offers[0].Done
+		test.That(t, callerQueue.SendOfferError(ctx, host, offers[0].CallID, errors.New("whoops")), test.ShouldBeNil)
 
 		time.Sleep(2 * time.Second)
 
-		_, _, respDone, cancel, err := callerQueue.SendOfferInit(ctx, host, "somesdp", false)
+		callID, _, respDone, cancel, err := callerQueue.SendOfferInit(ctx, host, "somesdp", false)
 		test.That(t, err, test.ShouldBeNil)
-		offers[0] = offerState{Done: respDone, Cancel: cancel}
+		t.Logf("sent offer %d=%s", maxCallerQueueSize, callID)
+		offers[0] = offerState{CallID: callID, Done: respDone, Cancel: cancel}
 
-		exchanges := make([]WebRTCCallOfferExchange, 0, maxHostAnswerersSize)
-		defer func() {
-			for _, exchange := range exchanges {
-				test.That(t, exchange.AnswererDone(ctx), test.ShouldBeNil)
-				<-exchange.CallerDone()
-			}
-		}()
-
-		t.Logf("start up %d answerers (the max)", maxHostAnswerersSize)
-		for i := 0; i < maxHostAnswerersSize; i++ {
+		t.Logf("start up %d answerers (the max)", maxHostAnswerersSize*2)
+		for i := 0; i < maxHostAnswerersSize*2; i++ {
 			exchange, err := answererQueue.RecvOffer(ctx, []string{host})
+			t.Logf("received offer %d=%s", i, exchange.UUID())
 			test.That(t, err, test.ShouldBeNil)
 			exchanges = append(exchanges, exchange)
 		}
 
 		time.Sleep(2 * time.Second)
 
-		t.Logf("the next answerer should fail from either queue")
+		t.Log("the next answerer should fail from either queue")
 		_, err = answererQueue.RecvOffer(ctx, []string{host})
 		test.That(t, err, test.ShouldResemble, errTooManyConns)
 		_, err = callerQueue.RecvOffer(ctx, []string{host})
 		test.That(t, err, test.ShouldResemble, errTooManyConns)
 
-		t.Logf("but canceling one should allow the next")
-		test.That(t, exchanges[0].AnswererDone(ctx), test.ShouldBeNil)
+		t.Logf("but canceling one (%s) should allow the next", exchanges[0].UUID())
+		test.That(t, callerQueue.SendOfferError(ctx, host, exchanges[0].UUID(), errors.New("whoops")), test.ShouldBeNil)
 		<-exchanges[0].CallerDone()
+		capOfferIdx := -1
+		for offerIdx, offer := range offers {
+			if offer.CallID == exchanges[0].UUID() {
+				capOfferIdx = offerIdx
+				offer.Cancel()
+				<-offer.Done
+			}
+		}
+		test.That(t, capOfferIdx, test.ShouldNotEqual, -1)
 
 		time.Sleep(2 * time.Second)
 
+		callID, _, respDone, cancel, err = callerQueue.SendOfferInit(ctx, host, "somesdp", false)
+		test.That(t, err, test.ShouldBeNil)
+		t.Logf("sent offer %d=%s", maxCallerQueueSize+1, callID)
+		offers[capOfferIdx] = offerState{CallID: callID, Done: respDone, Cancel: cancel}
+
 		exchange, err := answererQueue.RecvOffer(ctx, []string{host})
 		test.That(t, err, test.ShouldBeNil)
+		t.Logf("received offer %d=%s", (maxHostAnswerersSize*2)+1, exchange.UUID())
 		exchanges[0] = exchange
 	})
 }
