@@ -27,7 +27,7 @@ func TestChangeStreamBackground(t *testing.T) {
 	test.That(t, err, test.ShouldBeNil)
 
 	cancelCtx, ctxCancel := context.WithCancel(context.Background())
-	result, _ := mongoutils.ChangeStreamBackground(cancelCtx, cs)
+	result, _, _ := mongoutils.ChangeStreamBackground(cancelCtx, cs)
 	ctxCancel()
 	next := <-result
 	test.That(t, next.Error, test.ShouldWrap, context.Canceled)
@@ -40,7 +40,7 @@ func TestChangeStreamBackground(t *testing.T) {
 	test.That(t, err, test.ShouldBeNil)
 
 	cancelCtx, ctxCancel = context.WithCancel(context.Background())
-	result, _ = mongoutils.ChangeStreamBackground(cancelCtx, cs)
+	result, _, _ = mongoutils.ChangeStreamBackground(cancelCtx, cs)
 	defer func() {
 		for range result {
 		}
@@ -84,13 +84,14 @@ func TestChangeStreamBackgroundResumeTokenAdvancement(t *testing.T) {
 	test.That(t, err, test.ShouldBeNil)
 
 	cancelCtx, ctxCancel := context.WithCancel(context.Background())
-	result, currentToken := mongoutils.ChangeStreamBackground(cancelCtx, cs)
+	result, currentToken, currentClusterTime := mongoutils.ChangeStreamBackground(cancelCtx, cs)
 	defer func() {
 		for range result {
 		}
 	}()
 	defer ctxCancel()
 	test.That(t, currentToken, test.ShouldNotBeNil)
+	test.That(t, currentClusterTime, test.ShouldBeZeroValue)
 	times := 3
 	docs := make([]bson.D, 0, times)
 	for i := 0; i < times; i++ {
@@ -109,8 +110,81 @@ func TestChangeStreamBackgroundResumeTokenAdvancement(t *testing.T) {
 		test.That(t, <-errCh, test.ShouldBeNil)
 		test.That(t, next.ResumeToken, test.ShouldNotBeNil)
 		test.That(t, currentToken, test.ShouldNotResemble, next.ResumeToken)
+		test.That(t, next.Event.ClusterTime, test.ShouldNotBeZeroValue)
+		test.That(t, currentClusterTime, test.ShouldNotResemble, next.Event.ClusterTime)
 		var retDoc bson.D
 		test.That(t, next.Event.FullDocument.Unmarshal(&retDoc), test.ShouldBeNil)
 		test.That(t, retDoc, test.ShouldResemble, docs[i])
 	}
+}
+
+func TestChangeStreamBackgroundInvalidate(t *testing.T) {
+	client := testutils.BackingMongoDBClient(t)
+	dbName, collName := testutils.NewMongoDBNamespace()
+	coll := client.Database(dbName).Collection(collName)
+
+	_, err := coll.InsertOne(context.Background(), bson.D{})
+	test.That(t, err, test.ShouldBeNil)
+
+	cs, err := coll.Watch(context.Background(), []bson.D{
+		{
+			{"$match", bson.D{
+				{"operationType", bson.D{{"$in", []interface{}{
+					mongoutils.ChangeEventOperationTypeInsert,
+					mongoutils.ChangeEventOperationTypeUpdate,
+					mongoutils.ChangeEventOperationTypeDelete,
+					mongoutils.ChangeEventOperationTypeInvalidate,
+				}}}},
+			}},
+		},
+	},
+		options.ChangeStream().SetFullDocument(options.UpdateLookup),
+		options.ChangeStream().SetMaxAwaitTime(time.Second),
+	)
+	test.That(t, err, test.ShouldBeNil)
+
+	cancelCtx, ctxCancel := context.WithCancel(context.Background())
+	result, _, _ := mongoutils.ChangeStreamBackground(cancelCtx, cs)
+	defer func() {
+		for range result {
+		}
+	}()
+	defer ctxCancel()
+
+	go func() {
+		coll.Drop(context.Background())
+	}()
+
+	event := <-result
+	test.That(t, event.Error, test.ShouldResemble, mongoutils.ErrChangeStreamInvalidateEvent)
+
+	for range result {
+	}
+
+	someID := primitive.NewObjectID()
+	_, err = coll.InsertOne(context.Background(), bson.D{{"_id", someID}})
+	test.That(t, err, test.ShouldBeNil)
+
+	cs, err = coll.Watch(context.Background(), []bson.D{
+		{
+			{"$match", bson.D{
+				{"operationType", bson.D{{"$in", []interface{}{
+					mongoutils.ChangeEventOperationTypeInsert,
+					mongoutils.ChangeEventOperationTypeUpdate,
+					mongoutils.ChangeEventOperationTypeDelete,
+					mongoutils.ChangeEventOperationTypeInvalidate,
+				}}}},
+			}},
+		},
+	},
+		options.ChangeStream().SetFullDocument(options.UpdateLookup),
+		options.ChangeStream().SetMaxAwaitTime(time.Second),
+		options.ChangeStream().SetStartAfter(event.ResumeToken),
+	)
+	test.That(t, err, test.ShouldBeNil)
+
+	result, _, _ = mongoutils.ChangeStreamBackground(cancelCtx, cs)
+	event = <-result
+	test.That(t, event.Error, test.ShouldBeNil)
+	test.That(t, event.Event.DocumentKey, test.ShouldResemble, bson.D{{"_id", someID}})
 }

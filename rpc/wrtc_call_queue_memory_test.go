@@ -8,8 +8,12 @@ import (
 )
 
 func TestMemoryWebRTCCallQueue(t *testing.T) {
-	logger := golog.NewTestLogger(t)
-	callQueue := NewMemoryWebRTCCallQueue(logger)
-	testWebRTCCallQueue(t, callQueue)
-	test.That(t, callQueue.Close(), test.ShouldBeNil)
+	testWebRTCCallQueue(t, func(t *testing.T) (WebRTCCallQueue, WebRTCCallQueue, func()) {
+		t.Helper()
+		logger := golog.NewTestLogger(t)
+		callQueue := NewMemoryWebRTCCallQueue(logger)
+		return callQueue, callQueue, func() {
+			test.That(t, callQueue.Close(), test.ShouldBeNil)
+		}
+	})
 }

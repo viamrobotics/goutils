@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/edaniels/golog"
+	"github.com/google/uuid"
 	"github.com/pion/webrtc/v3"
 	"go.viam.com/test"
 	"google.golang.org/grpc"
@@ -23,18 +24,22 @@ func TestWebRTCSignalingWithMemoryQueue(t *testing.T) {
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
 	signalingCallQueue := NewMemoryWebRTCCallQueue(logger)
+	defer func() {
+		test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
+	}()
 	testWebRTCSignaling(t, signalingCallQueue, logger)
-	test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
 }
 
 func TestWebRTCSignalingWithMongoDBQueue(t *testing.T) {
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
 	client := testutils.BackingMongoDBClient(t)
-	signalingCallQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), client, logger)
+	signalingCallQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), uuid.NewString(), 50, client, logger)
 	test.That(t, err, test.ShouldBeNil)
+	defer func() {
+		test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
+	}()
 	testWebRTCSignaling(t, signalingCallQueue, logger)
-	test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
 }
 
 //nolint:thelper

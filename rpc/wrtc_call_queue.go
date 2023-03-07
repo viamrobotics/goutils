@@ -43,7 +43,7 @@ func setDefaultOfferDeadline(deafultOfferDeadline time.Duration) func() {
 type WebRTCCallQueue interface {
 	// SendOfferInit initializes an offer associated with the given SDP to the given host.
 	// It returns a UUID to track/authenticate the offer over time, a channel receive offer updates
-	// on over time, and a cancel func to stop inform the sender to stop.
+	// on over time, and a cancel func to inform the sender to stop.
 	SendOfferInit(ctx context.Context, host, sdp string, disableTrickle bool) (
 		uuid string, respCh <-chan WebRTCCallAnswer, respDone <-chan struct{}, cancel func(), err error)
 

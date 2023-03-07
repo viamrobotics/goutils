@@ -2,6 +2,7 @@ package mongoutils
 
 import (
 	"context"
+	"errors"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -65,21 +66,38 @@ type ChangeEventResult struct {
 	ResumeToken bson.Raw
 }
 
+// ErrChangeStreamInvalidateEvent is returned when a change stream is invalidated. When
+// this happens, a corresponding resume token with an "invalidate" event can be used
+// with the StartAfter option in Watch to restart.
+var ErrChangeStreamInvalidateEvent = errors.New("change stream invalidated")
+
 // ChangeStreamBackground calls Next in a background goroutine that returns a series of events
 // that can be received after the call is done. It will run until the given context is done.
-// Additionally, on the return of this call, the resume token of the first getMore is returned.
-// This resume token and subsequent ones returned in the channel can be used to follow events after
-// the stream has started and after a particular event so as to not miss any events in between. For example,
-// if the change stream were used to find an insertion of a document and find all updates after that insertion,
-// you'd utilize the resume token from the channel. Without doing this you can either a) miss events or b)
-// if no more events ever occurred, you may wait forever. Another example is starting a change stream to watch
-// events for a document found/inserted out-of-band of the change stream. In this case you would use the
-// resume token in the return value of this function.
-func ChangeStreamBackground(ctx context.Context, cs *mongo.ChangeStream) (<-chan ChangeEventResult, bson.Raw) {
+// Additionally, on the return of this call, the resume token and/or cluster time of the first getMore
+// is returned.
+// The presence of each has its own significance. When the cluster time is persent, it implies that
+// the returned channel will contain an event that happened at that time. The resume token will also be
+// present and refers to that event. Given how the change stream API works though, the cluster time
+// can be used to restart at the time of that event while the resume token can be used to start after
+// that event.
+// For example, if the change stream were used to find an insertion of a document and find all updates after
+// that insertion, you'd utilize the resume token from the channel. Without doing this you can either a) miss
+// events or b) if no more events ever occurred, you may wait forever.
+// Another example is starting a change stream to watch events for a document found/inserted out-of-band of the
+// change stream. In this case you would use the resume token in the return value of this function.
+// The cluster time can be used if the concurrency of the code is such that what consumes the change stream
+// is concurrent with that which produces the change stream (rpc.mongoDBWebRTCCallQueue is one such case). This
+// is frankly more complicated though.
+// Note: It is encouraged your change stream match on the invalidate event for better error handling.
+func ChangeStreamBackground(ctx context.Context, cs *mongo.ChangeStream) (<-chan ChangeEventResult, bson.Raw, primitive.Timestamp) {
 	// having this be buffered probably does not matter very much but it allows for the background
 	// goroutine to be slightly ahead of the consumer in some cases.
 	results := make(chan ChangeEventResult, 1)
-	csStarted := make(chan bson.Raw, 1)
+	type csStartedResult struct {
+		ResumeToken bson.Raw
+		ClusterTime primitive.Timestamp
+	}
+	csStarted := make(chan csStartedResult, 1)
 	sendResult := func(result ChangeEventResult) {
 		select {
 		case <-ctx.Done():
@@ -102,21 +120,24 @@ func ChangeStreamBackground(ctx context.Context, cs *mongo.ChangeStream) (<-chan
 
 			var ce ChangeEvent
 			if cs.TryNext(ctx) {
-				if !csStartedOnce {
-					csStartedOnce = true
-					csStarted <- cs.ResumeToken()
-				}
 				rt := cs.ResumeToken()
 				if err := cs.Decode(&ce); err != nil {
+					if !csStartedOnce {
+						csStarted <- csStartedResult{ResumeToken: cs.ResumeToken()}
+					}
 					sendResult(ChangeEventResult{Error: err, ResumeToken: rt})
 					return
+				}
+				if !csStartedOnce {
+					csStartedOnce = true
+					csStarted <- csStartedResult{ResumeToken: cs.ResumeToken(), ClusterTime: ce.ClusterTime}
 				}
 				sendResult(ChangeEventResult{Event: &ce, ResumeToken: rt})
 				continue
 			}
 			if !csStartedOnce {
 				csStartedOnce = true
-				csStarted <- cs.ResumeToken()
+				csStarted <- csStartedResult{ResumeToken: cs.ResumeToken()}
 			}
 			if cs.Next(ctx) {
 				rt := cs.ResumeToken()
@@ -124,13 +145,27 @@ func ChangeStreamBackground(ctx context.Context, cs *mongo.ChangeStream) (<-chan
 					sendResult(ChangeEventResult{Error: err, ResumeToken: rt})
 					return
 				}
+				if ce.OperationType == ChangeEventOperationTypeInvalidate {
+					sendResult(ChangeEventResult{Error: ErrChangeStreamInvalidateEvent, ResumeToken: rt})
+					return
+				}
 				sendResult(ChangeEventResult{Event: &ce, ResumeToken: rt})
 				continue
 			}
-			sendResult(ChangeEventResult{Error: cs.Err(), ResumeToken: cs.ResumeToken()})
+			var csErr error
+			if cs.Err() == nil {
+				// As far as we know this is an invalidating event like drop
+				// but we are not seeing it. Better the user filter on invalidate
+				// to catch it above. Otherwise they may need to resume more than
+				// once (depending on oplog).
+				csErr = ErrChangeStreamInvalidateEvent
+			} else {
+				csErr = cs.Err()
+			}
+			sendResult(ChangeEventResult{Error: csErr, ResumeToken: cs.ResumeToken()})
 			return
 		}
 	})
-	rt := <-csStarted
-	return results, rt
+	csRes := <-csStarted
+	return results, csRes.ResumeToken, csRes.ClusterTime
 }
