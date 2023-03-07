@@ -19,6 +19,7 @@ func TestMongoDBWebRTCCallQueue(t *testing.T) {
 
 	testWebRTCCallQueue(t, func(t *testing.T) (WebRTCCallQueue, WebRTCCallQueue, func()) {
 		t.Helper()
+		test.That(t, client.Database(mongodbWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
 		logger := golog.NewTestLogger(t)
 		callQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), uuid.NewString(), 50, client, logger)
 		test.That(t, err, test.ShouldBeNil)
@@ -35,6 +36,7 @@ func TestMongoDBWebRTCCallQueueMulti(t *testing.T) {
 	const maxCallerQueueSize = (maxHostAnswerersSize * 2)
 	setupQueues := func(t *testing.T) (WebRTCCallQueue, WebRTCCallQueue, func()) {
 		t.Helper()
+		test.That(t, client.Database(mongodbWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
 		logger := golog.NewTestLogger(t)
 		callerQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), uuid.NewString()+"-caller", maxCallerQueueSize, client, logger)
 		test.That(t, err, test.ShouldBeNil)
