@@ -18,9 +18,11 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type AuthServiceClient interface {
-	// Authenticate attempts to authenticate the caller. The resulting
-	// response contains an access token that should be used for future
-	// requests.
+	// Authenticate attempts to authenticate the caller claiming to be
+	// the given entity. The resulting response contains an access token
+	// with the subject as the entity and the audience/issuer as the
+	// provider of this service. This token should be used for all future
+	// RPC requests.
 	Authenticate(ctx context.Context, in *AuthenticateRequest, opts ...grpc.CallOption) (*AuthenticateResponse, error)
 }
 
@@ -45,9 +47,11 @@ func (c *authServiceClient) Authenticate(ctx context.Context, in *AuthenticateRe
 // All implementations must embed UnimplementedAuthServiceServer
 // for forward compatibility
 type AuthServiceServer interface {
-	// Authenticate attempts to authenticate the caller. The resulting
-	// response contains an access token that should be used for future
-	// requests.
+	// Authenticate attempts to authenticate the caller claiming to be
+	// the given entity. The resulting response contains an access token
+	// with the subject as the entity and the audience/issuer as the
+	// provider of this service. This token should be used for all future
+	// RPC requests.
 	Authenticate(context.Context, *AuthenticateRequest) (*AuthenticateResponse, error)
 	mustEmbedUnimplementedAuthServiceServer()
 }
@@ -110,9 +114,12 @@ var AuthService_ServiceDesc = grpc.ServiceDesc{
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ExternalAuthServiceClient interface {
-	// AuthenticateTo attempts to authenticate the caller on behalf of an entity.
-	// The resulting response contains an access token that should be used for future
-	// requests. This assumes that the caller is already authenticated to the
+	// AuthenticateTo attempts to allow the caller to authenticate to another entity.
+	// The resulting response contains an access token that with the subject
+	// as the calling entity, the audience as the other entity, and the issuer
+	// as the provider of this service. This token should be used for all
+	// future RPC requests to the other entity on the services it provides.
+	// This assumes that the caller is already authenticated to the
 	// server implementing this service.
 	AuthenticateTo(ctx context.Context, in *AuthenticateToRequest, opts ...grpc.CallOption) (*AuthenticateToResponse, error)
 }
@@ -138,9 +145,12 @@ func (c *externalAuthServiceClient) AuthenticateTo(ctx context.Context, in *Auth
 // All implementations must embed UnimplementedExternalAuthServiceServer
 // for forward compatibility
 type ExternalAuthServiceServer interface {
-	// AuthenticateTo attempts to authenticate the caller on behalf of an entity.
-	// The resulting response contains an access token that should be used for future
-	// requests. This assumes that the caller is already authenticated to the
+	// AuthenticateTo attempts to allow the caller to authenticate to another entity.
+	// The resulting response contains an access token that with the subject
+	// as the calling entity, the audience as the other entity, and the issuer
+	// as the provider of this service. This token should be used for all
+	// future RPC requests to the other entity on the services it provides.
+	// This assumes that the caller is already authenticated to the
 	// server implementing this service.
 	AuthenticateTo(context.Context, *AuthenticateToRequest) (*AuthenticateToResponse, error)
 	mustEmbedUnimplementedExternalAuthServiceServer()

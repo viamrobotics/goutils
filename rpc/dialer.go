@@ -307,14 +307,15 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts *dialOptions, log
 			// added as well as an authorization header added from perRPCJWTCredentials, resulting in a failure.
 			externalAuthMaterial: dOpts.externalAuthMaterial,
 		}
-		if dOpts.debug {
+		if dOpts.debug && dOpts.externalAuthAddr != "" && dOpts.externalAuthToEntity != "" {
 			logger.Debugw("will eventually authenticate as entity", "entity", dOpts.authEntity)
 		}
 		if dOpts.externalAuthAddr != "" {
-			if dOpts.debug && dOpts.externalAuthToEntity != "" {
-				logger.Debugw("will eventually externally authenticate to entity", "entity", dOpts.externalAuthToEntity)
+			if dOpts.externalAuthToEntity == "" {
+				return nil, false, errors.New("external auth address set but no authenticate to option set")
 			}
 			if dOpts.debug {
+				logger.Debugw("will eventually authenticate externally to entity", "entity", dOpts.externalAuthToEntity)
 				logger.Debugw("dialing direct for external auth", "address", dOpts.externalAuthAddr)
 			}
 			dialOptsCopy := *dOpts

@@ -9,9 +9,11 @@ import "google/api/annotations.proto";
 // authentication. Its sole Authenticate method should be used prior to any
 // other services that a gRPC server has to offer.
 service AuthService {
-	// Authenticate attempts to authenticate the caller. The resulting
-	// response contains an access token that should be used for future
-	// requests.
+	// Authenticate attempts to authenticate the caller claiming to be
+	// the given entity. The resulting response contains an access token
+	// with the subject as the entity and the audience/issuer as the
+	// provider of this service. This token should be used for all future
+	// RPC requests.
 	rpc Authenticate(AuthenticateRequest) returns (AuthenticateResponse) {
 		option (google.api.http) = {
 			post: "/rpc/v1/authenticate"
@@ -26,9 +28,12 @@ service AuthService {
 // Its sole AuthenticateTo method should be used prior to any other services that the external
 // entity's gRPC server has to offer.
 service ExternalAuthService {
-	// AuthenticateTo attempts to authenticate the caller on behalf of an entity.
-	// The resulting response contains an access token that should be used for future
-	// requests. This assumes that the caller is already authenticated to the
+	// AuthenticateTo attempts to allow the caller to authenticate to another entity.
+	// The resulting response contains an access token that with the subject
+	// as the calling entity, the audience as the other entity, and the issuer
+	// as the provider of this service. This token should be used for all
+	// future RPC requests to the other entity on the services it provides.
+	// This assumes that the caller is already authenticated to the
 	// server implementing this service.
 	rpc AuthenticateTo(AuthenticateToRequest) returns (AuthenticateToResponse) {
 		option (google.api.http) = {

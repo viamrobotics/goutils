@@ -10,6 +10,8 @@ import (
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/stats"
+
+	"go.viam.com/utils/jwks"
 )
 
 // serverOptions change the runtime behavior of the server.
@@ -35,10 +37,19 @@ type serverOptions struct {
 	// It will output much more logs.
 	debug bool
 
-	tlsAuthHandler func(ctx context.Context, entities ...string) (interface{}, error)
-	authHandlers   map[CredentialsType]AuthHandler
+	tlsAuthHandler       func(ctx context.Context, entities ...string) error
+	authHandlersForCreds map[CredentialsType]credAuthHandlers
 
-	authToType    CredentialsType
+	// authAudience is the JWT audience (aud) that will be used/expected
+	// for our service. When unset, it will be debug logged that
+	// the instance names will be used instead.
+	authAudience []string
+
+	// authIssuer is the JWT issuer (iss) that will be used for our service.
+	// When unset, it will be debug logged that the first audience member will
+	// be used instead.
+	authIssuer string
+
 	authToHandler AuthenticateToHandler
 	disableMDNS   bool
 
@@ -179,12 +190,15 @@ func WithStreamServerInterceptor(streamInterceptor grpc.StreamServerInterceptor)
 }
 
 // WithInstanceNames returns a ServerOption which sets the names for this
-// server instance. These names will be used for mDNS service discovery to
-// report the server itself. If unset the value is the address set by
-// WithExternalListenerAddress, WithInternalBindAddress, or the localhost and random port address,
-// in preference order from left to right.
+// server instance. These names will be used for auth token issuance (first name) and
+// mDNS service discovery to report the server itself. If unset the value
+// is the address set by WithExternalListenerAddress, WithInternalBindAddress,
+// or the localhost and random port address, in preference order from left to right.
 func WithInstanceNames(names ...string) ServerOption {
 	return newFuncServerOption(func(o *serverOptions) error {
+		if len(names) == 0 {
+			return errors.New("expected at least one instance name")
+		}
 		o.instanceNames = names
 		return nil
 	})
@@ -208,6 +222,33 @@ func WithAuthRSAPrivateKey(authRSAPrivateKey *rsa.PrivateKey) ServerOption {
 	})
 }
 
+// WithAuthAudience returns a ServerOption which sets the JWT audience (aud) to
+// use/expect in all processed JWTs. When unset, it will be debug logged that
+// the instance names will be used instead. It is recommended this option
+// is used.
+func WithAuthAudience(authAudience ...string) ServerOption {
+	// TODO(erd): test
+	return newFuncServerOption(func(o *serverOptions) error {
+		if len(authAudience) == 0 {
+			return errors.New("expected at least one auth audience member")
+		}
+		o.authAudience = authAudience
+		return nil
+	})
+}
+
+// WithAuthIssuer returns a ServerOption which sets the JWT issuer (iss) to
+// use in all issued JWTs. When unset, it will be debug logged that
+// the first audience member will be used instead. It is recommended this option
+// is used.
+func WithAuthIssuer(authIssuer string) ServerOption {
+	// TODO(erd): test
+	return newFuncServerOption(func(o *serverOptions) error {
+		o.authIssuer = authIssuer
+		return nil
+	})
+}
+
 // WithDebug returns a ServerOption which informs the server to be in a
 // debug mode as much as possible.
 func WithDebug() ServerOption {
@@ -219,28 +260,48 @@ func WithDebug() ServerOption {
 
 // WithTLSAuthHandler returns a ServerOption which when TLS info is available to a connection, it will
 // authenticate the given entities in the event that no other authentication has been established via
-// the standard auth handler. Optionally, verifyEntity may be specified which can do further entity
-// checking and return opaque info about the entity that will be bound to the context accessible
-// via ContextAuthEntity.
-func WithTLSAuthHandler(entities []string, verifyEntity func(ctx context.Context, entities ...string) (interface{}, error)) ServerOption {
+// the standard auth handler.
+func WithTLSAuthHandler(entities []string) ServerOption {
 	return newFuncServerOption(func(o *serverOptions) error {
 		entityChecker := MakeEntitiesChecker(entities)
-		o.tlsAuthHandler = func(ctx context.Context, recvEntities ...string) (interface{}, error) {
+		o.tlsAuthHandler = func(ctx context.Context, recvEntities ...string) error {
 			if err := entityChecker(ctx, recvEntities...); err != nil {
-				return nil, errNotTLSAuthed
+				return errNotTLSAuthed
 			}
-			if verifyEntity == nil {
-				return recvEntities, nil
-			}
-			return verifyEntity(ctx, recvEntities...)
+			return nil
 		}
 		return nil
 	})
 }
 
 // WithAuthHandler returns a ServerOption which adds an auth handler associated
-// to the given type to use for authentication requests.
+// to the given credential type to use for authentication requests.
 func WithAuthHandler(forType CredentialsType, handler AuthHandler) ServerOption {
+	return withCredAuthHandlers(forType, credAuthHandlers{
+		AuthHandler: handler,
+	})
+}
+
+// WithEntityDataLoader returns a ServerOption which adds an entity data loader
+// associated to the given credential type to use for loading data after the signed
+// access token has been verified.
+func WithEntityDataLoader(forType CredentialsType, loader EntityDataLoader) ServerOption {
+	return withCredAuthHandlers(forType, credAuthHandlers{
+		EntityDataLoader: loader,
+	})
+}
+
+// WithTokenVerificationKeyProvider returns a ServerOption which adds a token
+// verification key provider  associated to the given credential type to use for
+// determining an encryption key to verify signed access token prior
+// to following through with any RPC methods or entity data loading.
+func WithTokenVerificationKeyProvider(forType CredentialsType, provider TokenVerificationKeyProvider) ServerOption {
+	return withCredAuthHandlers(forType, credAuthHandlers{
+		TokenVerificationKeyProvider: provider,
+	})
+}
+
+func withCredAuthHandlers(forType CredentialsType, handler credAuthHandlers) ServerOption {
 	return newFuncServerOption(func(o *serverOptions) error {
 		if forType == credentialsTypeInternal {
 			return errors.Errorf("cannot use %q externally", forType)
@@ -248,36 +309,71 @@ func WithAuthHandler(forType CredentialsType, handler AuthHandler) ServerOption 
 		if forType == "" {
 			return errors.New("type cannot be empty")
 		}
-		if _, ok := o.authHandlers[forType]; ok {
-			return errors.Errorf("%q already has a registered handler", forType)
+		var existingHandler credAuthHandlers
+		if o.authHandlersForCreds == nil {
+			o.authHandlersForCreds = make(map[CredentialsType]credAuthHandlers)
+		} else {
+			existingHandler = o.authHandlersForCreds[forType]
 		}
-		if o.authHandlers == nil {
-			o.authHandlers = make(map[CredentialsType]AuthHandler)
+		if handler.AuthHandler != nil {
+			if existingHandler.AuthHandler != nil {
+				return errors.Errorf("%q already has an AuthHandler", forType)
+			}
+			existingHandler.AuthHandler = handler.AuthHandler
 		}
-		o.authHandlers[forType] = handler
+		if handler.EntityDataLoader != nil {
+			if existingHandler.EntityDataLoader != nil {
+				return errors.Errorf("%q already has an EntityDataLoader", forType)
+			}
+			existingHandler.EntityDataLoader = handler.EntityDataLoader
+		}
+		if handler.TokenVerificationKeyProvider != nil {
+			if existingHandler.TokenVerificationKeyProvider != nil {
+				return errors.Errorf("%q already has an TokenVerificationKeyProvider", forType)
+			}
+			existingHandler.TokenVerificationKeyProvider = handler.TokenVerificationKeyProvider
+		}
+		o.authHandlersForCreds[forType] = existingHandler
 
 		return nil
 	})
 }
 
+// WithExternalAuthPublicKeyTokenVerifier returns a ServerOption to verify all externally
+// authenticated entity access tokens with the given public key.
+func WithExternalAuthPublicKeyTokenVerifier(pubKey *rsa.PublicKey) ServerOption {
+	return WithTokenVerificationKeyProvider(CredentialsTypeExternal, MakePublicKeyProvider(pubKey))
+}
+
+// WithExternalAuthJWKSetTokenVerifier returns a ServerOption to verify all externally
+// authenticated entity access tokens against the given JWK key set.
+func WithExternalAuthJWKSetTokenVerifier(keySet jwks.KeySet) ServerOption {
+	return WithTokenVerificationKeyProvider(
+		CredentialsTypeExternal,
+		MakeJWKSKeyProvider(jwks.NewStaticJWKKeyProvider(keySet)))
+}
+
+// WithExternalAuthOIDCTokenVerifier returns a ServerOption to verify all externally
+// authenticated entity access tokens against the given OIDC JWT issuer
+// that follows the OIDC Discovery protocol.
+func WithExternalAuthOIDCTokenVerifier(ctx context.Context, issuer string) (ServerOption, error) {
+	provider, err := MakeODICKeyProvider(ctx, issuer)
+	if err != nil {
+		return nil, err
+	}
+	return WithTokenVerificationKeyProvider(CredentialsTypeExternal, provider), nil
+}
+
 // WithAuthenticateToHandler returns a ServerOption which adds an authentication
 // handler designed to allow the caller to authenticate itself to some other entity.
 // This is useful when externally authenticating as one entity for the purpose of
-// getting access to another entity. Only one handler can exist and the forType
-// parameter will be the type associated with the JWT made for the authenticated to entity.
+// getting access to another entity. Only one handler can exist and will always
+// produce a credential type of CredentialsTypeExternal.
 // This can technically be used internal to the same server to "assume" the identity of
 // another entity but is not intended for such usage.
-func WithAuthenticateToHandler(forType CredentialsType, handler AuthenticateToHandler) ServerOption {
+func WithAuthenticateToHandler(handler AuthenticateToHandler) ServerOption {
 	return newFuncServerOption(func(o *serverOptions) error {
-		if forType == credentialsTypeInternal {
-			return errors.Errorf("cannot use %q externally", forType)
-		}
-		if forType == "" {
-			return errors.New("type cannot be empty")
-		}
-		o.authToType = forType
 		o.authToHandler = handler
-
 		return nil
 	})
 }

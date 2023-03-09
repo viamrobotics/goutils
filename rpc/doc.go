@@ -49,15 +49,16 @@ Authentication into gRPC works by configuring a server with a series of authenti
 by this framework. When one authentication handler is enabled, all requests must be authenticated, except
 for the Authenticate method itself.
 Each handler is associated with a type of credentials to handle (rpc.CredentialsType) and an rpc.AuthHandler
-which contains two methods: Authenticate and VerifyEntity. Authenticate is responsible for taking the name
+which has a single method called Authenticate. Authenticate is responsible for taking the name
 of an entity and a payload that proves the caller is allowed to assume the role of that entity. It returns
 metadata about the entity (e.g. an email, a user ID, etc.). The framework then
 returns a JWT to the client to use in subsequent requests. On those subsequent requests, the JWT
 is included in an HTTP header called Authorization with a value of Bearer <token>. The framework then
-intercepts all calls and ensures that there is a JWT present in the header, is cryptographically valid, and
-then hands it off to the VerifyEntity method which will pull metadata out of the JWT from Authenticate and
-return a value that represents the authenticated entity to use in the actual gRPC call. It is accessed via
-rpc.MustContextAuthEntity.
+intercepts all calls and ensures that there is a JWT present in the header and is cryptographically valid.
+An optionally supplied TokenVerificationKeyProvider associated with the credential type can be used to provide
+a key used to verify the JWT if it was not signed by the RPC service provider. Once verified an optionally supplied
+EntityDataLoader associated with the credential type can use the JWT metadata to produce application to produce
+data for the entity to be accessible via rpc.MustContextAuthEntity.
 
 Additionally, authentication via mutual TLS is supported by way of the WithTLSAuthHandler and
 WithInternalTLSConfig ServerOptions. Using these two options in tandem will ask clients connecting

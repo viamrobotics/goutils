@@ -10,27 +10,18 @@ import (
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"go.viam.com/test"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
-func TestMakeFuncAuthHandler(t *testing.T) {
+func TestAuthHandlerFunc(t *testing.T) {
 	expectedEntity := "foo"
 	expectedPayload := "bar"
 	err1 := errors.New("nope1")
-	err2 := errors.New("nope2")
-	handler := MakeFuncAuthHandler(
+	handler := AuthHandlerFunc(
 		func(ctx context.Context, entity, payload string) (map[string]string, error) {
 			if entity == expectedEntity && payload == expectedPayload {
 				return map[string]string{"hello": "world"}, nil
 			}
 			return nil, err1
-		},
-		func(ctx context.Context, entity string) (interface{}, error) {
-			if entity == expectedEntity {
-				return entity, nil
-			}
-			return nil, err2
 		},
 	)
 
@@ -41,10 +32,49 @@ func TestMakeFuncAuthHandler(t *testing.T) {
 	authMD, err := handler.Authenticate(context.Background(), expectedEntity, expectedPayload)
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, authMD, test.ShouldResemble, map[string]string{"hello": "world"})
+}
 
-	_, err = handler.VerifyEntity(context.Background(), "one")
+func TestAuthAndEntityDataLoaderFuncs(t *testing.T) {
+	expectedEntity := "foo"
+	expectedPayload := "bar"
+	err1 := errors.New("nope1")
+	err2 := errors.New("nope2")
+	authHandler := AuthHandlerFunc(
+		func(ctx context.Context, entity, payload string) (map[string]string, error) {
+			if entity == expectedEntity && payload == expectedPayload {
+				return map[string]string{"hello": "world"}, nil
+			}
+			return nil, err1
+		},
+	)
+	entityLoader := EntityDataLoaderFunc(
+		func(ctx context.Context, claims Claims) (interface{}, error) {
+			if claims.Entity() == expectedEntity {
+				return expectedEntity, nil
+			}
+			return nil, err2
+		},
+	)
+
+	_, err := authHandler.Authenticate(context.Background(), "one", "two")
+	test.That(t, err, test.ShouldBeError, err1)
+	_, err = authHandler.Authenticate(context.Background(), expectedEntity, "two")
+	test.That(t, err, test.ShouldBeError, err1)
+	authMD, err := authHandler.Authenticate(context.Background(), expectedEntity, expectedPayload)
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, authMD, test.ShouldResemble, map[string]string{"hello": "world"})
+
+	_, err = entityLoader.EntityData(context.Background(), JWTClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject: "one",
+		},
+	})
 	test.That(t, err, test.ShouldBeError, err2)
-	authEntity, err := handler.VerifyEntity(context.Background(), expectedEntity)
+	authEntity, err := entityLoader.EntityData(context.Background(), JWTClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject: expectedEntity,
+		},
+	})
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, authEntity, test.ShouldResemble, "foo")
 }
@@ -55,10 +85,6 @@ func TestMakeSimpleAuthHandler(t *testing.T) {
 		_, err := handler.Authenticate(context.Background(), "", "something")
 		test.That(t, err, test.ShouldNotBeNil)
 		_, err = handler.Authenticate(context.Background(), "entity", "something")
-		test.That(t, err, test.ShouldNotBeNil)
-		_, err = handler.VerifyEntity(context.Background(), "")
-		test.That(t, err, test.ShouldNotBeNil)
-		_, err = handler.VerifyEntity(context.Background(), "entity")
 		test.That(t, err, test.ShouldNotBeNil)
 	})
 
@@ -72,14 +98,9 @@ func TestMakeSimpleAuthHandler(t *testing.T) {
 			test.That(t, err, test.ShouldBeNil)
 			_, err = handler.Authenticate(context.Background(), ent, expectedKey+"1")
 			test.That(t, err, test.ShouldEqual, errInvalidCredentials)
-			ret, err := handler.VerifyEntity(context.Background(), ent)
-			test.That(t, err, test.ShouldBeNil)
-			test.That(t, ret, test.ShouldEqual, ent)
 		}
 		_, err := handler.Authenticate(context.Background(), "notent", expectedKey)
 		test.That(t, err, test.ShouldBeError, errInvalidCredentials)
-		_, err = handler.VerifyEntity(context.Background(), "notent")
-		test.That(t, err, test.ShouldBeError, errCannotAuthEntity)
 	})
 }
 
@@ -93,10 +114,6 @@ func TestMakeSimpleMultiAuthHandler(t *testing.T) {
 		_, err := handler.Authenticate(context.Background(), "", "something")
 		test.That(t, err, test.ShouldNotBeNil)
 		_, err = handler.Authenticate(context.Background(), "entity", "something")
-		test.That(t, err, test.ShouldNotBeNil)
-		_, err = handler.VerifyEntity(context.Background(), "")
-		test.That(t, err, test.ShouldNotBeNil)
-		_, err = handler.VerifyEntity(context.Background(), "entity")
 		test.That(t, err, test.ShouldNotBeNil)
 	})
 
@@ -112,46 +129,32 @@ func TestMakeSimpleMultiAuthHandler(t *testing.T) {
 					test.That(t, err, test.ShouldBeNil)
 					_, err = handler.Authenticate(context.Background(), ent, expectedKey+"1")
 					test.That(t, err, test.ShouldEqual, errInvalidCredentials)
-					ret, err := handler.VerifyEntity(context.Background(), ent)
-					test.That(t, err, test.ShouldBeNil)
-					test.That(t, ret, test.ShouldEqual, ent)
 				}
 				_, err := handler.Authenticate(context.Background(), "notent", expectedKey)
 				test.That(t, err, test.ShouldBeError, errInvalidCredentials)
-				_, err = handler.VerifyEntity(context.Background(), "notent")
-				test.That(t, err, test.ShouldBeError, errCannotAuthEntity)
 			})
 		}
 	})
 }
 
-func TestWithTokenVerificationKeyProvider(t *testing.T) {
-	handler := MakeSimpleAuthHandler([]string{"one"}, "key")
+func TestTokenVerificationKeyProviderFunc(t *testing.T) {
 	err1 := errors.New("whoops")
-	wrappedHandler := WithTokenVerificationKeyProvider(handler, func(token *jwt.Token) (interface{}, error) {
+	capCtx := make(chan struct{})
+	provider := TokenVerificationKeyProviderFunc(func(ctx context.Context, token *jwt.Token) (interface{}, error) {
+		close(ctx.Value(1).(chan struct{}))
 		return nil, err1
 	})
-	_, err := wrappedHandler.Authenticate(context.Background(), "one", "key")
-	test.That(t, err, test.ShouldBeNil)
-	_, err = wrappedHandler.VerifyEntity(context.Background(), "one")
-	test.That(t, err, test.ShouldBeNil)
-	_, err = wrappedHandler.(TokenVerificationKeyProvider).TokenVerificationKey(nil)
+	//nolint:staticcheck,revive
+	_, err := provider.TokenVerificationKey(context.WithValue(context.Background(), 1, capCtx), nil)
 	test.That(t, err, test.ShouldEqual, err1)
+	<-capCtx
 }
 
 func TestWithPublicKeyProvider(t *testing.T) {
 	privKey, err := rsa.GenerateKey(rand.Reader, generatedRSAKeyBits)
 	test.That(t, err, test.ShouldBeNil)
 	pubKey := &privKey.PublicKey
-	wrappedHandler := WithPublicKeyProvider(MakeSimpleVerifyEntity([]string{"one"}), pubKey)
-	_, err = wrappedHandler.Authenticate(context.Background(), "one", "key")
-	test.That(t, err, test.ShouldNotBeNil)
-	gStatus, ok := status.FromError(err)
-	test.That(t, ok, test.ShouldBeTrue)
-	test.That(t, gStatus.Code(), test.ShouldEqual, codes.InvalidArgument)
-	test.That(t, gStatus.Message(), test.ShouldContainSubstring, "go auth externally")
-	_, err = wrappedHandler.VerifyEntity(context.Background(), "one")
-	test.That(t, err, test.ShouldBeNil)
+	provider := MakePublicKeyProvider(pubKey)
 
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, JWTClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -161,10 +164,7 @@ func TestWithPublicKeyProvider(t *testing.T) {
 		AuthCredentialsType: CredentialsType("fake"),
 	})
 
-	provder, ok := wrappedHandler.(TokenVerificationKeyProvider)
-	test.That(t, ok, test.ShouldBeTrue)
-
-	verificationKey, err := provder.TokenVerificationKey(token)
+	verificationKey, err := provider.TokenVerificationKey(context.Background(), token)
 	test.That(t, err, test.ShouldBeNil)
 
 	badToken := jwt.NewWithClaims(jwt.SigningMethodHS256, JWTClaims{
@@ -175,7 +175,7 @@ func TestWithPublicKeyProvider(t *testing.T) {
 		AuthCredentialsType: CredentialsType("fake"),
 	})
 
-	_, err = provder.TokenVerificationKey(badToken)
+	_, err = provider.TokenVerificationKey(context.Background(), badToken)
 	test.That(t, err, test.ShouldNotBeNil)
 	test.That(t, err.Error(), test.ShouldContainSubstring, "unexpected signing method")
 

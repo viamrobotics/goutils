@@ -178,10 +178,7 @@ func runServer(
 		serverOpts = append(serverOpts, rpc.WithAuthHandler(rpc.CredentialsTypeAPIKey, handler))
 
 		if authPublicKey != nil {
-			serverOpts = append(serverOpts, rpc.WithAuthHandler("inter-node", rpc.WithPublicKeyProvider(
-				rpc.MakeSimpleVerifyEntity(authEntities),
-				authPublicKey,
-			)))
+			serverOpts = append(serverOpts, rpc.WithExternalAuthPublicKeyTokenVerifier(authPublicKey))
 		}
 	}
 
@@ -190,7 +187,6 @@ func runServer(
 			return errors.New("expected auth-private-key")
 		}
 		serverOpts = append(serverOpts, rpc.WithAuthenticateToHandler(
-			rpc.CredentialsType("inter-node"),
 			func(ctx context.Context, entity string) (map[string]string, error) {
 				return map[string]string{}, nil
 			},
