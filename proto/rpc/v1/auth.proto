@@ -29,7 +29,7 @@ service AuthService {
 // entity's gRPC server has to offer.
 service ExternalAuthService {
 	// AuthenticateTo attempts to allow the caller to authenticate to another entity.
-	// The resulting response contains an access token that with the subject
+	// The resulting response contains an access token with the subject
 	// as the calling entity, the audience as the other entity, and the issuer
 	// as the provider of this service. This token should be used for all
 	// future RPC requests to the other entity on the services it provides.

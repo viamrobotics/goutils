@@ -227,7 +227,6 @@ func WithAuthRSAPrivateKey(authRSAPrivateKey *rsa.PrivateKey) ServerOption {
 // the instance names will be used instead. It is recommended this option
 // is used.
 func WithAuthAudience(authAudience ...string) ServerOption {
-	// TODO(erd): test
 	return newFuncServerOption(func(o *serverOptions) error {
 		if len(authAudience) == 0 {
 			return errors.New("expected at least one auth audience member")
@@ -242,8 +241,10 @@ func WithAuthAudience(authAudience ...string) ServerOption {
 // the first audience member will be used instead. It is recommended this option
 // is used.
 func WithAuthIssuer(authIssuer string) ServerOption {
-	// TODO(erd): test
 	return newFuncServerOption(func(o *serverOptions) error {
+		if authIssuer == "" {
+			return errors.New("auth issuer must be non-empty")
+		}
 		o.authIssuer = authIssuer
 		return nil
 	})
@@ -357,7 +358,7 @@ func WithExternalAuthJWKSetTokenVerifier(keySet jwks.KeySet) ServerOption {
 // authenticated entity access tokens against the given OIDC JWT issuer
 // that follows the OIDC Discovery protocol.
 func WithExternalAuthOIDCTokenVerifier(ctx context.Context, issuer string) (ServerOption, error) {
-	provider, err := MakeODICKeyProvider(ctx, issuer)
+	provider, err := MakeOIDCKeyProvider(ctx, issuer)
 	if err != nil {
 		return nil, err
 	}

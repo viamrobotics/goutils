@@ -154,7 +154,7 @@ func NewStaticJWKKeyProvider(keyset KeySet) KeyProvider {
 func publicKeyFromKeySet(keyset KeySet, kid string) (*rsa.PublicKey, error) {
 	key, ok := keyset.LookupKeyID(kid)
 	if !ok {
-		return nil, errors.New("kid not valid")
+		return nil, errors.New("kid header does not exist")
 	}
 
 	var pubKey rsa.PublicKey

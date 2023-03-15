@@ -115,7 +115,7 @@ var AuthService_ServiceDesc = grpc.ServiceDesc{
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ExternalAuthServiceClient interface {
 	// AuthenticateTo attempts to allow the caller to authenticate to another entity.
-	// The resulting response contains an access token that with the subject
+	// The resulting response contains an access token with the subject
 	// as the calling entity, the audience as the other entity, and the issuer
 	// as the provider of this service. This token should be used for all
 	// future RPC requests to the other entity on the services it provides.
@@ -146,7 +146,7 @@ func (c *externalAuthServiceClient) AuthenticateTo(ctx context.Context, in *Auth
 // for forward compatibility
 type ExternalAuthServiceServer interface {
 	// AuthenticateTo attempts to allow the caller to authenticate to another entity.
-	// The resulting response contains an access token that with the subject
+	// The resulting response contains an access token with the subject
 	// as the calling entity, the audience as the other entity, and the issuer
 	// as the provider of this service. This token should be used for all
 	// future RPC requests to the other entity on the services it provides.

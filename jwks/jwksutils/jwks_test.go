@@ -50,7 +50,7 @@ func TestStaticKeySet(t *testing.T) {
 	test.That(t, publicKey2.N, test.ShouldResemble, keys[1].PublicKey.N)
 
 	_, err = keyProvider.LookupKey(ctx, "not-a-key")
-	test.That(t, err.Error(), test.ShouldContainSubstring, "kid not valid")
+	test.That(t, err.Error(), test.ShouldContainSubstring, "kid header does not exist")
 
 	test.That(t, keyProvider.Close(), test.ShouldBeNil)
 }
@@ -78,5 +78,5 @@ func TestOIDCRefreshingKeySet(t *testing.T) {
 	test.That(t, publicKey2.N, test.ShouldResemble, keys[1].PublicKey.N)
 
 	_, err = keyProvider.LookupKey(ctx, "not-a-key")
-	test.That(t, err.Error(), test.ShouldContainSubstring, "kid not valid")
+	test.That(t, err.Error(), test.ShouldContainSubstring, "kid header does not exist")
 }

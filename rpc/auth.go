@@ -123,10 +123,10 @@ func MakePublicKeyProvider(pubKey *rsa.PublicKey) TokenVerificationKeyProvider {
 	)
 }
 
-// MakeODICKeyProvider returns a TokenVerificationKeyProvider that dynamically looks up a public key for
+// MakeOIDCKeyProvider returns a TokenVerificationKeyProvider that dynamically looks up a public key for
 // JWT verification by inspecting the JWT's kid field. The given issuer is used to discover the JWKs
 // used for verification. This issuer is expected to follow the OIDC Discovery protocol.
-func MakeODICKeyProvider(ctx context.Context, issuer string) (TokenVerificationKeyProvider, error) {
+func MakeOIDCKeyProvider(ctx context.Context, issuer string) (TokenVerificationKeyProvider, error) {
 	provider, err := jwks.NewCachingOIDCJWKKeyProvider(ctx, issuer)
 	if err != nil {
 		return nil, err
@@ -150,7 +150,7 @@ type oidcKeyProvider struct {
 func (op *oidcKeyProvider) TokenVerificationKey(ctx context.Context, token *jwt.Token) (ret interface{}, err error) {
 	keyID, ok := token.Header["kid"].(string)
 	if !ok {
-		return nil, errors.New("kid not valid")
+		return nil, errors.New("kid header does not exist")
 	}
 
 	return op.jwkProvider.LookupKey(ctx, keyID)
