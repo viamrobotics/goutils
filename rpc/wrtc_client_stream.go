@@ -107,6 +107,12 @@ func (s *webrtcClientStream) Context() context.Context {
 // is any. It blocks if the metadata is not ready to read.
 func (s *webrtcClientStream) Header() (metadata.MD, error) {
 	select {
+	case <-s.headersReceived:
+		return s.headers, nil
+	default:
+	}
+
+	select {
 	case <-s.ctx.Done():
 		return nil, s.ctx.Err()
 	case <-s.headersReceived:

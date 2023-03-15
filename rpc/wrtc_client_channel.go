@@ -41,8 +41,7 @@ type webrtcClientChannel struct {
 }
 
 type activeWebRTCClientStream struct {
-	cs     *webrtcClientStream
-	cancel func()
+	cs *webrtcClientStream
 }
 
 // newWebRTCClientChannel wraps the given WebRTC data channel to be used as the client end
@@ -262,7 +261,6 @@ func (ch *webrtcClientChannel) newStream(
 		if len(ch.streams) == WebRTCMaxStreamCount {
 			return nil, errWebRTCMaxStreams
 		}
-		ctx, cancel := context.WithCancel(ctx)
 		clientStream := newWebRTCClientStream(
 			ctx,
 			ch,
@@ -270,7 +268,7 @@ func (ch *webrtcClientChannel) newStream(
 			ch.removeStreamByID,
 			ch.webrtcBaseChannel.logger.With("id", id),
 		)
-		activeStream = activeWebRTCClientStream{clientStream, cancel}
+		activeStream = activeWebRTCClientStream{clientStream}
 		ch.streams[id] = activeStream
 	}
 	ch.mu.Unlock()
