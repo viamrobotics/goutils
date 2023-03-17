@@ -3,6 +3,7 @@ package rpc
 import (
 	"context"
 	"errors"
+	"math"
 	"sync"
 
 	"github.com/edaniels/golog"
@@ -169,19 +170,24 @@ var maxRequestMessagePacketDataSize int
 func init() {
 	md, err := proto.Marshal(&webrtcpb.Request{
 		Stream: &webrtcpb.Stream{
-			Id: 1,
+			Id: math.MaxUint64,
 		},
 		Type: &webrtcpb.Request_Message{
 			Message: &webrtcpb.RequestMessage{
-				PacketMessage: &webrtcpb.PacketMessage{Eom: true},
+				HasMessage: true,
+				PacketMessage: &webrtcpb.PacketMessage{
+					Data: []byte{0x0},
+					Eom:  true,
+				},
+				Eos: true,
 			},
 		},
 	})
 	if err != nil {
 		panic(err)
 	}
-	// max msg size - packet size - msg type size - proto padding (?)
-	maxRequestMessagePacketDataSize = maxDataChannelSize - len(md) - 1
+	// maxRequestMessagePacketDataSize = maxDataChannelSize - max proto request wrapper size
+	maxRequestMessagePacketDataSize = maxDataChannelSize - len(md)
 }
 
 func (s *webrtcClientStream) writeMessage(m interface{}, eos bool) (err error) {

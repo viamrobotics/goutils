@@ -12,7 +12,7 @@ export class BaseChannel {
     private closed = false;
     private closedReason?: Error;
 
-    protected maxDataChannelSize = 16384;
+    protected maxDataChannelSize = 65535;
 
     constructor(peerConn: RTCPeerConnection, dataChannel: RTCDataChannel) {
         this.peerConn = peerConn;
