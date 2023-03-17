@@ -150,10 +150,15 @@ type oidcKeyProvider struct {
 func (op *oidcKeyProvider) TokenVerificationKey(ctx context.Context, token *jwt.Token) (ret interface{}, err error) {
 	keyID, ok := token.Header["kid"].(string)
 	if !ok {
-		return nil, errors.New("kid header does not exist")
+		return nil, errors.New("kid header not in token header")
 	}
 
-	return op.jwkProvider.LookupKey(ctx, keyID)
+	return op.jwkProvider.LookupKey(ctx, keyID, token.Method.Alg())
+}
+
+// Close closes the jwks key provider.
+func (op *oidcKeyProvider) Close() error {
+	return op.jwkProvider.Close()
 }
 
 // MakeSimpleAuthHandler returns a simple auth handler that handles multiple entities

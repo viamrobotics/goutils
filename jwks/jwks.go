@@ -26,9 +26,9 @@ type KeyProvider interface {
 	// allow users to stop any background process in a key provider.
 	io.Closer
 
-	// LookupKey should return a PublicKey based on the given key ID. Return an error if not
+	// LookupKey should return a public key based on the given key ID. Return an error if not
 	// found or any other error.
-	LookupKey(ctx context.Context, kid string) (*rsa.PublicKey, error)
+	LookupKey(ctx context.Context, kid, alg string) (interface{}, error)
 
 	// Fetch returns the full KeySet as a cloned keyset, any modifcations are only applied locally.
 	Fetch(ctx context.Context) (KeySet, error)
@@ -53,14 +53,14 @@ func (cp *cachingKeyProvider) Close() error {
 	return nil
 }
 
-func (cp *cachingKeyProvider) LookupKey(ctx context.Context, kid string) (*rsa.PublicKey, error) {
+func (cp *cachingKeyProvider) LookupKey(ctx context.Context, kid, alg string) (interface{}, error) {
 	// loads keys from cache or refreshes if needed.
 	keyset, err := cp.ar.Fetch(ctx, cp.jwksURI)
 	if err != nil {
 		return nil, err
 	}
 
-	return publicKeyFromKeySet(keyset, kid)
+	return publicKeyFromKeySet(keyset, kid, alg)
 }
 
 func (cp *cachingKeyProvider) Fetch(ctx context.Context) (KeySet, error) {
@@ -131,8 +131,8 @@ type staticKeySet struct {
 // ensure interface is met.
 var _ KeyProvider = &staticKeySet{}
 
-func (p *staticKeySet) LookupKey(ctx context.Context, kid string) (*rsa.PublicKey, error) {
-	return publicKeyFromKeySet(p.keyset, kid)
+func (p *staticKeySet) LookupKey(ctx context.Context, kid, alg string) (interface{}, error) {
+	return publicKeyFromKeySet(p.keyset, kid, alg)
 }
 
 func (p *staticKeySet) Close() error {
@@ -151,10 +151,14 @@ func NewStaticJWKKeyProvider(keyset KeySet) KeyProvider {
 	}
 }
 
-func publicKeyFromKeySet(keyset KeySet, kid string) (*rsa.PublicKey, error) {
+func publicKeyFromKeySet(keyset KeySet, kid, alg string) (*rsa.PublicKey, error) {
 	key, ok := keyset.LookupKeyID(kid)
 	if !ok {
-		return nil, errors.New("kid header does not exist")
+		return nil, errors.New("kid header does not exist in keyset")
+	}
+
+	if key.Algorithm() != alg {
+		return nil, errors.New("key from kid has different signing alg")
 	}
 
 	var pubKey rsa.PublicKey

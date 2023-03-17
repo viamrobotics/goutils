@@ -131,16 +131,16 @@ func (ss *simpleServer) signAccessTokenForEntity(
 	entity string,
 	authMD map[string]string,
 ) (string, error) {
+	// TODO(GOUT-13): expiration
 	// TODO(GOUT-12): refresh token
 	// TODO(GOUT-9): more complete info
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, JWTClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
-			Subject:   entity,
-			Audience:  audience,
-			Issuer:    ss.authIssuer,
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour * 24)),
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			ID:        uuid.NewString(),
+			Subject:  entity,
+			Audience: audience,
+			Issuer:   ss.authIssuer,
+			IssuedAt: jwt.NewNumericDate(time.Now()),
+			ID:       uuid.NewString(),
 		},
 		AuthCredentialsType: forType,
 		AuthMetadata:        authMD,
@@ -217,6 +217,22 @@ func tokenFromContext(ctx context.Context) (string, error) {
 
 var errNotTLSAuthed = errors.New("not authenticated via TLS")
 
+var validSigningMethods = []string{
+	"ES256",
+	"ES512",
+	"HS512",
+	"PS256",
+	"RS512",
+	"PS384",
+	"PS512",
+	"RS384",
+	"ES384",
+	"EdDSA",
+	"HS256",
+	"HS384",
+	"RS256",
+}
+
 func (ss *simpleServer) ensureAuthed(ctx context.Context) (context.Context, error) {
 	tokenString, err := tokenFromContext(ctx)
 	if err != nil {
@@ -257,24 +273,29 @@ func (ss *simpleServer) ensureAuthed(ctx context.Context) (context.Context, erro
 
 	var claims JWTClaims
 	var handlers credAuthHandlers
-	if _, err := jwt.ParseWithClaims(tokenString, &claims, func(token *jwt.Token) (interface{}, error) {
-		var err error
-		handlers, err = ss.authHandlers(claims.CredentialsType())
-		if err != nil {
-			return nil, err
-		}
+	if _, err := jwt.ParseWithClaims(
+		tokenString,
+		&claims,
+		func(token *jwt.Token) (interface{}, error) {
+			var err error
+			handlers, err = ss.authHandlers(claims.CredentialsType())
+			if err != nil {
+				return nil, err
+			}
 
-		if handlers.TokenVerificationKeyProvider != nil {
-			return handlers.TokenVerificationKeyProvider.TokenVerificationKey(ctx, token)
-		}
+			if handlers.TokenVerificationKeyProvider != nil {
+				return handlers.TokenVerificationKeyProvider.TokenVerificationKey(ctx, token)
+			}
 
-		// signed internally
-		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
-			return nil, fmt.Errorf("unexpected signing method %q", token.Method.Alg())
-		}
+			// signed internally
+			if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
+				return nil, fmt.Errorf("unexpected signing method %q", token.Method.Alg())
+			}
 
-		return &ss.authRSAPrivKey.PublicKey, nil
-	}); err != nil {
+			return &ss.authRSAPrivKey.PublicKey, nil
+		},
+		jwt.WithValidMethods(validSigningMethods),
+	); err != nil {
 		return nil, status.Errorf(codes.Unauthenticated, "unauthenticated: %s", err)
 	}
 
@@ -289,7 +310,10 @@ func (ss *simpleServer) ensureAuthed(ctx context.Context) (context.Context, erro
 		}
 	}
 	if !audVerified {
-		return nil, status.Error(codes.Unauthenticated, "invalid audience")
+		// TODO(APP-1412): remove the if check but not the return after a week from being deployed
+		if !claims.RegisteredClaims.VerifyAudience(claims.RegisteredClaims.Subject, true) {
+			return nil, status.Error(codes.Unauthenticated, "invalid audience")
+		}
 	}
 
 	// Note(erd): may want to verify issuers in the future where the claims/scope are
