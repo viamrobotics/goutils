@@ -26,7 +26,11 @@ type webrtcBaseChannel struct {
 	closedReason            error
 	activeBackgroundWorkers sync.WaitGroup
 	logger                  golog.Logger
+	bufferWriteMu           sync.RWMutex
+	bufferWriteCond         *sync.Cond
 }
+
+const bufferThreshold = 1024 * 1024
 
 func newBaseChannel(
 	ctx context.Context,
@@ -44,9 +48,16 @@ func newBaseChannel(
 		ready:       make(chan struct{}),
 		logger:      logger.With("ch", dataChannel.ID()),
 	}
+	ch.bufferWriteCond = sync.NewCond(ch.bufferWriteMu.RLocker())
 	dataChannel.OnOpen(ch.onChannelOpen)
 	dataChannel.OnClose(ch.onChannelClose)
 	dataChannel.OnError(ch.onChannelError)
+	dataChannel.SetBufferedAmountLowThreshold(bufferThreshold)
+	dataChannel.OnBufferedAmountLow(func() {
+		ch.bufferWriteMu.Lock()
+		ch.bufferWriteCond.Broadcast()
+		ch.bufferWriteMu.Unlock()
+	})
 
 	var connID string
 	var connIDMu sync.Mutex
@@ -132,6 +143,7 @@ func (ch *webrtcBaseChannel) closeWithReason(err error) error {
 	ch.closed = true
 	ch.closedReason = err
 	ch.cancel()
+	ch.bufferWriteCond.Broadcast()
 	return ch.peerConn.Close()
 }
 
@@ -172,12 +184,24 @@ func (ch *webrtcBaseChannel) onChannelError(err error) {
 	}
 }
 
-const maxDataChannelSize = 16384
+const maxDataChannelSize = 65535
 
 func (ch *webrtcBaseChannel) write(msg proto.Message) error {
 	data, err := proto.Marshal(msg)
 	if err != nil {
 		return err
+	}
+	ch.bufferWriteCond.L.Lock()
+	for {
+		if ch.ctx.Err() != nil {
+			return io.ErrClosedPipe
+		}
+		if ch.dataChannel.BufferedAmount() >= bufferThreshold {
+			ch.bufferWriteCond.Wait()
+			continue
+		}
+		ch.bufferWriteCond.L.Unlock()
+		break
 	}
 	if err := ch.dataChannel.Send(data); err != nil {
 		if strings.Contains(err.Error(), "sending payload data in non-established state") {
