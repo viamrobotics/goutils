@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 
 	"github.com/edaniels/golog"
 	//nolint:staticcheck
@@ -131,19 +132,22 @@ var maxResponseMessagePacketDataSize int
 func init() {
 	md, err := proto.Marshal(&webrtcpb.Response{
 		Stream: &webrtcpb.Stream{
-			Id: 1,
+			Id: math.MaxUint64,
 		},
 		Type: &webrtcpb.Response_Message{
 			Message: &webrtcpb.ResponseMessage{
-				PacketMessage: &webrtcpb.PacketMessage{Eom: true},
+				PacketMessage: &webrtcpb.PacketMessage{
+					Data: []byte{0x0},
+					Eom:  true,
+				},
 			},
 		},
 	})
 	if err != nil {
 		panic(err)
 	}
-	// max msg size - packet size - msg type size - proto padding (?)
-	maxResponseMessagePacketDataSize = maxDataChannelSize - len(md) - 1
+	// maxResponseMessagePacketDataSize = maxDataChannelSize - max proto response wrapper size
+	maxResponseMessagePacketDataSize = maxDataChannelSize - len(md)
 }
 
 // SendMsg sends a message. On error, SendMsg aborts the stream and the
