@@ -17,6 +17,7 @@ import (
 	"github.com/edaniels/golog"
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/google/uuid"
+	"github.com/lestrrat-go/jwx/jwk"
 	"github.com/pkg/errors"
 	"go.viam.com/test"
 	"google.golang.org/grpc"
@@ -25,6 +26,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
+	"go.viam.com/utils/jwks/jwksutils"
 	pb "go.viam.com/utils/proto/rpc/examples/echo/v1"
 	rpcpb "go.viam.com/utils/proto/rpc/v1"
 	echoserver "go.viam.com/utils/rpc/examples/echo/server"
@@ -39,36 +41,38 @@ func TestServerAuth(t *testing.T) {
 	fakeAuthWorks := false
 	rpcServer, err := NewServer(
 		logger,
-		WithAuthHandler("fake", MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) (map[string]string, error) {
+		WithAuthHandler("fake", AuthHandlerFunc(func(ctx context.Context, entity, payload string) (map[string]string, error) {
 			testMu.Lock()
 			defer testMu.Unlock()
 			if fakeAuthWorks {
 				return map[string]string{"please persist": "need this value"}, nil
 			}
 			return nil, errors.New("this auth does not work yet")
-		}, func(ctx context.Context, entity string) (interface{}, error) {
-			claims := ContextAuthClaims(ctx)
-			if claims == nil {
-				return nil, errors.New("bad metadata, missing claims")
-			}
-
+		})),
+		WithEntityDataLoader("fake", EntityDataLoaderFunc(func(ctx context.Context, claims Claims) (interface{}, error) {
 			if claims.Metadata()["please persist"] != "need this value" {
 				return nil, errors.New("bad metadata")
 			}
 
 			return "somespecialinterface", nil
 		})),
+		WithEntityDataLoader("something_else", EntityDataLoaderFunc(func(ctx context.Context, claims Claims) (interface{}, error) {
+			panic("never called")
+		})),
 	)
 	test.That(t, err, test.ShouldBeNil)
 
 	echoServer := &echoserver.Server{
-		ContextAuthEntity: MustContextAuthEntity,
-		ContextAuthClaims: func(ctx context.Context) interface{} {
-			return ContextAuthClaims(ctx)
+		MustContextAuthEntity: func(ctx context.Context) echoserver.RPCEntityInfo {
+			ent := MustContextAuthEntity(ctx)
+			return echoserver.RPCEntityInfo{
+				Entity: ent.Entity,
+				Data:   ent.Data,
+			}
 		},
-		ContextAuthSubject: MustContextAuthSubject,
 	}
 	echoServer.SetAuthorized(true)
+	echoServer.SetExpectedAuthEntityData("somespecialinterface")
 	err = rpcServer.RegisterServiceServer(
 		context.Background(),
 		&pb.EchoService_ServiceDesc,
@@ -133,7 +137,14 @@ func TestServerAuth(t *testing.T) {
 			Payload: "something",
 		}})
 		test.That(t, err, test.ShouldNotBeNil)
-		test.That(t, err.Error(), test.ShouldContainSubstring, "no auth handler")
+		test.That(t, err.Error(), test.ShouldContainSubstring, "do not know how")
+
+		_, err = authClient.Authenticate(context.Background(), &rpcpb.AuthenticateRequest{Entity: "foo", Credentials: &rpcpb.Credentials{
+			Type:    "something_else",
+			Payload: "something",
+		}})
+		test.That(t, err, test.ShouldNotBeNil)
+		test.That(t, err.Error(), test.ShouldContainSubstring, "direct authentication not supporte")
 
 		_, err = authClient.Authenticate(context.Background(), &rpcpb.AuthenticateRequest{Entity: "foo", Credentials: &rpcpb.Credentials{
 			Type: "fake",
@@ -206,6 +217,11 @@ func TestServerAuth(t *testing.T) {
 		test.That(t, string(rd), test.ShouldResemble, "")
 
 		// works from here
+
+		testMu.Lock()
+		fakeAuthWorks = true
+		testMu.Unlock()
+
 		conn, err := grpc.DialContext(
 			context.Background(),
 			httpListener.Addr().String(),
@@ -316,9 +332,7 @@ func TestServerAuthJWTExpiration(t *testing.T) {
 
 	rpcServer, err := NewServer(
 		logger,
-		WithAuthHandler("fake", MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) (map[string]string, error) {
-			return map[string]string{}, nil
-		}, func(ctx context.Context, entity string) (interface{}, error) {
+		WithAuthHandler("fake", AuthHandlerFunc(func(ctx context.Context, entity, payload string) (map[string]string, error) {
 			return map[string]string{}, nil
 		})),
 		WithAuthRSAPrivateKey(privKey),
@@ -389,18 +403,17 @@ func TestServerAuthJWTAudienceAndID(t *testing.T) {
 	privKey, err := rsa.GenerateKey(rand.Reader, generatedRSAKeyBits)
 	test.That(t, err, test.ShouldBeNil)
 
-	expectedSubject := "yeehaw"
-	expectedEntity := "someent"
+	expectedEntity := "yeehaw"
+	expectedAudience := "someaud"
 	rpcServer, err := NewServer(
 		logger,
-		WithAuthHandler("fake", MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) (map[string]string, error) {
+		WithInstanceNames(expectedAudience),
+		WithAuthHandler("fake", AuthHandlerFunc(func(ctx context.Context, entity, payload string) (map[string]string, error) {
 			return map[string]string{}, nil
-		}, func(ctx context.Context, entity string) (interface{}, error) {
-			if ContextAuthClaims(ctx).Subject() != expectedSubject {
-				return nil, errCannotAuthEntity
-			}
-			if entity == expectedEntity {
-				return "somespecialinterface", nil
+		})),
+		WithEntityDataLoader("fake", EntityDataLoaderFunc(func(ctx context.Context, claims Claims) (interface{}, error) {
+			if claims.Entity() == expectedEntity {
+				return expectedEntity, nil
 			}
 			return nil, errCannotAuthEntity
 		})),
@@ -409,12 +422,13 @@ func TestServerAuthJWTAudienceAndID(t *testing.T) {
 	test.That(t, err, test.ShouldBeNil)
 
 	echoServer := &echoserver.Server{
-		ContextAuthEntity: MustContextAuthEntity,
-		ContextAuthClaims: func(ctx context.Context) interface{} {
-			return ContextAuthClaims(ctx)
+		MustContextAuthEntity: func(ctx context.Context) echoserver.RPCEntityInfo {
+			ent := MustContextAuthEntity(ctx)
+			return echoserver.RPCEntityInfo{
+				Entity: ent.Entity,
+				Data:   ent.Data,
+			}
 		},
-		ContextAuthSubject:  MustContextAuthSubject,
-		ExpectedAuthSubject: expectedSubject,
 	}
 	echoServer.SetAuthorized(true)
 	err = rpcServer.RegisterServiceServer(
@@ -451,25 +465,25 @@ func TestServerAuthJWTAudienceAndID(t *testing.T) {
 		test.That(t, err, test.ShouldBeNil)
 	})
 
-	for _, subject := range []string{"", "really actually matters", expectedSubject} {
+	for _, entity := range []string{"", "really actually matters", expectedEntity} {
 		var testName string
-		if subject == "" {
-			testName = "noSubject"
+		if entity == "" {
+			testName = "noEntity"
 		} else {
-			testName = fmt.Sprintf("correctSubject=%t", expectedSubject == subject)
+			testName = fmt.Sprintf("correctEntity=%t", expectedEntity == entity)
 		}
 		t.Run(testName, func(t *testing.T) {
-			for _, correctEntity := range []bool{false, true} {
-				t.Run(fmt.Sprintf("correctEntity=%t", correctEntity), func(t *testing.T) {
+			for _, correctAudience := range []bool{false, true} {
+				t.Run(fmt.Sprintf("correctAudience=%t", correctAudience), func(t *testing.T) {
 					var aud string
-					if correctEntity {
-						aud = expectedEntity
+					if correctAudience {
+						aud = expectedAudience
 					} else {
 						aud = "actually matters"
 					}
 					token := jwt.NewWithClaims(jwt.SigningMethodRS256, JWTClaims{
 						RegisteredClaims: jwt.RegisteredClaims{
-							Subject:  subject,
+							Subject:  entity,
 							Audience: jwt.ClaimStrings{aud},
 						},
 						AuthCredentialsType: CredentialsType("fake"),
@@ -484,7 +498,7 @@ func TestServerAuthJWTAudienceAndID(t *testing.T) {
 					ctx := metadata.NewOutgoingContext(context.Background(), md)
 
 					echoResp, err := client.Echo(ctx, &pb.EchoRequest{Message: "hello"})
-					if correctEntity && expectedSubject == subject {
+					if correctAudience && expectedEntity == entity {
 						test.That(t, err, test.ShouldBeNil)
 						test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
 					} else {
@@ -492,9 +506,12 @@ func TestServerAuthJWTAudienceAndID(t *testing.T) {
 						gStatus, ok := status.FromError(err)
 						test.That(t, ok, test.ShouldBeTrue)
 						test.That(t, gStatus.Code(), test.ShouldEqual, codes.Unauthenticated)
-						if subject == "" {
-							test.That(t, gStatus.Message(), test.ShouldContainSubstring, "expected subject in claims")
-						} else {
+						switch {
+						case !correctAudience:
+							test.That(t, gStatus.Message(), test.ShouldContainSubstring, "invalid audience")
+						case entity == "":
+							test.That(t, gStatus.Message(), test.ShouldContainSubstring, "expected entity (sub) in claims")
+						default:
 							test.That(t, gStatus.Message(), test.ShouldContainSubstring, "cannot authenticate")
 						}
 					}
@@ -515,16 +532,11 @@ func TestServerAuthKeyFunc(t *testing.T) {
 	var key interface{}
 	rpcServer, err := NewServer(
 		logger,
-		WithAuthHandler("fake", WithTokenVerificationKeyProvider(
-			funcAuthHandler{
-				auth: func(ctx context.Context, entity, payload string) (map[string]string, error) {
-					return map[string]string{}, nil
-				},
-				verify: func(ctx context.Context, entity string) (interface{}, error) {
-					return entity, nil
-				},
-			},
-			func(token *jwt.Token) (interface{}, error) {
+		WithAuthHandler("fake", AuthHandlerFunc(func(ctx context.Context, entity, payload string) (map[string]string, error) {
+			return map[string]string{}, nil
+		})),
+		WithTokenVerificationKeyProvider("fake",
+			TokenVerificationKeyProviderFunc(func(ctx context.Context, token *jwt.Token) (interface{}, error) {
 				if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
 					return nil, fmt.Errorf("unexpected signing method %q", token.Method.Alg())
 				}
@@ -532,8 +544,7 @@ func TestServerAuthKeyFunc(t *testing.T) {
 				testMu.Lock()
 				defer testMu.Unlock()
 				return key, nil
-			},
-		)),
+			})),
 		WithAuthRSAPrivateKey(privKey),
 	)
 	test.That(t, err, test.ShouldBeNil)
@@ -605,114 +616,6 @@ func TestServerAuthKeyFunc(t *testing.T) {
 	test.That(t, err, test.ShouldBeNil)
 }
 
-func TestServerAuthWithCustomClaimsFunc(t *testing.T) {
-	testutils.SkipUnlessInternet(t)
-	logger := golog.NewTestLogger(t)
-
-	privKey, err := rsa.GenerateKey(rand.Reader, generatedRSAKeyBits)
-	test.That(t, err, test.ShouldBeNil)
-
-	rpcServer, err := NewServer(
-		logger,
-		WithAuthHandler("fake", WithTokenCustomClaimProvider(
-			funcAuthHandler{
-				auth: func(ctx context.Context, entity, payload string) (map[string]string, error) {
-					return map[string]string{}, nil
-				},
-				verify: func(ctx context.Context, entity string) (interface{}, error) {
-					claims := ContextAuthClaims(ctx)
-					if claims == nil {
-						return nil, errors.New("invalid context in Verify, missing all claims")
-					}
-
-					md := claims.Metadata()
-					if md["key1"] != "other" {
-						return nil, errors.New("invalid context in Verify, missing metadata")
-					}
-
-					customClaims, ok := claims.(*customClaims)
-					if !ok {
-						return nil, errors.New("invalid context in Verify, invalid type for Claims")
-					}
-
-					if customClaims.CustomClaim != "custom-claim" {
-						return nil, errors.New("invalid context in Verify, invalid claim")
-					}
-
-					return entity, nil
-				},
-			},
-			func() Claims {
-				return &customClaims{}
-			},
-		)),
-		WithAuthRSAPrivateKey(privKey),
-	)
-	test.That(t, err, test.ShouldBeNil)
-
-	err = rpcServer.RegisterServiceServer(
-		context.Background(),
-		&pb.EchoService_ServiceDesc,
-		&echoserver.Server{},
-		pb.RegisterEchoServiceHandlerFromEndpoint,
-	)
-	test.That(t, err, test.ShouldBeNil)
-
-	httpListener, err := net.Listen("tcp", "localhost:0")
-	test.That(t, err, test.ShouldBeNil)
-
-	errChan := make(chan error)
-	go func() {
-		errChan <- rpcServer.Serve(httpListener)
-	}()
-
-	conn, err := grpc.DialContext(
-		context.Background(),
-		httpListener.Addr().String(),
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithBlock(),
-	)
-	test.That(t, err, test.ShouldBeNil)
-	defer func() {
-		test.That(t, conn.Close(), test.ShouldBeNil)
-	}()
-	client := pb.NewEchoServiceClient(conn)
-
-	token := jwt.NewWithClaims(jwt.SigningMethodRS256, customClaims{
-		JWTClaims: JWTClaims{
-			RegisteredClaims: jwt.RegisteredClaims{
-				Subject:  uuid.NewString(),
-				Audience: jwt.ClaimStrings{"tasd"},
-			},
-			AuthCredentialsType: "fake",
-			AuthMetadata: map[string]string{
-				"key1": "other",
-			},
-		},
-		CustomClaim: "custom-claim",
-	})
-
-	tokenString, err := token.SignedString(privKey)
-	test.That(t, err, test.ShouldBeNil)
-
-	md := make(metadata.MD)
-	bearer := fmt.Sprintf("Bearer %s", tokenString)
-	md.Set("authorization", bearer)
-	ctx := metadata.NewOutgoingContext(context.Background(), md)
-
-	_, err = client.Echo(ctx, &pb.EchoRequest{Message: "hello"})
-	test.That(t, err, test.ShouldBeNil)
-
-	test.That(t, rpcServer.Stop(), test.ShouldBeNil)
-	err = <-errChan
-	test.That(t, err, test.ShouldBeNil)
-}
-
-type customClaims struct {
-	JWTClaims
-	CustomClaim string `json:"custom-claim"`
-}
-
 func TestServerAuthToHandler(t *testing.T) {
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
@@ -726,7 +629,10 @@ func TestServerAuthToHandler(t *testing.T) {
 		logger,
 		WithAuthRSAPrivateKey(privKey),
 		WithAuthHandler("fake", MakeSimpleAuthHandler([]string{"entity1", "entity2"}, "mypayload")),
-		WithAuthenticateToHandler("fake", func(ctx context.Context, entity string) (map[string]string, error) {
+		// Our audience members are a random name and an extra to test with
+		WithAuthAudience(uuid.NewString(), "entity2"),
+		WithExternalAuthPublicKeyTokenVerifier(&privKey.PublicKey),
+		WithAuthenticateToHandler(func(ctx context.Context, entity string) (map[string]string, error) {
 			test.That(t, entity, test.ShouldEqual, "entity2")
 			return map[string]string{"test": "value"}, nil
 		}),
@@ -734,15 +640,16 @@ func TestServerAuthToHandler(t *testing.T) {
 	test.That(t, err, test.ShouldBeNil)
 
 	echoServer := &echoserver.Server{
-		ContextAuthEntity: MustContextAuthEntity,
-		ContextAuthClaims: func(ctx context.Context) interface{} {
-			return ContextAuthClaims(ctx)
+		MustContextAuthEntity: func(ctx context.Context) echoserver.RPCEntityInfo {
+			ent := MustContextAuthEntity(ctx)
+			return echoserver.RPCEntityInfo{
+				Entity: ent.Entity,
+				Data:   ent.Data,
+			}
 		},
-		ContextAuthSubject:  MustContextAuthSubject,
-		ExpectedAuthSubject: "entity1",
 	}
 	echoServer.SetAuthorized(true)
-	echoServer.SetExpectedAuthEntity("entity2")
+	echoServer.SetExpectedAuthEntity("entity1")
 
 	err = rpcServer.RegisterServiceServer(
 		context.Background(),
@@ -800,7 +707,417 @@ func TestServerAuthToHandler(t *testing.T) {
 	})
 	test.That(t, err, test.ShouldBeNil)
 
-	test.That(t, claims.Subject(), test.ShouldEqual, "entity1")
+	test.That(t, claims.Entity(), test.ShouldEqual, "entity1")
+	test.That(t, claims.Audience, test.ShouldContain, "entity2")
+	test.That(t, token.Header["kid"], test.ShouldEqual, thumbprint)
+
+	md = make(metadata.MD)
+	md.Set("authorization", fmt.Sprintf("Bearer %s", authToResp.AccessToken))
+	authCtx = metadata.NewOutgoingContext(context.Background(), md)
+
+	client := pb.NewEchoServiceClient(conn)
+	_, err = client.Echo(authCtx, &pb.EchoRequest{Message: "hello"})
+	test.That(t, err, test.ShouldBeNil)
+
+	test.That(t, rpcServer.Stop(), test.ShouldBeNil)
+	err = <-errChan
+	test.That(t, err, test.ShouldBeNil)
+}
+
+func TestServerOptionWithAuthIssuer(t *testing.T) {
+	testutils.SkipUnlessInternet(t)
+
+	privKey, err := rsa.GenerateKey(rand.Reader, 512)
+	test.That(t, err, test.ShouldBeNil)
+
+	aud1 := uuid.NewString()
+
+	t.Run("empty issuer", func(t *testing.T) {
+		logger := golog.NewTestLogger(t)
+		_, err := NewServer(
+			logger,
+			WithAuthRSAPrivateKey(privKey),
+			WithAuthHandler("fake", MakeSimpleAuthHandler([]string{"entity1", "entity2"}, "mypayload")),
+			// Our audience members are a random name and an extra to test with
+			WithAuthAudience(aud1, "entity2"),
+			WithAuthIssuer(""),
+			WithExternalAuthPublicKeyTokenVerifier(&privKey.PublicKey),
+			WithAuthenticateToHandler(func(ctx context.Context, entity string) (map[string]string, error) {
+				test.That(t, entity, test.ShouldEqual, "entity2")
+				return map[string]string{"test": "value"}, nil
+			}),
+		)
+		test.That(t, err, test.ShouldNotBeNil)
+		test.That(t, err.Error(), test.ShouldContainSubstring, "auth issuer must be non-empty")
+	})
+
+	for _, audSet := range []bool{false, true} {
+		t.Run(fmt.Sprintf("aud set=%t", audSet), func(t *testing.T) {
+			for _, issSet := range []bool{false, true} {
+				t.Run(fmt.Sprintf("iss set=%t", issSet), func(t *testing.T) {
+					logger := golog.NewTestLogger(t)
+					opts := []ServerOption{
+						WithAuthRSAPrivateKey(privKey),
+						WithAuthHandler("fake", MakeSimpleAuthHandler([]string{"entity1", "entity2"}, "mypayload")),
+						WithExternalAuthPublicKeyTokenVerifier(&privKey.PublicKey),
+						WithAuthenticateToHandler(func(ctx context.Context, entity string) (map[string]string, error) {
+							test.That(t, entity, test.ShouldEqual, "entity2")
+							return map[string]string{"test": "value"}, nil
+						}),
+					}
+
+					if audSet {
+						// Our audience members are a random name and an extra to test with
+						opts = append(opts, WithAuthAudience(aud1, "entity2"))
+					}
+
+					var expectedIss string
+					if issSet {
+						expectedIss = uuid.NewString()
+						opts = append(opts, WithAuthIssuer(expectedIss))
+					} else if audSet {
+						expectedIss = aud1
+					}
+					rpcServer, err := NewServer(
+						logger,
+						opts...,
+					)
+					test.That(t, err, test.ShouldBeNil)
+
+					if !issSet && !audSet {
+						expectedIss = rpcServer.InstanceNames()[0]
+					}
+
+					echoServer := &echoserver.Server{
+						MustContextAuthEntity: func(ctx context.Context) echoserver.RPCEntityInfo {
+							ent := MustContextAuthEntity(ctx)
+							return echoserver.RPCEntityInfo{
+								Entity: ent.Entity,
+								Data:   ent.Data,
+							}
+						},
+					}
+					echoServer.SetAuthorized(true)
+					echoServer.SetExpectedAuthEntity("entity1")
+
+					err = rpcServer.RegisterServiceServer(
+						context.Background(),
+						&pb.EchoService_ServiceDesc,
+						echoServer,
+						pb.RegisterEchoServiceHandlerFromEndpoint,
+					)
+					test.That(t, err, test.ShouldBeNil)
+
+					httpListener, err := net.Listen("tcp", "localhost:0")
+					test.That(t, err, test.ShouldBeNil)
+
+					errChan := make(chan error)
+					go func() {
+						errChan <- rpcServer.Serve(httpListener)
+					}()
+
+					conn, err := grpc.DialContext(
+						context.Background(),
+						httpListener.Addr().String(),
+						grpc.WithTransportCredentials(insecure.NewCredentials()),
+						grpc.WithBlock(),
+					)
+					test.That(t, err, test.ShouldBeNil)
+					defer func() {
+						test.That(t, conn.Close(), test.ShouldBeNil)
+					}()
+
+					// First authenticate using the fake auth handler.
+					authClient := rpcpb.NewAuthServiceClient(conn)
+					authResp, err := authClient.Authenticate(context.Background(), &rpcpb.AuthenticateRequest{
+						Entity: "entity1",
+						Credentials: &rpcpb.Credentials{
+							Type:    "fake",
+							Payload: "mypayload",
+						},
+					},
+					)
+					test.That(t, err, test.ShouldBeNil)
+
+					// Verify the resulting claims match the expected values.
+					var claims JWTClaims
+					_, err = jwt.ParseWithClaims(authResp.AccessToken, &claims, func(token *jwt.Token) (interface{}, error) {
+						return &privKey.PublicKey, nil
+					})
+					test.That(t, err, test.ShouldBeNil)
+					test.That(t, claims.Issuer, test.ShouldEqual, expectedIss)
+
+					md := make(metadata.MD)
+					md.Set("authorization", fmt.Sprintf("Bearer %s", authResp.AccessToken))
+					authCtx := metadata.NewOutgoingContext(context.Background(), md)
+
+					// Use the credential bearer token from the Authenticate request to the AuthenticateTo the "foo" entity.
+					authToClient := rpcpb.NewExternalAuthServiceClient(conn)
+					authToResp, err := authToClient.AuthenticateTo(authCtx, &rpcpb.AuthenticateToRequest{Entity: "entity2"})
+					test.That(t, err, test.ShouldBeNil)
+					test.That(t, authToResp.AccessToken, test.ShouldNotBeEmpty)
+
+					// Verify the resulting claims match the expected values.
+					claims = JWTClaims{}
+					_, err = jwt.ParseWithClaims(authToResp.AccessToken, &claims, func(token *jwt.Token) (interface{}, error) {
+						return &privKey.PublicKey, nil
+					})
+					test.That(t, err, test.ShouldBeNil)
+					test.That(t, claims.Issuer, test.ShouldEqual, expectedIss)
+
+					md = make(metadata.MD)
+					md.Set("authorization", fmt.Sprintf("Bearer %s", authToResp.AccessToken))
+					authCtx = metadata.NewOutgoingContext(context.Background(), md)
+
+					client := pb.NewEchoServiceClient(conn)
+					_, err = client.Echo(authCtx, &pb.EchoRequest{Message: "hello"})
+					if audSet {
+						test.That(t, err, test.ShouldBeNil)
+					} else {
+						// we are not set up for this case since we dual use the server and we do not
+						// have the entity set up as an audience member
+						test.That(t, err, test.ShouldNotBeNil)
+						test.That(t, err.Error(), test.ShouldContainSubstring, "invalid aud")
+					}
+
+					test.That(t, rpcServer.Stop(), test.ShouldBeNil)
+					err = <-errChan
+					test.That(t, err, test.ShouldBeNil)
+				})
+			}
+		})
+	}
+}
+
+func TestServerAuthToHandlerWithJWKSetTokenVerifier(t *testing.T) {
+	testutils.SkipUnlessInternet(t)
+	logger := golog.NewTestLogger(t)
+
+	privKey, err := rsa.GenerateKey(rand.Reader, 512)
+	test.That(t, err, test.ShouldBeNil)
+	thumbprint, err := RSAPublicKeyThumbprint(&privKey.PublicKey)
+	test.That(t, err, test.ShouldBeNil)
+
+	jwkKey, err := jwk.New(&privKey.PublicKey)
+	test.That(t, err, test.ShouldBeNil)
+
+	// must set the kid manually so it can be looked up in the set later
+	test.That(t, jwkKey.Set(jwk.KeyIDKey, thumbprint), test.ShouldBeNil)
+	test.That(t, jwkKey.Set(jwk.AlgorithmKey, jwt.SigningMethodRS256.Name), test.ShouldBeNil)
+
+	keyset := jwk.NewSet()
+
+	test.That(t, keyset.Add(jwkKey), test.ShouldBeTrue)
+
+	rpcServer, err := NewServer(
+		logger,
+		WithAuthRSAPrivateKey(privKey),
+		WithAuthHandler("fake", MakeSimpleAuthHandler([]string{"entity1", "entity2"}, "mypayload")),
+		// Our audience members are a random name and an extra to test with
+		WithAuthAudience(uuid.NewString(), "entity2"),
+		WithExternalAuthJWKSetTokenVerifier(keyset),
+		WithAuthenticateToHandler(func(ctx context.Context, entity string) (map[string]string, error) {
+			test.That(t, entity, test.ShouldEqual, "entity2")
+			return map[string]string{"test": "value"}, nil
+		}),
+	)
+	test.That(t, err, test.ShouldBeNil)
+
+	echoServer := &echoserver.Server{
+		MustContextAuthEntity: func(ctx context.Context) echoserver.RPCEntityInfo {
+			ent := MustContextAuthEntity(ctx)
+			return echoserver.RPCEntityInfo{
+				Entity: ent.Entity,
+				Data:   ent.Data,
+			}
+		},
+	}
+	echoServer.SetAuthorized(true)
+	echoServer.SetExpectedAuthEntity("entity1")
+
+	err = rpcServer.RegisterServiceServer(
+		context.Background(),
+		&pb.EchoService_ServiceDesc,
+		echoServer,
+		pb.RegisterEchoServiceHandlerFromEndpoint,
+	)
+	test.That(t, err, test.ShouldBeNil)
+
+	httpListener, err := net.Listen("tcp", "localhost:0")
+	test.That(t, err, test.ShouldBeNil)
+
+	errChan := make(chan error)
+	go func() {
+		errChan <- rpcServer.Serve(httpListener)
+	}()
+
+	conn, err := grpc.DialContext(
+		context.Background(),
+		httpListener.Addr().String(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithBlock(),
+	)
+	test.That(t, err, test.ShouldBeNil)
+	defer func() {
+		test.That(t, conn.Close(), test.ShouldBeNil)
+	}()
+
+	// First authenticate using the fake auth handler.
+	authClient := rpcpb.NewAuthServiceClient(conn)
+	authResp, err := authClient.Authenticate(context.Background(), &rpcpb.AuthenticateRequest{
+		Entity: "entity1",
+		Credentials: &rpcpb.Credentials{
+			Type:    "fake",
+			Payload: "mypayload",
+		},
+	},
+	)
+	test.That(t, err, test.ShouldBeNil)
+
+	md := make(metadata.MD)
+	md.Set("authorization", fmt.Sprintf("Bearer %s", authResp.AccessToken))
+	authCtx := metadata.NewOutgoingContext(context.Background(), md)
+
+	// Use the credential bearer token from the Authenticate request to the AuthenticateTo the "foo" entity.
+	authToClient := rpcpb.NewExternalAuthServiceClient(conn)
+	authToResp, err := authToClient.AuthenticateTo(authCtx, &rpcpb.AuthenticateToRequest{Entity: "entity2"})
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, authToResp.AccessToken, test.ShouldNotBeEmpty)
+
+	// Verify the resulting claims match the expected values.
+	var claims JWTClaims
+	token, err := jwt.ParseWithClaims(authToResp.AccessToken, &claims, func(token *jwt.Token) (interface{}, error) {
+		return &privKey.PublicKey, nil
+	})
+	test.That(t, err, test.ShouldBeNil)
+
+	test.That(t, claims.Entity(), test.ShouldEqual, "entity1")
+	test.That(t, claims.Audience, test.ShouldContain, "entity2")
+	test.That(t, token.Header["kid"], test.ShouldEqual, thumbprint)
+
+	md = make(metadata.MD)
+	md.Set("authorization", fmt.Sprintf("Bearer %s", authToResp.AccessToken))
+	authCtx = metadata.NewOutgoingContext(context.Background(), md)
+
+	client := pb.NewEchoServiceClient(conn)
+	_, err = client.Echo(authCtx, &pb.EchoRequest{Message: "hello"})
+	test.That(t, err, test.ShouldBeNil)
+
+	test.That(t, rpcServer.Stop(), test.ShouldBeNil)
+	err = <-errChan
+	test.That(t, err, test.ShouldBeNil)
+}
+
+func TestServerAuthToHandlerWithExternalAuthOIDCTokenVerifier(t *testing.T) {
+	testutils.SkipUnlessInternet(t)
+	logger := golog.NewTestLogger(t)
+
+	privKey, err := rsa.GenerateKey(rand.Reader, 512)
+	test.That(t, err, test.ShouldBeNil)
+	thumbprint, err := RSAPublicKeyThumbprint(&privKey.PublicKey)
+	test.That(t, err, test.ShouldBeNil)
+
+	jwkKey, err := jwk.New(&privKey.PublicKey)
+	test.That(t, err, test.ShouldBeNil)
+
+	// must set the kid manually so it can be looked up in the set later
+	test.That(t, jwkKey.Set(jwk.KeyIDKey, thumbprint), test.ShouldBeNil)
+	test.That(t, jwkKey.Set(jwk.AlgorithmKey, jwt.SigningMethodRS256.Name), test.ShouldBeNil)
+
+	keyset := jwk.NewSet()
+
+	test.That(t, keyset.Add(jwkKey), test.ShouldBeTrue)
+
+	address, closeFakeOIDC := jwksutils.ServeFakeOIDCEndpoint(t, keyset)
+	defer closeFakeOIDC()
+
+	verifier, closeVerifier, err := WithExternalAuthOIDCTokenVerifier(context.Background(), address)
+	test.That(t, err, test.ShouldBeNil)
+	defer closeVerifier(context.Background())
+
+	rpcServer, err := NewServer(
+		logger,
+		WithAuthRSAPrivateKey(privKey),
+		WithAuthHandler("fake", MakeSimpleAuthHandler([]string{"entity1", "entity2"}, "mypayload")),
+		// Our audience members are a random name and an extra to test with
+		WithAuthAudience(uuid.NewString(), "entity2"),
+		verifier,
+		WithAuthenticateToHandler(func(ctx context.Context, entity string) (map[string]string, error) {
+			test.That(t, entity, test.ShouldEqual, "entity2")
+			return map[string]string{"test": "value"}, nil
+		}),
+	)
+	test.That(t, err, test.ShouldBeNil)
+
+	echoServer := &echoserver.Server{
+		MustContextAuthEntity: func(ctx context.Context) echoserver.RPCEntityInfo {
+			ent := MustContextAuthEntity(ctx)
+			return echoserver.RPCEntityInfo{
+				Entity: ent.Entity,
+				Data:   ent.Data,
+			}
+		},
+	}
+	echoServer.SetAuthorized(true)
+	echoServer.SetExpectedAuthEntity("entity1")
+
+	err = rpcServer.RegisterServiceServer(
+		context.Background(),
+		&pb.EchoService_ServiceDesc,
+		echoServer,
+		pb.RegisterEchoServiceHandlerFromEndpoint,
+	)
+	test.That(t, err, test.ShouldBeNil)
+
+	httpListener, err := net.Listen("tcp", "localhost:0")
+	test.That(t, err, test.ShouldBeNil)
+
+	errChan := make(chan error)
+	go func() {
+		errChan <- rpcServer.Serve(httpListener)
+	}()
+
+	conn, err := grpc.DialContext(
+		context.Background(),
+		httpListener.Addr().String(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithBlock(),
+	)
+	test.That(t, err, test.ShouldBeNil)
+	defer func() {
+		test.That(t, conn.Close(), test.ShouldBeNil)
+	}()
+
+	// First authenticate using the fake auth handler.
+	authClient := rpcpb.NewAuthServiceClient(conn)
+	authResp, err := authClient.Authenticate(context.Background(), &rpcpb.AuthenticateRequest{
+		Entity: "entity1",
+		Credentials: &rpcpb.Credentials{
+			Type:    "fake",
+			Payload: "mypayload",
+		},
+	},
+	)
+	test.That(t, err, test.ShouldBeNil)
+
+	md := make(metadata.MD)
+	md.Set("authorization", fmt.Sprintf("Bearer %s", authResp.AccessToken))
+	authCtx := metadata.NewOutgoingContext(context.Background(), md)
+
+	// Use the credential bearer token from the Authenticate request to the AuthenticateTo the "foo" entity.
+	authToClient := rpcpb.NewExternalAuthServiceClient(conn)
+	authToResp, err := authToClient.AuthenticateTo(authCtx, &rpcpb.AuthenticateToRequest{Entity: "entity2"})
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, authToResp.AccessToken, test.ShouldNotBeEmpty)
+
+	// Verify the resulting claims match the expected values.
+	var claims JWTClaims
+	token, err := jwt.ParseWithClaims(authToResp.AccessToken, &claims, func(token *jwt.Token) (interface{}, error) {
+		return &privKey.PublicKey, nil
+	})
+	test.That(t, err, test.ShouldBeNil)
+
+	test.That(t, claims.Entity(), test.ShouldEqual, "entity1")
 	test.That(t, claims.Audience, test.ShouldContain, "entity2")
 	test.That(t, token.Header["kid"], test.ShouldEqual, thumbprint)
 

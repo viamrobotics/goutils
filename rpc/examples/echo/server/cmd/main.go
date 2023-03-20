@@ -197,14 +197,11 @@ func runServer(
 			if err != nil {
 				return err
 			}
-			serverOpts = append(serverOpts, rpc.WithTLSAuthHandler(leaf.DNSNames, nil))
+			serverOpts = append(serverOpts, rpc.WithTLSAuthHandler(leaf.DNSNames))
 		}
 
 		if authPublicKey != nil {
-			serverOpts = append(serverOpts, rpc.WithAuthHandler("inter-node", rpc.WithPublicKeyProvider(
-				rpc.MakeSimpleVerifyEntity(authEntities),
-				authPublicKey,
-			)))
+			serverOpts = append(serverOpts, rpc.WithExternalAuthPublicKeyTokenVerifier(authPublicKey))
 		}
 	}
 
@@ -213,7 +210,6 @@ func runServer(
 			return errors.New("expected auth_private-key")
 		}
 		serverOpts = append(serverOpts, rpc.WithAuthenticateToHandler(
-			rpc.CredentialsType("inter-node"),
 			func(ctx context.Context, entity string) (map[string]string, error) {
 				return map[string]string{}, nil
 			},

@@ -2,6 +2,7 @@ package jwksutils
 
 import (
 	"context"
+	"crypto/rsa"
 	"testing"
 
 	"go.viam.com/test"
@@ -41,16 +42,19 @@ func TestStaticKeySet(t *testing.T) {
 
 	keyProvider := jwks.NewStaticJWKKeyProvider(set)
 
-	publicKey1, err := keyProvider.LookupKey(ctx, "key-id-1")
+	publicKey1, err := keyProvider.LookupKey(ctx, "key-id-1", "RS256")
 	test.That(t, err, test.ShouldBeNil)
-	test.That(t, publicKey1.N, test.ShouldResemble, keys[0].PublicKey.N)
+	test.That(t, publicKey1.(*rsa.PublicKey).N, test.ShouldResemble, keys[0].PublicKey.N)
 
-	publicKey2, err := keyProvider.LookupKey(ctx, "key-id-2")
+	publicKey2, err := keyProvider.LookupKey(ctx, "key-id-2", "RS256")
 	test.That(t, err, test.ShouldBeNil)
-	test.That(t, publicKey2.N, test.ShouldResemble, keys[1].PublicKey.N)
+	test.That(t, publicKey2.(*rsa.PublicKey).N, test.ShouldResemble, keys[1].PublicKey.N)
 
-	_, err = keyProvider.LookupKey(ctx, "not-a-key")
-	test.That(t, err.Error(), test.ShouldContainSubstring, "kid not valid")
+	_, err = keyProvider.LookupKey(ctx, "not-a-key", "RS256")
+	test.That(t, err.Error(), test.ShouldContainSubstring, "kid header does not exist")
+
+	_, err = keyProvider.LookupKey(ctx, "key-id-1", "foo")
+	test.That(t, err.Error(), test.ShouldContainSubstring, "key from kid has different signing alg")
 
 	test.That(t, keyProvider.Close(), test.ShouldBeNil)
 }
@@ -69,14 +73,17 @@ func TestOIDCRefreshingKeySet(t *testing.T) {
 
 	defer keyProvider.Close()
 
-	publicKey1, err := keyProvider.LookupKey(ctx, "key-id-1")
+	publicKey1, err := keyProvider.LookupKey(ctx, "key-id-1", "RS256")
 	test.That(t, err, test.ShouldBeNil)
-	test.That(t, publicKey1.N, test.ShouldResemble, keys[0].PublicKey.N)
+	test.That(t, publicKey1.(*rsa.PublicKey).N, test.ShouldResemble, keys[0].PublicKey.N)
 
-	publicKey2, err := keyProvider.LookupKey(ctx, "key-id-2")
+	publicKey2, err := keyProvider.LookupKey(ctx, "key-id-2", "RS256")
 	test.That(t, err, test.ShouldBeNil)
-	test.That(t, publicKey2.N, test.ShouldResemble, keys[1].PublicKey.N)
+	test.That(t, publicKey2.(*rsa.PublicKey).N, test.ShouldResemble, keys[1].PublicKey.N)
 
-	_, err = keyProvider.LookupKey(ctx, "not-a-key")
-	test.That(t, err.Error(), test.ShouldContainSubstring, "kid not valid")
+	_, err = keyProvider.LookupKey(ctx, "not-a-key", "RS256")
+	test.That(t, err.Error(), test.ShouldContainSubstring, "kid header does not exist")
+
+	_, err = keyProvider.LookupKey(ctx, "key-id-1", "foo")
+	test.That(t, err.Error(), test.ShouldContainSubstring, "key from kid has different signing alg")
 }

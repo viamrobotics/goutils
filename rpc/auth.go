@@ -13,35 +13,49 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"go.viam.com/utils/jwks"
 )
 
 // An AuthHandler is responsible for authenticating an RPC connection. That means
 // that if the idea of multiple entities can be involved in one connection, that
-// this is not a suitable abstraction to use.
+// this is not a suitable abstraction to use. The use of entity and subject are
+// interchangeable here.
 type AuthHandler interface {
 	// Authenticate returns nil if the given payload is valid authentication material.
 	// Optional authentication metadata can be returned to be used in future requests
 	// via ContextAuthMetadata.
 	Authenticate(ctx context.Context, entity, payload string) (map[string]string, error)
+}
 
-	// VerifyEntity verifies that this handler is allowed to authenticate the given entity.
-	// The handler can optionally return opaque info about the entity that will be bound to the
+// A EntityDataLoader loads data about an entity.
+type EntityDataLoader interface {
+	// EntityData loads opaque info about the authenticated entity that will be bound to the
 	// context accessible via ContextAuthEntity.
-	VerifyEntity(ctx context.Context, entity string) (interface{}, error)
+	EntityData(ctx context.Context, claims Claims) (interface{}, error)
+}
+
+// EntityInfo provides information about a entity specific to it's credential type's
+// entity data loader.
+type EntityInfo struct {
+	Entity string
+	Data   interface{}
 }
 
 // An AuthenticateToHandler determines if the given entity should be allowed to be
 // authenticated to by the calling entity, accessible via MustContextAuthEntity.
-// The returned auth metadata will be present in ContextAuthMetadata.
-type AuthenticateToHandler func(ctx context.Context, entity string) (map[string]string, error)
+// Similarly, the returned auth metadata will be present on the given entity's endpoints
+// via ContextAuthEntity. The use of entity and subject are interchangeable here with
+// respect to the entity being authenticated to.
+type AuthenticateToHandler func(ctx context.Context, toEntity string) (map[string]string, error)
 
-// TokenVerificationKeyProvider allows an AuthHandler to supply a key needed to peform
+// TokenVerificationKeyProvider allows an auth for a cred type to supply a key needed to peform
 // verification of a JWT. This is helpful when the server itself is not responsible
 // for authentication. For example, this could be for a central auth server
 // with untrusted peers using a public key to verify JWTs.
 type TokenVerificationKeyProvider interface {
 	// TokenVerificationKey returns the key needed to do JWT verification.
-	TokenVerificationKey(token *jwt.Token) (interface{}, error)
+	TokenVerificationKey(ctx context.Context, token *jwt.Token) (interface{}, error)
 }
 
 // Claims is an interface that all custom claims must implement to be supported
@@ -51,12 +65,9 @@ type Claims interface {
 	// are validated before entity checks,
 	jwt.Claims
 
-	// Subject returns the subject associated with the claims.
-	Subject() string
-
-	// Entity must return the "entity" making the request to the rpc system from the jwt claims
-	// presented. Returns an error if entity is missing. Should not preform any entity checks.
-	Entity() (string, error)
+	// Entity returns the entity associated with the claims. Also known
+	// as a Subject.
+	Entity() string
 
 	// CredentialsType returns the rpc CredentialsType based on the jwt claims.
 	CredentialsType() CredentialsType
@@ -65,98 +76,44 @@ type Claims interface {
 	Metadata() map[string]string
 }
 
-// TokenCustomClaimProvider allows an AuthHandler to supply a key needed to peform
-// verification of a JWT. This is helpful when the server itself is not responsible
-// for authentication. For example, this could be for a central auth server
-// with untrusted peers using a public key to verify JWTs.
-type TokenCustomClaimProvider interface {
-	// CreateClaims returns the claim interface
-	CreateClaims() Claims
-}
-
 var (
 	errInvalidCredentials = status.Error(codes.Unauthenticated, "invalid credentials")
 	errCannotAuthEntity   = status.Error(codes.Unauthenticated, "cannot authenticate entity")
 )
 
-// MakeFuncAuthHandler encapsulates AuthHandler functionality to a set of functions.
-func MakeFuncAuthHandler(
-	auth func(ctx context.Context, entity, payload string) (map[string]string, error),
-	verify func(ctx context.Context, entity string) (interface{}, error),
-) AuthHandler {
-	return funcAuthHandler{auth: auth, verify: verify}
-}
+// AuthHandlerFunc is an AuthHandler for entities.
+type AuthHandlerFunc func(ctx context.Context, entity, payload string) (map[string]string, error)
 
-type funcAuthHandler struct {
-	auth   func(ctx context.Context, entity, payload string) (map[string]string, error)
-	verify func(ctx context.Context, entity string) (interface{}, error)
-}
+var _ AuthHandler = AuthHandlerFunc(nil)
 
 // Authenticate checks if the given entity and payload are what it expects. It returns
 // an error otherwise.
-func (h funcAuthHandler) Authenticate(ctx context.Context, entity, payload string) (map[string]string, error) {
-	return h.auth(ctx, entity, payload)
+func (h AuthHandlerFunc) Authenticate(ctx context.Context, entity, payload string) (map[string]string, error) {
+	return h(ctx, entity, payload)
 }
 
-// VerifyEntity checks if the given entity is handled by this handler.
-func (h funcAuthHandler) VerifyEntity(ctx context.Context, entity string) (interface{}, error) {
-	return h.verify(ctx, entity)
+// EntityDataLoaderFunc is an EntityDataLoader for entities.
+type EntityDataLoaderFunc func(ctx context.Context, claims Claims) (interface{}, error)
+
+// EntityData checks if the given entity is handled by this handler.
+func (h EntityDataLoaderFunc) EntityData(ctx context.Context, claims Claims) (interface{}, error) {
+	return h(ctx, claims)
 }
 
-// WithTokenVerificationKeyProvider returns an AuthHandler that can also provide keys for JWT verification.
-// Note: This function MUST do checks on the token signing method for security purposes.
-func WithTokenVerificationKeyProvider(handler AuthHandler, keyFunc func(token *jwt.Token) (interface{}, error)) AuthHandler {
-	return keyFuncAuthHandler{AuthHandler: handler, keyFunc: keyFunc}
+// TokenVerificationKeyProviderFunc is a TokenVerificationKeyProvider that provides keys for
+// JWT verification. Note: This function MUST do checks on the token signing method for security purposes.
+type TokenVerificationKeyProviderFunc func(ctx context.Context, token *jwt.Token) (interface{}, error)
+
+// TokenVerificationKey returns a key that can be used to verify the given token. This is used when ensuring
+// an RPC request is properly authenticated.
+func (p TokenVerificationKeyProviderFunc) TokenVerificationKey(ctx context.Context, token *jwt.Token) (interface{}, error) {
+	return p(ctx, token)
 }
 
-type keyFuncAuthHandler struct {
-	AuthHandler
-	keyFunc func(token *jwt.Token) (interface{}, error)
-}
-
-func (h keyFuncAuthHandler) TokenVerificationKey(token *jwt.Token) (interface{}, error) {
-	return h.keyFunc(token)
-}
-
-// WithTokenCustomClaimProvider returns an AuthHandler that returns a custom claim type.
-func WithTokenCustomClaimProvider(handler AuthHandler, claimFunc func() Claims) AuthHandler {
-	return customClaimAuthHandler{AuthHandler: handler, claimFunc: claimFunc}
-}
-
-type customClaimAuthHandler struct {
-	AuthHandler
-	claimFunc func() Claims
-}
-
-func (h customClaimAuthHandler) CreateClaims() Claims {
-	return h.claimFunc()
-}
-
-// MakeSimpleVerifyEntity returns a VerifyEntity function to be used in an AuthHandler that
-// only verifies a list of entities for a single match and the returned auth entity is the
-// entity name itself.
-func MakeSimpleVerifyEntity(forEntities []string) func(ctx context.Context, entity string) (interface{}, error) {
-	entityChecker := MakeEntitiesChecker(forEntities)
-	return func(ctx context.Context, entity string) (interface{}, error) {
-		return entity, entityChecker(ctx, entity)
-	}
-}
-
-// WithPublicKeyProvider returns an AuthHandler that provides a public key for JWT verification
-// that only can verify entities.
-func WithPublicKeyProvider(
-	verifyEntity func(ctx context.Context, entity string) (interface{}, error),
-	pubKey *rsa.PublicKey,
-) AuthHandler {
-	handler := MakeFuncAuthHandler(
-		func(ctx context.Context, entity, payload string) (map[string]string, error) {
-			return nil, status.Error(codes.InvalidArgument, "go auth externally")
-		},
-		verifyEntity,
-	)
-	return WithTokenVerificationKeyProvider(
-		handler,
-		func(token *jwt.Token) (interface{}, error) {
+// MakePublicKeyProvider returns a TokenVerificationKeyProvider that provides a public key for JWT verification.
+func MakePublicKeyProvider(pubKey *rsa.PublicKey) TokenVerificationKeyProvider {
+	return TokenVerificationKeyProviderFunc(
+		func(ctx context.Context, token *jwt.Token) (interface{}, error) {
 			if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
 				return nil, fmt.Errorf("unexpected signing method %q", token.Method.Alg())
 			}
@@ -164,6 +121,44 @@ func WithPublicKeyProvider(
 			return pubKey, nil
 		},
 	)
+}
+
+// MakeOIDCKeyProvider returns a TokenVerificationKeyProvider that dynamically looks up a public key for
+// JWT verification by inspecting the JWT's kid field. The given issuer is used to discover the JWKs
+// used for verification. This issuer is expected to follow the OIDC Discovery protocol.
+func MakeOIDCKeyProvider(ctx context.Context, issuer string) (TokenVerificationKeyProvider, error) {
+	provider, err := jwks.NewCachingOIDCJWKKeyProvider(ctx, issuer)
+	if err != nil {
+		return nil, err
+	}
+	return MakeJWKSKeyProvider(provider), nil
+}
+
+// MakeJWKSKeyProvider returns a TokenVerificationKeyProvider that dynamically looks up a public key for
+// JWT verification by inspecting the JWT's kid field. The given JWK key provider is used to look up
+// keys from the JWT.
+func MakeJWKSKeyProvider(provider jwks.KeyProvider) TokenVerificationKeyProvider {
+	return &oidcKeyProvider{jwkProvider: provider}
+}
+
+type oidcKeyProvider struct {
+	jwkProvider jwks.KeyProvider
+}
+
+// TokenVerificationKey returns the public key needed to do JWT verification by inspecting
+// the JWT's kid field and asking the provider to find the corresponding key.
+func (op *oidcKeyProvider) TokenVerificationKey(ctx context.Context, token *jwt.Token) (ret interface{}, err error) {
+	keyID, ok := token.Header["kid"].(string)
+	if !ok {
+		return nil, errors.New("kid header not in token header")
+	}
+
+	return op.jwkProvider.LookupKey(ctx, keyID, token.Method.Alg())
+}
+
+// Close closes the jwks key provider.
+func (op *oidcKeyProvider) Close() error {
+	return op.jwkProvider.Close()
 }
 
 // MakeSimpleAuthHandler returns a simple auth handler that handles multiple entities
@@ -181,7 +176,7 @@ func MakeSimpleMultiAuthHandler(forEntities, expectedPayloads []string) AuthHand
 		panic("expected at least one payload")
 	}
 	entityChecker := MakeEntitiesChecker(forEntities)
-	return MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) (map[string]string, error) {
+	return AuthHandlerFunc(func(ctx context.Context, entity, payload string) (map[string]string, error) {
 		if err := entityChecker(ctx, entity); err != nil {
 			if errors.Is(err, errCannotAuthEntity) {
 				return nil, errInvalidCredentials
@@ -196,12 +191,10 @@ func MakeSimpleMultiAuthHandler(forEntities, expectedPayloads []string) AuthHand
 			}
 		}
 		return nil, errInvalidCredentials
-	}, func(ctx context.Context, entity string) (interface{}, error) {
-		return entity, entityChecker(ctx, entity)
 	})
 }
 
-// MakeEntitiesChecker checks a list of entities against a given one for use in VerifyEntity.
+// MakeEntitiesChecker checks a list of entities against a given one for use in an auth handler.
 func MakeEntitiesChecker(forEntities []string) func(ctx context.Context, entities ...string) error {
 	return func(ctx context.Context, entities ...string) error {
 		for _, recvEntity := range entities {
@@ -223,6 +216,11 @@ const (
 	credentialsTypeInternal = CredentialsType("__internal")
 	// CredentialsTypeAPIKey is intended for by external users, human and computer.
 	CredentialsTypeAPIKey = CredentialsType("api-key")
+
+	// CredentialsTypeExternal is for credentials that are to be produced by some
+	// external authentication endpoint (see ExternalAuthService#AuthenticateTo) intended
+	// for another, different consumer at a different endpoint.
+	CredentialsTypeExternal = CredentialsType("external")
 )
 
 // Credentials packages up both a type of credential along with its payload which
@@ -242,4 +240,10 @@ func RSAPublicKeyThumbprint(key *rsa.PublicKey) (string, error) {
 	}
 
 	return base64.RawURLEncoding.EncodeToString(thumbPrint.Sum(nil)), nil
+}
+
+type credAuthHandlers struct {
+	AuthHandler                  AuthHandler
+	EntityDataLoader             EntityDataLoader
+	TokenVerificationKeyProvider TokenVerificationKeyProvider
 }

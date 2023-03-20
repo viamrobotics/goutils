@@ -152,7 +152,7 @@ func dialWebRTC(
 		err = multierr.Combine(err, conn.Close())
 	}()
 
-	logger.Debugw("connected", "host", host)
+	logger.Debugw("connected to signaling server", "signaling_server", signalingServer)
 
 	md := metadata.New(map[string]string{RPCHostMetadataField: host})
 	signalCtx := metadata.NewOutgoingContext(dialCtx, md)

@@ -5,11 +5,14 @@ import (
 	"context"
 	"crypto/rsa"
 	"errors"
-	"fmt"
 	"io"
+	"net/http"
+	"strings"
 	"time"
 
 	"github.com/lestrrat-go/jwx/jwk"
+	httphelper "github.com/zitadel/oidc/pkg/http"
+	"github.com/zitadel/oidc/pkg/oidc"
 )
 
 // KeySet represents json key set object, a collection of jwk.Key objects.
@@ -23,9 +26,9 @@ type KeyProvider interface {
 	// allow users to stop any background process in a key provider.
 	io.Closer
 
-	// LookupKey should return a PublicKey based on the given key ID. Return an error if not
+	// LookupKey should return a public key based on the given key ID. Return an error if not
 	// found or any other error.
-	LookupKey(ctx context.Context, kid string) (*rsa.PublicKey, error)
+	LookupKey(ctx context.Context, kid, alg string) (interface{}, error)
 
 	// Fetch returns the full KeySet as a cloned keyset, any modifcations are only applied locally.
 	Fetch(ctx context.Context) (KeySet, error)
@@ -36,12 +39,12 @@ func ParseKeySet(input string) (KeySet, error) {
 	return jwk.ParseString(input)
 }
 
-// cachingKeyProvider is a key provider that looks up jwk url based on our auth0 config and
-// auto refreshes in the background and caches the keys found.
+// cachingKeyProvider is a key provider that looks up jwk's by their kid through the
+// configured jwksURI. It auto refreshes in the background and caches the keys found.
 type cachingKeyProvider struct {
-	cancel   context.CancelFunc
-	ar       *jwk.AutoRefresh
-	certsURL string
+	cancel  context.CancelFunc
+	ar      *jwk.AutoRefresh
+	jwksURI string
 }
 
 // Stop cancels the auto refresh.
@@ -50,19 +53,19 @@ func (cp *cachingKeyProvider) Close() error {
 	return nil
 }
 
-func (cp *cachingKeyProvider) LookupKey(ctx context.Context, kid string) (*rsa.PublicKey, error) {
+func (cp *cachingKeyProvider) LookupKey(ctx context.Context, kid, alg string) (interface{}, error) {
 	// loads keys from cache or refreshes if needed.
-	keyset, err := cp.ar.Fetch(ctx, cp.certsURL)
+	keyset, err := cp.ar.Fetch(ctx, cp.jwksURI)
 	if err != nil {
 		return nil, err
 	}
 
-	return publicKeyFromKeySet(keyset, kid)
+	return publicKeyFromKeySet(keyset, kid, alg)
 }
 
 func (cp *cachingKeyProvider) Fetch(ctx context.Context) (KeySet, error) {
 	// loads keys from cache or refreshes if needed.
-	keyset, err := cp.ar.Fetch(ctx, cp.certsURL)
+	keyset, err := cp.ar.Fetch(ctx, cp.jwksURI)
 	if err != nil {
 		return nil, err
 	}
@@ -73,32 +76,50 @@ func (cp *cachingKeyProvider) Fetch(ctx context.Context) (KeySet, error) {
 // ensure interface is met.
 var _ KeyProvider = &cachingKeyProvider{}
 
-// NewCachingOIDCJWKKeyProvider creates a CachingKeyProvider based on the auth0 url and starts the auto refresh.
-// must call CachingKeyProvider.Stop() to stop background goroutine.
-// Use {baseUrl}.well-known/jwks.json.
-func NewCachingOIDCJWKKeyProvider(ctx context.Context, baseURL string) (KeyProvider, error) {
+// NewCachingOIDCJWKKeyProvider creates a CachingKeyProvider based on the issuer url
+// base domain and starts the auto refresh. Call CachingKeyProvider.Stop() to stop any
+// background goroutines.
+func NewCachingOIDCJWKKeyProvider(ctx context.Context, issuer string) (KeyProvider, error) {
+	httpTransport := http.DefaultTransport.(*http.Transport).Clone()
+	httpClient := &http.Client{
+		Transport: httpTransport,
+	}
+	defer httpTransport.CloseIdleConnections()
+
+	wellKnown := strings.TrimSuffix(issuer, "/") + oidc.DiscoveryEndpoint
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, wellKnown, nil)
+	if err != nil {
+		return nil, err
+	}
+	discoveryConfig := new(oidc.DiscoveryConfiguration)
+	err = httphelper.HttpRequest(httpClient, req, &discoveryConfig)
+	if err != nil {
+		return nil, err
+	}
+	if discoveryConfig.Issuer != issuer {
+		return nil, oidc.ErrIssuerInvalid
+	}
+
 	ctx, cancel := context.WithCancel(ctx)
 
-	certsURL := fmt.Sprintf("%s.well-known/jwks.json", baseURL)
 	ar := jwk.NewAutoRefresh(ctx)
 
 	// Tell *jwk.AutoRefresh that we only want to refresh this JWKS
 	// when it needs to (based on Cache-Control or Expires header from
 	// the HTTP response). If the calculated minimum refresh interval is less
 	// than 15 minutes, don't go refreshing any earlier than 15 minutes.
-	ar.Configure(certsURL, jwk.WithMinRefreshInterval(15*time.Minute))
+	ar.Configure(discoveryConfig.JwksURI, jwk.WithMinRefreshInterval(15*time.Minute))
 
 	// Refresh the JWKS once before we start our service.
-	_, err := ar.Refresh(ctx, certsURL)
-	if err != nil {
+	if _, err := ar.Refresh(ctx, discoveryConfig.JwksURI); err != nil {
 		cancel()
 		return nil, err
 	}
 
 	return &cachingKeyProvider{
-		cancel:   cancel,
-		ar:       ar,
-		certsURL: certsURL,
+		cancel:  cancel,
+		ar:      ar,
+		jwksURI: discoveryConfig.JwksURI,
 	}, nil
 }
 
@@ -110,8 +131,8 @@ type staticKeySet struct {
 // ensure interface is met.
 var _ KeyProvider = &staticKeySet{}
 
-func (p *staticKeySet) LookupKey(ctx context.Context, kid string) (*rsa.PublicKey, error) {
-	return publicKeyFromKeySet(p.keyset, kid)
+func (p *staticKeySet) LookupKey(ctx context.Context, kid, alg string) (interface{}, error) {
+	return publicKeyFromKeySet(p.keyset, kid, alg)
 }
 
 func (p *staticKeySet) Close() error {
@@ -130,10 +151,14 @@ func NewStaticJWKKeyProvider(keyset KeySet) KeyProvider {
 	}
 }
 
-func publicKeyFromKeySet(keyset KeySet, kid string) (*rsa.PublicKey, error) {
+func publicKeyFromKeySet(keyset KeySet, kid, alg string) (*rsa.PublicKey, error) {
 	key, ok := keyset.LookupKeyID(kid)
 	if !ok {
-		return nil, errors.New("kid not valid")
+		return nil, errors.New("kid header does not exist in keyset")
+	}
+
+	if key.Algorithm() != alg {
+		return nil, errors.New("key from kid has different signing alg")
 	}
 
 	var pubKey rsa.PublicKey

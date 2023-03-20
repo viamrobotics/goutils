@@ -114,20 +114,29 @@ type simpleServer struct {
 	serviceServers          []interface{}
 	signalingCallQueue      WebRTCCallQueue
 	signalingServer         *WebRTCSignalingServer
-	authRSAPrivKey          *rsa.PrivateKey
-	authRSAPrivKeyKID       string
-	internalUUID            string
-	internalCreds           Credentials
-	tlsAuthHandler          func(ctx context.Context, entities ...string) (interface{}, error)
-	authHandlers            map[CredentialsType]AuthHandler
-	authToType              CredentialsType
-	authToHandler           AuthenticateToHandler
 	mdnsServers             []*zeroconf.Server
 	exemptMethods           map[string]bool
 	tlsConfig               *tls.Config
 	firstSeenTLSCertLeaf    *x509.Certificate
 	stopped                 bool
 	logger                  golog.Logger
+
+	// auth
+
+	internalUUID         string
+	internalCreds        Credentials
+	tlsAuthHandler       func(ctx context.Context, entities ...string) error
+	authRSAPrivKey       *rsa.PrivateKey
+	authRSAPrivKeyKID    string
+	authHandlersForCreds map[CredentialsType]credAuthHandlers
+	authToHandler        AuthenticateToHandler
+
+	// authAudience is the JWT audience (aud) that will be used/expected
+	// for our service.
+	authAudience []string
+
+	// authIssuer is the JWT issuer (iss) that will be used for our service.
+	authIssuer string
 }
 
 var errMixedUnauthAndAuth = errors.New("cannot use unauthenticated and auth handlers at same time")
@@ -143,7 +152,7 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 			return nil, err
 		}
 	}
-	if sOpts.unauthenticated && (len(sOpts.authHandlers) != 0 || sOpts.tlsAuthHandler != nil) {
+	if sOpts.unauthenticated && (len(sOpts.authHandlersForCreds) != 0 || sOpts.tlsAuthHandler != nil) {
 		return nil, errMixedUnauthAndAuth
 	}
 
@@ -220,8 +229,8 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 		return nil, err
 	}
 
-	if sOpts.authHandlers == nil {
-		sOpts.authHandlers = make(map[CredentialsType]AuthHandler)
+	if sOpts.authHandlersForCreds == nil {
+		sOpts.authHandlersForCreds = make(map[CredentialsType]credAuthHandlers)
 	}
 
 	grpcGatewayHandler := runtime.NewServeMux(
@@ -247,9 +256,10 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 			Payload: base64.StdEncoding.EncodeToString(internalCredsKey),
 		},
 		tlsAuthHandler:       sOpts.tlsAuthHandler,
-		authHandlers:         sOpts.authHandlers,
-		authToType:           sOpts.authToType,
+		authHandlersForCreds: sOpts.authHandlersForCreds,
 		authToHandler:        sOpts.authToHandler,
+		authAudience:         sOpts.authAudience,
+		authIssuer:           sOpts.authIssuer,
 		exemptMethods:        make(map[string]bool),
 		tlsConfig:            sOpts.tlsConfig,
 		firstSeenTLSCertLeaf: firstSeenTLSCertLeaf,
@@ -267,7 +277,7 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 	unaryInterceptors = append(unaryInterceptors,
 		grpc_recovery.UnaryServerInterceptor(grpc_recovery.WithRecoveryHandler(
 			grpc_recovery.RecoveryHandlerFunc(func(p interface{}) error {
-				err := status.Errorf(codes.Internal, "%s", p)
+				err := status.Errorf(codes.Internal, "%v", p)
 				logger.Errorw("panicked while calling unary server method", "error", errors.WithStack(err))
 				return err
 			}))),
@@ -351,8 +361,10 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 		); err != nil {
 			return nil, err
 		}
-		server.authHandlers[credentialsTypeInternal] = MakeSimpleAuthHandler(
-			[]string{server.internalUUID}, server.internalCreds.Payload)
+		server.authHandlersForCreds[credentialsTypeInternal] = credAuthHandlers{
+			AuthHandler: MakeSimpleAuthHandler(
+				[]string{server.internalUUID}, server.internalCreds.Payload),
+		}
 		// Update this if the proto method or path changes
 		server.exemptMethods["/proto.rpc.v1.AuthService/Authenticate"] = true
 	}
@@ -392,6 +404,17 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 		instanceNames = []string{instanceName}
 	}
 	server.instanceNames = instanceNames
+
+	if len(server.authAudience) == 0 {
+		logger.Debugw("auth audience unset; using instance names instead", "auth_audience", server.instanceNames)
+		server.authAudience = server.instanceNames
+	}
+
+	if server.authIssuer == "" {
+		logger.Debugw("auth issuer unset; using first auth audience member instead", "auth_issuer", server.authAudience[0])
+		server.authIssuer = server.authAudience[0]
+	}
+
 	if !sOpts.disableMDNS {
 		if mDNSAddress.IP.IsLoopback() {
 			hostname, err := os.Hostname()

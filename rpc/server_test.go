@@ -57,10 +57,8 @@ func TestServer(t *testing.T) {
 							}
 							if withAuthentication {
 								serverOpts = append(serverOpts,
-									WithAuthHandler("fake", MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) (map[string]string, error) {
+									WithAuthHandler("fake", AuthHandlerFunc(func(ctx context.Context, entity, payload string) (map[string]string, error) {
 										return map[string]string{}, nil
-									}, func(ctx context.Context, entity string) (interface{}, error) {
-										return entity, nil
 									})),
 									WithAuthRSAPrivateKey(testPrivKey),
 								)
@@ -131,7 +129,7 @@ func TestServer(t *testing.T) {
 									Payload: "something",
 								}})
 								test.That(t, err, test.ShouldNotBeNil)
-								test.That(t, err.Error(), test.ShouldContainSubstring, "no auth handler")
+								test.That(t, err.Error(), test.ShouldContainSubstring, "do not know how")
 
 								authResp, err := authClient.Authenticate(
 									context.Background(), &rpcpb.AuthenticateRequest{Entity: "foo", Credentials: &rpcpb.Credentials{
@@ -447,10 +445,8 @@ func TestServerUnauthenticatedOption(t *testing.T) {
 	_, err := NewServer(
 		logger,
 		WithUnauthenticated(),
-		WithAuthHandler("fake", MakeFuncAuthHandler(func(ctx context.Context, entity, payload string) (map[string]string, error) {
+		WithAuthHandler("fake", AuthHandlerFunc(func(ctx context.Context, entity, payload string) (map[string]string, error) {
 			return map[string]string{}, nil
-		}, func(ctx context.Context, entity string) (interface{}, error) {
-			return entity, nil
 		})),
 	)
 	test.That(t, err, test.ShouldEqual, errMixedUnauthAndAuth)

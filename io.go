@@ -10,6 +10,14 @@ type ContextCloser interface {
 	Close(ctx context.Context) error
 }
 
+// ContextCloserFunc implements a ContextCloser with a function.
+type ContextCloserFunc func(ctx context.Context) error
+
+// Close calls the closer function.
+func (c ContextCloserFunc) Close(ctx context.Context) error {
+	return c(ctx)
+}
+
 // TryClose attempts to close the target if it implements
 // the right interface.
 func TryClose(ctx context.Context, target interface{}) error {

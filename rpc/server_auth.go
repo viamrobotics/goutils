@@ -5,8 +5,10 @@ import (
 	"crypto/x509"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/golang-jwt/jwt/v4"
+	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc"
@@ -19,10 +21,10 @@ import (
 	rpcpb "go.viam.com/utils/proto/rpc/v1"
 )
 
-func (ss *simpleServer) authHandler(forType CredentialsType) (AuthHandler, error) {
-	handler, ok := ss.authHandlers[forType]
+func (ss *simpleServer) authHandlers(forType CredentialsType) (credAuthHandlers, error) {
+	handler, ok := ss.authHandlersForCreds[forType]
 	if !ok {
-		return nil, status.Errorf(codes.InvalidArgument, "no auth handler for %q", forType)
+		return credAuthHandlers{}, status.Errorf(codes.InvalidArgument, "do not know how to handle credential type %q", forType)
 	}
 	return handler, nil
 }
@@ -40,18 +42,9 @@ type JWTClaims struct {
 	AuthMetadata        map[string]string `json:"rpc_auth_md,omitempty"`
 }
 
-// Subject returns the subject from the claims Subject.
-func (c JWTClaims) Subject() string {
+// Entity returns the entity from the claims' Subject.
+func (c JWTClaims) Entity() string {
 	return c.RegisteredClaims.Subject
-}
-
-// Entity returns the entity from the claims Audience.
-func (c JWTClaims) Entity() (string, error) {
-	if len(c.Audience) == 0 {
-		return "", status.Error(codes.Unauthenticated, "invalid claims: no audience")
-	}
-
-	return c.Audience[0], nil
 }
 
 // CredentialsType returns the credential type from `rpc_creds_type` claim.
@@ -61,7 +54,14 @@ func (c JWTClaims) CredentialsType() CredentialsType {
 
 // Metadata returns the metadata from `rpc_auth_md` claim.
 func (c JWTClaims) Metadata() map[string]string {
-	return c.AuthMetadata
+	if len(c.AuthMetadata) == 0 {
+		return nil
+	}
+	mdClone := make(map[string]string, len(c.AuthMetadata))
+	for key, value := range c.AuthMetadata {
+		mdClone[key] = value
+	}
+	return mdClone
 }
 
 // ensure JWTClaims implements Claims.
@@ -76,11 +76,14 @@ func (ss *simpleServer) Authenticate(ctx context.Context, req *rpcpb.Authenticat
 		return nil, status.Error(codes.InvalidArgument, "already authenticated; cannot re-authenticate")
 	}
 	forType := CredentialsType(req.Credentials.Type)
-	handler, err := ss.authHandler(forType)
+	handlers, err := ss.authHandlers(forType)
 	if err != nil {
 		return nil, err
 	}
-	authMD, err := handler.Authenticate(ctx, req.Entity, req.Credentials.Payload)
+	if handlers.AuthHandler == nil {
+		return nil, status.Errorf(codes.Unimplemented, "direct authentication not supported for %q", forType)
+	}
+	authMD, err := handlers.AuthHandler.Authenticate(ctx, req.Entity, req.Credentials.Payload)
 	if err != nil {
 		if _, ok := status.FromError(err); ok {
 			return nil, err
@@ -88,7 +91,9 @@ func (ss *simpleServer) Authenticate(ctx context.Context, req *rpcpb.Authenticat
 		return nil, status.Errorf(codes.PermissionDenied, "failed to authenticate: %s", err.Error())
 	}
 
-	token, err := ss.signAccessTokenForEntity(forType, req.Entity, req.Entity, authMD)
+	// We sign tokens destined for ourselves. If they are not for ourselves but for the entity, then
+	// AuthenticateTo should be used.
+	token, err := ss.signAccessTokenForEntity(forType, ss.authAudience, req.Entity, authMD)
 	if err != nil {
 		return nil, err
 	}
@@ -99,10 +104,10 @@ func (ss *simpleServer) Authenticate(ctx context.Context, req *rpcpb.Authenticat
 }
 
 func (ss *simpleServer) AuthenticateTo(ctx context.Context, req *rpcpb.AuthenticateToRequest) (*rpcpb.AuthenticateToResponse, error) {
-	// Use the subject from the original authenticated call/payload.
-	subject, ok := ContextAuthSubject(ctx)
+	// Use the entity from the original authenticated call/payload.
+	entity, ok := ContextAuthEntity(ctx)
 	if !ok {
-		return nil, status.Error(codes.Internal, "subject should be available")
+		return nil, status.Error(codes.Internal, "entity should be available")
 	}
 
 	authMD, err := ss.authToHandler(ctx, req.Entity)
@@ -110,7 +115,7 @@ func (ss *simpleServer) AuthenticateTo(ctx context.Context, req *rpcpb.Authentic
 		return nil, err
 	}
 
-	token, err := ss.signAccessTokenForEntity(ss.authToType, req.Entity, subject, authMD)
+	token, err := ss.signAccessTokenForEntity(CredentialsTypeExternal, []string{req.Entity}, entity.Entity, authMD)
 	if err != nil {
 		return nil, err
 	}
@@ -122,20 +127,23 @@ func (ss *simpleServer) AuthenticateTo(ctx context.Context, req *rpcpb.Authentic
 
 func (ss *simpleServer) signAccessTokenForEntity(
 	forType CredentialsType,
-	entity, subject string,
+	audience []string,
+	entity string,
 	authMD map[string]string,
 ) (string, error) {
-	// TODO(RSDK-890): use the correct subject, not the audience (entity)
+	// TODO(GOUT-13): expiration
+	// TODO(GOUT-12): refresh token
+	// TODO(GOUT-9): more complete info
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, JWTClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
-			Subject:  subject,
-			Audience: jwt.ClaimStrings{entity},
+			Subject:  entity,
+			Audience: audience,
+			Issuer:   ss.authIssuer,
+			IssuedAt: jwt.NewNumericDate(time.Now()),
+			ID:       uuid.NewString(),
 		},
 		AuthCredentialsType: forType,
 		AuthMetadata:        authMD,
-		// TODO(GOUT-13): expiration
-		// TODO(GOUT-12): refresh token
-		// TODO(GOUT-9): more complete info
 	})
 
 	// Set the Key ID (kid) to allow the auth handlers to selectively choose which key was used
@@ -158,12 +166,11 @@ func (ss *simpleServer) authUnaryInterceptor(
 	handler grpc.UnaryHandler,
 ) (interface{}, error) {
 	if !ss.exemptMethods[info.FullMethod] {
-		authSubject, authEntity, err := ss.ensureAuthed(ctx)
+		nextCtx, err := ss.ensureAuthed(ctx)
 		if err != nil {
 			return nil, err
 		}
-		ctx = ContextWithAuthEntity(ctx, authEntity)
-		ctx = ContextWithAuthSubject(ctx, authSubject)
+		ctx = nextCtx
 	}
 	return handler(ctx, req)
 }
@@ -175,13 +182,11 @@ func (ss *simpleServer) authStreamInterceptor(
 	handler grpc.StreamHandler,
 ) error {
 	if !ss.exemptMethods[info.FullMethod] {
-		authSubject, authEntity, err := ss.ensureAuthed(serverStream.Context())
+		nextCtx, err := ss.ensureAuthed(serverStream.Context())
 		if err != nil {
 			return err
 		}
-		ctx := ContextWithAuthEntity(serverStream.Context(), authEntity)
-		ctx = ContextWithAuthSubject(ctx, authSubject)
-		serverStream = ctxWrappedServerStream{serverStream, ctx}
+		serverStream = ctxWrappedServerStream{serverStream, nextCtx}
 	}
 	return handler(srv, serverStream)
 }
@@ -212,12 +217,28 @@ func tokenFromContext(ctx context.Context) (string, error) {
 
 var errNotTLSAuthed = errors.New("not authenticated via TLS")
 
-func (ss *simpleServer) ensureAuthed(ctx context.Context) (string, interface{}, error) {
+var validSigningMethods = []string{
+	"ES256",
+	"ES512",
+	"HS512",
+	"PS256",
+	"RS512",
+	"PS384",
+	"PS512",
+	"RS384",
+	"ES384",
+	"EdDSA",
+	"HS256",
+	"HS384",
+	"RS256",
+}
+
+func (ss *simpleServer) ensureAuthed(ctx context.Context) (context.Context, error) {
 	tokenString, err := tokenFromContext(ctx)
 	if err != nil {
 		// check TLS state
 		if ss.tlsAuthHandler == nil {
-			return "", nil, err
+			return nil, err
 		}
 		var verifiedCert *x509.Certificate
 		if p, ok := peer.FromContext(ctx); ok && p.AuthInfo != nil {
@@ -229,9 +250,9 @@ func (ss *simpleServer) ensureAuthed(ctx context.Context) (string, interface{}, 
 			}
 		}
 		if verifiedCert == nil {
-			return "", nil, err
+			return nil, err
 		}
-		if tlsAuthEntity, tlsErr := ss.tlsAuthHandler(ctx, verifiedCert.DNSNames...); tlsErr == nil {
+		if tlsErr := ss.tlsAuthHandler(ctx, verifiedCert.DNSNames...); tlsErr == nil {
 			// mTLS based authentication contexts do not really have a sense of a unique identifier
 			// when considering multiple clients using the certificate. We deem this okay but it does
 			// mean that if the identifier is used to bind to the concept of a unique session, it is
@@ -240,107 +261,85 @@ func (ss *simpleServer) ensureAuthed(ctx context.Context) (string, interface{}, 
 			// Our best chance at uniqueness with a compliant CA is to use the issuer DN (Distinguished Name)
 			// along with the serial number; compliancy hinges on issuing unique serial numbers and if this
 			// is an intermediate CA, their parent issuing unique DNs.
-			return verifiedCert.Issuer.String() + ":" + verifiedCert.SerialNumber.String(), tlsAuthEntity, nil
+			nextCtx := ContextWithAuthEntity(ctx, EntityInfo{
+				Entity: verifiedCert.Issuer.String() + ":" + verifiedCert.SerialNumber.String(),
+			})
+			return nextCtx, nil
 		} else if !errors.Is(tlsErr, errNotTLSAuthed) {
-			return "", nil, multierr.Combine(err, tlsErr)
+			return nil, multierr.Combine(err, tlsErr)
 		}
-		return "", nil, err
+		return nil, err
 	}
 
-	var handler AuthHandler
+	var claims JWTClaims
+	var handlers credAuthHandlers
+	if _, err := jwt.ParseWithClaims(
+		tokenString,
+		&claims,
+		func(token *jwt.Token) (interface{}, error) {
+			var err error
+			handlers, err = ss.authHandlers(claims.CredentialsType())
+			if err != nil {
+				return nil, err
+			}
 
-	// Skip validating cliams until rpc_creds_type can determine if custom claim is used. Claims must be validated
-	// after decoding the jwt.
-	// We MUST call claims.Valid() before passing the VerifyEntity()
-	jwtParser := jwt.NewParser(jwt.WithoutClaimsValidation())
+			if handlers.TokenVerificationKeyProvider != nil {
+				return handlers.TokenVerificationKeyProvider.TokenVerificationKey(ctx, token)
+			}
 
-	// Parse without claims and use the default provided by jwt library. This allows us to get all unknown claims.
-	outToken, err := jwtParser.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		// Get the credential type from the claims
-		credType, err := getCredentialsTypeFromMapClaims(token.Claims)
-		if err != nil {
-			return nil, err
-		}
+			// signed internally
+			if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
+				return nil, fmt.Errorf("unexpected signing method %q", token.Method.Alg())
+			}
 
-		handler, err = ss.authHandler(credType)
-		if err != nil {
-			return nil, err
-		}
-
-		if provider, ok := handler.(TokenVerificationKeyProvider); ok {
-			return provider.TokenVerificationKey(token)
-		}
-
-		// signed internally
-		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
-			return nil, fmt.Errorf("unexpected signing method %q", token.Method.Alg())
-		}
-
-		return &ss.authRSAPrivKey.PublicKey, nil
-	})
-	if err != nil {
-		return "", nil, status.Errorf(codes.Unauthenticated, "unauthenticated: %s", err)
+			return &ss.authRSAPrivKey.PublicKey, nil
+		},
+		jwt.WithValidMethods(validSigningMethods),
+	); err != nil {
+		return nil, status.Errorf(codes.Unauthenticated, "unauthenticated: %s", err)
 	}
 
-	// By default use the standard rpc.JWTClaims
-	var claims Claims = &JWTClaims{}
-
-	// If AuthHandler is using CustomClaims use the claims type provided.
-	if provider, ok := handler.(TokenCustomClaimProvider); ok {
-		// reset the claims to the handlers version
-		claims = provider.CreateClaims()
-		if claims == nil {
-			return "", nil, status.Error(codes.Internal, "invalid implementation of TokenCustomClaimProvider, cannot return nil")
+	// Audience verification is critical for security. Without it, we have a higher chance
+	// of validating a JWT is valid, but not that it is intended for us. Of course, that means
+	// we trust whomever owns the private keys to signing access tokens.
+	audVerified := false
+	for _, allowdAud := range ss.authAudience {
+		if claims.RegisteredClaims.VerifyAudience(allowdAud, true) {
+			audVerified = true
+			break
+		}
+	}
+	if !audVerified {
+		// TODO(APP-1412): remove the if check but not the return after a week from being deployed
+		if !claims.RegisteredClaims.VerifyAudience(claims.RegisteredClaims.Subject, true) {
+			return nil, status.Error(codes.Unauthenticated, "invalid audience")
 		}
 	}
 
-	// For simplicity we reparse the raw JWT into the claims. The claims in outTokens.Claims are a generic map.
-	// mapstructure.Decoder has issues parsing the generic map to our struct because of the RegisteredClaims struct
-	// usess pointers to time.Time causing parsing issues. For now we can just reparse the json jwt token into the claim.
-	_, _, err = jwtParser.ParseUnverified(outToken.Raw, claims)
-	if err != nil {
-		return "", nil, status.Errorf(codes.InvalidArgument, "error decoding claims: %s", err)
-	}
+	// Note(erd): may want to verify issuers in the future where the claims/scope are
+	// treated differently if it comes down to permissions encoded in a JWT.
 
-	// We MUST validate claims here. We disabled claims validation in the parser above.
 	err = claims.Valid()
 	if err != nil {
-		return "", nil, status.Errorf(codes.Unauthenticated, "unauthenticated: %s", err)
+		return nil, status.Errorf(codes.Unauthenticated, "unauthenticated: %s", err)
 	}
 
-	entity, err := claims.Entity()
-	if err != nil {
-		return "", nil, err
+	claimsEntity := claims.Entity()
+	if claimsEntity == "" {
+		return nil, status.Errorf(codes.Unauthenticated, "expected entity (sub) in claims")
 	}
 
-	claimsSubject := claims.Subject()
-	if claimsSubject == "" {
-		return "", nil, status.Errorf(codes.Unauthenticated, "expected subject in claims")
+	var entityData interface{}
+	if handlers.EntityDataLoader != nil {
+		data, err := handlers.EntityDataLoader.EntityData(ctx, claims)
+		if err != nil {
+			if _, ok := status.FromError(err); ok {
+				return nil, err
+			}
+			return nil, status.Errorf(codes.Internal, "failed to load entity data: %s", err)
+		}
+		entityData = data
 	}
 
-	// Pass the raw claims to VerifyEntity.
-	entityInfo, err := handler.VerifyEntity(contextWithAuthClaims(ctx, claims), entity)
-	if err != nil {
-		return "", nil, err
-	}
-	return claimsSubject, entityInfo, nil
-}
-
-func getCredentialsTypeFromMapClaims(in jwt.Claims) (CredentialsType, error) {
-	claims, ok := in.(jwt.MapClaims)
-	if !ok {
-		return CredentialsType("none"), errors.New("invalid type for claims, check library implementation")
-	}
-
-	credType, found := claims["rpc_creds_type"]
-	if !found {
-		return CredentialsType("none"), status.Errorf(codes.Unauthenticated, "invalid claims, missing rpc_creds_type")
-	}
-
-	credTypeAsString, ok := credType.(string)
-	if !ok {
-		return CredentialsType("none"), status.Errorf(codes.Unauthenticated, "invalid claims, invalid rpc_creds_type")
-	}
-
-	return CredentialsType(credTypeAsString), nil
+	return ContextWithAuthEntity(ctx, EntityInfo{claimsEntity, entityData}), nil
 }

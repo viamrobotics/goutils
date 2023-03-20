@@ -1,4 +1,4 @@
-// Package server implement an echo server.
+// Package server implement an echo server used for testing.
 package server
 
 import (
@@ -11,6 +11,13 @@ import (
 	echopb "go.viam.com/utils/proto/rpc/examples/echo/v1"
 )
 
+// RPCEntityInfo prevents a package cycle. DO NOT set this to anything other
+// than the real thing.
+type RPCEntityInfo struct {
+	Entity string
+	Data   interface{}
+}
+
 // Server implements a simple echo service.
 type Server struct {
 	mu sync.Mutex
@@ -20,12 +27,10 @@ type Server struct {
 
 	// prevents a package cycle. DO NOT set this to anything other
 	// than the real thing.
-	ContextAuthEntity  func(ctx context.Context) interface{}
-	ContextAuthClaims  func(ctx context.Context) interface{}
-	ContextAuthSubject func(ctx context.Context) string
+	MustContextAuthEntity func(ctx context.Context) RPCEntityInfo
 
-	expectedAuthEntity  string
-	ExpectedAuthSubject string
+	expectedAuthEntity     string
+	expectedAuthEntityData interface{}
 }
 
 // SetFail instructs the server to fail at certain points in its execution.
@@ -43,9 +48,16 @@ func (srv *Server) SetAuthorized(authorized bool) {
 }
 
 // SetExpectedAuthEntity sets the expected auth entity
-func (srv *Server) SetExpectedAuthEntity(authEntity string) {
+func (srv *Server) SetExpectedAuthEntity(entity string) {
 	srv.mu.Lock()
-	srv.expectedAuthEntity = authEntity
+	srv.expectedAuthEntity = entity
+	srv.mu.Unlock()
+}
+
+// SetExpectedAuthEntityData sets the expected auth entity data
+func (srv *Server) SetExpectedAuthEntityData(data interface{}) {
+	srv.mu.Lock()
+	srv.expectedAuthEntityData = data
 	srv.mu.Unlock()
 }
 
@@ -57,23 +69,17 @@ func (srv *Server) Echo(ctx context.Context, req *echopb.EchoRequest) (*echopb.E
 		return nil, errors.New("whoops")
 	}
 	if srv.authorized {
-		expectedAuthEntity := srv.expectedAuthEntity
-		if expectedAuthEntity == "" {
-			expectedAuthEntity = "somespecialinterface"
-		}
-		if srv.ContextAuthEntity(ctx) != expectedAuthEntity {
-			return nil, errors.New("unauthenticated or unauthorized")
-		}
-		if srv.ContextAuthClaims(ctx) != nil {
-			return nil, errors.New("did not expect auth claims here")
-		}
-		subject := srv.ContextAuthSubject(ctx)
-		if srv.ExpectedAuthSubject == "" {
-			if subject == "" {
-				return nil, errors.New("empty subject")
+		entity := srv.MustContextAuthEntity(ctx)
+		if srv.expectedAuthEntity == "" {
+			if entity.Entity == "" {
+				return nil, errors.New("empty entity")
 			}
-		} else if subject != srv.ExpectedAuthSubject {
-			return nil, errors.Errorf("expected auth subject %q; got %q", srv.ExpectedAuthSubject, subject)
+		} else if entity.Entity != srv.expectedAuthEntity {
+			return nil, errors.Errorf("expected auth entity %q; got %q", srv.expectedAuthEntity, entity.Data)
+		}
+
+		if srv.expectedAuthEntityData != nil && entity.Data != srv.expectedAuthEntityData {
+			return nil, errors.Errorf("expected auth entity data %q; got %q", srv.expectedAuthEntityData, entity.Data)
 		}
 	}
 	return &echopb.EchoResponse{Message: req.Message}, nil

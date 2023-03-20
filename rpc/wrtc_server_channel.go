@@ -127,12 +127,10 @@ func (ch *webrtcServerChannel) onChannelMessage(msg webrtc.DataChannelMessage) {
 		}
 		handlerCtx = contextWithPeerConnection(handlerCtx, ch.peerConn)
 
-		// TODO(GOUT-11): Handle auth; right now we assume
-		// successful auth to the signaler implies that auth should be allowed here, which is not 100%
-		// true.
-		// TODO(RSDK-890): use the correct subject, not the audience (hosts)
-		handlerCtx = ContextWithAuthSubject(handlerCtx, ch.authAudience)
-		handlerCtx = ContextWithAuthEntity(handlerCtx, ch.authAudience)
+		// TODO(GOUT-11): Handle auth; right now we assume successful auth to the signaler
+		// implies that auth should be allowed here, which is not 100% true.
+		// TODO(RSDK-890): use the correct entity (sub), not the audience (hosts)
+		handlerCtx = ContextWithAuthEntity(handlerCtx, EntityInfo{Entity: ch.authAudience})
 
 		serverStream = newWebRTCServerStream(handlerCtx, cancelCtx, headers.Headers.Method, ch, stream, ch.removeStreamByID, logger)
 		ch.streams[id] = serverStream
