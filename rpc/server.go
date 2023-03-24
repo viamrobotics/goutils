@@ -670,6 +670,13 @@ func (ss *simpleServer) InternalAddr() net.Addr {
 }
 
 func (ss *simpleServer) Start() error {
+	ss.mu.Lock()
+	if ss.stopped {
+		ss.mu.Unlock()
+		return errors.New("server stopped")
+	}
+	ss.mu.Unlock()
+
 	var err error
 	var errMu sync.Mutex
 	utils.PanicCapturingGo(func() {
@@ -699,6 +706,10 @@ func (ss *simpleServer) ServeTLS(listener net.Listener, certFile, keyFile string
 
 func (ss *simpleServer) serveTLS(listener net.Listener, certFile, keyFile string, tlsConfig *tls.Config) error {
 	ss.mu.Lock()
+	if ss.stopped {
+		ss.mu.Unlock()
+		return errors.New("server stopped")
+	}
 	ss.httpServer.Addr = listener.Addr().String()
 	ss.httpServer.Handler = ss
 	secure := true
@@ -743,12 +754,11 @@ func (ss *simpleServer) serveTLS(listener net.Listener, certFile, keyFile string
 
 func (ss *simpleServer) Stop() error {
 	ss.mu.Lock()
+	defer ss.mu.Unlock()
 	if ss.stopped {
-		ss.mu.Unlock()
 		return nil
 	}
 	ss.stopped = true
-	ss.mu.Unlock()
 	var err error
 	if ss.signalingServer != nil {
 		ss.signalingServer.Close()
