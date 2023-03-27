@@ -310,10 +310,7 @@ func (ss *simpleServer) ensureAuthed(ctx context.Context) (context.Context, erro
 		}
 	}
 	if !audVerified {
-		// TODO(APP-1412): remove the if check but not the return after a week from being deployed
-		if !claims.RegisteredClaims.VerifyAudience(claims.RegisteredClaims.Subject, true) {
-			return nil, status.Error(codes.Unauthenticated, "invalid audience")
-		}
+		return nil, status.Error(codes.Unauthenticated, "invalid audience")
 	}
 
 	// Note(erd): may want to verify issuers in the future where the claims/scope are
