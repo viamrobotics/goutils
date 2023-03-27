@@ -408,6 +408,10 @@ func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 				return nil
 			}
 
+			if answer.Uuid != uuid {
+				return errors.Errorf("uuid mismatch; have=%q want=%q", answer.Uuid, uuid)
+			}
+
 			switch s := answer.Stage.(type) {
 			case *webrtcpb.AnswerResponse_Init:
 				if haveInit {
@@ -424,9 +428,6 @@ func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 				if !haveInit {
 					return errors.New("got update stage before init stage")
 				}
-				if answer.Uuid != uuid {
-					return errors.Errorf("uuid mismatch; have=%q want=%q", answer.Uuid, uuid)
-				}
 				cand := iceCandidateFromProto(s.Update.Candidate)
 				if err := offer.AnswererRespond(server.Context(), WebRTCCallAnswer{
 					Candidate: &cand,
@@ -436,9 +437,6 @@ func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 			case *webrtcpb.AnswerResponse_Done:
 				if !haveInit {
 					return errors.New("got done stage before init stage")
-				}
-				if answer.Uuid != uuid {
-					return errors.Errorf("uuid mismatch; have=%q want=%q", answer.Uuid, uuid)
 				}
 				return nil
 			case *webrtcpb.AnswerResponse_Error:
