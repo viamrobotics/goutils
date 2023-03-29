@@ -52,8 +52,6 @@ func NewConfigValidationFieldRequiredError(path, field string) error {
 	return NewConfigValidationError(path, errors.Errorf("%q is required", field))
 }
 
-var loggerWithSkipUtils = golog.Global().Desugar().WithOptions(zap.AddCallerSkip(2)).Sugar()
-
 // UncheckedError is used in places where we really do not care about an error but we
 // want to at least report it. Never use this for closing writers.
 func UncheckedError(err error) {
@@ -64,7 +62,7 @@ func uncheckedError(err error) {
 	if err == nil {
 		return
 	}
-	loggerWithSkipUtils.Debugw("unchecked error", "error", err)
+	golog.Global().Desugar().WithOptions(zap.AddCallerSkip(2)).Sugar().Debugw("unchecked error", "error", err)
 }
 
 // UncheckedErrorFunc is used in places where we really do not care about an error but we
