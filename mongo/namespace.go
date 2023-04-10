@@ -12,7 +12,13 @@ var (
 	namespaces          = map[*string][]*string{}
 	unmanagedNamespaces = map[string][]string{}
 	namespacesMu        sync.Mutex
+	oldNamespaces       = map[RandomizedName][]RandomizedName{}
 )
+
+type RandomizedDbAndName struct {
+	RandomizedDbName  string
+	RandomizedColName string
+}
 
 // RegisterNamespace globally registers the given database and collection as in use
 // with MongoDB. It will error if there's a duplicate registration.
@@ -57,10 +63,10 @@ func MustRegisterNamespace(db, coll *string) {
 	}
 }
 
-type randomizedName struct {
-	ptr  *string
-	from string
-	to   string
+type RandomizedName struct {
+	Ptr  *string
+	From string
+	To   string
 }
 
 func getNamespaces() map[string][]string {
@@ -92,29 +98,56 @@ func UnmanagedNamespaces() map[string][]string {
 	return namespacesCopy
 }
 
+// OldNamespaces retrns the randomized db / col to real name mappings
+func OldNameSpaces() map[RandomizedName][]RandomizedName {
+	namespacesMu.Lock()
+	defer namespacesMu.Unlock()
+	return oldNamespaces
+}
+
+// Returns the randomized db & column name created from the real names
+func GetDbAndColumnNameFromRandomizedNamespace(dbName, colName string) (*RandomizedDbAndName, error) {
+	namespacesMu.Lock()
+	defer namespacesMu.Unlock()
+
+	for db, cols := range oldNamespaces {
+		if db.From == dbName {
+			randomized := RandomizedDbAndName{
+				RandomizedDbName: db.To,
+			}
+			for _, col := range cols {
+				if col.From == colName {
+					randomized.RandomizedColName = col.To
+					return &randomized, nil
+				}
+			}
+		}
+	}
+	return nil, fmt.Errorf("no matching DB %s or Col name %s", dbName, colName)
+}
+
 // RandomizeNamespaces is a utility to be used by tests to remap all registered namespaces
 // before tests run in order to isolate where test data is stored. The returned restore function
 // should be called after tests are done in order to restore the namespaces to their former state.
 func RandomizeNamespaces() (newNamespaces map[string][]string, restore func()) {
 	namespacesMu.Lock()
 	defer namespacesMu.Unlock()
-	oldNamespaces := map[randomizedName][]randomizedName{}
+
 	for db, colls := range namespaces {
-		newDBName := randomizedName{ptr: db, from: *db, to: "test-" + utils.RandomAlphaString(5)}
+		newDBName := RandomizedName{Ptr: db, From: *db, To: "test-" + utils.RandomAlphaString(5)}
 		oldNamespaces[newDBName] = nil
 		for _, coll := range colls {
-			newCollName := randomizedName{ptr: coll, from: *coll, to: utils.RandomAlphaString(5)}
+			newCollName := RandomizedName{Ptr: coll, From: *coll, To: utils.RandomAlphaString(5)}
 			oldNamespaces[newDBName] = append(oldNamespaces[newDBName], newCollName)
-			*coll = newCollName.to
+			*coll = newCollName.To
 		}
-		*db = newDBName.to
+		*db = newDBName.To
 	}
-
 	return getNamespaces(), func() {
 		for db, colls := range oldNamespaces {
-			*db.ptr = db.from
+			*db.Ptr = db.From
 			for _, coll := range colls {
-				*coll.ptr = coll.from
+				*coll.Ptr = coll.From
 			}
 		}
 	}
