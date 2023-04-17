@@ -3,7 +3,6 @@ package rpc
 import (
 	"context"
 	"errors"
-	"io"
 	"sync"
 	"testing"
 	"time"
@@ -377,6 +376,8 @@ func TestWebRTCClientChannelResetStream(t *testing.T) {
 		},
 	}
 
+	resetCh := make(chan struct{})
+
 	var ctx context.Context
 	var cancel func()
 	serverCh.dataChannel.OnMessage(func(msg webrtc.DataChannelMessage) {
@@ -397,10 +398,7 @@ func TestWebRTCClientChannelResetStream(t *testing.T) {
 		}
 
 		if len(expectedMessages) == 0 {
-			test.That(t, serverCh.write(&webrtcpb.Response{
-				Stream: &webrtcpb.Stream{Id: 1},
-				Type:   &webrtcpb.Response_Headers{},
-			}), test.ShouldBeError, io.ErrClosedPipe)
+			close(resetCh)
 		}
 	})
 	expectedMessagesMu.Lock()
@@ -412,6 +410,8 @@ func TestWebRTCClientChannelResetStream(t *testing.T) {
 	err = clientCh.Invoke(ctx, "thing", someStatus.Proto(), &respStatus)
 	test.That(t, err, test.ShouldBeError, context.Canceled)
 	test.That(t, &respStatus, test.ShouldResemble, &pbstatus.Status{})
+
+	<-resetCh
 }
 
 func TestWebRTCClientChannelWithInterceptor(t *testing.T) {
