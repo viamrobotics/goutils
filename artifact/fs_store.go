@@ -89,3 +89,7 @@ func (s *fileSystemStore) Store(hash string, r io.Reader) (err error) {
 
 	return AtomicStore(path, r, hash)
 }
+
+func (s *fileSystemStore) Close() error {
+	return nil
+}
