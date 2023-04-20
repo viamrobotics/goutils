@@ -113,6 +113,22 @@ func TestManagedProcessStart(t *testing.T) {
 			test.That(t, err, test.ShouldNotBeNil)
 			test.That(t, err.Error(), test.ShouldContainSubstring, "exit status 1")
 		})
+		t.Run("OnCrashHandler is ignored", func(t *testing.T) {
+			logger := golog.NewTestLogger(t)
+
+			tempFile := testutils.TempFile(t, "something.txt")
+			defer tempFile.Close()
+			proc := NewManagedProcess(ProcessConfig{
+				Name:           "bash",
+				Args:           []string{"-c", "exit 1"},
+				OneShot:        true,
+				Log:            true,
+				OnCrashHandler: func() bool { panic("this should not panic") },
+			}, logger)
+			err := proc.Start(context.Background())
+			test.That(t, err, test.ShouldNotBeNil)
+			test.That(t, err.Error(), test.ShouldContainSubstring, "exit status 1")
+		})
 	})
 	t.Run("Managed", func(t *testing.T) {
 		t.Run("starting with a canceled context should have no effect", func(t *testing.T) {
@@ -192,6 +208,63 @@ func TestManagedProcessManage(t *testing.T) {
 		if err != nil {
 			test.That(t, err.Error(), test.ShouldContainSubstring, "exit status 1")
 		}
+	})
+	t.Run("OnCrashHandler", func(t *testing.T) {
+		t.Run("returns true and process is restarted", func(t *testing.T) {
+			logger := golog.NewTestLogger(t)
+
+			tempFile := testutils.TempFile(t, "something.txt")
+			defer tempFile.Close()
+
+			watcher, err := fsnotify.NewWatcher()
+			test.That(t, err, test.ShouldBeNil)
+			defer watcher.Close()
+			watcher.Add(tempFile.Name())
+
+			var onCrashHandlerCallCount int
+			proc := NewManagedProcess(ProcessConfig{
+				Name:           "bash",
+				Args:           []string{"-c", fmt.Sprintf("echo hello >> '%s'\nexit 1", tempFile.Name())},
+				OnCrashHandler: func() bool { onCrashHandlerCallCount++; return true },
+			}, logger)
+			test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
+
+			<-watcher.Events
+			<-watcher.Events
+			<-watcher.Events
+
+			// OnCrashHandler should be called twice, as program should crash twice:
+			// first on initial crash, and second on crash after restart.
+			test.That(t, onCrashHandlerCallCount, test.ShouldEqual, 2)
+
+			err = proc.Stop()
+			// sometimes we simply cannot get the status
+			if err != nil {
+				test.That(t, err.Error(), test.ShouldContainSubstring, "exit status 1")
+			}
+		})
+		t.Run("returns false and process is not restarted", func(t *testing.T) {
+			logger := golog.NewTestLogger(t)
+
+			var onCrashHandlerCallCount int
+			proc := NewManagedProcess(ProcessConfig{
+				Name:           "bash",
+				Args:           []string{"-c", "exit 1"},
+				OnCrashHandler: func() bool { onCrashHandlerCallCount++; return false },
+			}, logger)
+			test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
+
+			// OnCrashHandler should be called once, as program should crash once and
+			// not restart.
+			time.Sleep(2 * time.Second)
+			test.That(t, onCrashHandlerCallCount, test.ShouldEqual, 1)
+
+			err := proc.Stop()
+			// sometimes we simply cannot get the status
+			if err != nil {
+				test.That(t, err.Error(), test.ShouldContainSubstring, "exit status 1")
+			}
+		})
 	})
 }
 
@@ -463,6 +536,31 @@ done`, tempFile.Name()))
 		test.That(t, countTerms(tempFile1), test.ShouldEqual, 1)
 		test.That(t, countTerms(tempFile2), test.ShouldEqual, 1)
 		test.That(t, countTerms(tempFile3), test.ShouldEqual, 2)
+	})
+	t.Run("stop does not call OnCrashHandler", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("cannot test this on windows")
+		}
+		logger := golog.NewTestLogger(t)
+
+		tempFile := testutils.TempFile(t, "something.txt")
+		defer tempFile.Close()
+
+		watcher1, err := fsnotify.NewWatcher()
+		test.That(t, err, test.ShouldBeNil)
+		defer watcher1.Close()
+		watcher1.Add(tempFile.Name())
+
+		proc := NewManagedProcess(ProcessConfig{
+			Name: "bash",
+			Args: []string{"-c",
+				fmt.Sprintf("while true; do echo hello >> '%s'; sleep 1; done", tempFile.Name())},
+			StopTimeout:    time.Second * 5,
+			OnCrashHandler: func() bool { panic("this should not panic") },
+		}, logger)
+		test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
+		<-watcher1.Events
+		test.That(t, proc.Stop(), test.ShouldBeNil)
 	})
 }
 
