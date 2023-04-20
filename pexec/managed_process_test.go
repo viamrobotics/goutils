@@ -553,8 +553,10 @@ done`, tempFile.Name()))
 
 		proc := NewManagedProcess(ProcessConfig{
 			Name: "bash",
-			Args: []string{"-c",
-				fmt.Sprintf("while true; do echo hello >> '%s'; sleep 1; done", tempFile.Name())},
+			Args: []string{
+				"-c",
+				fmt.Sprintf("while true; do echo hello >> '%s'; sleep 1; done", tempFile.Name()),
+			},
 			StopTimeout:    time.Second * 5,
 			OnCrashHandler: func() bool { panic("this should not panic") },
 		}, logger)
