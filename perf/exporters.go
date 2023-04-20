@@ -10,8 +10,6 @@ import (
 	"contrib.go.opencensus.io/exporter/stackdriver"
 	"github.com/edaniels/golog"
 	"go.opencensus.io/trace"
-
-	"go.viam.com/utils"
 )
 
 const (
@@ -126,10 +124,6 @@ func (e *sdExporter) Stop() {
 	e.sdExporter.StopMetricsExporter()
 	trace.UnregisterExporter(e.sdExporter)
 	e.sdExporter.Flush()
-
-	if err := utils.TryClose(context.Background(), e.sdExporter); err != nil {
-		golog.Global().Errorf("Failed to close Stackdriver Exporter: %s", err)
-	}
 }
 
 type gaeResource struct {

@@ -13,6 +13,7 @@ type Store interface {
 	Contains(hash string) error
 	Load(hash string) (io.ReadCloser, error)
 	Store(hash string, r io.Reader) error
+	Close() error
 }
 
 // A StoreType identifies a specific type of Store.

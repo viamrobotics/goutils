@@ -111,7 +111,6 @@ type simpleServer struct {
 	webrtcServer            *webrtcServer
 	webrtcAnswerers         []*webrtcSignalingAnswerer
 	serviceServerCancels    []func()
-	serviceServers          []interface{}
 	signalingCallQueue      WebRTCCallQueue
 	signalingServer         *WebRTCSignalingServer
 	mdnsServers             []*zeroconf.Server
@@ -773,11 +772,6 @@ func (ss *simpleServer) Stop() error {
 		cancel()
 	}
 	ss.logger.Info("service servers for gateway canceled")
-	ss.logger.Info("closing service servers")
-	for _, srv := range ss.serviceServers {
-		err = multierr.Combine(err, utils.TryClose(context.Background(), srv))
-	}
-	ss.logger.Info("service servers closed")
 	for idx, answerer := range ss.webrtcAnswerers {
 		ss.logger.Infow("stopping WebRTC answerer", "num", idx)
 		answerer.Stop()
@@ -817,7 +811,6 @@ func (ss *simpleServer) RegisterServiceServer(
 	defer ss.mu.Unlock()
 	stopCtx, stopCancel := context.WithCancel(ctx)
 	ss.serviceServerCancels = append(ss.serviceServerCancels, stopCancel)
-	ss.serviceServers = append(ss.serviceServers, svcServer)
 	ss.grpcServer.RegisterService(svcDesc, svcServer)
 	if ss.webrtcServer != nil {
 		//nolint:contextcheck

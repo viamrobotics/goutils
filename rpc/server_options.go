@@ -11,7 +11,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/stats"
 
-	"go.viam.com/utils"
 	"go.viam.com/utils/jwks"
 )
 
@@ -364,16 +363,12 @@ func WithExternalTokenVerificationKeyProvider(provider TokenVerificationKeyProvi
 // WithExternalAuthOIDCTokenVerifier returns a ServerOption to verify all externally
 // authenticated entity access tokens against the given OIDC JWT issuer
 // that follows the OIDC Discovery protocol.
-func WithExternalAuthOIDCTokenVerifier(ctx context.Context, issuer string) (ServerOption, utils.ContextCloserFunc, error) {
+func WithExternalAuthOIDCTokenVerifier(ctx context.Context, issuer string) (ServerOption, func(ctx context.Context) error, error) {
 	provider, err := MakeOIDCKeyProvider(ctx, issuer)
 	if err != nil {
 		return nil, nil, err
 	}
-	return WithExternalTokenVerificationKeyProvider(provider),
-		utils.ContextCloserFunc(func(ctx context.Context) error {
-			return utils.TryClose(ctx, provider)
-		}),
-		nil
+	return WithExternalTokenVerificationKeyProvider(provider), provider.Close, nil
 }
 
 // WithAuthenticateToHandler returns a ServerOption which adds an authentication

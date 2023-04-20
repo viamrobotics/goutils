@@ -56,6 +56,7 @@ type AuthenticateToHandler func(ctx context.Context, toEntity string) (map[strin
 type TokenVerificationKeyProvider interface {
 	// TokenVerificationKey returns the key needed to do JWT verification.
 	TokenVerificationKey(ctx context.Context, token *jwt.Token) (interface{}, error)
+	Close(ctx context.Context) error
 }
 
 // Claims is an interface that all custom claims must implement to be supported
@@ -110,6 +111,11 @@ func (p TokenVerificationKeyProviderFunc) TokenVerificationKey(ctx context.Conte
 	return p(ctx, token)
 }
 
+// Close does nothing.
+func (p TokenVerificationKeyProviderFunc) Close(ctx context.Context) error {
+	return nil
+}
+
 // MakePublicKeyProvider returns a TokenVerificationKeyProvider that provides a public key for JWT verification.
 func MakePublicKeyProvider(pubKey *rsa.PublicKey) TokenVerificationKeyProvider {
 	return TokenVerificationKeyProviderFunc(
@@ -157,7 +163,7 @@ func (op *oidcKeyProvider) TokenVerificationKey(ctx context.Context, token *jwt.
 }
 
 // Close closes the jwks key provider.
-func (op *oidcKeyProvider) Close() error {
+func (op *oidcKeyProvider) Close(ctx context.Context) error {
 	return op.jwkProvider.Close()
 }
 
