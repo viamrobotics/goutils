@@ -6,7 +6,7 @@ import { Code } from "./gen/google/rpc/code_pb";
 import { Status } from "./gen/google/rpc/status_pb";
 import { AuthenticateRequest, AuthenticateResponse, AuthenticateToRequest, AuthenticateToResponse, Credentials as PBCredentials } from "./gen/proto/rpc/v1/auth_pb";
 import { AuthService, ExternalAuthService } from "./gen/proto/rpc/v1/auth_pb_service";
-import { CallRequest, CallResponse, CallUpdateRequest, CallUpdateResponse, ICECandidate } from "./gen/proto/rpc/webrtc/v1/signaling_pb";
+import { CallRequest, CallResponse, CallUpdateRequest, CallUpdateResponse, ICECandidate, WebRTCConfig, OptionalWebRTCConfigRequest, OptionalWebRTCConfigResponse } from "./gen/proto/rpc/webrtc/v1/signaling_pb";
 import { SignalingService } from "./gen/proto/rpc/webrtc/v1/signaling_pb_service";
 import { newPeerConnectionForClient } from "./peer";
 
@@ -209,6 +209,44 @@ interface WebRTCConnection {
 	peerConnection: RTCPeerConnection;
 }
 
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+async function getOptionalWebRTCConfig(signalingAddress: string, host: string, opts?: DialOptions): Promise<WebRTCConfig> {
+    const optsCopy = { ...opts } as DialOptions;
+		const directTransport = await dialDirect(signalingAddress, optsCopy);
+
+    let finished = false;
+    let result: WebRTCConfig | undefined
+    
+    grpc.unary(SignalingService.OptionalWebRTCConfig, {
+      request: new OptionalWebRTCConfigRequest(),
+      metadata: {
+        'rpc-host': host,
+      },
+      host: signalingAddress,
+      transport: directTransport,
+      onEnd: (resp: grpc.UnaryOutput<OptionalWebRTCConfigResponse>) => {
+        const { status, statusMessage, message } = resp;
+        if (status === grpc.Code.OK && message) {
+          result = message.getConfig();
+          console.log("GOT OPTIONAL WEBRTC CONFIG");
+          console.log(result?.toObject());
+        } else {
+          console.error(statusMessage);
+        }
+        finished = true;
+      }
+    });
+
+    while (!finished) {
+      await sleep(100);
+    };
+    if (!result) {
+      throw new Error("no config");
+    }
+    return result;
+}
+
 // dialWebRTC makes a connection to given host by signaling with the address provided. A Promise is returned
 // upon successful connection that contains a transport factory to use with gRPC client as well as the WebRTC
 // PeerConnection itself. Care should be taken with the PeerConnection and is currently returned for experimental
@@ -216,6 +254,7 @@ interface WebRTCConnection {
 // TODO(GOUT-7): figure out decent way to handle reconnect on connection termination
 export async function dialWebRTC(signalingAddress: string, host: string, opts?: DialOptions): Promise<WebRTCConnection> {
 	validateDialOptions(opts);
+  await getOptionalWebRTCConfig(signalingAddress, host, opts);
 
 	const webrtcOpts = opts?.webrtcOptions;
 	const { pc, dc } = await newPeerConnectionForClient(webrtcOpts !== undefined && webrtcOpts.disableTrickleICE, webrtcOpts?.rtcConfig);
