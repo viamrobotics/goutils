@@ -209,15 +209,19 @@ interface WebRTCConnection {
 	peerConnection: RTCPeerConnection;
 }
 
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
 async function getOptionalWebRTCConfig(signalingAddress: string, host: string, opts?: DialOptions): Promise<WebRTCConfig> {
     const optsCopy = { ...opts } as DialOptions;
 		const directTransport = await dialDirect(signalingAddress, optsCopy);
 
-    let finished = false;
-    let result: WebRTCConfig | undefined
-    
+    let pResolve: (value: WebRTCConfig) => void;
+    let pReject: (reason?: unknown) => void;
+
+    let result: WebRTCConfig | undefined;
+    let done = new Promise<WebRTCConfig>((resolve, reject) => {
+      pResolve = resolve;
+      pReject = reject;
+    });
+
     grpc.unary(SignalingService.OptionalWebRTCConfig, {
       request: new OptionalWebRTCConfigRequest(),
       metadata: {
@@ -229,17 +233,19 @@ async function getOptionalWebRTCConfig(signalingAddress: string, host: string, o
         const { status, statusMessage, message } = resp;
         if (status === grpc.Code.OK && message) {
           result = message.getConfig();
+          if (!result) {
+            pReject("no config");
+            return;
+          }
+          pResolve(result);
         } else {
-          console.error(statusMessage);
+          pReject(statusMessage);
         }
-        finished = true;
       }
     });
 
+    await done;
 
-    while (!finished) {
-      await sleep(100);
-    };
     if (!result) {
       throw new Error("no config");
     }
@@ -255,7 +261,6 @@ export async function dialWebRTC(signalingAddress: string, host: string, opts?: 
 	validateDialOptions(opts);
 
 	const webrtcOpts = opts?.webrtcOptions;
-
   if (webrtcOpts?.rtcConfig?.iceServers) {
     const config = await getOptionalWebRTCConfig(signalingAddress, host, opts);
     const additionalIceServers: RTCIceServer[] = config.toObject().additionalIceServersList.map((ice) => {
@@ -266,7 +271,6 @@ export async function dialWebRTC(signalingAddress: string, host: string, opts?: 
       }
     });
     webrtcOpts.rtcConfig.iceServers = [ ...webrtcOpts.rtcConfig.iceServers, ...additionalIceServers ];
-
     console.debug("New ICE servers", webrtcOpts.rtcConfig.iceServers)
   }
 
