@@ -259,6 +259,7 @@ async function getOptionalWebRTCConfig(signalingAddress: string, host: string, o
 // TODO(GOUT-7): figure out decent way to handle reconnect on connection termination
 export async function dialWebRTC(signalingAddress: string, host: string, opts?: DialOptions): Promise<WebRTCConnection> {
 	validateDialOptions(opts);
+  await getOptionalWebRTCConfig(signalingAddress, host, opts);
 
   // TODO(RSDK-2836): In general, this logic should be in parity with the golang implementation.
   // https://github.com/viamrobotics/goutils/blob/main/rpc/wrtc_client.go#L160-L175
