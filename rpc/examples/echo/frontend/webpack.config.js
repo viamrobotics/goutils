@@ -1,5 +1,3 @@
-// var path = require("path");
-
 module.exports = {
   mode: "production",
   entry: "./src/index.ts",
@@ -14,11 +12,4 @@ module.exports = {
       },
     ],
   },
-  // ,
-  // resolve: {
-  // 	extensions: [".ts", ".js"],
-  // 	alias: {
-  // 		"@viamrobotics/rpc": path.join(__dirname, "../../../js")
-  // 	}
-  // }
 };
