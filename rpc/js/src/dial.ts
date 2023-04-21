@@ -236,6 +236,7 @@ async function getOptionalWebRTCConfig(signalingAddress: string, host: string, o
       }
     });
 
+
     while (!finished) {
       await sleep(100);
     };
@@ -265,6 +266,8 @@ export async function dialWebRTC(signalingAddress: string, host: string, opts?: 
       }
     });
     webrtcOpts.rtcConfig.iceServers = [ ...webrtcOpts.rtcConfig.iceServers, ...additionalIceServers ];
+
+    console.debug("New ICE servers", webrtcOpts.rtcConfig.iceServers)
   }
 
 	const { pc, dc } = await newPeerConnectionForClient(webrtcOpts !== undefined && webrtcOpts.disableTrickleICE, webrtcOpts?.rtcConfig);
