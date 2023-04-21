@@ -229,8 +229,6 @@ async function getOptionalWebRTCConfig(signalingAddress: string, host: string, o
         const { status, statusMessage, message } = resp;
         if (status === grpc.Code.OK && message) {
           result = message.getConfig();
-          console.log("GOT OPTIONAL WEBRTC CONFIG");
-          console.log(result?.toObject());
         } else {
           console.error(statusMessage);
         }
@@ -254,9 +252,21 @@ async function getOptionalWebRTCConfig(signalingAddress: string, host: string, o
 // TODO(GOUT-7): figure out decent way to handle reconnect on connection termination
 export async function dialWebRTC(signalingAddress: string, host: string, opts?: DialOptions): Promise<WebRTCConnection> {
 	validateDialOptions(opts);
-  await getOptionalWebRTCConfig(signalingAddress, host, opts);
 
 	const webrtcOpts = opts?.webrtcOptions;
+
+  if (webrtcOpts?.rtcConfig?.iceServers) {
+    const config = await getOptionalWebRTCConfig(signalingAddress, host, opts);
+    const additionalIceServers: RTCIceServer[] = config.toObject().additionalIceServersList.map((ice) => {
+      return {
+        urls: ice.urlsList,
+        credential: ice.credential,
+        username: ice.username,
+      }
+    });
+    webrtcOpts.rtcConfig.iceServers = [ ...webrtcOpts.rtcConfig.iceServers, ...additionalIceServers ];
+  }
+
 	const { pc, dc } = await newPeerConnectionForClient(webrtcOpts !== undefined && webrtcOpts.disableTrickleICE, webrtcOpts?.rtcConfig);
 	let successful = false;
 
