@@ -222,7 +222,7 @@ func TestManagedProcessManage(t *testing.T) {
 				atomic.AddUint64(&onCrashHandlerCallCount, 1)
 
 				// Close channel and return false (no restart) only after 5 restarts.
-				if onCrashHandlerCallCount == 5 {
+				if atomic.LoadUint64(&onCrashHandlerCallCount) == 5 {
 					close(crashHandlerCalledEnough)
 					return false
 				}
@@ -236,7 +236,7 @@ func TestManagedProcessManage(t *testing.T) {
 		// Assert onCrashHandlerCallCount is exactly five even after waiting a few
 		// seconds (no further restarts).
 		time.Sleep(2 * time.Second)
-		test.That(t, onCrashHandlerCallCount, test.ShouldEqual, 5)
+		test.That(t, atomic.LoadUint64(&onCrashHandlerCallCount), test.ShouldEqual, 5)
 
 		err := proc.Stop()
 		// sometimes we simply cannot get the status
