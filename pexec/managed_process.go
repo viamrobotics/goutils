@@ -270,10 +270,8 @@ func (p *managedProcess) manage(stdOut, stdErr io.ReadCloser) {
 
 	// Run onCrashHandler if it exists. Do not attempt restart if onCrashHandler
 	// returns false.
-	if p.onCrashHandler != nil {
-		if shouldRestart := p.onCrashHandler(); !shouldRestart {
-			return
-		}
+	if p.onCrashHandler != nil && !p.onCrashHandler() {
+		return
 	}
 
 	// Otherwise, let's try restarting the process.

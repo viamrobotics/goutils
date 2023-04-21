@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -210,61 +211,38 @@ func TestManagedProcessManage(t *testing.T) {
 		}
 	})
 	t.Run("OnCrashHandler", func(t *testing.T) {
-		t.Run("returns true and process is restarted", func(t *testing.T) {
-			logger := golog.NewTestLogger(t)
+		logger := golog.NewTestLogger(t)
 
-			tempFile := testutils.TempFile(t, "something.txt")
-			defer tempFile.Close()
+		crashHandlerCalledEnough := make(chan struct{})
+		var onCrashHandlerCallCount uint64
+		proc := NewManagedProcess(ProcessConfig{
+			Name: "bash",
+			Args: []string{"-c", "exit 1"},
+			OnCrashHandler: func() bool {
+				atomic.AddUint64(&onCrashHandlerCallCount, 1)
 
-			watcher, err := fsnotify.NewWatcher()
-			test.That(t, err, test.ShouldBeNil)
-			defer watcher.Close()
-			watcher.Add(tempFile.Name())
+				// Close channel and return false (no restart) only after 5 restarts.
+				if onCrashHandlerCallCount == 5 {
+					close(crashHandlerCalledEnough)
+					return false
+				}
+				return true
+			},
+		}, logger)
+		test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
 
-			var onCrashHandlerCallCount int
-			proc := NewManagedProcess(ProcessConfig{
-				Name:           "bash",
-				Args:           []string{"-c", fmt.Sprintf("echo hello >> '%s'\nexit 1", tempFile.Name())},
-				OnCrashHandler: func() bool { onCrashHandlerCallCount++; return true },
-			}, logger)
-			test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
+		<-crashHandlerCalledEnough
 
-			<-watcher.Events
-			<-watcher.Events
-			<-watcher.Events
+		// Assert onCrashHandlerCallCount is exactly five even after waiting a few
+		// seconds (no further restarts).
+		time.Sleep(2 * time.Second)
+		test.That(t, onCrashHandlerCallCount, test.ShouldEqual, 5)
 
-			// OnCrashHandler should be called twice, as program should crash twice:
-			// first on initial crash, and second on crash after restart.
-			test.That(t, onCrashHandlerCallCount, test.ShouldEqual, 2)
-
-			err = proc.Stop()
-			// sometimes we simply cannot get the status
-			if err != nil {
-				test.That(t, err.Error(), test.ShouldContainSubstring, "exit status 1")
-			}
-		})
-		t.Run("returns false and process is not restarted", func(t *testing.T) {
-			logger := golog.NewTestLogger(t)
-
-			var onCrashHandlerCallCount int
-			proc := NewManagedProcess(ProcessConfig{
-				Name:           "bash",
-				Args:           []string{"-c", "exit 1"},
-				OnCrashHandler: func() bool { onCrashHandlerCallCount++; return false },
-			}, logger)
-			test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
-
-			// OnCrashHandler should be called once, as program should crash once and
-			// not restart.
-			time.Sleep(2 * time.Second)
-			test.That(t, onCrashHandlerCallCount, test.ShouldEqual, 1)
-
-			err := proc.Stop()
-			// sometimes we simply cannot get the status
-			if err != nil {
-				test.That(t, err.Error(), test.ShouldContainSubstring, "exit status 1")
-			}
-		})
+		err := proc.Stop()
+		// sometimes we simply cannot get the status
+		if err != nil {
+			test.That(t, err.Error(), test.ShouldContainSubstring, "exit status 1")
+		}
 	})
 }
 
