@@ -6,7 +6,7 @@ import { Code } from "./gen/google/rpc/code_pb";
 import { Status } from "./gen/google/rpc/status_pb";
 import { AuthenticateRequest, AuthenticateResponse, AuthenticateToRequest, AuthenticateToResponse, Credentials as PBCredentials } from "./gen/proto/rpc/v1/auth_pb";
 import { AuthService, ExternalAuthService } from "./gen/proto/rpc/v1/auth_pb_service";
-import { CallRequest, CallResponse, CallUpdateRequest, CallUpdateResponse, ICECandidate } from "./gen/proto/rpc/webrtc/v1/signaling_pb";
+import { CallRequest, CallResponse, CallUpdateRequest, CallUpdateResponse, ICECandidate, WebRTCConfig, OptionalWebRTCConfigRequest, OptionalWebRTCConfigResponse } from "./gen/proto/rpc/webrtc/v1/signaling_pb";
 import { SignalingService } from "./gen/proto/rpc/webrtc/v1/signaling_pb_service";
 import { newPeerConnectionForClient } from "./peer";
 
@@ -209,6 +209,49 @@ interface WebRTCConnection {
 	peerConnection: RTCPeerConnection;
 }
 
+async function getOptionalWebRTCConfig(signalingAddress: string, host: string, opts?: DialOptions): Promise<WebRTCConfig> {
+    const optsCopy = { ...opts } as DialOptions;
+		const directTransport = await dialDirect(signalingAddress, optsCopy);
+
+    let pResolve: (value: WebRTCConfig) => void;
+    let pReject: (reason?: unknown) => void;
+
+    let result: WebRTCConfig | undefined;
+    let done = new Promise<WebRTCConfig>((resolve, reject) => {
+      pResolve = resolve;
+      pReject = reject;
+    });
+
+    grpc.unary(SignalingService.OptionalWebRTCConfig, {
+      request: new OptionalWebRTCConfigRequest(),
+      metadata: {
+        'rpc-host': host,
+      },
+      host: signalingAddress,
+      transport: directTransport,
+      onEnd: (resp: grpc.UnaryOutput<OptionalWebRTCConfigResponse>) => {
+        const { status, statusMessage, message } = resp;
+        if (status === grpc.Code.OK && message) {
+          result = message.getConfig();
+          if (!result) {
+            pResolve(new WebRTCConfig());
+            return;
+          }
+          pResolve(result);
+        } else {
+          pReject(statusMessage);
+        }
+      }
+    });
+
+    await done;
+
+    if (!result) {
+      throw new Error("no config");
+    }
+    return result;
+}
+
 // dialWebRTC makes a connection to given host by signaling with the address provided. A Promise is returned
 // upon successful connection that contains a transport factory to use with gRPC client as well as the WebRTC
 // PeerConnection itself. Care should be taken with the PeerConnection and is currently returned for experimental
@@ -217,7 +260,42 @@ interface WebRTCConnection {
 export async function dialWebRTC(signalingAddress: string, host: string, opts?: DialOptions): Promise<WebRTCConnection> {
 	validateDialOptions(opts);
 
-	const webrtcOpts = opts?.webrtcOptions;
+  // TODO(RSDK-2836): In general, this logic should be in parity with the golang implementation.
+  // https://github.com/viamrobotics/goutils/blob/main/rpc/wrtc_client.go#L160-L175
+  const config = await getOptionalWebRTCConfig(signalingAddress, host, opts);
+  const additionalIceServers: RTCIceServer[] = config.toObject().additionalIceServersList.map((ice) => {
+    return {
+      urls: ice.urlsList,
+      credential: ice.credential,
+      username: ice.username,
+    }
+  });
+
+  if (!opts) {
+    opts = {};
+  }
+
+  let webrtcOpts: DialWebRTCOptions;
+  if (!opts.webrtcOptions) {
+    // use additional webrtc config as default
+    webrtcOpts = {
+      disableTrickleICE: config.getDisableTrickle(),
+      rtcConfig: {
+        iceServers: additionalIceServers,
+      }
+    };
+  } else {
+    webrtcOpts = opts.webrtcOptions;
+    if (!webrtcOpts.rtcConfig) {
+      webrtcOpts.rtcConfig = { iceServers: additionalIceServers };
+    } else {
+      webrtcOpts.rtcConfig.iceServers = [
+        ...(webrtcOpts.rtcConfig.iceServers || []),
+        ...additionalIceServers
+      ];
+    }
+  }
+
 	const { pc, dc } = await newPeerConnectionForClient(webrtcOpts !== undefined && webrtcOpts.disableTrickleICE, webrtcOpts?.rtcConfig);
 	let successful = false;
 
