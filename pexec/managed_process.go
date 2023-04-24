@@ -53,7 +53,7 @@ func NewManagedProcess(config ProcessConfig, logger golog.Logger) ManagedProcess
 		cwd:              config.CWD,
 		oneShot:          config.OneShot,
 		shouldLog:        config.Log,
-		onCrashHandler:   config.OnCrashHandler,
+		onUnexpectedExit: config.OnUnexpectedExit,
 		managingCh:       make(chan struct{}),
 		killCh:           make(chan struct{}),
 		stopSig:          config.StopSignal,
@@ -75,7 +75,7 @@ type managedProcess struct {
 	cmd       *exec.Cmd
 
 	stopped          bool
-	onCrashHandler   func() bool
+	onUnexpectedExit func(int) bool
 	managingCh       chan struct{}
 	killCh           chan struct{}
 	stopSig          syscall.Signal
@@ -176,10 +176,10 @@ func (p *managedProcess) Start(ctx context.Context) error {
 }
 
 // manage is the watchdog of the process. If the process has ended
-// unexpectedly, onCrashHandler will be called. If onCrashHandler is unset or
-// returns true, manage will restart the process. Note that onCrashHandler may
-// be called multiple times if it returns true. It's possible and okay for a
-// restart to be in progress while a Stop is happening. As a means of
+// unexpectedly, onUnexpectedExit will be called. If onUnexpectedExit is unset
+// or returns true, manage will restart the process. Note that onUnexpectedExit
+// may be called multiple times if it returns true. It's possible and okay for
+// a restart to be in progress while a Stop is happening. As a means of
 // simplifying implementation, a restart spawns new goroutines by calling Start
 // again and lets the original goroutine die off.
 func (p *managedProcess) manage(stdOut, stdErr io.ReadCloser) {
@@ -268,9 +268,10 @@ func (p *managedProcess) manage(stdOut, stdErr io.ReadCloser) {
 	default:
 	}
 
-	// Run onCrashHandler if it exists. Do not attempt restart if onCrashHandler
-	// returns false.
-	if p.onCrashHandler != nil && !p.onCrashHandler() {
+	// Run onUnexpectedExit if it exists. Do not attempt restart if
+	// onUnexpectedExit returns false.
+	if p.onUnexpectedExit != nil &&
+		!p.onUnexpectedExit(p.cmd.ProcessState.ExitCode()) {
 		return
 	}
 

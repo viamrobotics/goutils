@@ -30,11 +30,12 @@ type ProcessConfig struct {
 	LogWriter   io.Writer
 	StopSignal  syscall.Signal
 	StopTimeout time.Duration
-	// OnCrashHandler will be called when the manage goroutine detects a crash
-	// (unexpected stop) of the process. If the returned bool is true, the manage
-	// goroutine will attempt to restart the process. Otherwise, the manage
-	// goroutine will simply return.
-	OnCrashHandler func() bool
+	// OnUnexpectedExit will be called when the manage goroutine detects an
+	// unexpected exit of the process. The exit code of the crashed process will
+	// be passed in. If the returned bool is true, the manage goroutine will
+	// attempt to restart the process. Otherwise, the manage goroutine will
+	// simply return.
+	OnUnexpectedExit func(int) bool
 }
 
 // Validate ensures all parts of the config are valid.
@@ -77,7 +78,7 @@ func (config *ProcessConfig) UnmarshalJSON(data []byte) error {
 		CWD:     temp.CWD,
 		OneShot: temp.OneShot,
 		Log:     temp.Log,
-		// OnCrashHandler cannot be specified in JSON.
+		// OnUnexpectedExit cannot be specified in JSON.
 	}
 
 	if temp.StopTimeout != "" {
@@ -112,7 +113,7 @@ func (config ProcessConfig) MarshalJSON() ([]byte, error) {
 		Log:         config.Log,
 		StopSignal:  stopSig,
 		StopTimeout: config.StopTimeout.String(),
-		// OnCrashHandler cannot be converted to JSON.
+		// OnUnexpectedExit cannot be converted to JSON.
 	}
 	return json.Marshal(temp)
 }
