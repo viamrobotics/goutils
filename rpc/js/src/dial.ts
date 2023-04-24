@@ -234,7 +234,7 @@ async function getOptionalWebRTCConfig(signalingAddress: string, host: string, o
         if (status === grpc.Code.OK && message) {
           result = message.getConfig();
           if (!result) {
-            pReject("no config");
+            pResolve(new WebRTCConfig());
             return;
           }
           pResolve(result);
