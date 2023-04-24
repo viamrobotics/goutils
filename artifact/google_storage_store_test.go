@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"cloud.google.com/go/iam"
+	iampb "cloud.google.com/go/iam/apiv1/iampb"
 	"cloud.google.com/go/storage"
 	"github.com/pkg/errors"
 	"go.viam.com/test"
@@ -17,7 +18,6 @@ import (
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 	gcphttp "google.golang.org/api/transport/http"
-	iampb "google.golang.org/genproto/googleapis/iam/v1"
 
 	"go.viam.com/utils"
 	"go.viam.com/utils/testutils"
