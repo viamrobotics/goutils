@@ -8,6 +8,7 @@
   },
   "devDependencies": {
     "@types/google-protobuf": "^3.7.4",
+    "prettier": "^2.8.8",
     "set-value": ">=4.0.1",
     "ts-loader": "^9.4.1",
     "ts-protoc-gen": "^0.14.0",
@@ -22,6 +23,7 @@
   "scripts": {
     "prepare": "./etc/prepare.sh",
     "typecheck": "tsc --noEmit",
+    "format": "prettier --write '**/*.{ts,js}'",
     "build": "tsc && vite build",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
