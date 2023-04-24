@@ -45,7 +45,12 @@ buf-web: tool-install
 	PATH=$(PATH_WITH_TOOLS) buf generate --template ./etc/buf.web.gen.yaml
 	PATH=$(PATH_WITH_TOOLS) buf generate --template ./etc/buf.web.gen.yaml buf.build/googleapis/googleapis
 
-lint: tool-install
+lint: tool-install lint-go lint-web
+
+lint-web:
+	cd rpc/js && npm install && npm run format
+
+lint-go: tool-install
 	PATH=$(PATH_WITH_TOOLS) buf lint
 	export pkgs="`go list -f '{{.Dir}}' ./... | grep -v /proto/`" && echo "$$pkgs" | xargs go vet -vettool=$(TOOL_BIN)/combined
 	GOGC=50 $(TOOL_BIN)/golangci-lint run -v --fix --config=./etc/.golangci.yaml
