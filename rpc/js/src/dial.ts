@@ -275,7 +275,7 @@ export async function dialWebRTC(signalingAddress: string, host: string, opts?: 
     opts = {};
   }
 
-	let webrtcOpts: DialWebRTCOptions;
+  let webrtcOpts: DialWebRTCOptions;
   if (!opts.webrtcOptions) {
     // use additional webrtc config as default
     webrtcOpts = {
