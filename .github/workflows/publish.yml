@@ -18,9 +18,11 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install, Build, and Publish
-        run: |
-          make build-web
-          cd rpc/js
-          npm install -g @jsdevtools/npm-publish
-          npm-publish --token=${{ secrets.NPM_TOKEN }}
+      - name: Install Build
+        run: make build-web
+
+      - name: Publish
+        uses: JS-DevTools/npm-publish@v1
+        with:
+          token: ${{ secrets.NPM_TOKEN }}
+          package: rpc/js
