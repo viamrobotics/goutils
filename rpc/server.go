@@ -31,7 +31,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
@@ -169,11 +168,7 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 		return nil, err
 	}
 
-	serverOpts := []grpc.ServerOption{
-		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
-			MinTime: keepAliveTime,
-		}),
-	}
+	var serverOpts []grpc.ServerOption
 
 	var firstSeenTLSCert *tls.Certificate
 	if sOpts.tlsConfig != nil {
