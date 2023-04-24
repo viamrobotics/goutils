@@ -260,17 +260,40 @@ async function getOptionalWebRTCConfig(signalingAddress: string, host: string, o
 export async function dialWebRTC(signalingAddress: string, host: string, opts?: DialOptions): Promise<WebRTCConnection> {
 	validateDialOptions(opts);
 
-	const webrtcOpts = opts?.webrtcOptions;
-  if (webrtcOpts?.rtcConfig?.iceServers) {
-    const config = await getOptionalWebRTCConfig(signalingAddress, host, opts);
-    const additionalIceServers: RTCIceServer[] = config.toObject().additionalIceServersList.map((ice) => {
-      return {
-        urls: ice.urlsList,
-        credential: ice.credential,
-        username: ice.username,
+  // TODO(RSDK-2836): In general, this logic should be in parity with the golang implementation.
+  // https://github.com/viamrobotics/goutils/blob/main/rpc/wrtc_client.go#L160-L175
+  const config = await getOptionalWebRTCConfig(signalingAddress, host, opts);
+  const additionalIceServers: RTCIceServer[] = config.toObject().additionalIceServersList.map((ice) => {
+    return {
+      urls: ice.urlsList,
+      credential: ice.credential,
+      username: ice.username,
+    }
+  });
+
+  if (!opts) {
+    opts = {};
+  }
+
+	let webrtcOpts: DialWebRTCOptions;
+  if (!opts.webrtcOptions) {
+    // use additional webrtc config as default
+    webrtcOpts = {
+      disableTrickleICE: config.getDisableTrickle(),
+      rtcConfig: {
+        iceServers: additionalIceServers,
       }
-    });
-    webrtcOpts.rtcConfig.iceServers = [ ...webrtcOpts.rtcConfig.iceServers, ...additionalIceServers ];
+    };
+  } else {
+    webrtcOpts = opts.webrtcOptions;
+    if (!webrtcOpts.rtcConfig) {
+      webrtcOpts.rtcConfig = { iceServers: additionalIceServers };
+    } else {
+      webrtcOpts.rtcConfig.iceServers = [
+        ...(webrtcOpts.rtcConfig.iceServers || []),
+        ...additionalIceServers
+      ];
+    }
   }
 
 	const { pc, dc } = await newPeerConnectionForClient(webrtcOpts !== undefined && webrtcOpts.disableTrickleICE, webrtcOpts?.rtcConfig);
