@@ -9,7 +9,6 @@ import (
 	"runtime"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -114,22 +113,6 @@ func TestManagedProcessStart(t *testing.T) {
 			test.That(t, err, test.ShouldNotBeNil)
 			test.That(t, err.Error(), test.ShouldContainSubstring, "exit status 1")
 		})
-		t.Run("OnUnexpectedExit is ignored", func(t *testing.T) {
-			logger := golog.NewTestLogger(t)
-
-			tempFile := testutils.TempFile(t, "something.txt")
-			defer tempFile.Close()
-			proc := NewManagedProcess(ProcessConfig{
-				Name:             "bash",
-				Args:             []string{"-c", "exit 1"},
-				OneShot:          true,
-				Log:              true,
-				OnUnexpectedExit: func(int) bool { panic("this should not panic") },
-			}, logger)
-			err := proc.Start(context.Background())
-			test.That(t, err, test.ShouldNotBeNil)
-			test.That(t, err.Error(), test.ShouldContainSubstring, "exit status 1")
-		})
 	})
 	t.Run("Managed", func(t *testing.T) {
 		t.Run("starting with a canceled context should have no effect", func(t *testing.T) {
@@ -205,43 +188,6 @@ func TestManagedProcessManage(t *testing.T) {
 		<-watcher.Events
 
 		err = proc.Stop()
-		// sometimes we simply cannot get the status
-		if err != nil {
-			test.That(t, err.Error(), test.ShouldContainSubstring, "exit status 1")
-		}
-	})
-	t.Run("OnUnexpectedExit", func(t *testing.T) {
-		logger := golog.NewTestLogger(t)
-
-		onUnexpectedExitCalledEnough := make(chan struct{})
-		var (
-			onUnexpectedExitCallCount atomic.Uint64
-			receivedExitCode          atomic.Int64
-		)
-		proc := NewManagedProcess(ProcessConfig{
-			Name: "bash",
-			Args: []string{"-c", "exit 1"},
-			OnUnexpectedExit: func(exitCode int) bool {
-				receivedExitCode.Store(int64(exitCode))
-
-				// Close channel and return false (no restart) after 5 restarts.
-				// Further calls to this function will cause a double close panic, so
-				// we can be sure function is called only 5 times.
-				if onUnexpectedExitCallCount.Add(1) >= 5 {
-					close(onUnexpectedExitCalledEnough)
-					return false
-				}
-				return true
-			},
-		}, logger)
-		test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
-
-		<-onUnexpectedExitCalledEnough
-		test.That(t, onUnexpectedExitCallCount.Load(), test.ShouldEqual, 5)
-		// Assert that last received exit code was 1 from 'exit 1'.
-		test.That(t, receivedExitCode.Load(), test.ShouldEqual, 1)
-
-		err := proc.Stop()
 		// sometimes we simply cannot get the status
 		if err != nil {
 			test.That(t, err.Error(), test.ShouldContainSubstring, "exit status 1")
@@ -517,33 +463,6 @@ done`, tempFile.Name()))
 		test.That(t, countTerms(tempFile1), test.ShouldEqual, 1)
 		test.That(t, countTerms(tempFile2), test.ShouldEqual, 1)
 		test.That(t, countTerms(tempFile3), test.ShouldEqual, 2)
-	})
-	t.Run("stop does not call OnUnexpectedExit", func(t *testing.T) {
-		if runtime.GOOS == "windows" {
-			t.Skip("cannot test this on windows")
-		}
-		logger := golog.NewTestLogger(t)
-
-		tempFile := testutils.TempFile(t, "something.txt")
-		defer tempFile.Close()
-
-		watcher1, err := fsnotify.NewWatcher()
-		test.That(t, err, test.ShouldBeNil)
-		defer watcher1.Close()
-		watcher1.Add(tempFile.Name())
-
-		proc := NewManagedProcess(ProcessConfig{
-			Name: "bash",
-			Args: []string{
-				"-c",
-				fmt.Sprintf("while true; do echo hello >> '%s'; sleep 1; done", tempFile.Name()),
-			},
-			StopTimeout:      time.Second * 5,
-			OnUnexpectedExit: func(int) bool { panic("this should not panic") },
-		}, logger)
-		test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
-		<-watcher1.Events
-		test.That(t, proc.Stop(), test.ShouldBeNil)
 	})
 }
 
