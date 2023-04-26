@@ -35,7 +35,10 @@ type ProcessConfig struct {
 	// be passed in. If the returned bool is true, the manage goroutine will
 	// attempt to restart the process. Otherwise, the manage goroutine will
 	// simply return.
-	OnUnexpectedExit func(int) bool
+	//
+	// NOTE(benjirewis): use `jsonschema:"-"` struct tag to avoid issues with
+	// jsonschema reflection (go functions cannot be encoded to JSON).
+	OnUnexpectedExit func(int) bool `jsonschema:"-"`
 }
 
 // Validate ensures all parts of the config are valid.
