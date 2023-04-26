@@ -53,6 +53,7 @@ func NewManagedProcess(config ProcessConfig, logger golog.Logger) ManagedProcess
 		cwd:              config.CWD,
 		oneShot:          config.OneShot,
 		shouldLog:        config.Log,
+		onUnexpectedExit: config.OnUnexpectedExit,
 		managingCh:       make(chan struct{}),
 		killCh:           make(chan struct{}),
 		stopSig:          config.StopSignal,
@@ -74,6 +75,7 @@ type managedProcess struct {
 	cmd       *exec.Cmd
 
 	stopped          bool
+	onUnexpectedExit func(int) bool
 	managingCh       chan struct{}
 	killCh           chan struct{}
 	stopSig          syscall.Signal
@@ -173,12 +175,13 @@ func (p *managedProcess) Start(ctx context.Context) error {
 	return nil
 }
 
-// manage is the watchdog of the process. Any time it detects
-// the process has ended unexpectedly, it will restart it. It's
-// possible and okay for a restart to be in progress while a Stop
-// is happening. As a means simplifying implementation, a restart
-// spawns new goroutines by calling Start again and lets the original
-// goroutine die off.
+// manage is the watchdog of the process. If the process has ended
+// unexpectedly, onUnexpectedExit will be called. If onUnexpectedExit is unset
+// or returns true, manage will restart the process. Note that onUnexpectedExit
+// may be called multiple times if it returns true. It's possible and okay for
+// a restart to be in progress while a Stop is happening. As a means of
+// simplifying implementation, a restart spawns new goroutines by calling Start
+// again and lets the original goroutine die off.
 func (p *managedProcess) manage(stdOut, stdErr io.ReadCloser) {
 	// If no restart is going to happen after this function exits,
 	// then we want to notify anyone listening that this process
@@ -263,6 +266,13 @@ func (p *managedProcess) manage(stdOut, stdErr io.ReadCloser) {
 	case <-p.killCh:
 		return
 	default:
+	}
+
+	// Run onUnexpectedExit if it exists. Do not attempt restart if
+	// onUnexpectedExit returns false.
+	if p.onUnexpectedExit != nil &&
+		!p.onUnexpectedExit(p.cmd.ProcessState.ExitCode()) {
+		return
 	}
 
 	// Otherwise, let's try restarting the process.
