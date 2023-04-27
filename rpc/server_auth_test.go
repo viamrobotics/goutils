@@ -132,6 +132,10 @@ func TestServerAuth(t *testing.T) {
 
 		// bad auth scenarios
 		authClient := rpcpb.NewAuthServiceClient(conn)
+		_, err = authClient.Authenticate(context.Background(), &rpcpb.AuthenticateRequest{Entity: "foo"})
+		test.That(t, err, test.ShouldNotBeNil)
+		test.That(t, err.Error(), test.ShouldContainSubstring, "credentials required")
+
 		_, err = authClient.Authenticate(context.Background(), &rpcpb.AuthenticateRequest{Entity: "foo", Credentials: &rpcpb.Credentials{
 			Type:    "notfake",
 			Payload: "something",

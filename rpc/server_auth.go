@@ -75,6 +75,9 @@ func (ss *simpleServer) Authenticate(ctx context.Context, req *rpcpb.Authenticat
 	if len(md[metadataFieldAuthorization]) != 0 {
 		return nil, status.Error(codes.InvalidArgument, "already authenticated; cannot re-authenticate")
 	}
+	if req.Credentials == nil {
+		return nil, status.Error(codes.InvalidArgument, "credentials required")
+	}
 	forType := CredentialsType(req.Credentials.Type)
 	handlers, err := ss.authHandlers(forType)
 	if err != nil {
