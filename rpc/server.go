@@ -41,7 +41,10 @@ import (
 	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
 )
 
-const generatedRSAKeyBits = 4096
+const (
+	generatedRSAKeyBits = 4096
+	mDNSerr             = "mDNS setup failed; continuing with mDNS disabled"
+)
 
 // A Server provides a convenient way to get a gRPC server up and running
 // with HTTP facilities.
@@ -419,36 +422,34 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 			if err != nil {
 				return nil, err
 			}
-			var loopbackIfc net.Interface
+			var loopbackIfaces []net.Interface
 			for _, ifc := range ifcs {
-				if (ifc.Flags&net.FlagUp) == 0 ||
-					(ifc.Flags&net.FlagLoopback) == 0 ||
-					(ifc.Flags&net.FlagMulticast) == 0 {
+				if (ifc.Flags&net.FlagUp) == 0 || (ifc.Flags&net.FlagLoopback) == 0 {
 					continue
 				}
-				loopbackIfc = ifc
+				loopbackIfaces = append(loopbackIfaces, ifc)
 				break
 			}
-			if loopbackIfc.Index > 0 {
-				for _, host := range instanceNames {
-					hosts := []string{host, strings.ReplaceAll(host, ".", "-")}
-					for _, host := range hosts {
-						mdnsServer, err := zeroconf.RegisterProxy(
-							host,
-							"_rpc._tcp",
-							"local.",
-							mDNSAddress.Port,
-							hostname,
-							[]string{"127.0.0.1"},
-							supportedServices,
-							[]net.Interface{loopbackIfc},
-							logger,
-						)
-						if err != nil {
-							return nil, err
-						}
-						server.mdnsServers = append(server.mdnsServers, mdnsServer)
+			for _, host := range instanceNames {
+				hosts := []string{host, strings.ReplaceAll(host, ".", "-")}
+				for _, host := range hosts {
+					mdnsServer, err := zeroconf.RegisterProxy(
+						host,
+						"_rpc._tcp",
+						"local.",
+						mDNSAddress.Port,
+						hostname,
+						[]string{"127.0.0.1"},
+						supportedServices,
+						loopbackIfaces,
+						logger,
+					)
+					if err != nil {
+						logger.Warnw(mDNSerr, "error", err)
+						sOpts.disableMDNS = true
+						break
 					}
+					server.mdnsServers = append(server.mdnsServers, mdnsServer)
 				}
 			}
 		} else {
@@ -465,7 +466,9 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 						logger,
 					)
 					if err != nil {
-						return nil, err
+						logger.Warnw(mDNSerr, "error", err)
+						sOpts.disableMDNS = true
+						break
 					}
 					server.mdnsServers = append(server.mdnsServers, mdnsServer)
 				}
