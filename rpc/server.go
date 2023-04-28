@@ -429,24 +429,26 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 				loopbackIfc = ifc
 				break
 			}
-			for _, host := range instanceNames {
-				hosts := []string{host, strings.ReplaceAll(host, ".", "-")}
-				for _, host := range hosts {
-					mdnsServer, err := zeroconf.RegisterProxy(
-						host,
-						"_rpc._tcp",
-						"local.",
-						mDNSAddress.Port,
-						hostname,
-						[]string{"127.0.0.1"},
-						supportedServices,
-						[]net.Interface{loopbackIfc},
-						logger,
-					)
-					if err != nil {
-						return nil, err
+			if loopbackIfc.Index > 0 {
+				for _, host := range instanceNames {
+					hosts := []string{host, strings.ReplaceAll(host, ".", "-")}
+					for _, host := range hosts {
+						mdnsServer, err := zeroconf.RegisterProxy(
+							host,
+							"_rpc._tcp",
+							"local.",
+							mDNSAddress.Port,
+							hostname,
+							[]string{"127.0.0.1"},
+							supportedServices,
+							[]net.Interface{loopbackIfc},
+							logger,
+						)
+						if err != nil {
+							return nil, err
+						}
+						server.mdnsServers = append(server.mdnsServers, mdnsServer)
 					}
-					server.mdnsServers = append(server.mdnsServers, mdnsServer)
 				}
 			}
 		} else {
