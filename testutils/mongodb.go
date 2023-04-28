@@ -10,6 +10,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/mongo/readconcern"
 	"go.mongodb.org/mongo-driver/mongo/readpref"
 	"go.uber.org/multierr"
 
@@ -34,11 +35,14 @@ func NewMongoDBNamespace() (string, string) {
 	return dbName, collName
 }
 
-func randomizeMongoDBNamespaces() {
+func setupMongoDBForTests() {
 	usingMongoDBMu.Lock()
 	if !usingMongoDB {
 		usingMongoDB = true
 		randomizedMongoDBNamespaces, restoreMongoDBNamespaces = mongoutils.RandomizeNamespaces()
+		currentOpts := mongoutils.GlobalDatabaseOptions()
+		currentOpts = append(currentOpts, options.Database().SetReadConcern(readconcern.Majority()))
+		mongoutils.SetGlobalDatabaseOptions(currentOpts...)
 	}
 	usingMongoDBMu.Unlock()
 }

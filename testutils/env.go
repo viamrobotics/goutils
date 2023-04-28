@@ -77,7 +77,7 @@ func backingMongoDBURI() (string, error) {
 	if !ok || mongoURI == "" {
 		return "", errors.New("no MongoDB URI found")
 	}
-	randomizeMongoDBNamespaces()
+	setupMongoDBForTests()
 	return mongoURI, nil
 }
 
