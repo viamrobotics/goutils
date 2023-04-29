@@ -7,8 +7,7 @@ import (
 	"math"
 
 	"github.com/edaniels/golog"
-	//nolint:staticcheck
-	protov1 "github.com/golang/protobuf/proto"
+	protov1 "github.com/golang/protobuf/proto" //nolint:staticcheck
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc"
@@ -308,7 +307,7 @@ func (s *webrtcServerStream) processMessage(msg *webrtcpb.RequestMessage) {
 	s.webrtcBaseStream.mu.Unlock()
 	if msg.HasMessage {
 		if msg.PacketMessage == nil {
-			s.closeWithRecvError(errors.New("expected RequestMessage.PacketMessgae to not be nil but it was"))
+			s.closeRecvWithError(errors.New("expected RequestMessage.PacketMessgae to not be nil but it was"))
 			return
 		}
 		data, eop := s.webrtcBaseStream.processMessage(msg.PacketMessage)

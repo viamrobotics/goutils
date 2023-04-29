@@ -283,7 +283,7 @@ func (ch *webrtcClientChannel) onChannelMessage(msg webrtc.DataChannelMessage) {
 
 	stream := resp.Stream
 	if stream == nil {
-		ch.webrtcBaseChannel.logger.Error("no stream id; discarding")
+		ch.webrtcBaseChannel.logger.Debug("no stream id; discarding")
 		return
 	}
 
@@ -291,7 +291,7 @@ func (ch *webrtcClientChannel) onChannelMessage(msg webrtc.DataChannelMessage) {
 	ch.mu.Lock()
 	activeStream, ok := ch.streams[id]
 	if !ok {
-		ch.webrtcBaseChannel.logger.Errorw("no stream for id; discarding", "id", id)
+		ch.webrtcBaseChannel.logger.Debugw("no stream for id; discarding", "id", id)
 		ch.mu.Unlock()
 		return
 	}

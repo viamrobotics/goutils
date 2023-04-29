@@ -7,8 +7,7 @@ import (
 	"sync"
 
 	"github.com/edaniels/golog"
-	//nolint:staticcheck
-	protov1 "github.com/golang/protobuf/proto"
+	protov1 "github.com/golang/protobuf/proto" //nolint:staticcheck
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/proto"
 
@@ -122,7 +121,7 @@ func (s *webrtcBaseStream) closeRecv() {
 }
 
 func (s *webrtcBaseStream) close() {
-	s.closeWithRecvError(nil)
+	s.closeRecvWithError(nil)
 }
 
 func (s *webrtcBaseStream) Closed() bool {
@@ -131,7 +130,7 @@ func (s *webrtcBaseStream) Closed() bool {
 	return s.closed
 }
 
-func (s *webrtcBaseStream) closeWithRecvError(err error) {
+func (s *webrtcBaseStream) closeRecvWithError(err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
