@@ -354,12 +354,18 @@ func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 	callerLoop := func() error {
 		defer func() {
 			if !answererStoppedExchange {
-				utils.UncheckedError(server.Send(&webrtcpb.AnswerRequest{
+				if err := server.Send(&webrtcpb.AnswerRequest{
 					Uuid: uuid,
 					Stage: &webrtcpb.AnswerRequest_Done{
 						Done: &webrtcpb.AnswerRequestDoneStage{},
 					},
-				}))
+				}); err != nil {
+					srv.logger.Debugw(
+						"error sending answer request done",
+						"uuid", uuid,
+						"error", err,
+					)
+				}
 			}
 		}()
 		for {

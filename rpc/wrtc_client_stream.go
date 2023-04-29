@@ -8,8 +8,7 @@ import (
 	"sync"
 
 	"github.com/edaniels/golog"
-	//nolint:staticcheck
-	protov1 "github.com/golang/protobuf/proto"
+	protov1 "github.com/golang/protobuf/proto" //nolint:staticcheck
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -137,14 +136,23 @@ func (s *webrtcClientStream) CloseSend() error {
 	return s.writeMessage(nil, true)
 }
 
+// checkWriteErrForRecvClose checks the given error to consider the receive
+// side for closure.
+func (s *webrtcClientStream) checkWriteErrForRecvClose(err error) {
+	if err == nil || errors.Is(err, io.ErrClosedPipe) {
+		// ignore because either no error or we expect to be closed down elsewhere
+		// in the near future.
+		return
+	}
+	s.webrtcBaseStream.closeRecvWithError(err)
+}
+
 // resetStream cancels the stream and sends a reset signal.
 // It is also not safe to call resetStream
 // concurrently with SendMsg or CloseSend.
 func (s *webrtcClientStream) resetStream() (err error) {
 	defer func() {
-		if err != nil {
-			s.webrtcBaseStream.closeWithRecvError(err)
-		}
+		s.checkWriteErrForRecvClose(err)
 	}()
 	return s.ch.writeReset(s.webrtcBaseStream.stream)
 }
@@ -155,9 +163,7 @@ func (s *webrtcClientStream) close() {
 
 func (s *webrtcClientStream) writeHeaders(headers *webrtcpb.RequestHeaders) (err error) {
 	defer func() {
-		if err != nil {
-			s.webrtcBaseStream.closeWithRecvError(err)
-		}
+		s.checkWriteErrForRecvClose(err)
 	}()
 	return s.ch.writeHeaders(s.webrtcBaseStream.stream, headers)
 }
@@ -189,9 +195,7 @@ func init() {
 
 func (s *webrtcClientStream) writeMessage(m interface{}, eos bool) (err error) {
 	defer func() {
-		if err != nil {
-			s.webrtcBaseStream.closeWithRecvError(err)
-		}
+		s.checkWriteErrForRecvClose(err)
 	}()
 
 	var data []byte
@@ -243,12 +247,12 @@ func (s *webrtcClientStream) onResponse(resp *webrtcpb.Response) {
 	case *webrtcpb.Response_Headers:
 		select {
 		case <-s.headersReceived:
-			s.webrtcBaseStream.closeWithRecvError(errors.New("headers already received"))
+			s.webrtcBaseStream.closeRecvWithError(errors.New("headers already received"))
 			return
 		default:
 		}
 		if s.trailersReceived {
-			s.webrtcBaseStream.closeWithRecvError(errors.New("headers received after trailers"))
+			s.webrtcBaseStream.closeRecvWithError(errors.New("headers received after trailers"))
 			return
 		}
 		s.processHeaders(r.Headers)
@@ -256,11 +260,11 @@ func (s *webrtcClientStream) onResponse(resp *webrtcpb.Response) {
 		select {
 		case <-s.headersReceived:
 		default:
-			s.webrtcBaseStream.closeWithRecvError(errors.New("headers not yet received"))
+			s.webrtcBaseStream.closeRecvWithError(errors.New("headers not yet received"))
 			return
 		}
 		if s.trailersReceived {
-			s.webrtcBaseStream.closeWithRecvError(errors.New("message received after trailers"))
+			s.webrtcBaseStream.closeRecvWithError(errors.New("message received after trailers"))
 			return
 		}
 		s.processMessage(r.Message)
@@ -314,5 +318,5 @@ func (s *webrtcClientStream) processTrailers(trailers *webrtcpb.ResponseTrailers
 	}
 	defer s.mu.Unlock()
 	respStatus := status.FromProto(trailers.Status)
-	s.webrtcBaseStream.closeWithRecvError(respStatus.Err())
+	s.webrtcBaseStream.closeRecvWithError(respStatus.Err())
 }
