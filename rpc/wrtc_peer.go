@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"sync"
+	"time"
 
 	"github.com/edaniels/golog"
 	"github.com/pion/ice/v2"
@@ -44,6 +45,7 @@ func newWebRTCAPI(logger golog.Logger) (*webrtc.API, error) {
 	var settingEngine webrtc.SettingEngine
 	settingEngine.SetICEMulticastDNSMode(ice.MulticastDNSModeQueryAndGather)
 	settingEngine.SetIncludeLoopbackCandidate(true)
+	settingEngine.SetRelayAcceptanceMinWait(3 * time.Second)
 
 	options := []func(a *webrtc.API){webrtc.WithMediaEngine(&m), webrtc.WithInterceptorRegistry(&i)}
 	if utils.Debug {

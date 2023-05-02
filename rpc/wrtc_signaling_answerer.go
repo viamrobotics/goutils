@@ -280,12 +280,19 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 		}
 
 		var callFlowWG sync.WaitGroup
+		waitOneHost := make(chan struct{})
+		var waitOneHostOnce sync.Once
 		pc.OnICECandidate(func(i *webrtc.ICECandidate) {
 			if exchangeCtx.Err() != nil {
 				return
 			}
 			if i != nil {
 				callFlowWG.Add(1)
+				if i.Typ == webrtc.ICECandidateTypeHost {
+					waitOneHostOnce.Do(func() {
+						close(waitOneHost)
+					})
+				}
 			}
 			// must spin off to unblock the ICE gatherer
 			utils.PanicCapturingGo(func() {
@@ -319,6 +326,12 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 		err = pc.SetLocalDescription(answer)
 		if err != nil {
 			return err
+		}
+
+		select {
+		case <-exchangeCtx.Done():
+			return exchangeCtx.Err()
+		case <-waitOneHost:
 		}
 	}
 

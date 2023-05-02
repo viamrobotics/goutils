@@ -221,12 +221,19 @@ func dialWebRTC(
 		}
 
 		var callFlowWG sync.WaitGroup
+		waitOneHost := make(chan struct{})
+		var waitOneHostOnce sync.Once
 		pc.OnICECandidate(func(i *webrtc.ICECandidate) {
 			if exchangeCtx.Err() != nil {
 				return
 			}
 			if i != nil {
 				callFlowWG.Add(1)
+				if i.Typ == webrtc.ICECandidateTypeHost {
+					waitOneHostOnce.Do(func() {
+						close(waitOneHost)
+					})
+				}
 			}
 			// must spin off to unblock the ICE gatherer
 			utils.PanicCapturingGo(func() {
@@ -258,6 +265,12 @@ func dialWebRTC(
 		err = pc.SetLocalDescription(offer)
 		if err != nil {
 			return nil, err
+		}
+
+		select {
+		case <-exchangeCtx.Done():
+			return nil, exchangeCtx.Err()
+		case <-waitOneHost:
 		}
 	}
 
