@@ -215,11 +215,10 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 	if init.OptionalConfig != nil {
 		disableTrickle = init.OptionalConfig.DisableTrickle
 	}
-	extendedConfig := extendWebRTCConfig(&ans.webrtcConfig, init.OptionalConfig)
 	pc, dc, err := newPeerConnectionForServer(
 		ans.closeCtx,
 		init.Sdp,
-		extendedConfig,
+		ans.webrtcConfig,
 		disableTrickle,
 		ans.logger,
 	)
