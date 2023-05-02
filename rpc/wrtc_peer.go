@@ -43,6 +43,7 @@ func newWebRTCAPI(logger golog.Logger) (*webrtc.API, error) {
 
 	var settingEngine webrtc.SettingEngine
 	settingEngine.SetICEMulticastDNSMode(ice.MulticastDNSModeQueryAndGather)
+	settingEngine.SetIncludeLoopbackCandidate(true)
 
 	options := []func(a *webrtc.API){webrtc.WithMediaEngine(&m), webrtc.WithInterceptorRegistry(&i)}
 	if utils.Debug {
