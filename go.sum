@@ -290,8 +290,8 @@ github.com/edaniels/golinters v0.0.5-0.20210512224240-495d3b8eed19 h1:H1ItaK5N1m
 github.com/edaniels/golinters v0.0.5-0.20210512224240-495d3b8eed19/go.mod h1:i/zcokIKs893VZA41BS8jTOHW23PlqiiZEa7Y+4Nujk=
 github.com/edaniels/golog v0.0.0-20220930140416-6e52e83a97fc h1:x43xs2HSLmj8OGqiVyefDyDgC0W1B8mbX1cfvkDjqqM=
 github.com/edaniels/golog v0.0.0-20220930140416-6e52e83a97fc/go.mod h1:Ms3gOPiAEPRrgN3kBOF8YIkT2JEXxPFk/HBx/FAkmgA=
-github.com/edaniels/zeroconf v1.0.8 h1:4pq4TFfXUQGD289L2kGT5/j5FWY7x/95AXilE0mT1fs=
-github.com/edaniels/zeroconf v1.0.8/go.mod h1:22UUi3EGu1VSKYpObTSRkMvN9ENVT20KgHJbDISznEk=
+github.com/edaniels/zeroconf v1.0.9 h1:QFEH3ISQ+MSXWVSAIY7zwPiZb69PhjPbULAdhrGJHg8=
+github.com/edaniels/zeroconf v1.0.9/go.mod h1:22UUi3EGu1VSKYpObTSRkMvN9ENVT20KgHJbDISznEk=
 github.com/envoyproxy/go-control-plane v0.9.0/go.mod h1:YTl/9mNaCwkRvm6d1a2C3ymFceY/DCBVvsKhRF0iEA4=
 github.com/envoyproxy/go-control-plane v0.9.1-0.20191026205805-5f8ba28d4473/go.mod h1:YTl/9mNaCwkRvm6d1a2C3ymFceY/DCBVvsKhRF0iEA4=
 github.com/envoyproxy/go-control-plane v0.9.4/go.mod h1:6rpuAdCZL397s3pYoYcLgu1mIlRU8Am5FuJP05cCM98=
@@ -989,8 +989,8 @@ github.com/pion/interceptor v0.1.12/go.mod h1:bDtgAD9dRkBZpWHGKaoKb42FhDHTG2rX8I
 github.com/pion/logging v0.2.2 h1:M9+AIj/+pxNsDfAT64+MAVgJO0rsyLnoJKCqf//DoeY=
 github.com/pion/logging v0.2.2/go.mod h1:k0/tDVsRCX2Mb2ZEmTqNa7CWsQPc+YYCB7Q+5pahoms=
 github.com/pion/mdns v0.0.7/go.mod h1:4iP2UbeFhLI/vWju/bw6ZfwjJzk0z8DNValjGxR/dD8=
-github.com/pion/mdns v0.0.8-0.20230502045131-608f20b8f55f h1:G4fUmmjclNyPYbl+2PKpnNmBK183baxjmuDGCVHeKiQ=
-github.com/pion/mdns v0.0.8-0.20230502045131-608f20b8f55f/go.mod h1:658EdZmbrzmxLVC2qYP6pRgHtZTAzMoLadjBUVetgH4=
+github.com/pion/mdns v0.0.8-0.20230502060824-17c664ea7d5c h1:yuxunGfPeXnWCP9ke+iS2nq7K/q+17ynSgOeLkd5f20=
+github.com/pion/mdns v0.0.8-0.20230502060824-17c664ea7d5c/go.mod h1:658EdZmbrzmxLVC2qYP6pRgHtZTAzMoLadjBUVetgH4=
 github.com/pion/randutil v0.1.0 h1:CFG1UdESneORglEsnimhUjf33Rwjubwj6xfiOXBa3mA=
 github.com/pion/randutil v0.1.0/go.mod h1:XcJrSMMbbMRhASFVOlj/5hQial/Y8oH/HVo7TBZq+j8=
 github.com/pion/rtcp v1.2.10 h1:nkr3uj+8Sp97zyItdN60tE/S6vk4al5CPRR6Gejsdjc=

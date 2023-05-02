@@ -15,7 +15,7 @@ require (
 	github.com/coreos/go-oidc/v3 v3.1.0
 	github.com/edaniels/golinters v0.0.5-0.20210512224240-495d3b8eed19
 	github.com/edaniels/golog v0.0.0-20220930140416-6e52e83a97fc
-	github.com/edaniels/zeroconf v1.0.8
+	github.com/edaniels/zeroconf v1.0.9
 	github.com/fatih/color v1.14.1
 	github.com/fsnotify/fsnotify v1.5.4
 	github.com/fullstorydev/grpcurl v1.8.0
@@ -203,7 +203,7 @@ require (
 	github.com/pelletier/go-toml/v2 v2.0.5 // indirect
 	github.com/pion/datachannel v1.5.5 // indirect
 	github.com/pion/dtls/v2 v2.2.4 // indirect
-	github.com/pion/mdns v0.0.8-0.20230502045131-608f20b8f55f // indirect
+	github.com/pion/mdns v0.0.8-0.20230502060824-17c664ea7d5c // indirect
 	github.com/pion/randutil v0.1.0 // indirect
 	github.com/pion/rtcp v1.2.10 // indirect
 	github.com/pion/rtp v1.7.13 // indirect
