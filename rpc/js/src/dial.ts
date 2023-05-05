@@ -509,7 +509,7 @@ export async function dialWebRTC(
         const remoteSDP = new RTCSessionDescription(
           JSON.parse(atob(init.getSdp()))
         );
-        pc.setRemoteDescription(remoteSDP);
+        await pc.setRemoteDescription(remoteSDP);
 
         pResolve(true);
 
