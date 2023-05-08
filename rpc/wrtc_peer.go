@@ -32,7 +32,7 @@ var DefaultWebRTCConfiguration = webrtc.Configuration{
 	ICEServers: DefaultICEServers,
 }
 
-func newWebRTCAPI(logger golog.Logger) (*webrtc.API, error) {
+func newWebRTCAPI(isClient bool, logger golog.Logger) (*webrtc.API, error) {
 	m := webrtc.MediaEngine{}
 	if err := m.RegisterDefaultCodecs(); err != nil {
 		return nil, err
@@ -43,7 +43,14 @@ func newWebRTCAPI(logger golog.Logger) (*webrtc.API, error) {
 	}
 
 	var settingEngine webrtc.SettingEngine
-	settingEngine.SetICEMulticastDNSMode(ice.MulticastDNSModeQueryAndGather)
+	if isClient {
+		settingEngine.SetICEMulticastDNSMode(ice.MulticastDNSModeQueryAndGather)
+	} else {
+		settingEngine.SetICEMulticastDNSMode(ice.MulticastDNSModeQueryOnly)
+	}
+	// by including the loopback candidate, we allow an offline mode such that the
+	// server/client (controlled/controlling) can include 127.0.0.1 as a candidate
+	// while the client (controlling) provides an mDNS candidate that may resolve to 127.0.0.1.
 	settingEngine.SetIncludeLoopbackCandidate(true)
 	settingEngine.SetRelayAcceptanceMinWait(3 * time.Second)
 
@@ -61,7 +68,7 @@ func newPeerConnectionForClient(
 	disableTrickle bool,
 	logger golog.Logger,
 ) (pc *webrtc.PeerConnection, dc *webrtc.DataChannel, err error) {
-	webAPI, err := newWebRTCAPI(logger)
+	webAPI, err := newWebRTCAPI(true, logger)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -127,7 +134,7 @@ func newPeerConnectionForServer(
 	disableTrickle bool,
 	logger golog.Logger,
 ) (pc *webrtc.PeerConnection, dc *webrtc.DataChannel, err error) {
-	webAPI, err := newWebRTCAPI(logger)
+	webAPI, err := newWebRTCAPI(false, logger)
 	if err != nil {
 		return nil, nil, err
 	}
