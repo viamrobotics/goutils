@@ -107,6 +107,7 @@ func (ch *webrtcServerChannel) onChannelMessage(msg webrtc.DataChannelMessage) {
 	if !ok {
 		if len(ch.streams) == WebRTCMaxStreamCount {
 			ch.webrtcBaseChannel.logger.Error(errWebRTCMaxStreams)
+			ch.mu.Unlock()
 			return
 		}
 		// peek headers for timeout
