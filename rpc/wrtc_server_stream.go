@@ -8,6 +8,7 @@ import (
 
 	"github.com/edaniels/golog"
 	protov1 "github.com/golang/protobuf/proto" //nolint:staticcheck
+	"github.com/pion/sctp"
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc"
@@ -337,7 +338,12 @@ func (s *webrtcServerStream) processMessage(msg *webrtcpb.RequestMessage) {
 	}
 }
 
-func (s *webrtcServerStream) closeWithSendError(err error) error {
+func (s *webrtcServerStream) closeWithSendError(err error) (writeErr error) {
+	defer func() {
+		if writeErr == nil || errors.Is(writeErr, sctp.ErrStreamClosed) {
+			writeErr = nil
+		}
+	}()
 	defer s.close()
 	if err != nil && (errors.Is(err, io.ErrClosedPipe)) {
 		return nil

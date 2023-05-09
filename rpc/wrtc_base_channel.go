@@ -144,11 +144,11 @@ func (ch *webrtcBaseChannel) closeWithReason(err error) error {
 	ch.closedReason = err
 	ch.cancel()
 	ch.bufferWriteCond.Broadcast()
+	ch.activeBackgroundWorkers.Wait()
 	return ch.peerConn.Close()
 }
 
 func (ch *webrtcBaseChannel) Close() error {
-	defer ch.activeBackgroundWorkers.Wait()
 	return ch.closeWithReason(nil)
 }
 
@@ -203,6 +203,7 @@ func (ch *webrtcBaseChannel) write(msg proto.Message) error {
 		ch.bufferWriteCond.L.Unlock()
 		break
 	}
+
 	if err := ch.dataChannel.Send(data); err != nil {
 		if strings.Contains(err.Error(), "sending payload data in non-established state") {
 			return io.ErrClosedPipe

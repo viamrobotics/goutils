@@ -26,13 +26,14 @@ type webrtcClientStream struct {
 	*webrtcBaseStream
 	ctx              context.Context
 	cancel           func()
-	mu               sync.Mutex
+	mu               sync.RWMutex
 	ch               *webrtcClientChannel
 	headers          metadata.MD
 	trailers         metadata.MD
 	userCtx          context.Context
 	headersReceived  chan struct{}
 	trailersReceived bool
+	sendClosed       bool
 }
 
 // newWebRTCClientStream creates a gRPC stream from the given client channel with a
@@ -82,9 +83,8 @@ func newWebRTCClientStream(
 // users should ensure the RPC completed successfully using RecvMsg.
 //
 // It is safe to have a goroutine calling SendMsg and another goroutine
-// calling RecvMsg on the same stream at the same time, but it is not safe
-// to call SendMsg on the same stream in different goroutines. It is also
-// not safe to call CloseSend concurrently with SendMsg or resetStream.
+// calling RecvMsg on the same stream at the same time, but it is undefined behavior
+// to call SendMsg on the same stream in different goroutines.
 func (s *webrtcClientStream) SendMsg(m interface{}) error {
 	return s.writeMessage(m, false)
 }
@@ -131,39 +131,57 @@ func (s *webrtcClientStream) Trailer() metadata.MD {
 
 // CloseSend closes the send direction of the stream. It closes the stream
 // when non-nil error is met. It is also not safe to call CloseSend
-// concurrently with SendMsg or resetStream.
+// concurrently with SendMsg.
 func (s *webrtcClientStream) CloseSend() error {
 	return s.writeMessage(nil, true)
 }
 
 // checkWriteErrForRecvClose checks the given error to consider the receive
 // side for closure.
-func (s *webrtcClientStream) checkWriteErrForRecvClose(err error) {
+func (s *webrtcClientStream) checkWriteErrForRecvClose(err error) error {
 	if err == nil || errors.Is(err, io.ErrClosedPipe) {
 		// ignore because either no error or we expect to be closed down elsewhere
 		// in the near future.
-		return
+		return nil
 	}
 	s.webrtcBaseStream.closeRecvWithError(err)
+	return err
 }
 
 // resetStream cancels the stream and sends a reset signal.
-// It is also not safe to call resetStream
-// concurrently with SendMsg or CloseSend.
+// It is also not safe to call concurrently with SendMsg.
 func (s *webrtcClientStream) resetStream() (err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.sendClosed {
+		// no need to reset an already closed stream
+		return nil
+	}
+	s.sendClosed = true
+
 	defer func() {
-		s.checkWriteErrForRecvClose(err)
+		err = s.checkWriteErrForRecvClose(err)
+		if err == nil {
+			// if no write error happened, we should close since
+			// checkWriteErrForRecvClose did not do it for us.
+			s.close()
+		}
 	}()
 	return s.ch.writeReset(s.webrtcBaseStream.stream)
 }
 
 func (s *webrtcClientStream) close() {
 	s.cancel()
+	s.webrtcBaseStream.close()
 }
 
 func (s *webrtcClientStream) writeHeaders(headers *webrtcpb.RequestHeaders) (err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	defer func() {
-		s.checkWriteErrForRecvClose(err)
+		err = s.checkWriteErrForRecvClose(err)
 	}()
 	return s.ch.writeHeaders(s.webrtcBaseStream.stream, headers)
 }
@@ -194,8 +212,27 @@ func init() {
 }
 
 func (s *webrtcClientStream) writeMessage(m interface{}, eos bool) (err error) {
+	s.mu.RLock()
+	if s.sendClosed {
+		s.mu.RUnlock()
+		return io.ErrClosedPipe
+	}
+
+	if eos {
+		s.mu.RUnlock()
+		s.mu.Lock()
+		if s.sendClosed {
+			s.mu.Unlock()
+			return io.ErrClosedPipe
+		}
+		s.sendClosed = true
+		defer s.mu.Unlock()
+	} else {
+		defer s.mu.RUnlock()
+	}
+
 	defer func() {
-		s.checkWriteErrForRecvClose(err)
+		err = s.checkWriteErrForRecvClose(err)
 	}()
 
 	var data []byte

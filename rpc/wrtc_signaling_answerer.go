@@ -76,6 +76,16 @@ func (ans *webrtcSignalingAnswerer) Start() {
 	}
 }
 
+func checkExceptionalError(err error) error {
+	s, isGRPCErr := status.FromError(err)
+	if err == nil || errors.Is(err, io.EOF) ||
+		(isGRPCErr && (s.Code() == codes.DeadlineExceeded || s.Code() == codes.Canceled || strings.Contains(s.Message(), "too_many_pings"))) ||
+		utils.FilterOutError(err, context.Canceled) == nil {
+		return nil
+	}
+	return err
+}
+
 func (ans *webrtcSignalingAnswerer) startAnswerer() {
 	var connInUse ClientConn
 	var connMu sync.Mutex
@@ -84,7 +94,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 		conn := connInUse
 		connMu.Unlock()
 		if conn != nil {
-			if err := conn.Close(); err != nil {
+			if err := checkExceptionalError(conn.Close()); err != nil {
 				ans.logger.Errorw("error closing existing signaling connection", "error", err)
 			}
 		}
@@ -143,10 +153,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 			if err == nil {
 				err = ans.answer(client)
 			}
-			s, isGRPCErr := status.FromError(err)
-			if err == nil || errors.Is(err, io.EOF) ||
-				(isGRPCErr && (s.Code() == codes.DeadlineExceeded || s.Code() == codes.Canceled || strings.Contains(s.Message(), "too_many_pings"))) ||
-				utils.FilterOutError(err, context.Canceled) == nil {
+			if checkExceptionalError(err) == nil {
 				continue
 			}
 
@@ -173,7 +180,8 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 			if conn == nil {
 				return
 			}
-			if err := conn.Close(); err != nil {
+
+			if err := checkExceptionalError(conn.Close()); err != nil {
 				ans.logger.Errorw("error closing signaling connection", "error", err)
 			}
 		}()
