@@ -30,6 +30,9 @@ type serverOptions struct {
 	// unauthenticated determines if requests should be authenticated.
 	unauthenticated bool
 
+	// allowUnauthenticatedHealthCheck allows the server to have an unauthenticated healthcheck endpoint
+	allowUnauthenticatedHealthCheck bool
+
 	// authRSAPrivateKey is used to sign JWTs for authentication
 	authRSAPrivateKey *rsa.PrivateKey
 
@@ -419,6 +422,15 @@ func WithUnknownServiceHandler(streamHandler grpc.StreamHandler) ServerOption {
 func WithStatsHandler(handler stats.Handler) ServerOption {
 	return newFuncServerOption(func(o *serverOptions) error {
 		o.statsHandler = handler
+		return nil
+	})
+}
+
+// WithAllowUnauthenticatedHealthCheck returns a server option that
+// allows the health check to be unauthenticated
+func WithAllowUnauthenticatedHealthCheck() ServerOption {
+	return newFuncServerOption(func(o *serverOptions) error {
+		o.allowUnauthenticatedHealthCheck = true
 		return nil
 	})
 }

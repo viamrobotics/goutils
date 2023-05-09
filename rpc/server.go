@@ -44,6 +44,8 @@ import (
 const (
 	generatedRSAKeyBits = 4096
 	mDNSerr             = "mDNS setup failed; continuing with mDNS disabled"
+	healthCheckMethod   = "/grpc.health.v1.Health/Watch"
+	healthWatchMethod   = "/grpc.health.v1.Health/Watch"
 )
 
 // A Server provides a convenient way to get a gRPC server up and running
@@ -364,6 +366,11 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 		}
 		// Update this if the proto method or path changes
 		server.exemptMethods["/proto.rpc.v1.AuthService/Authenticate"] = true
+	}
+
+	if sOpts.allowUnauthenticatedHealthCheck {
+		server.exemptMethods[healthCheckMethod] = true
+		server.exemptMethods[healthWatchMethod] = true
 	}
 
 	if sOpts.authToHandler != nil {
