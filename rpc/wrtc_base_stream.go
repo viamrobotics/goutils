@@ -70,7 +70,7 @@ func (s *webrtcBaseStream) RecvMsg(m interface{}) error {
 		m = protov1.MessageV2(v1Msg)
 	}
 
-	checkLastOrErr := func() ([]byte, error) {
+	checkLastOrErr := func(origErr error) ([]byte, error) {
 		select {
 		case msgBytes, ok := <-s.msgCh:
 			if ok {
@@ -82,14 +82,17 @@ func (s *webrtcBaseStream) RecvMsg(m interface{}) error {
 				return nil, s.err
 			}
 			s.mu.Unlock()
-			return nil, io.EOF
+			if origErr == nil {
+				return nil, io.EOF
+			}
+			return nil, origErr
 		default:
 			return nil, nil
 		}
 	}
 	select {
 	case <-s.ctx.Done():
-		msgBytes, err := checkLastOrErr()
+		msgBytes, err := checkLastOrErr(s.ctx.Err())
 		if err != nil {
 			return err
 		}
@@ -101,7 +104,7 @@ func (s *webrtcBaseStream) RecvMsg(m interface{}) error {
 		if ok {
 			return proto.Unmarshal(msgBytes, m.(proto.Message))
 		}
-		_, err := checkLastOrErr()
+		_, err := checkLastOrErr(nil)
 		return err
 	}
 }

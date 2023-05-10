@@ -313,7 +313,18 @@ func TestWebRTCClientChannel(t *testing.T) {
 	rejected.Add(2)
 	clientErr := make(chan error)
 	go func() {
-		clientErr <- clientCh.Invoke(context.Background(), "thing", someStatus.Proto(), &respStatus)
+		clientStream, err := clientCh.NewStream(ctx, &grpc.StreamDesc{ClientStreams: true}, "thing")
+		if err != nil {
+			clientErr <- err
+			return
+		}
+		if err != nil {
+			clientErr <- clientStream.SendMsg(someStatus.Proto())
+			return
+		}
+
+		clientStream.SendMsg(someStatus.Proto())
+		clientErr <- clientStream.RecvMsg(&respStatus)
 	}()
 	rejected.Wait()
 	// client channel cancellation will send a RST_STREAM signal for non-closed streams
