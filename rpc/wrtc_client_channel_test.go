@@ -364,7 +364,7 @@ func TestWebRTCClientChannelResetStream(t *testing.T) {
 						Data: someStatusMd,
 						Eom:  true,
 					},
-					Eos: true,
+					Eos: false,
 				},
 			},
 		},
@@ -407,7 +407,10 @@ func TestWebRTCClientChannelResetStream(t *testing.T) {
 	expectedMessagesMu.Unlock()
 
 	var respStatus pbstatus.Status
-	err = clientCh.Invoke(ctx, "thing", someStatus.Proto(), &respStatus)
+	clientStream, err := clientCh.NewStream(ctx, &grpc.StreamDesc{ClientStreams: true}, "thing")
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, clientStream.SendMsg(someStatus.Proto()), test.ShouldBeNil)
+	err = clientStream.RecvMsg(&respStatus)
 	test.That(t, err, test.ShouldBeError, context.Canceled)
 	test.That(t, &respStatus, test.ShouldResemble, &pbstatus.Status{})
 
