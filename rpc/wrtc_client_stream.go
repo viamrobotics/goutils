@@ -5,7 +5,6 @@ import (
 	"errors"
 	"io"
 	"math"
-	"sync"
 
 	"github.com/edaniels/golog"
 	protov1 "github.com/golang/protobuf/proto" //nolint:staticcheck
@@ -26,13 +25,13 @@ type webrtcClientStream struct {
 	*webrtcBaseStream
 	ctx              context.Context
 	cancel           func()
-	mu               sync.Mutex
 	ch               *webrtcClientChannel
 	headers          metadata.MD
 	trailers         metadata.MD
 	userCtx          context.Context
 	headersReceived  chan struct{}
 	trailersReceived bool
+	sendClosed       bool
 }
 
 // newWebRTCClientStream creates a gRPC stream from the given client channel with a
@@ -82,9 +81,8 @@ func newWebRTCClientStream(
 // users should ensure the RPC completed successfully using RecvMsg.
 //
 // It is safe to have a goroutine calling SendMsg and another goroutine
-// calling RecvMsg on the same stream at the same time, but it is not safe
-// to call SendMsg on the same stream in different goroutines. It is also
-// not safe to call CloseSend concurrently with SendMsg or resetStream.
+// calling RecvMsg on the same stream at the same time, but it is undefined behavior
+// to call SendMsg on the same stream in different goroutines.
 func (s *webrtcClientStream) SendMsg(m interface{}) error {
 	return s.writeMessage(m, false)
 }
@@ -94,8 +92,8 @@ func (s *webrtcClientStream) SendMsg(m interface{}) error {
 // It should not be called until after Header or RecvMsg has returned. Once
 // called, subsequent client-side retries are disabled.
 func (s *webrtcClientStream) Context() context.Context {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.webrtcBaseStream.mu.Lock()
+	defer s.webrtcBaseStream.mu.Unlock()
 	if s.userCtx == nil {
 		// be nice to misbehaving users
 		return s.ctx
@@ -124,46 +122,61 @@ func (s *webrtcClientStream) Header() (metadata.MD, error) {
 // It must only be called after stream.CloseAndRecv has returned, or
 // stream.Recv has returned a non-nil error (including io.EOF).
 func (s *webrtcClientStream) Trailer() metadata.MD {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.webrtcBaseStream.mu.Lock()
+	defer s.webrtcBaseStream.mu.Unlock()
 	return s.trailers
 }
 
 // CloseSend closes the send direction of the stream. It closes the stream
 // when non-nil error is met. It is also not safe to call CloseSend
-// concurrently with SendMsg or resetStream.
+// concurrently with SendMsg.
 func (s *webrtcClientStream) CloseSend() error {
 	return s.writeMessage(nil, true)
 }
 
-// checkWriteErrForRecvClose checks the given error to consider the receive
-// side for closure.
-func (s *webrtcClientStream) checkWriteErrForRecvClose(err error) {
+// checkWriteErrForStreamClose checks the given error to consider the stream for closure.
+func checkWriteErrForStreamClose(err error) error {
 	if err == nil || errors.Is(err, io.ErrClosedPipe) {
 		// ignore because either no error or we expect to be closed down elsewhere
 		// in the near future.
-		return
+		return nil
 	}
-	s.webrtcBaseStream.closeRecvWithError(err)
+	return err
 }
 
 // resetStream cancels the stream and sends a reset signal.
-// It is also not safe to call resetStream
-// concurrently with SendMsg or CloseSend.
+// It is also not safe to call concurrently with SendMsg.
 func (s *webrtcClientStream) resetStream() (err error) {
+	s.webrtcBaseStream.mu.Lock()
+	defer s.webrtcBaseStream.mu.Unlock()
+
+	if s.sendClosed {
+		// no need to reset an already closed stream
+		return nil
+	}
+	s.sendClosed = true
+
 	defer func() {
-		s.checkWriteErrForRecvClose(err)
+		s.webrtcBaseStream.closeWithError(checkWriteErrForStreamClose(err))
 	}()
 	return s.ch.writeReset(s.webrtcBaseStream.stream)
 }
 
 func (s *webrtcClientStream) close() {
 	s.cancel()
+	s.webrtcBaseStream.close()
 }
 
+// writeHeaders is assumed to be called by the client channel in a single goroutine not
+// overlapping with any other write.
 func (s *webrtcClientStream) writeHeaders(headers *webrtcpb.RequestHeaders) (err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	defer func() {
-		s.checkWriteErrForRecvClose(err)
+		if err := checkWriteErrForStreamClose(err); err != nil {
+			s.webrtcBaseStream.closeWithError(err)
+		}
 	}()
 	return s.ch.writeHeaders(s.webrtcBaseStream.stream, headers)
 }
@@ -194,8 +207,29 @@ func init() {
 }
 
 func (s *webrtcClientStream) writeMessage(m interface{}, eos bool) (err error) {
+	s.webrtcBaseStream.mu.RLock()
+	if s.sendClosed {
+		s.webrtcBaseStream.mu.RUnlock()
+		return io.ErrClosedPipe
+	}
+
+	if eos {
+		s.webrtcBaseStream.mu.RUnlock()
+		s.webrtcBaseStream.mu.Lock()
+		if s.sendClosed {
+			s.webrtcBaseStream.mu.Unlock()
+			return io.ErrClosedPipe
+		}
+		s.sendClosed = true
+		defer s.webrtcBaseStream.mu.Unlock()
+	} else {
+		defer s.webrtcBaseStream.mu.RUnlock()
+	}
+
 	defer func() {
-		s.checkWriteErrForRecvClose(err)
+		if err := checkWriteErrForStreamClose(err); err != nil {
+			s.webrtcBaseStream.closeWithError(err)
+		}
 	}()
 
 	var data []byte
@@ -247,12 +281,12 @@ func (s *webrtcClientStream) onResponse(resp *webrtcpb.Response) {
 	case *webrtcpb.Response_Headers:
 		select {
 		case <-s.headersReceived:
-			s.webrtcBaseStream.closeRecvWithError(errors.New("headers already received"))
+			s.webrtcBaseStream.closeWithError(errors.New("headers already received"))
 			return
 		default:
 		}
 		if s.trailersReceived {
-			s.webrtcBaseStream.closeRecvWithError(errors.New("headers received after trailers"))
+			s.webrtcBaseStream.closeWithError(errors.New("headers received after trailers"))
 			return
 		}
 		s.processHeaders(r.Headers)
@@ -260,11 +294,11 @@ func (s *webrtcClientStream) onResponse(resp *webrtcpb.Response) {
 		select {
 		case <-s.headersReceived:
 		default:
-			s.webrtcBaseStream.closeRecvWithError(errors.New("headers not yet received"))
+			s.webrtcBaseStream.closeWithError(errors.New("headers not yet received"))
 			return
 		}
 		if s.trailersReceived {
-			s.webrtcBaseStream.closeRecvWithError(errors.New("message received after trailers"))
+			s.webrtcBaseStream.closeWithError(errors.New("message received after trailers"))
 			return
 		}
 		s.processMessage(r.Message)
@@ -276,10 +310,10 @@ func (s *webrtcClientStream) onResponse(resp *webrtcpb.Response) {
 }
 
 func (s *webrtcClientStream) processHeaders(headers *webrtcpb.ResponseHeaders) {
-	s.mu.Lock()
+	s.webrtcBaseStream.mu.Lock()
 	s.headers = metadataFromProto(headers.Metadata)
 	s.userCtx = metadata.NewIncomingContext(s.ctx, s.headers)
-	s.mu.Unlock()
+	s.webrtcBaseStream.mu.Unlock()
 	close(s.headersReceived)
 }
 
@@ -293,7 +327,7 @@ func (s *webrtcClientStream) processMessage(msg *webrtcpb.ResponseMessage) {
 		return
 	}
 	s.webrtcBaseStream.mu.Lock()
-	if s.webrtcBaseStream.recvClosed {
+	if s.webrtcBaseStream.recvClosed.Load() {
 		s.webrtcBaseStream.mu.Unlock()
 		return
 	}
@@ -311,12 +345,12 @@ func (s *webrtcClientStream) processMessage(msg *webrtcpb.ResponseMessage) {
 }
 
 func (s *webrtcClientStream) processTrailers(trailers *webrtcpb.ResponseTrailers) {
-	s.mu.Lock()
+	s.webrtcBaseStream.mu.Lock()
+	defer s.webrtcBaseStream.mu.Unlock()
 	s.trailersReceived = true
 	if trailers.Metadata != nil {
 		s.trailers = metadataFromProto(trailers.Metadata)
 	}
-	defer s.mu.Unlock()
 	respStatus := status.FromProto(trailers.Status)
-	s.webrtcBaseStream.closeRecvWithError(respStatus.Err())
+	s.webrtcBaseStream.closeWithError(respStatus.Err())
 }
