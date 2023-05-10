@@ -3,6 +3,7 @@ package rpc
 import (
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"strings"
 	"testing"
@@ -18,6 +19,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	echopb "go.viam.com/utils/proto/rpc/examples/echo/v1"
+	pb "go.viam.com/utils/proto/rpc/examples/echo/v1"
 	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
 	echoserver "go.viam.com/utils/rpc/examples/echo/server"
 	"go.viam.com/utils/testutils"
@@ -527,4 +529,79 @@ func testWebRTCClientAnswerConcurrent(t *testing.T, signalingCallQueue WebRTCCal
 	answerer.Stop()
 	grpcServer.Stop()
 	test.That(t, <-serveDone, test.ShouldBeNil)
+}
+
+func TestWebRTCClientSubsequentStreams(t *testing.T) {
+	logger := golog.NewTestLogger(t)
+	serverOpts := []ServerOption{
+		WithWebRTCServerOptions(WebRTCServerOptions{
+			Enable: true,
+		}),
+		WithUnauthenticated(),
+	}
+	rpcServer, err := NewServer(
+		logger,
+		serverOpts...,
+	)
+	test.That(t, err, test.ShouldBeNil)
+
+	es := echoserver.Server{}
+	err = rpcServer.RegisterServiceServer(
+		context.Background(),
+		&pb.EchoService_ServiceDesc,
+		&es,
+		pb.RegisterEchoServiceHandlerFromEndpoint,
+	)
+	test.That(t, err, test.ShouldBeNil)
+
+	listener, err := net.Listen("tcp", "localhost:0")
+	test.That(t, err, test.ShouldBeNil)
+
+	errChan := make(chan error)
+	go func() {
+		errChan <- rpcServer.Serve(listener)
+	}()
+
+	rtcConn, err := DialWebRTC(
+		context.Background(),
+		listener.Addr().String(),
+		rpcServer.InstanceNames()[0],
+		logger,
+		WithDialDebug(),
+		WithInsecure(),
+	)
+	test.That(t, err, test.ShouldBeNil)
+
+	client := pb.NewEchoServiceClient(rtcConn)
+
+	msg := "hello"
+	echoResp, err := client.Echo(context.Background(), &pb.EchoRequest{Message: msg})
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, echoResp.GetMessage(), test.ShouldEqual, msg)
+
+	echoResp, err = client.Echo(context.Background(), &pb.EchoRequest{Message: msg})
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, echoResp.GetMessage(), test.ShouldEqual, msg)
+
+	echoClient, err := client.EchoMultiple(context.Background(), &pb.EchoMultipleRequest{Message: msg})
+	test.That(t, err, test.ShouldBeNil)
+	var echoMultiResp pb.EchoMultipleResponse
+	for i := 0; i < 5; i++ {
+		test.That(t, echoClient.RecvMsg(&echoMultiResp), test.ShouldBeNil)
+		test.That(t, echoMultiResp.Message, test.ShouldEqual, msg[i:i+1])
+	}
+	test.That(t, echoClient.RecvMsg(&echoMultiResp), test.ShouldBeError, io.EOF)
+
+	echoClient, err = client.EchoMultiple(context.Background(), &pb.EchoMultipleRequest{Message: msg})
+	test.That(t, err, test.ShouldBeNil)
+	for i := 0; i < 5; i++ {
+		test.That(t, echoClient.RecvMsg(&echoMultiResp), test.ShouldBeNil)
+		test.That(t, echoMultiResp.Message, test.ShouldEqual, msg[i:i+1])
+	}
+	test.That(t, echoClient.RecvMsg(&echoMultiResp), test.ShouldBeError, io.EOF)
+
+	test.That(t, rtcConn.Close(), test.ShouldBeNil)
+	test.That(t, rpcServer.Stop(), test.ShouldBeNil)
+	err = <-errChan
+	test.That(t, err, test.ShouldBeNil)
 }

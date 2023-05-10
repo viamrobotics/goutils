@@ -157,9 +157,15 @@ func (s *webrtcClientStream) resetStream() (err error) {
 	s.sendClosed = true
 
 	defer func() {
-		s.webrtcBaseStream.closeWithError(checkWriteErrForStreamClose(err))
+		s.webrtcBaseStream.closeWithError(checkWriteErrForStreamClose(err), false)
 	}()
 	return s.ch.writeReset(s.webrtcBaseStream.stream)
+}
+
+func (s *webrtcClientStream) Close() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.close()
 }
 
 func (s *webrtcClientStream) close() {
@@ -175,7 +181,7 @@ func (s *webrtcClientStream) writeHeaders(headers *webrtcpb.RequestHeaders) (err
 
 	defer func() {
 		if err := checkWriteErrForStreamClose(err); err != nil {
-			s.webrtcBaseStream.closeWithError(err)
+			s.webrtcBaseStream.closeWithError(err, false)
 		}
 	}()
 	return s.ch.writeHeaders(s.webrtcBaseStream.stream, headers)
@@ -228,7 +234,7 @@ func (s *webrtcClientStream) writeMessage(m interface{}, eos bool) (err error) {
 
 	defer func() {
 		if err := checkWriteErrForStreamClose(err); err != nil {
-			s.webrtcBaseStream.closeWithError(err)
+			s.webrtcBaseStream.closeWithError(err, false)
 		}
 	}()
 
@@ -281,12 +287,12 @@ func (s *webrtcClientStream) onResponse(resp *webrtcpb.Response) {
 	case *webrtcpb.Response_Headers:
 		select {
 		case <-s.headersReceived:
-			s.webrtcBaseStream.closeWithError(errors.New("headers already received"))
+			s.webrtcBaseStream.closeWithError(errors.New("headers already received"), false)
 			return
 		default:
 		}
 		if s.trailersReceived {
-			s.webrtcBaseStream.closeWithError(errors.New("headers received after trailers"))
+			s.webrtcBaseStream.closeWithError(errors.New("headers received after trailers"), false)
 			return
 		}
 		s.processHeaders(r.Headers)
@@ -294,11 +300,11 @@ func (s *webrtcClientStream) onResponse(resp *webrtcpb.Response) {
 		select {
 		case <-s.headersReceived:
 		default:
-			s.webrtcBaseStream.closeWithError(errors.New("headers not yet received"))
+			s.webrtcBaseStream.closeWithError(errors.New("headers not yet received"), false)
 			return
 		}
 		if s.trailersReceived {
-			s.webrtcBaseStream.closeWithError(errors.New("message received after trailers"))
+			s.webrtcBaseStream.closeWithError(errors.New("message received after trailers"), false)
 			return
 		}
 		s.processMessage(r.Message)
@@ -352,5 +358,5 @@ func (s *webrtcClientStream) processTrailers(trailers *webrtcpb.ResponseTrailers
 		s.trailers = metadataFromProto(trailers.Metadata)
 	}
 	respStatus := status.FromProto(trailers.Status)
-	s.webrtcBaseStream.closeWithError(respStatus.Err())
+	s.webrtcBaseStream.closeFromTrailers(respStatus.Err())
 }

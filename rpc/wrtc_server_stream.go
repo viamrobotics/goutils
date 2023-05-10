@@ -314,7 +314,7 @@ func (s *webrtcServerStream) processMessage(msg *webrtcpb.RequestMessage) {
 	}
 	if msg.HasMessage {
 		if msg.PacketMessage == nil {
-			s.closeWithError(errors.New("expected RequestMessage.PacketMessgae to not be nil but it was"))
+			s.closeWithError(errors.New("expected RequestMessage.PacketMessgae to not be nil but it was"), false)
 			return
 		}
 		data, eop := s.webrtcBaseStream.processMessage(msg.PacketMessage)

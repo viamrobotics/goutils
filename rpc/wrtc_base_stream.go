@@ -3,6 +3,7 @@ package rpc
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -79,6 +80,9 @@ func (s *webrtcBaseStream) RecvMsg(m interface{}) error {
 			s.mu.Lock()
 			if s.err != nil {
 				s.mu.Unlock()
+				if errors.Is(s.err, errExpectedClosure) {
+					return nil, io.EOF
+				}
 				return nil, s.err
 			}
 			s.mu.Unlock()
@@ -124,7 +128,7 @@ func (s *webrtcBaseStream) closeRecv() {
 }
 
 func (s *webrtcBaseStream) close() {
-	s.closeWithError(nil)
+	s.closeWithError(nil, false)
 }
 
 func (s *webrtcBaseStream) Closed() bool {
@@ -133,13 +137,21 @@ func (s *webrtcBaseStream) Closed() bool {
 	return s.closed.Load()
 }
 
-func (s *webrtcBaseStream) closeWithError(err error) {
+func (s *webrtcBaseStream) closeFromTrailers(err error) {
+	s.closeWithError(err, err == nil)
+}
+
+var errExpectedClosure = errors.New("internal: closed via normal flow of operations")
+
+func (s *webrtcBaseStream) closeWithError(err error, expected bool) {
 	if !s.closed.CompareAndSwap(false, true) {
 		return
 	}
 	s.closeRecv()
 	if err != nil {
 		s.err = err
+	} else if expected {
+		s.err = errExpectedClosure
 	}
 	s.cancel()
 	s.onDone(s.stream.Id)
