@@ -19,7 +19,6 @@ import (
 	"google.golang.org/grpc/status"
 
 	echopb "go.viam.com/utils/proto/rpc/examples/echo/v1"
-	pb "go.viam.com/utils/proto/rpc/examples/echo/v1"
 	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
 	echoserver "go.viam.com/utils/rpc/examples/echo/server"
 	"go.viam.com/utils/testutils"
@@ -548,9 +547,9 @@ func TestWebRTCClientSubsequentStreams(t *testing.T) {
 	es := echoserver.Server{}
 	err = rpcServer.RegisterServiceServer(
 		context.Background(),
-		&pb.EchoService_ServiceDesc,
+		&echopb.EchoService_ServiceDesc,
 		&es,
-		pb.RegisterEchoServiceHandlerFromEndpoint,
+		echopb.RegisterEchoServiceHandlerFromEndpoint,
 	)
 	test.That(t, err, test.ShouldBeNil)
 
@@ -572,27 +571,27 @@ func TestWebRTCClientSubsequentStreams(t *testing.T) {
 	)
 	test.That(t, err, test.ShouldBeNil)
 
-	client := pb.NewEchoServiceClient(rtcConn)
+	client := echopb.NewEchoServiceClient(rtcConn)
 
 	msg := "hello"
-	echoResp, err := client.Echo(context.Background(), &pb.EchoRequest{Message: msg})
+	echoResp, err := client.Echo(context.Background(), &echopb.EchoRequest{Message: msg})
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, echoResp.GetMessage(), test.ShouldEqual, msg)
 
-	echoResp, err = client.Echo(context.Background(), &pb.EchoRequest{Message: msg})
+	echoResp, err = client.Echo(context.Background(), &echopb.EchoRequest{Message: msg})
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, echoResp.GetMessage(), test.ShouldEqual, msg)
 
-	echoClient, err := client.EchoMultiple(context.Background(), &pb.EchoMultipleRequest{Message: msg})
+	echoClient, err := client.EchoMultiple(context.Background(), &echopb.EchoMultipleRequest{Message: msg})
 	test.That(t, err, test.ShouldBeNil)
-	var echoMultiResp pb.EchoMultipleResponse
+	var echoMultiResp echopb.EchoMultipleResponse
 	for i := 0; i < 5; i++ {
 		test.That(t, echoClient.RecvMsg(&echoMultiResp), test.ShouldBeNil)
 		test.That(t, echoMultiResp.Message, test.ShouldEqual, msg[i:i+1])
 	}
 	test.That(t, echoClient.RecvMsg(&echoMultiResp), test.ShouldBeError, io.EOF)
 
-	echoClient, err = client.EchoMultiple(context.Background(), &pb.EchoMultipleRequest{Message: msg})
+	echoClient, err = client.EchoMultiple(context.Background(), &echopb.EchoMultipleRequest{Message: msg})
 	test.That(t, err, test.ShouldBeNil)
 	for i := 0; i < 5; i++ {
 		test.That(t, echoClient.RecvMsg(&echoMultiResp), test.ShouldBeNil)
