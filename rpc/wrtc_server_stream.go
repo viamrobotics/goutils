@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"sync/atomic"
 
 	"github.com/edaniels/golog"
 	protov1 "github.com/golang/protobuf/proto" //nolint:staticcheck
@@ -33,10 +34,11 @@ type webrtcServerStream struct {
 	*webrtcBaseStream
 	ch              *webrtcServerChannel
 	method          string
-	headersWritten  bool
+	headersWritten  atomic.Bool
 	headersReceived bool
 	header          metadata.MD
 	trailer         metadata.MD
+	sendClosed      atomic.Bool
 }
 
 // newWebRTCServerStream creates a gRPC stream from the given server channel with a
@@ -75,7 +77,7 @@ func (s *webrtcServerStream) SetHeader(header metadata.MD) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.headersWritten {
+	if s.headersWritten.Load() {
 		return errors.WithStack(ErrIllegalHeaderWrite)
 	}
 	if s.header == nil {
@@ -162,9 +164,16 @@ func init() {
 // untimely stream closure may result in lost messages.
 //
 // It is safe to have a goroutine calling SendMsg and another goroutine
-// calling RecvMsg on the same stream at the same time, but it is not safe
+// calling RecvMsg on the same stream at the same time, but it is undefined behavior
 // to call SendMsg on the same stream in different goroutines.
 func (s *webrtcServerStream) SendMsg(m interface{}) (err error) {
+	s.webrtcBaseStream.mu.RLock()
+	defer s.webrtcBaseStream.mu.RUnlock()
+	if s.sendClosed.Load() {
+		s.webrtcBaseStream.mu.RUnlock()
+		return io.ErrClosedPipe
+	}
+
 	defer func() {
 		if err != nil {
 			err = multierr.Combine(err, s.closeWithSendError(err))
@@ -299,16 +308,13 @@ func (s *webrtcServerStream) processHeaders(headers *webrtcpb.RequestHeaders) {
 }
 
 func (s *webrtcServerStream) processMessage(msg *webrtcpb.RequestMessage) {
-	s.webrtcBaseStream.mu.Lock()
-	if s.recvClosed {
-		s.webrtcBaseStream.mu.Unlock()
+	if s.recvClosed.Load() {
 		s.logger.Error("message received after EOS")
 		return
 	}
-	s.webrtcBaseStream.mu.Unlock()
 	if msg.HasMessage {
 		if msg.PacketMessage == nil {
-			s.closeRecvWithError(errors.New("expected RequestMessage.PacketMessgae to not be nil but it was"))
+			s.closeWithError(errors.New("expected RequestMessage.PacketMessgae to not be nil but it was"))
 			return
 		}
 		data, eop := s.webrtcBaseStream.processMessage(msg.PacketMessage)
@@ -316,7 +322,7 @@ func (s *webrtcServerStream) processMessage(msg *webrtcpb.RequestMessage) {
 			return
 		}
 		s.webrtcBaseStream.mu.Lock()
-		if s.recvClosed {
+		if s.recvClosed.Load() {
 			s.webrtcBaseStream.mu.Unlock()
 			return
 		}
@@ -339,6 +345,9 @@ func (s *webrtcServerStream) processMessage(msg *webrtcpb.RequestMessage) {
 }
 
 func (s *webrtcServerStream) closeWithSendError(err error) (writeErr error) {
+	if !s.sendClosed.CompareAndSwap(false, true) {
+		return nil
+	}
 	defer func() {
 		if writeErr == nil || errors.Is(writeErr, sctp.ErrStreamClosed) {
 			writeErr = nil
@@ -372,17 +381,13 @@ func (s *webrtcServerStream) closeWithSendError(err error) (writeErr error) {
 }
 
 func (s *webrtcServerStream) writeHeaders() error {
-	s.webrtcBaseStream.mu.Lock()
-	if !s.headersWritten {
-		s.headersWritten = true
-		protoHeaders := metadataToProto(s.header)
-		s.webrtcBaseStream.mu.Unlock()
-		return s.ch.writeHeaders(s.stream, &webrtcpb.ResponseHeaders{
-			Metadata: protoHeaders,
-		})
+	if !s.headersWritten.CompareAndSwap(false, true) {
+		return nil
 	}
-	s.webrtcBaseStream.mu.Unlock()
-	return nil
+	protoHeaders := metadataToProto(s.header)
+	return s.ch.writeHeaders(s.stream, &webrtcpb.ResponseHeaders{
+		Metadata: protoHeaders,
+	})
 }
 
 // ErrorToStatus converts an error to a gRPC status. A nil

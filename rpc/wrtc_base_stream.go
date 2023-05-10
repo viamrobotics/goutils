@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"sync"
+	"sync/atomic"
 
 	"github.com/edaniels/golog"
 	protov1 "github.com/golang/protobuf/proto" //nolint:staticcheck
@@ -15,15 +16,15 @@ import (
 )
 
 type webrtcBaseStream struct {
-	mu            sync.Mutex
+	mu            sync.RWMutex
 	ctx           context.Context
 	cancel        context.CancelFunc
 	stream        *webrtcpb.Stream
 	msgCh         chan []byte
 	onDone        func(id uint64)
 	err           error
-	recvClosed    bool
-	closed        bool
+	recvClosed    atomic.Bool
+	closed        atomic.Bool
 	logger        golog.Logger
 	packetBuf     bytes.Buffer
 	activeSenders sync.WaitGroup
@@ -112,32 +113,28 @@ func (s *webrtcBaseStream) CloseRecv() {
 }
 
 func (s *webrtcBaseStream) closeRecv() {
-	if s.recvClosed {
+	if !s.recvClosed.CompareAndSwap(false, true) {
 		return
 	}
-	s.recvClosed = true
 	s.activeSenders.Wait()
 	close(s.msgCh)
 }
 
 func (s *webrtcBaseStream) close() {
-	s.closeRecvWithError(nil)
+	s.closeWithError(nil)
 }
 
 func (s *webrtcBaseStream) Closed() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.closed
+	return s.closed.Load()
 }
 
-func (s *webrtcBaseStream) closeRecvWithError(err error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.closed {
+func (s *webrtcBaseStream) closeWithError(err error) {
+	if !s.closed.CompareAndSwap(false, true) {
 		return
 	}
 	s.closeRecv()
-	s.closed = true
 	if err != nil {
 		s.err = err
 	}
