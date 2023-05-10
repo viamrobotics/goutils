@@ -144,11 +144,11 @@ func (ch *webrtcBaseChannel) closeWithReason(err error) error {
 	ch.closedReason = err
 	ch.cancel()
 	ch.bufferWriteCond.Broadcast()
-	ch.activeBackgroundWorkers.Wait()
 	return ch.peerConn.Close()
 }
 
 func (ch *webrtcBaseChannel) Close() error {
+	defer ch.activeBackgroundWorkers.Wait()
 	return ch.closeWithReason(nil)
 }
 
