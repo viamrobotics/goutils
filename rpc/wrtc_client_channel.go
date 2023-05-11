@@ -79,7 +79,7 @@ func (ch *webrtcClientChannel) Close() error {
 	}
 	ch.mu.Unlock()
 	for _, s := range streamsToClose {
-		s.cs.close()
+		s.cs.Close()
 	}
 	return ch.webrtcBaseChannel.Close()
 }

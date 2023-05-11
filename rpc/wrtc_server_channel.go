@@ -106,14 +106,14 @@ func (ch *webrtcServerChannel) onChannelMessage(msg webrtc.DataChannelMessage) {
 	serverStream, ok := ch.streams[id]
 	if !ok {
 		if len(ch.streams) == WebRTCMaxStreamCount {
-			ch.webrtcBaseChannel.logger.Error(errWebRTCMaxStreams)
+			logger.Error(errWebRTCMaxStreams)
 			ch.mu.Unlock()
 			return
 		}
 		// peek headers for timeout
 		headers, ok := req.Type.(*webrtcpb.Request_Headers)
 		if !ok || headers.Headers == nil {
-			ch.webrtcBaseChannel.logger.Debugf("expected headers as first message but got %T, discard request", req.Type)
+			logger.Debugf("expected headers as first message but got %T, discard request", req.Type)
 			ch.mu.Unlock()
 			return
 		}
