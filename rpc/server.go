@@ -766,35 +766,36 @@ func (ss *simpleServer) Stop() error {
 	}
 	ss.stopped = true
 	var err error
+	ss.logger.Info("stopping")
+	for idx, answerer := range ss.webrtcAnswerers {
+		ss.logger.Debugw("stopping WebRTC answerer", "num", idx)
+		answerer.Stop()
+		ss.logger.Debugw("WebRTC answerer stopped", "num", idx)
+	}
 	if ss.signalingServer != nil {
 		ss.signalingServer.Close()
 	}
 	if ss.signalingCallQueue != nil {
 		err = multierr.Combine(err, ss.signalingCallQueue.Close())
 	}
-	ss.logger.Info("stopping server")
+	ss.logger.Debug("stopping gRPC server")
 	defer ss.grpcServer.Stop()
-	ss.logger.Info("canceling service servers for gateway")
+	ss.logger.Debug("canceling service servers for gateway")
 	for _, cancel := range ss.serviceServerCancels {
 		cancel()
 	}
-	ss.logger.Info("service servers for gateway canceled")
-	for idx, answerer := range ss.webrtcAnswerers {
-		ss.logger.Infow("stopping WebRTC answerer", "num", idx)
-		answerer.Stop()
-		ss.logger.Infow("WebRTC answerer stopped", "num", idx)
-	}
+	ss.logger.Debug("service servers for gateway canceled")
 	if ss.webrtcServer != nil {
-		ss.logger.Info("stopping WebRTC server")
+		ss.logger.Debug("stopping WebRTC server")
 		ss.webrtcServer.Stop()
-		ss.logger.Info("WebRTC server stopped")
+		ss.logger.Debug("WebRTC server stopped")
 	}
 	for _, mdnsServer := range ss.mdnsServers {
 		mdnsServer.Shutdown()
 	}
-	ss.logger.Info("shutting down HTTP server")
+	ss.logger.Debug("shutting down HTTP server")
 	err = multierr.Combine(err, ss.httpServer.Shutdown(context.Background()))
-	ss.logger.Info("HTTP server shut down")
+	ss.logger.Debug("HTTP server shut down")
 	ss.activeBackgroundWorkers.Wait()
 	ss.logger.Info("stopped cleanly")
 	return err

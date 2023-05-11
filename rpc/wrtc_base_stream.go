@@ -3,8 +3,10 @@ package rpc
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"sync"
+	"sync/atomic"
 
 	"github.com/edaniels/golog"
 	protov1 "github.com/golang/protobuf/proto" //nolint:staticcheck
@@ -15,15 +17,15 @@ import (
 )
 
 type webrtcBaseStream struct {
-	mu            sync.Mutex
+	mu            sync.RWMutex
 	ctx           context.Context
 	cancel        context.CancelFunc
 	stream        *webrtcpb.Stream
 	msgCh         chan []byte
 	onDone        func(id uint64)
 	err           error
-	recvClosed    bool
-	closed        bool
+	recvClosed    atomic.Bool
+	closed        atomic.Bool
 	logger        golog.Logger
 	packetBuf     bytes.Buffer
 	activeSenders sync.WaitGroup
@@ -69,7 +71,7 @@ func (s *webrtcBaseStream) RecvMsg(m interface{}) error {
 		m = protov1.MessageV2(v1Msg)
 	}
 
-	checkLastOrErr := func() ([]byte, error) {
+	checkLastOrErr := func(origErr error) ([]byte, error) {
 		select {
 		case msgBytes, ok := <-s.msgCh:
 			if ok {
@@ -78,17 +80,23 @@ func (s *webrtcBaseStream) RecvMsg(m interface{}) error {
 			s.mu.Lock()
 			if s.err != nil {
 				s.mu.Unlock()
+				if errors.Is(s.err, errExpectedClosure) {
+					return nil, io.EOF
+				}
 				return nil, s.err
 			}
 			s.mu.Unlock()
-			return nil, io.EOF
+			if origErr == nil {
+				return nil, io.EOF
+			}
+			return nil, origErr
 		default:
 			return nil, nil
 		}
 	}
 	select {
 	case <-s.ctx.Done():
-		msgBytes, err := checkLastOrErr()
+		msgBytes, err := checkLastOrErr(s.ctx.Err())
 		if err != nil {
 			return err
 		}
@@ -100,7 +108,7 @@ func (s *webrtcBaseStream) RecvMsg(m interface{}) error {
 		if ok {
 			return proto.Unmarshal(msgBytes, m.(proto.Message))
 		}
-		_, err := checkLastOrErr()
+		_, err := checkLastOrErr(nil)
 		return err
 	}
 }
@@ -112,34 +120,38 @@ func (s *webrtcBaseStream) CloseRecv() {
 }
 
 func (s *webrtcBaseStream) closeRecv() {
-	if s.recvClosed {
+	if !s.recvClosed.CompareAndSwap(false, true) {
 		return
 	}
-	s.recvClosed = true
 	s.activeSenders.Wait()
 	close(s.msgCh)
 }
 
 func (s *webrtcBaseStream) close() {
-	s.closeRecvWithError(nil)
+	s.closeWithError(nil, false)
 }
 
 func (s *webrtcBaseStream) Closed() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.closed
+	return s.closed.Load()
 }
 
-func (s *webrtcBaseStream) closeRecvWithError(err error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.closed {
+func (s *webrtcBaseStream) closeFromTrailers(err error) {
+	s.closeWithError(err, err == nil)
+}
+
+var errExpectedClosure = errors.New("internal: closed via normal flow of operations")
+
+func (s *webrtcBaseStream) closeWithError(err error, expected bool) {
+	if !s.closed.CompareAndSwap(false, true) {
 		return
 	}
 	s.closeRecv()
-	s.closed = true
 	if err != nil {
 		s.err = err
+	} else if expected {
+		s.err = errExpectedClosure
 	}
 	s.cancel()
 	s.onDone(s.stream.Id)
