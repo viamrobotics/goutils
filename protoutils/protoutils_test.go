@@ -3,6 +3,7 @@ package protoutils
 import (
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
 	"go.viam.com/test"
@@ -16,6 +17,9 @@ type mapTest struct {
 }
 
 var (
+	myUUIDString = "c0ab974c-f32c-11ed-a05b-0242ac120003"
+	myUUID       = uuid.MustParse(myUUIDString)
+
 	simpleMap    = map[string]bool{"exists": true}
 	nilValueMap  = map[string]interface{}{"here": nil}
 	sliceMap     = map[string][]string{"foo": {"bar"}}
@@ -23,6 +27,7 @@ var (
 	pointerMap   = map[string]interface{}{"foo": &simpleStruct}
 	structMap    = map[string]SimpleStruct{"foo": simpleStruct}
 	structMapMap = map[string]MapStruct{"foo": mapStruct}
+	uuidKeyedMap = map[uuid.UUID]string{myUUID: "foo"}
 	mapTests     = []mapTest{
 		{"simple map", simpleMap, map[string]interface{}{"exists": true}},
 		{"nil value map", nilValueMap, map[string]interface{}{"here": nil}},
@@ -34,6 +39,9 @@ var (
 			"struct map of map", structMapMap,
 			map[string]interface{}{"foo": map[string]interface{}{"status": map[string]interface{}{"foo": "bar"}}},
 		},
+		// Regression test for RSDK-2796 (ensure map keys can be non-strings that
+		// implement fmt.Stringer)
+		{"uuid keyed map", uuidKeyedMap, map[string]interface{}{myUUIDString: "foo"}},
 	}
 )
 
@@ -199,6 +207,15 @@ func TestMarshalMap(t *testing.T) {
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, newStruct.AsMap(), test.ShouldResemble, tc.Expected)
 	}
+}
+
+func TestNonStringMapKey(t *testing.T) {
+	// Regression test for RSDK-2796 (ensure map keys cannot be non-strings that
+	// do not implement fmt.Stringer)
+
+	_, err := marshalMap(map[int]int{1: 1})
+	test.That(t, err, test.ShouldBeError,
+		errors.New("map keys of type int are not strings and do not implement String"))
 }
 
 func TestStructToMap(t *testing.T) {
