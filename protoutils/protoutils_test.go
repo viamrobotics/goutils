@@ -192,10 +192,10 @@ func TestMarshalMap(t *testing.T) {
 		test.That(t, err, test.ShouldBeError, errors.New("data of type []string is not a map"))
 
 		_, err = marshalMap(map[int]string{1: "1"})
-		test.That(t, err, test.ShouldBeError, errors.New("map keys of type int are not strings"))
+		test.That(t, err, test.ShouldBeError, errors.New("map keys of type int are not strings and do not implement String"))
 
 		_, err = marshalMap(map[interface{}]string{"1": "1"})
-		test.That(t, err, test.ShouldBeError, errors.New("map keys of type interface are not strings"))
+		test.That(t, err, test.ShouldBeError, errors.New("map keys of type interface are not strings and do not implement String"))
 	})
 
 	for _, tc := range mapTests {
@@ -207,15 +207,6 @@ func TestMarshalMap(t *testing.T) {
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, newStruct.AsMap(), test.ShouldResemble, tc.Expected)
 	}
-}
-
-func TestNonStringMapKey(t *testing.T) {
-	// Regression test for RSDK-2796 (ensure map keys cannot be non-strings that
-	// do not implement fmt.Stringer)
-
-	_, err := marshalMap(map[int]int{1: 1})
-	test.That(t, err, test.ShouldBeError,
-		errors.New("map keys of type int are not strings and do not implement String"))
 }
 
 func TestStructToMap(t *testing.T) {
