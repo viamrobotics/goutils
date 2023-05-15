@@ -192,11 +192,16 @@ func marshalMap(data interface{}) (map[string]interface{}, error) {
 	var err error
 	for iter.Next() {
 		k := iter.Key()
+		key := k.String()
 		if k.Kind() != reflect.String {
-			return nil, errors.Errorf("map keys of type %v are not strings", k.Kind())
+			kstringer, ok := k.Interface().(fmt.Stringer)
+			if !ok {
+				return nil, errors.Errorf("map keys of type %v are not strings and do not implement String", k.Kind())
+			}
+			key = kstringer.String()
 		}
 		v := iter.Value().Interface()
-		result[k.String()], err = toInterface(v)
+		result[key], err = toInterface(v)
 		if err != nil {
 			return nil, err
 		}
