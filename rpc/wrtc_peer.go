@@ -207,6 +207,8 @@ func newPeerConnectionForServer(
 	if err != nil {
 		return pc, dataChannel, err
 	}
+	defer utils.UncheckedError(negotiationChannel.Close())
+
 	negotiationChannel.OnError(initialDataChannelOnError(pc, logger))
 
 	negotiationChannel.OnOpen(func() {
@@ -352,7 +354,9 @@ func getWebRTCPeerConnectionStats(peerConnection *webrtc.PeerConnection) webrtcP
 
 func initialDataChannelOnError(pc io.Closer, logger golog.Logger) func(err error) {
 	return func(err error) {
-		if errors.Is(err, sctp.ErrResetPacketInStateNotExist) {
+		if errors.Is(err, sctp.ErrResetPacketInStateNotExist) ||
+			isUserInitiatedAbortChunkErr(err) {
+			logger.Debugw("suppressing error from sctp", "error", err)
 			return
 		}
 		logger.Errorw("premature data channel error before WebRTC channel association", "error", err)
