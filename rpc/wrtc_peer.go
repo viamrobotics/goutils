@@ -207,8 +207,6 @@ func newPeerConnectionForServer(
 	if err != nil {
 		return pc, dataChannel, err
 	}
-	defer utils.UncheckedError(negotiationChannel.Close())
-
 	negotiationChannel.OnError(initialDataChannelOnError(pc, logger))
 
 	negotiationChannel.OnOpen(func() {
