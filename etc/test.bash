@@ -8,24 +8,14 @@ if [[ "$1" == "cover" ]]; then
 	COVER=-coverprofile=coverage.txt
 fi
 
-# race isn't supported on the pi or jetson (and possibly other arm boards)
-# https://github.com/golang/go/issues/29948
-if [ "$(uname -m)" != "aarch64" ] || [ "$(uname)" != "Linux" ]; then
-	RACE=-race
-fi
-
-gotestsum --format standard-verbose --jsonfile json.log -- -tags=no_skip $RACE $COVER ./...
-PID=$!
-
-trap "kill -9 $PID" INT
-
-FAIL=0
-wait $PID || let "FAIL+=1"
+# We run analyzetests on every run, pass or fail. We only run analyzecoverage when all tests passed.
+gotestsum --format standard-verbose --jsonfile json.log -- -tags=no_skip -race $COVER ./...
+SUCCESS=$?
 
 cat json.log | go run ./etc/analyzetests/main.go
 
-if [ "$FAIL" != "0" ]; then
-	exit $FAIL
+if [ "$SUCCESS" != "0" ]; then
+	exit 1
 fi
 
 cat coverage.txt | go run ./etc/analyzecoverage/main.go
