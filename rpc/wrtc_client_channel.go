@@ -257,6 +257,7 @@ func (ch *webrtcClientChannel) newStream(
 	activeStream, ok := ch.streams[id]
 	if !ok {
 		if len(ch.streams) == WebRTCMaxStreamCount {
+			ch.mu.Unlock()
 			return nil, errWebRTCMaxStreams
 		}
 		clientStream := newWebRTCClientStream(
