@@ -61,6 +61,7 @@ jobs:
     - name: Test
       env:
         TEST_MONGODB_URI: ${{ secrets.TEST_MONGODB_URI }}
+        MONGODB_TEST_OUTPUT_URI: ${{ secrets.MONGODB_TEST_OUTPUT_URI }}
       run: |
         sudo -u testbot bash -lc 'echo "${{ secrets.ARTIFACT_GOOGLE_APPLICATION_CREDENTIALS }}" | base64 -d > artifact_google_creds.json'
         export ARTIFACT_GOOGLE_APPLICATION_CREDENTIALS=`pwd`/artifact_google_creds.json
