@@ -308,6 +308,7 @@ export async function dialWebRTC(
   host: string,
   opts?: DialOptions
 ): Promise<WebRTCConnection> {
+  signalingAddress = signalingAddress.replace(/(\/)$/, "")
   validateDialOptions(opts);
 
   // TODO(RSDK-2836): In general, this logic should be in parity with the golang implementation.
