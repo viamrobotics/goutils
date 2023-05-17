@@ -31,7 +31,7 @@ func NewPossiblySecureHTTPServer(handler http.Handler, opts HTTPServerOptions) (
 			MaxHeaderBytes: opts.MaxHeaderBytes,
 			Handler:        handler,
 		}
-
+		// TlS settings configured using https://ssl-config.mozilla.org/
 		if opts.TLSAuth {
 			httpServer.TLSConfig = &tls.Config{
 				MinVersion: tls.VersionTLS12,
