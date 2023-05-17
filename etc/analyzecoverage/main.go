@@ -28,8 +28,9 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.mongodb.org/mongo-driver/mongo/readpref"
 	"go.uber.org/multierr"
-	"go.viam.com/utils"
 	"golang.org/x/tools/cover"
+
+	"go.viam.com/utils"
 )
 
 var logger = golog.NewDebugLogger("analyzetests")

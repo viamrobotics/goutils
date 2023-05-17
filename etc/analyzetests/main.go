@@ -12,8 +12,9 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.mongodb.org/mongo-driver/mongo/readpref"
 	"go.uber.org/multierr"
-	"go.viam.com/utils"
 	"gotest.tools/gotestsum/testjson"
+
+	"go.viam.com/utils"
 )
 
 var logger = golog.NewDebugLogger("analyzetests")
@@ -36,16 +37,16 @@ func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) error
 		return nil
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	connectCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	client, err := mongo.NewClient(options.Client().ApplyURI(mongoURI))
 	if err != nil {
 		return err
 	}
-	if err := client.Connect(ctx); err != nil {
+	if err := client.Connect(connectCtx); err != nil {
 		return err
 	}
-	if err := client.Ping(ctx, readpref.Primary()); err != nil {
+	if err := client.Ping(connectCtx, readpref.Primary()); err != nil {
 		return multierr.Combine(err, client.Disconnect(ctx))
 	}
 	defer func() {
@@ -132,7 +133,7 @@ func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) error
 	}
 
 	coll := client.Database("tests").Collection("results")
-	_, err = coll.InsertMany(context.Background(), resultsIfc)
+	_, err = coll.InsertMany(ctx, resultsIfc)
 	return err
 }
 
