@@ -5,7 +5,7 @@ on:
   push:
     branches: [ main ]
   pull_request_target:
-    branches: [ RSDK-906 ]
+    branches: [ main ]
     types: [ labeled ]
 
 jobs:
