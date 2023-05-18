@@ -45,6 +45,22 @@ jobs:
         ref: ${{ github.event.pull_request.head.sha }}
         fetch-depth: 2
 
+    - name: Set main env vars
+      if: github.event_name != 'pull_request_target'
+      run: |
+        echo "GITHUB_X_HEAD_SHA=${GITHUB_SHA}" >> $GITHUB_ENV
+        echo "GITHUB_X_HEAD_REF=${GITHUB_REF_NAME}" >> $GITHUB_ENV
+
+    - name: Set PR env vars
+      if: github.event_name == 'pull_request_target'
+      env:
+        GITHUB_HEAD_REF_SAN: ${{ github.event.pull_request.head.label }}
+      run: |
+        echo "GITHUB_X_HEAD_SHA=${{ github.event.pull_request.head.sha }}" >> $GITHUB_ENV
+        echo "GITHUB_X_HEAD_REF=${GITHUB_HEAD_REF_SAN}" >> $GITHUB_ENV
+        echo "GITHUB_X_PR_BASE_SHA=${{ github.event.pull_request.base.sha }}" >> $GITHUB_ENV
+        echo "GITHUB_X_PR_BASE_REF=${{ github.event.pull_request.base.ref }}" >> $GITHUB_ENV
+
     - name: Verify no uncommitted changes from "make build lint"
       run: |
         git init
@@ -65,7 +81,7 @@ jobs:
       run: |
         sudo -u testbot bash -lc 'echo "${{ secrets.ARTIFACT_GOOGLE_APPLICATION_CREDENTIALS }}" | base64 -d > artifact_google_creds.json'
         export ARTIFACT_GOOGLE_APPLICATION_CREDENTIALS=`pwd`/artifact_google_creds.json
-        sudo -u testbot --preserve-env=ARTIFACT_GOOGLE_APPLICATION_CREDENTIALS,TEST_MONGODB_URI,MONGODB_TEST_OUTPUT_URI bash -lc 'make cover'
+        sudo -u testbot --preserve-env=ARTIFACT_GOOGLE_APPLICATION_CREDENTIALS,TEST_MONGODB_URI,MONGODB_TEST_OUTPUT_URI,GITHUB_SHA,GITHUB_RUN_ID,GITHUB_RUN_NUMBER,GITHUB_RUN_ATTEMPT,GITHUB_X_PR_BASE_SHA,GITHUB_X_PR_BASE_REF,GITHUB_X_HEAD_REF,GITHUB_X_HEAD_SHA,GITHUB_REPOSITORY bash -lc 'make cover'
 
     - name: Add Coverage PR Comment
       uses: marocchino/sticky-pull-request-comment@v2.2.0
