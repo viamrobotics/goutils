@@ -109,7 +109,11 @@ func dial(
 
 	if !dOpts.mdnsOptions.Disable && tryLocal && isJustDomain {
 		conn, cached, err := dialMulticastDNS(ctx, address, logger, dOpts)
-		if err != nil || conn != nil {
+		if err != nil {
+			logger.Warnf("Error performing mDNS. Falling back to regular DNS. Err: %v\n", err)
+		}
+
+		if conn != nil {
 			return conn, cached, err
 		}
 	}
