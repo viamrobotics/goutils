@@ -220,7 +220,7 @@ func dialWebRTC(
 			return nil, err
 		}
 
-		var callFlowWG sync.WaitGroup
+		var pendingCandidates sync.WaitGroup
 		waitOneHost := make(chan struct{})
 		var waitOneHostOnce sync.Once
 		pc.OnICECandidate(func(i *webrtc.ICECandidate) {
@@ -228,7 +228,7 @@ func dialWebRTC(
 				return
 			}
 			if i != nil {
-				callFlowWG.Add(1)
+				pendingCandidates.Add(1)
 				if i.Typ == webrtc.ICECandidateTypeHost {
 					waitOneHostOnce.Do(func() {
 						close(waitOneHost)
@@ -238,7 +238,7 @@ func dialWebRTC(
 			// must spin off to unblock the ICE gatherer
 			utils.PanicCapturingGo(func() {
 				if i != nil {
-					defer callFlowWG.Done()
+					defer pendingCandidates.Done()
 				}
 				select {
 				case <-remoteDescSet:
@@ -246,7 +246,7 @@ func dialWebRTC(
 					return
 				}
 				if i == nil {
-					callFlowWG.Wait()
+					pendingCandidates.Wait()
 					if err := sendDone(); err != nil {
 						sendErr(err)
 					}
