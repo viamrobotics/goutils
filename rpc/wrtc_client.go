@@ -237,6 +237,9 @@ func dialWebRTC(
 			}
 			// must spin off to unblock the ICE gatherer
 			utils.PanicCapturingGo(func() {
+				if i != nil {
+					defer callFlowWG.Done()
+				}
 				select {
 				case <-remoteDescSet:
 				case <-exchangeCtx.Done():
@@ -249,7 +252,6 @@ func dialWebRTC(
 					}
 					return
 				}
-				defer callFlowWG.Done()
 				iProto := iceCandidateToProto(i)
 				if _, err := signalingClient.CallUpdate(exchangeCtx, &webrtcpb.CallUpdateRequest{
 					Uuid: uuid,
