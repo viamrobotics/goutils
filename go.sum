@@ -290,12 +290,11 @@ github.com/dustin/go-humanize v1.0.0/go.mod h1:HtrtbFcZ19U5GC7JDqmcUSB87Iq5E25Kn
 github.com/edaniels/golinters v0.0.4/go.mod h1:KzjC7OrCrRlFxufhH+kQ1Sdyzuj2eanHHzPaWxD3lgk=
 github.com/edaniels/golinters v0.0.5-0.20210512224240-495d3b8eed19 h1:H1ItaK5N1mCc2bp8pN70EM8i4TvHR0Bd6LYN/aNParw=
 github.com/edaniels/golinters v0.0.5-0.20210512224240-495d3b8eed19/go.mod h1:i/zcokIKs893VZA41BS8jTOHW23PlqiiZEa7Y+4Nujk=
-github.com/edaniels/golog v0.0.0-20220930140416-6e52e83a97fc h1:x43xs2HSLmj8OGqiVyefDyDgC0W1B8mbX1cfvkDjqqM=
 github.com/edaniels/golog v0.0.0-20220930140416-6e52e83a97fc/go.mod h1:Ms3gOPiAEPRrgN3kBOF8YIkT2JEXxPFk/HBx/FAkmgA=
 github.com/edaniels/golog v0.0.0-20230215213219-28954395e8d0 h1:nNKMo+7J87eEtmp/tdmaORLS+u6mmcmW/ZpxJCQ+Mu8=
 github.com/edaniels/golog v0.0.0-20230215213219-28954395e8d0/go.mod h1:+Fw6jgiaW75M1z173j7FFZB2Ug5SccFxroA/eM2YFaM=
-github.com/edaniels/zeroconf v1.0.9 h1:QFEH3ISQ+MSXWVSAIY7zwPiZb69PhjPbULAdhrGJHg8=
-github.com/edaniels/zeroconf v1.0.9/go.mod h1:22UUi3EGu1VSKYpObTSRkMvN9ENVT20KgHJbDISznEk=
+github.com/edaniels/zeroconf v1.0.10 h1:NDCpH/MLs6VHUeXFMEyl1uV2oImziAkV8UkEBXjoXcQ=
+github.com/edaniels/zeroconf v1.0.10/go.mod h1:Ug9b0xPy+iOV2Sh2sFS2RieS9litiJb90v2mhQ+MvKY=
 github.com/envoyproxy/go-control-plane v0.9.0/go.mod h1:YTl/9mNaCwkRvm6d1a2C3ymFceY/DCBVvsKhRF0iEA4=
 github.com/envoyproxy/go-control-plane v0.9.1-0.20191026205805-5f8ba28d4473/go.mod h1:YTl/9mNaCwkRvm6d1a2C3ymFceY/DCBVvsKhRF0iEA4=
 github.com/envoyproxy/go-control-plane v0.9.4/go.mod h1:6rpuAdCZL397s3pYoYcLgu1mIlRU8Am5FuJP05cCM98=
