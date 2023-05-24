@@ -35,7 +35,6 @@ docs/
 
 # Test data
 coverage.txt
-coverage.xml
 code-coverage-results.md
 json.log
 

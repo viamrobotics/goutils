@@ -19,7 +19,3 @@ if [ "$SUCCESS" != "0" ]; then
 fi
 
 cat coverage.txt | go run ./etc/analyzecoverage/main.go
-
-if [[ "$1" == "cover" ]]; then
-	gocov convert coverage.txt | gocov-xml > coverage.xml
-fi
