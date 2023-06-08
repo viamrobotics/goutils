@@ -113,12 +113,14 @@ func (s *webrtcBaseStream) RecvMsg(m interface{}) error {
 	}
 }
 
+// Must _not_ be holding the `webrtcBaseStream.mu` mutex.
 func (s *webrtcBaseStream) CloseRecv() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.closeRecv()
 }
 
+// Must be called with the `webrtcBaseStream.mu` mutex held.
 func (s *webrtcBaseStream) closeRecv() {
 	if !s.recvClosed.CompareAndSwap(false, true) {
 		return
@@ -127,22 +129,23 @@ func (s *webrtcBaseStream) closeRecv() {
 	close(s.msgCh)
 }
 
+// Must be called with the `webrtcBaseStream.mu` mutex held.
 func (s *webrtcBaseStream) close() {
 	s.closeWithError(nil, false)
 }
 
 func (s *webrtcBaseStream) Closed() bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	return s.closed.Load()
 }
 
+// Must be called with the `webrtcBaseStream.mu` mutex held.
 func (s *webrtcBaseStream) closeFromTrailers(err error) {
 	s.closeWithError(err, err == nil)
 }
 
 var errExpectedClosure = errors.New("internal: closed via normal flow of operations")
 
+// Must be called with the `webrtcBaseStream.mu` mutex held.
 func (s *webrtcBaseStream) closeWithError(err error, expected bool) {
 	if !s.closed.CompareAndSwap(false, true) {
 		return
