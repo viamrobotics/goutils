@@ -344,6 +344,7 @@ func (s *webrtcServerStream) processMessage(msg *webrtcpb.RequestMessage) {
 	}
 }
 
+// Must not be called with the `s.webrtcBaseStream.mu` mutex held.
 func (s *webrtcServerStream) closeWithSendError(err error) (writeErr error) {
 	if !s.sendClosed.CompareAndSwap(false, true) {
 		return nil
@@ -353,7 +354,11 @@ func (s *webrtcServerStream) closeWithSendError(err error) (writeErr error) {
 			writeErr = nil
 		}
 	}()
-	defer s.close()
+	defer func() {
+		s.webrtcBaseStream.mu.Lock()
+		defer s.webrtcBaseStream.mu.Unlock()
+		s.close()
+	}()
 	if err != nil && (errors.Is(err, io.ErrClosedPipe)) {
 		return nil
 	}
