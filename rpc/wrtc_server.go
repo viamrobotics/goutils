@@ -212,7 +212,14 @@ func (srv *webrtcServer) unaryHandler(ss interface{}, handler methodHandler) han
 		if err != nil {
 			return s.closeWithSendError(err)
 		}
-		return s.closeWithSendError(s.SendMsg(response))
+
+		err = s.SendMsg(response)
+		if err != nil {
+			// `ServerStream.SendMsg` closes itself on error.
+			return err
+		}
+
+		return s.closeWithSendError(nil)
 	}
 }
 
