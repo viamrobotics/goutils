@@ -24,7 +24,7 @@ import (
 // directly connected to a Server that will handle the actual calls/connections over WebRTC
 // data channels.
 type webrtcSignalingAnswerer struct {
-	mu sync.Mutex // mu guards the Start and Stop methods so they do not happen concurrently.
+	startStopMu sync.Mutex // startStopMu guards the Start and Stop methods so they do not happen concurrently.
 
 	address                 string
 	hosts                   []string
@@ -73,8 +73,8 @@ const (
 // Start connects to the signaling service and listens forever until instructed to stop
 // via Stop.
 func (ans *webrtcSignalingAnswerer) Start() {
-	ans.mu.Lock()
-	defer ans.mu.Unlock()
+	ans.startStopMu.Lock()
+	defer ans.startStopMu.Unlock()
 
 	for i := 0; i < defaultMaxAnswerers; i++ {
 		ans.startAnswerer()
@@ -195,8 +195,8 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 
 // Stop waits for the answer to stop listening and return.
 func (ans *webrtcSignalingAnswerer) Stop() {
-	ans.mu.Lock()
-	defer ans.mu.Unlock()
+	ans.startStopMu.Lock()
+	defer ans.startStopMu.Unlock()
 
 	ans.cancelBackgroundWorkers()
 	ans.activeBackgroundWorkers.Wait()
