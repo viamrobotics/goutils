@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/edaniels/golog"
+	"github.com/pion/dtls/v2"
 	"github.com/pion/sctp"
 	"github.com/pion/webrtc/v3"
 	"google.golang.org/protobuf/proto"
@@ -144,7 +145,13 @@ func (ch *webrtcBaseChannel) closeWithReason(err error) error {
 	ch.closedReason = err
 	ch.cancel()
 	ch.bufferWriteCond.Broadcast()
-	return ch.peerConn.Close()
+
+	// Underlying connection may already be closed; ignore "conn is closed"
+	// errors.
+	if err := ch.peerConn.Close(); !errors.Is(err, dtls.ErrConnClosed) {
+		return err
+	}
+	return nil
 }
 
 func (ch *webrtcBaseChannel) Close() error {
@@ -174,8 +181,19 @@ func (ch *webrtcBaseChannel) onChannelClose() {
 	}
 }
 
+// isUserInitiatedAbortChunkErr returns true if the error is an abort chunk
+// error that the user initiated through Close. Certain browsers (Safari,
+// Chrome and potentially others) close RTCPeerConnections with this type of
+// abort chunk that is not indicative of an actual state of error.
+func isUserInitiatedAbortChunkErr(err error) bool {
+	return err != nil && errors.Is(err, sctp.ErrChunk) &&
+		strings.Contains(err.Error(), "User Initiated Abort: Close called")
+}
+
 func (ch *webrtcBaseChannel) onChannelError(err error) {
-	if errors.Is(err, sctp.ErrResetPacketInStateNotExist) {
+	if errors.Is(err, sctp.ErrResetPacketInStateNotExist) ||
+		isUserInitiatedAbortChunkErr(err) {
+		ch.logger.Debugw("suppressing error from sctp", "error", err)
 		return
 	}
 	ch.logger.Errorw("channel error", "error", err)

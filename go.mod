@@ -14,8 +14,8 @@ require (
 	github.com/bufbuild/buf v1.1.0
 	github.com/coreos/go-oidc/v3 v3.1.0
 	github.com/edaniels/golinters v0.0.5-0.20210512224240-495d3b8eed19
-	github.com/edaniels/golog v0.0.0-20220930140416-6e52e83a97fc
-	github.com/edaniels/zeroconf v1.0.9
+	github.com/edaniels/golog v0.0.0-20230215213219-28954395e8d0
+	github.com/edaniels/zeroconf v1.0.10
 	github.com/fatih/color v1.14.1
 	github.com/fsnotify/fsnotify v1.5.4
 	github.com/fullstorydev/grpcurl v1.8.0
@@ -29,6 +29,7 @@ require (
 	github.com/jacobsa/go-serial v0.0.0-20180131005756-15cf729a72d4
 	github.com/lestrrat-go/jwx v1.2.25
 	github.com/mitchellh/mapstructure v1.5.0
+	github.com/pion/dtls/v2 v2.2.4
 	github.com/pion/ice/v2 v2.3.0
 	github.com/pion/interceptor v0.1.12
 	github.com/pion/logging v0.2.2
@@ -47,11 +48,13 @@ require (
 	goji.io v2.0.2+incompatible
 	golang.org/x/net v0.9.0
 	golang.org/x/oauth2 v0.4.0
+	golang.org/x/tools v0.6.0
 	google.golang.org/api v0.103.0
 	google.golang.org/genproto v0.0.0-20230110181048-76db0878b65f
 	google.golang.org/grpc v1.54.0
 	google.golang.org/grpc/cmd/protoc-gen-go-grpc v1.1.0
 	google.golang.org/protobuf v1.28.1
+	gotest.tools/gotestsum v1.10.0
 	howett.net/plist v1.0.0
 )
 
@@ -99,6 +102,7 @@ require (
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.0.0-20210816181553-5444fa50b93d // indirect
 	github.com/denis-tingaikin/go-header v0.4.3 // indirect
 	github.com/desertbit/timer v0.0.0-20180107155436-c41aec40b27f // indirect
+	github.com/dnephin/pflag v1.0.7 // indirect
 	github.com/envoyproxy/go-control-plane v0.10.3 // indirect
 	github.com/envoyproxy/protoc-gen-validate v0.9.1 // indirect
 	github.com/esimonov/ifshort v1.0.4 // indirect
@@ -135,6 +139,7 @@ require (
 	github.com/golangci/revgrep v0.0.0-20220804021717-745bb2f7c2e6 // indirect
 	github.com/golangci/unconvert v0.0.0-20180507085042-28b1c447d1f4 // indirect
 	github.com/google/go-cmp v0.5.9 // indirect
+	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.2.0 // indirect
 	github.com/googleapis/gax-go/v2 v2.7.0 // indirect
 	github.com/gordonklaus/ineffassign v0.0.0-20230107090616-13ace0543b28 // indirect
@@ -202,7 +207,6 @@ require (
 	github.com/pelletier/go-toml v1.9.5 // indirect
 	github.com/pelletier/go-toml/v2 v2.0.5 // indirect
 	github.com/pion/datachannel v1.5.5 // indirect
-	github.com/pion/dtls/v2 v2.2.4 // indirect
 	github.com/pion/mdns v0.0.8-0.20230502060824-17c664ea7d5c // indirect
 	github.com/pion/randutil v0.1.0 // indirect
 	github.com/pion/rtcp v1.2.10 // indirect
@@ -279,7 +283,6 @@ require (
 	golang.org/x/sys v0.7.0 // indirect
 	golang.org/x/term v0.7.0 // indirect
 	golang.org/x/text v0.9.0 // indirect
-	golang.org/x/tools v0.6.0 // indirect
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect

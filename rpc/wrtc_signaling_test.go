@@ -150,3 +150,38 @@ func testWebRTCSignaling(t *testing.T, signalingCallQueue WebRTCCallQueue, logge
 		})
 	}
 }
+
+func TestWebRTCAnswererImmediateStop(t *testing.T) {
+	// Primarily a regression test for RSDK-3441.
+
+	logger := golog.NewTestLogger(t)
+	signalingCallQueue := NewMemoryWebRTCCallQueue(logger)
+	defer func() {
+		test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
+	}()
+
+	signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, logger)
+	defer signalingServer.Close()
+
+	grpcListener, err := net.Listen("tcp", "localhost:0")
+	test.That(t, err, test.ShouldBeNil)
+
+	webrtcServer := newWebRTCServer(logger)
+	defer webrtcServer.Stop()
+	webrtcServer.RegisterService(&echopb.EchoService_ServiceDesc, &echoserver.Server{})
+
+	hosts := []string{"foo", "bar"}
+	answerer := newWebRTCSignalingAnswerer(
+		grpcListener.Addr().String(),
+		hosts,
+		webrtcServer,
+		[]DialOption{WithInsecure()},
+		webrtc.Configuration{},
+		logger,
+	)
+
+	// Running both asynchronously means Stop will potentially happen before Start,
+	// but this setup still ensures that the two methods do not race each other.
+	go answerer.Start()
+	go answerer.Stop()
+}

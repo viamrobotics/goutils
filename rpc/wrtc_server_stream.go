@@ -167,14 +167,15 @@ func init() {
 // calling RecvMsg on the same stream at the same time, but it is undefined behavior
 // to call SendMsg on the same stream in different goroutines.
 func (s *webrtcServerStream) SendMsg(m interface{}) (err error) {
-	s.webrtcBaseStream.mu.RLock()
-	defer s.webrtcBaseStream.mu.RUnlock()
 	if s.sendClosed.Load() {
-		s.webrtcBaseStream.mu.RUnlock()
 		return io.ErrClosedPipe
 	}
 
+	s.webrtcBaseStream.mu.RLock()
 	defer func() {
+		// `closeWithSendError` takes locks the `webrtcBaseStream.mu` RWLock in writer mode. Release
+		// the lock before proceeding.
+		s.webrtcBaseStream.mu.RUnlock()
 		if err != nil {
 			err = multierr.Combine(err, s.closeWithSendError(err))
 		}
@@ -344,6 +345,7 @@ func (s *webrtcServerStream) processMessage(msg *webrtcpb.RequestMessage) {
 	}
 }
 
+// Must not be called with the `s.webrtcBaseStream.mu` mutex held.
 func (s *webrtcServerStream) closeWithSendError(err error) (writeErr error) {
 	if !s.sendClosed.CompareAndSwap(false, true) {
 		return nil
@@ -353,7 +355,11 @@ func (s *webrtcServerStream) closeWithSendError(err error) (writeErr error) {
 			writeErr = nil
 		}
 	}()
-	defer s.close()
+	defer func() {
+		s.webrtcBaseStream.mu.Lock()
+		defer s.webrtcBaseStream.mu.Unlock()
+		s.close()
+	}()
 	if err != nil && (errors.Is(err, io.ErrClosedPipe)) {
 		return nil
 	}

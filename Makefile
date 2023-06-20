@@ -31,7 +31,8 @@ tool-install:
 		github.com/edaniels/golinters/cmd/combined \
 		github.com/golangci/golangci-lint/cmd/golangci-lint \
 		github.com/AlekSi/gocov-xml \
-		github.com/axw/gocov/gocov
+		github.com/axw/gocov/gocov \
+		gotest.tools/gotestsum
 
 buf: buf-go buf-web
 
@@ -55,12 +56,11 @@ lint-go: tool-install
 	export pkgs="`go list -f '{{.Dir}}' ./... | grep -v /proto/`" && echo "$$pkgs" | xargs go vet -vettool=$(TOOL_BIN)/combined
 	GOGC=50 $(TOOL_BIN)/golangci-lint run -v --fix --config=./etc/.golangci.yaml
 
-cover:
-	go test -tags=no_skip -race -coverprofile=coverage.txt ./...
-	PATH=$(PATH_WITH_TOOLS) gocov convert coverage.txt | PATH=$(PATH_WITH_TOOLS) gocov-xml > coverage.xml
+cover: tool-install
+	PATH=$(PATH_WITH_TOOLS) ./etc/test.bash cover
 
-test:
-	go test -tags=no_skip -race ./...
+test: tool-install
+	PATH=$(PATH_WITH_TOOLS) ./etc/test.bash
 
 # examples
 

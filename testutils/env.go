@@ -4,6 +4,7 @@ import (
 	"net"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/edaniels/golog"
 	"github.com/pkg/errors"
@@ -30,7 +31,7 @@ func SkipUnlessInternet(tb testing.TB) {
 	tb.Helper()
 	if internetConnected == nil {
 		var connected bool
-		conn, err := net.Dial("tcp", "mozilla.org:80")
+		conn, err := net.DialTimeout("tcp", "mozilla.org:80", 5*time.Second)
 		if err == nil {
 			test.That(tb, conn.Close(), test.ShouldBeNil)
 			connected = true
