@@ -193,7 +193,6 @@ func isUserInitiatedAbortChunkErr(err error) bool {
 func (ch *webrtcBaseChannel) onChannelError(err error) {
 	if errors.Is(err, sctp.ErrResetPacketInStateNotExist) ||
 		isUserInitiatedAbortChunkErr(err) {
-		ch.logger.Debugw("suppressing error from sctp", "error", err)
 		return
 	}
 	ch.logger.Errorw("channel error", "error", err)
