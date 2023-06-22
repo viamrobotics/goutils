@@ -354,7 +354,6 @@ func initialDataChannelOnError(pc io.Closer, logger golog.Logger) func(err error
 	return func(err error) {
 		if errors.Is(err, sctp.ErrResetPacketInStateNotExist) ||
 			isUserInitiatedAbortChunkErr(err) {
-			logger.Debugw("suppressing error from sctp", "error", err)
 			return
 		}
 		logger.Errorw("premature data channel error before WebRTC channel association", "error", err)
