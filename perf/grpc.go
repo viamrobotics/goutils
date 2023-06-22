@@ -11,16 +11,21 @@ import (
 // See: https://opencensus.io/guides/grpc/go/#1
 
 func registerGrpcViews() error {
-	OrgID, _ := tag.NewKey("org-id")
-	tagsView := &view.View{
-		Name:        "server/rpc_message_counts",
-		Description: "number of messages received  in each rpc call",
-		Measure: ocstats.Int64("rpc_message_counts", "Number of messages received in each RPC. Has value 1 for non-streaming RPCs.",
+
+	OrgID, err := tag.NewKey("orgId")
+	if err != nil {
+		return err
+	}
+	orgView := &view.View{
+		Name:        "rpc_message_counts_with_org",
+		Description: "number of messages received  in each rpc call with organization tags",
+		Measure: ocstats.Int64("rpc_message_counts", "Number of messages received in each RPC with organization tags. Has value 1 for non-streaming RPCs.",
 			ocstats.UnitDimensionless),
 		Aggregation: view.Count(),
-		TagKeys:     []tag.Key{OrgID},
+		TagKeys:     []tag.Key{OrgID, ocgrpc.KeyServerMethod, ocgrpc.KeyServerStatus},
 	}
-	views := append(ocgrpc.DefaultServerViews, tagsView)
+
+	views := append(ocgrpc.DefaultServerViews, orgView)
 	return view.Register(views...)
 }
 
