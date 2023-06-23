@@ -79,8 +79,14 @@ func (ans *webrtcSignalingAnswerer) Start() {
 func checkExceptionalError(err error) error {
 	s, isGRPCErr := status.FromError(err)
 	if err == nil || errors.Is(err, io.EOF) ||
-		(isGRPCErr && (s.Code() == codes.DeadlineExceeded || s.Code() == codes.Canceled || strings.Contains(s.Message(), "too_many_pings"))) ||
-		utils.FilterOutError(err, context.Canceled) == nil {
+		utils.FilterOutError(err, context.Canceled) == nil ||
+		(isGRPCErr &&
+			(s.Code() == codes.DeadlineExceeded ||
+				s.Code() == codes.Canceled ||
+				strings.Contains(s.Message(), "too_many_pings") ||
+				// RSDK-3025: Cloudrun has a max one hour timeout which will terminate gRPC streams,
+				// but leave the underlying connection open.
+				strings.Contains(s.Message(), "upstream max stream duration reached"))) {
 		return nil
 	}
 	return err
@@ -153,6 +159,9 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 			if err == nil {
 				err = ans.answer(client)
 			}
+			// Exceptional errors represent a broken connection and require reconnecting. Common
+			// errors represent that an operation has failed, but can be safely retried over the
+			// existing connection.
 			if checkExceptionalError(err) == nil {
 				continue
 			}
