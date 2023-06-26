@@ -56,6 +56,19 @@ func (u *UserInfo) GetBool(name string) bool {
 	return b
 }
 
+// GetLastLogin gets the user last login time.
+func (u *UserInfo) GetLastLogin() string {
+	if u.Properties == nil {
+		return ""
+	}
+
+	ll, ok := u.Properties["updated_at"].(string)
+	if !ok {
+		return ""
+	}
+	return ll
+}
+
 // GetLoggedInUserInfo figures out if the session is associated with a user.
 func GetLoggedInUserInfo(sessions *SessionManager, r *http.Request) (UserInfo, error) {
 	ui := UserInfo{LoggedIn: false, Properties: map[string]interface{}{"email": ""}}
