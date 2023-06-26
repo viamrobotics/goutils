@@ -57,6 +57,8 @@ func (u *UserInfo) GetBool(name string) bool {
 }
 
 // GetLastLogin gets the user last login time.
+// Updated_at is a timestamp indicating when the user's profile was last updated/modified.
+// Changes to last_login are considered updates, so most of the time, updated_at will match last_login.
 func (u *UserInfo) GetLastLogin() string {
 	if u.Properties == nil {
 		return ""
