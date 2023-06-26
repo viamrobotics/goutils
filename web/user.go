@@ -62,11 +62,11 @@ func (u *UserInfo) GetLastLogin() string {
 		return ""
 	}
 
-	ll, ok := u.Properties["updated_at"].(string)
+	lastLogin, ok := u.Properties["updated_at"].(string)
 	if !ok {
 		return ""
 	}
-	return ll
+	return lastLogin
 }
 
 // GetLoggedInUserInfo figures out if the session is associated with a user.
