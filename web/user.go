@@ -56,19 +56,17 @@ func (u *UserInfo) GetBool(name string) bool {
 	return b
 }
 
-// GetLastLogin gets the user last login time.
-// Updated_at is a timestamp indicating when the user's profile was last updated/modified.
-// Changes to last_login are considered updates, so most of the time, updated_at will match last_login.
-func (u *UserInfo) GetLastLogin() string {
+// GetUpdatedAt gets the timestamp indicating when the user's auth0 profile was last updated/modified.
+func (u *UserInfo) GetUpdatedAt() string {
 	if u.Properties == nil {
 		return ""
 	}
 
-	lastLogin, ok := u.Properties["updated_at"].(string)
+	updatedAt, ok := u.Properties["updated_at"].(string)
 	if !ok {
 		return ""
 	}
-	return lastLogin
+	return updatedAt
 }
 
 // GetLoggedInUserInfo figures out if the session is associated with a user.
