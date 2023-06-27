@@ -427,7 +427,7 @@ func remoteSpanContextFromHeaders(headers *webrtcpb.RequestHeaders) (trace.SpanC
 	// Extract trace-id
 	traceIDMetadata := headers.Metadata.Md["trace-id"]
 	if traceIDMetadata == nil || len(traceIDMetadata.Values) == 0 {
-		return trace.SpanContext{}, fmt.Errorf("trace-id is missing from metadata")
+		return trace.SpanContext{}, errors.New("trace-id is missing from metadata")
 	}
 
 	traceIDBytes, err := hex.DecodeString(traceIDMetadata.Values[0])
@@ -449,7 +449,7 @@ func remoteSpanContextFromHeaders(headers *webrtcpb.RequestHeaders) (trace.SpanC
 	// Extract trace-options
 	traceOptionsMetadata := headers.Metadata.Md["trace-options"]
 	if traceOptionsMetadata == nil || len(traceOptionsMetadata.Values) == 0 {
-		return trace.SpanContext{}, fmt.Errorf("trace-options is missing from metadata")
+		return trace.SpanContext{}, errors.New("trace-options is missing from metadata")
 	}
 
 	traceOptionsUint, err := strconv.ParseUint(traceOptionsMetadata.Values[0], 10, 32)
