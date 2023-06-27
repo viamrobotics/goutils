@@ -3,6 +3,7 @@ package rpc
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path"
 	"sync"
 	"sync/atomic"
@@ -13,6 +14,7 @@ import (
 	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
 	"github.com/pion/webrtc/v3"
+	"go.opencensus.io/trace"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
@@ -223,7 +225,16 @@ func (ch *webrtcClientChannel) newClientStream(ctx context.Context, method strin
 }
 
 func makeRequestHeaders(ctx context.Context, method string) *webrtcpb.RequestHeaders {
-	headersMD, _ := metadata.FromOutgoingContext(ctx)
+	headersMD, ok := metadata.FromOutgoingContext(ctx)
+	if !ok {
+		headersMD = metadata.New(map[string]string{})
+	}
+
+	span := trace.FromContext(ctx)
+	headersMD.Append("trace-id", span.SpanContext().TraceID.String())
+	headersMD.Append("span-id", span.SpanContext().SpanID.String())
+	headersMD.Append("trace-options", fmt.Sprint(span.SpanContext().TraceOptions))
+
 	var timeout time.Duration
 	if deadline, ok := ctx.Deadline(); ok {
 		timeout = time.Until(deadline)
