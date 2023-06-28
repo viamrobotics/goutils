@@ -2,18 +2,15 @@ package rpc
 
 import (
 	"context"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"math"
-	"strconv"
 	"sync/atomic"
 
 	"github.com/edaniels/golog"
 	protov1 "github.com/golang/protobuf/proto" //nolint:staticcheck
 	"github.com/pion/sctp"
 	"github.com/pkg/errors"
-	"go.opencensus.io/trace"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -295,18 +292,18 @@ func (s *webrtcServerStream) processHeaders(headers *webrtcpb.RequestHeaders) {
 		return
 	}
 
+	md, ok := metadata.FromIncomingContext(s.ctx)
+	if !ok {
+		md = metadata.New(map[string]string{})
+	}
+	md.Append("trace-id", headers.Metadata.Md["trace-id"].Values[0])
+	md.Append("span-id", headers.Metadata.Md["span-id"].Values[0])
+	md.Append("trace-options", headers.Metadata.Md["trace-options"].Values[0])
+	s.ctx = metadata.NewIncomingContext(s.ctx, md)
+
 	s.headersReceived = true
 	s.ch.server.activeBackgroundWorkers.Add(1)
 	utils.PanicCapturingGo(func() {
-		remoteSpanContext, err := remoteSpanContextFromHeaders(headers)
-		if err == nil {
-			var span *trace.Span
-			s.ctx, span = trace.StartSpanWithRemoteParent(s.ctx, "server_root", remoteSpanContext)
-			defer span.End()
-		} else {
-			s.logger.Warnf("client did not send valid Span metadata in headers, local Spans will not be linked to client. reason: %w", err)
-		}
-
 		defer func() {
 			<-s.ch.server.callTickets // return a ticket
 		}()
@@ -419,44 +416,4 @@ func ErrorToStatus(err error) *status.Status {
 		}
 	}
 	return respStatus
-}
-
-func remoteSpanContextFromHeaders(headers *webrtcpb.RequestHeaders) (trace.SpanContext, error) {
-	var err error
-
-	// Extract trace-id
-	traceIDMetadata := headers.Metadata.Md["trace-id"]
-	if traceIDMetadata == nil || len(traceIDMetadata.Values) == 0 {
-		return trace.SpanContext{}, errors.New("trace-id is missing from metadata")
-	}
-
-	traceIDBytes, err := hex.DecodeString(traceIDMetadata.Values[0])
-	if err != nil {
-		return trace.SpanContext{}, fmt.Errorf("trace-id could not be decoded: %w", err)
-	}
-	var traceID trace.TraceID
-	copy(traceID[:], traceIDBytes)
-
-	// Extract span-id
-	spanIDMetadata := headers.Metadata.Md["span-id"]
-	spanIDBytes, err := hex.DecodeString(spanIDMetadata.Values[0])
-	if err != nil {
-		return trace.SpanContext{}, fmt.Errorf("span-id could not be decoded: %w", err)
-	}
-	var spanID trace.SpanID
-	copy(spanID[:], spanIDBytes)
-
-	// Extract trace-options
-	traceOptionsMetadata := headers.Metadata.Md["trace-options"]
-	if traceOptionsMetadata == nil || len(traceOptionsMetadata.Values) == 0 {
-		return trace.SpanContext{}, errors.New("trace-options is missing from metadata")
-	}
-
-	traceOptionsUint, err := strconv.ParseUint(traceOptionsMetadata.Values[0], 10, 32)
-	if err != nil {
-		return trace.SpanContext{}, fmt.Errorf("trace-options could not be parsed as uint: %w", err)
-	}
-	traceOptions := trace.TraceOptions(traceOptionsUint)
-
-	return trace.SpanContext{TraceID: traceID, SpanID: spanID, TraceOptions: traceOptions, Tracestate: nil}, nil
 }
