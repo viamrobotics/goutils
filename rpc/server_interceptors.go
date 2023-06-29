@@ -3,11 +3,11 @@ package rpc
 import (
 	"context"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"strconv"
 
 	"github.com/edaniels/golog"
+	"github.com/pkg/errors"
 	"go.opencensus.io/trace"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
@@ -17,21 +17,20 @@ import (
 // UnaryServerTracingInterceptor starts a new Span if Span metadata exists in the context.
 func UnaryServerTracingInterceptor(logger golog.Logger) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-		remoteSpanContext, err := remoteSpanContextFromContext(ctx)
-		var span *trace.Span
-		if err == nil {
+		if remoteSpanContext, err := remoteSpanContextFromContext(ctx); err != nil {
+			logger.Warnf("client did not send valid Span metadata in headers, local Spans will not be linked to client", "error", err)
+		} else {
+			var span *trace.Span
 			ctx, span = trace.StartSpanWithRemoteParent(ctx, "server_root", remoteSpanContext)
 			defer span.End()
-		} else {
-			logger.Warnf("client did not send valid Span metadata in headers, local Spans will not be linked to client. reason: %w", err)
 		}
 
 		resp, err := handler(ctx, req)
 		if err == nil {
 			return resp, nil
 		}
-		if _, ok := status.FromError(err); ok {
-			return nil, err
+		if s, ok := status.FromError(err); ok {
+			return nil, errors.Wrapf(err, s.Message())
 		}
 		if s := status.FromContextError(err); s != nil {
 			return nil, s.Err()
@@ -43,21 +42,20 @@ func UnaryServerTracingInterceptor(logger golog.Logger) grpc.UnaryServerIntercep
 // StreamServerTracingInterceptor starts a new Span if Span metadata exists in the context.
 func StreamServerTracingInterceptor(logger golog.Logger) grpc.StreamServerInterceptor {
 	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-		remoteSpanContext, err := remoteSpanContextFromContext(stream.Context())
-		if err == nil {
+		if remoteSpanContext, err := remoteSpanContextFromContext(stream.Context()); err != nil {
+			logger.Warnf("client did not send valid Span metadata in headers, local Spans will not be linked to client", "error", err)
+		} else {
 			newCtx, span := trace.StartSpanWithRemoteParent(stream.Context(), "server_root", remoteSpanContext)
 			defer span.End()
 			stream = wrapServerStream(newCtx, stream)
-		} else {
-			logger.Warnf("client did not send valid Span metadata in headers, local Spans will not be linked to client. reason: %w", err)
 		}
 
-		err = handler(srv, stream)
+		err := handler(srv, stream)
 		if err == nil {
 			return nil
 		}
-		if _, ok := status.FromError(err); ok {
-			return err
+		if s, ok := status.FromError(err); ok {
+			return errors.Wrapf(err, s.Message())
 		}
 		if s := status.FromContextError(err); s != nil {
 			return s.Err()
@@ -71,6 +69,7 @@ type serverStreamWrapper struct {
 	ctx context.Context
 }
 
+// Context returns the context for this stream.
 func (s *serverStreamWrapper) Context() context.Context {
 	return s.ctx
 }
@@ -116,7 +115,7 @@ func remoteSpanContextFromContext(ctx context.Context) (trace.SpanContext, error
 		return trace.SpanContext{}, errors.New("trace-options is missing from metadata")
 	}
 
-	traceOptionsUint, err := strconv.ParseUint(traceOptionsMetadata[0], 10, 32)
+	traceOptionsUint, err := strconv.ParseUint(traceOptionsMetadata[0], 10 /* base 10 */, 32 /* 32-bit */)
 	if err != nil {
 		return trace.SpanContext{}, fmt.Errorf("trace-options could not be parsed as uint: %w", err)
 	}
