@@ -292,24 +292,6 @@ func (s *webrtcServerStream) processHeaders(headers *webrtcpb.RequestHeaders) {
 		return
 	}
 
-	// inject tracing metadata into context
-	md, ok := metadata.FromIncomingContext(s.ctx)
-	if !ok {
-		md = metadata.New(map[string]string{})
-	}
-	if headers.Metadata != nil {
-		if strings, ok := headers.Metadata.Md["trace-id"]; ok {
-			md.Append("trace-id", strings.Values[0])
-		}
-		if strings, ok := headers.Metadata.Md["span-id"]; ok {
-			md.Append("span-id", strings.Values[0])
-		}
-		if strings, ok := headers.Metadata.Md["trace-options"]; ok {
-			md.Append("trace-options", strings.Values[0])
-		}
-	}
-	s.ctx = metadata.NewIncomingContext(s.ctx, md)
-
 	s.headersReceived = true
 	s.ch.server.activeBackgroundWorkers.Add(1)
 	utils.PanicCapturingGo(func() {

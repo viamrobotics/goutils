@@ -33,12 +33,11 @@ func StreamClientTracingInterceptor() grpc.StreamClientInterceptor {
 
 func contextWithSpanMetadata(ctx context.Context) context.Context {
 	span := trace.FromContext(ctx)
-	md, ok := metadata.FromOutgoingContext(ctx)
-	if !ok {
-		md = metadata.New(make(map[string]string))
-	}
-	md.Append("trace-id", span.SpanContext().TraceID.String())
-	md.Append("span-id", span.SpanContext().SpanID.String())
-	md.Append("trace-options", fmt.Sprint(span.SpanContext().TraceOptions))
-	return metadata.NewOutgoingContext(ctx, md)
+	ctx = metadata.AppendToOutgoingContext(
+		ctx,
+		"trace-id", span.SpanContext().TraceID.String(),
+		"span-id", span.SpanContext().SpanID.String(),
+		"trace-options", fmt.Sprint(span.SpanContext().TraceOptions),
+	)
+	return ctx
 }
