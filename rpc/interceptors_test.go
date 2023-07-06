@@ -10,9 +10,11 @@ import (
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/pkg/errors"
 	"go.opencensus.io/trace"
+	"go.uber.org/atomic"
 	"go.viam.com/test"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
 	pb "go.viam.com/utils/proto/rpc/examples/echo/v1"
@@ -34,10 +36,13 @@ func TestTracingInterceptors(t *testing.T) {
 		serverSpan := trace.FromContext(ctx)
 
 		// Ideally we would test that serverSpan's parent span ID is the same as
-		// clientSpan's ID, but we can't access that data from here so this is
-		// the best we can do (which still tests that serverSpan and clientSpan
-		// are somehow related to one another)
-		test.That(t, serverSpan.SpanContext().TraceID, test.ShouldEqual, clientSpan.SpanContext().TraceID)
+		// clientSpan's ID, but we can't access that data from here so testing
+		// that they share the same trace ID is the best we can do (which still
+		// tests that serverSpan and clientSpan are somehow related to one
+		// another)
+		currentMD, _ := metadata.FromIncomingContext(ctx)
+		currentMD.Set("captured-trace-id", serverSpan.SpanContext().TraceID.String())
+		grpc.SetHeader(ctx, currentMD)
 		resp, err := handler(ctx, req)
 		if err == nil {
 			return resp, nil
@@ -51,23 +56,15 @@ func TestTracingInterceptors(t *testing.T) {
 		return nil, err
 	}
 
-	// testingStream := false
-
+	var capturedStreamTraceID atomic.String
 	streamServerTestingInterceptor := func(
 		srv interface{}, ss grpc.ServerStream,
 		info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		serverSpan := trace.FromContext(ss.Context())
 
-		// Some sub-processes invoked by grpc.DialContext will bypass the
-		// streamClientTracingInterceptor, meaning the clientSpan's metadata
-		// will not be injected into the HTTP headers to be received by the
-		// streamServerTracingInterceptor and then injected into the server-side
-		// context, causing this test to fail. We're not concerned with those
-		// processes since they're internal to the libraries and not in direct
-		// response to a client request.
-		// if testingStream {
-		test.That(t, serverSpan.SpanContext().TraceID, test.ShouldEqual, clientSpan.SpanContext().TraceID)
-		// }
+		if info.FullMethod == "/proto.rpc.examples.echo.v1.EchoService/EchoMultiple" {
+			capturedStreamTraceID.Store(serverSpan.SpanContext().TraceID.String())
+		}
 		err := handler(srv, ss)
 		if err == nil {
 			return nil
@@ -123,17 +120,26 @@ func TestTracingInterceptors(t *testing.T) {
 		errChan <- rpcServer.Serve(listener)
 	}()
 
-	/*unaryTest*/
-	_ = func(ctx context.Context, client pb.EchoServiceClient) {
-		resp, err := client.Echo(ctx, &pb.EchoRequest{Message: "hello"})
+	defer func() {
+		test.That(t, rpcServer.Stop(), test.ShouldBeNil)
+		err = <-errChan
+		test.That(t, err, test.ShouldBeNil)
+	}()
+
+	unaryTest := func(ctx context.Context, client pb.EchoServiceClient) {
+		t.Helper()
+		var mdResp metadata.MD
+		resp, err := client.Echo(ctx, &pb.EchoRequest{Message: "hello"}, grpc.Header(&mdResp))
 		test.That(t, resp.Message, test.ShouldEqual, "hello")
 		test.That(t, err, test.ShouldBeNil)
+		test.That(t, mdResp.Get("captured-trace-id"),
+			test.ShouldResemble, []string{clientSpan.SpanContext().TraceID.String()})
 	}
 
-	/*streamTest*/
-	_ = func(ctx context.Context, client pb.EchoServiceClient) {
-		// testingStream = true
-		multiClient, err := client.EchoMultiple(ctx, &pb.EchoMultipleRequest{Message: "hello?"})
+	streamTest := func(ctx context.Context, client pb.EchoServiceClient) {
+		t.Helper()
+		var mdResp metadata.MD
+		multiClient, err := client.EchoMultiple(ctx, &pb.EchoMultipleRequest{Message: "hello?"}, grpc.Header(&mdResp))
 		test.That(t, err, test.ShouldBeNil)
 		fullResponse := ""
 		for {
@@ -145,7 +151,7 @@ func TestTracingInterceptors(t *testing.T) {
 			fullResponse += resp.Message
 		}
 		test.That(t, fullResponse, test.ShouldEqual, "hello?")
-		// testingStream = false
+		test.That(t, capturedStreamTraceID.Load(), test.ShouldEqual, clientSpan.SpanContext().TraceID.String())
 	}
 
 	// gRPC
@@ -156,37 +162,31 @@ func TestTracingInterceptors(t *testing.T) {
 		grpc.WithStreamInterceptor(StreamClientTracingInterceptor()),
 	}
 
-	// Failure happens here
 	conn, err := grpc.DialContext(ctx, listener.Addr().String(), grpcOpts...)
-
 	test.That(t, err, test.ShouldBeNil)
 	defer func() {
 		test.That(t, conn.Close(), test.ShouldBeNil)
 	}()
 
-	// client := pb.NewEchoServiceClient(conn)
-	// unaryTest(ctx, client)
-	// streamTest(ctx, client)
+	client := pb.NewEchoServiceClient(conn)
+	unaryTest(ctx, client)
+	streamTest(ctx, client)
 
-	// // WebRTC
-	// rtcConn, err := dialWebRTC(ctx, listener.Addr().String(), internalSignalingHost, &dialOptions{
-	// 	webrtcOpts: DialWebRTCOptions{
-	// 		SignalingInsecure: true,
-	// 	},
-	// 	webrtcOptsSet:     true,
-	// 	unaryInterceptor:  UnaryClientTracingInterceptor(),
-	// 	streamInterceptor: StreamClientTracingInterceptor(),
-	// }, logger)
-	// test.That(t, err, test.ShouldBeNil)
-	// defer func() {
-	// 	test.That(t, rtcConn.Close(), test.ShouldBeNil)
-	// }()
-
-	// client = pb.NewEchoServiceClient(rtcConn)
-	// unaryTest(ctx, client)
-	// streamTest(ctx, client)
-
-	test.That(t, rpcServer.Stop(), test.ShouldBeNil)
-	err = <-errChan
+	// WebRTC
+	rtcConn, err := dialWebRTC(ctx, listener.Addr().String(), internalSignalingHost, &dialOptions{
+		webrtcOpts: DialWebRTCOptions{
+			SignalingInsecure: true,
+		},
+		webrtcOptsSet:     true,
+		unaryInterceptor:  UnaryClientTracingInterceptor(),
+		streamInterceptor: StreamClientTracingInterceptor(),
+	}, logger)
 	test.That(t, err, test.ShouldBeNil)
+	defer func() {
+		test.That(t, rtcConn.Close(), test.ShouldBeNil)
+	}()
+
+	client = pb.NewEchoServiceClient(rtcConn)
+	unaryTest(ctx, client)
+	streamTest(ctx, client)
 }
