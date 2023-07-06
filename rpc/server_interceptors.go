@@ -17,9 +17,7 @@ import (
 // UnaryServerTracingInterceptor starts a new Span if Span metadata exists in the context.
 func UnaryServerTracingInterceptor(logger golog.Logger) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-		if remoteSpanContext, err := remoteSpanContextFromContext(ctx); err != nil {
-			logger.Warnf("client did not send valid Span metadata in headers, local Spans will not be linked to client", "error", err)
-		} else {
+		if remoteSpanContext, err := remoteSpanContextFromContext(ctx); err == nil {
 			var span *trace.Span
 			ctx, span = trace.StartSpanWithRemoteParent(ctx, "server_root", remoteSpanContext)
 			defer span.End()
@@ -42,9 +40,7 @@ func UnaryServerTracingInterceptor(logger golog.Logger) grpc.UnaryServerIntercep
 // StreamServerTracingInterceptor starts a new Span if Span metadata exists in the context.
 func StreamServerTracingInterceptor(logger golog.Logger) grpc.StreamServerInterceptor {
 	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-		if remoteSpanContext, err := remoteSpanContextFromContext(stream.Context()); err != nil {
-			logger.Warnf("client did not send valid Span metadata in headers, local Spans will not be linked to client", "error", err)
-		} else {
+		if remoteSpanContext, err := remoteSpanContextFromContext(stream.Context()); err == nil {
 			newCtx, span := trace.StartSpanWithRemoteParent(stream.Context(), "server_root", remoteSpanContext)
 			defer span.End()
 			stream = wrapServerStream(newCtx, stream)
