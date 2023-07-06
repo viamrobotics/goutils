@@ -51,7 +51,7 @@ func TestTracingInterceptors(t *testing.T) {
 		return nil, err
 	}
 
-	testingStream := false
+	// testingStream := false
 
 	streamServerTestingInterceptor := func(
 		srv interface{}, ss grpc.ServerStream,
@@ -65,9 +65,9 @@ func TestTracingInterceptors(t *testing.T) {
 		// context, causing this test to fail. We're not concerned with those
 		// processes since they're internal to the libraries and not in direct
 		// response to a client request.
-		if testingStream {
-			test.That(t, serverSpan.SpanContext().TraceID, test.ShouldEqual, clientSpan.SpanContext().TraceID)
-		}
+		// if testingStream {
+		test.That(t, serverSpan.SpanContext().TraceID, test.ShouldEqual, clientSpan.SpanContext().TraceID)
+		// }
 		err := handler(srv, ss)
 		if err == nil {
 			return nil
@@ -132,7 +132,7 @@ func TestTracingInterceptors(t *testing.T) {
 
 	/*streamTest*/
 	_ = func(ctx context.Context, client pb.EchoServiceClient) {
-		testingStream = true
+		// testingStream = true
 		multiClient, err := client.EchoMultiple(ctx, &pb.EchoMultipleRequest{Message: "hello?"})
 		test.That(t, err, test.ShouldBeNil)
 		fullResponse := ""
@@ -145,7 +145,7 @@ func TestTracingInterceptors(t *testing.T) {
 			fullResponse += resp.Message
 		}
 		test.That(t, fullResponse, test.ShouldEqual, "hello?")
-		testingStream = false
+		// testingStream = false
 	}
 
 	// gRPC
