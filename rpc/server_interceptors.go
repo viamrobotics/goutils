@@ -6,16 +6,16 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/edaniels/golog"
 	"github.com/pkg/errors"
 	"go.opencensus.io/trace"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
 // UnaryServerTracingInterceptor starts a new Span if Span metadata exists in the context.
-func UnaryServerTracingInterceptor(logger golog.Logger) grpc.UnaryServerInterceptor {
+func UnaryServerTracingInterceptor(logger *zap.Logger) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		if remoteSpanContext, err := remoteSpanContextFromContext(ctx); err == nil {
 			var span *trace.Span
@@ -38,7 +38,7 @@ func UnaryServerTracingInterceptor(logger golog.Logger) grpc.UnaryServerIntercep
 }
 
 // StreamServerTracingInterceptor starts a new Span if Span metadata exists in the context.
-func StreamServerTracingInterceptor(logger golog.Logger) grpc.StreamServerInterceptor {
+func StreamServerTracingInterceptor(logger *zap.Logger) grpc.StreamServerInterceptor {
 	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		if remoteSpanContext, err := remoteSpanContextFromContext(stream.Context()); err == nil {
 			newCtx, span := trace.StartSpanWithRemoteParent(stream.Context(), "server_root", remoteSpanContext)

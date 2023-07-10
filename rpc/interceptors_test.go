@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/edaniels/golog"
-	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/pkg/errors"
 	"go.opencensus.io/trace"
 	"go.uber.org/atomic"
@@ -32,7 +31,8 @@ func TestTracingInterceptors(t *testing.T) {
 
 	unaryServerTestingInterceptor := func(
 		ctx context.Context, req interface{},
-		info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+		info *grpc.UnaryServerInfo, handler grpc.UnaryHandler,
+	) (interface{}, error) {
 		serverSpan := trace.FromContext(ctx)
 
 		// Ideally we would test that serverSpan's parent span ID is the same as
@@ -59,7 +59,8 @@ func TestTracingInterceptors(t *testing.T) {
 	var capturedStreamTraceID atomic.String
 	streamServerTestingInterceptor := func(
 		srv interface{}, ss grpc.ServerStream,
-		info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+		info *grpc.StreamServerInfo, handler grpc.StreamHandler,
+	) error {
 		serverSpan := trace.FromContext(ss.Context())
 
 		if info.FullMethod == "/proto.rpc.examples.echo.v1.EchoService/EchoMultiple" {
@@ -85,16 +86,8 @@ func TestTracingInterceptors(t *testing.T) {
 			InternalSignalingHosts: []string{internalSignalingHost},
 		}),
 		WithUnauthenticated(),
-		WithUnaryServerInterceptor(
-			grpc_middleware.ChainUnaryServer(
-				UnaryServerTracingInterceptor(logger),
-				unaryServerTestingInterceptor,
-			)),
-		WithStreamServerInterceptor(
-			grpc_middleware.ChainStreamServer(
-				StreamServerTracingInterceptor(logger),
-				streamServerTestingInterceptor,
-			)),
+		WithUnaryServerInterceptor(unaryServerTestingInterceptor),
+		WithStreamServerInterceptor(streamServerTestingInterceptor),
 	}
 
 	rpcServer, err := NewServer(
