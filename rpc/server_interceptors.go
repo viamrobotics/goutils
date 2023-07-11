@@ -27,11 +27,11 @@ func UnaryServerTracingInterceptor(logger *zap.Logger) grpc.UnaryServerIntercept
 		if err == nil {
 			return resp, nil
 		}
-		if s, ok := status.FromError(err); ok {
-			return nil, errors.Wrapf(err, s.Message())
+		if _, ok := status.FromError(err); ok {
+			return resp, err
 		}
 		if s := status.FromContextError(err); s != nil {
-			return nil, s.Err()
+			return resp, s.Err()
 		}
 		return nil, err
 	}
@@ -50,8 +50,8 @@ func StreamServerTracingInterceptor(logger *zap.Logger) grpc.StreamServerInterce
 		if err == nil {
 			return nil
 		}
-		if s, ok := status.FromError(err); ok {
-			return errors.Wrapf(err, s.Message())
+		if _, ok := status.FromError(err); ok {
+			return err
 		}
 		if s := status.FromContextError(err); s != nil {
 			return s.Err()
