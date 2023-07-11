@@ -117,7 +117,7 @@ func (ch *webrtcClientChannel) invokeWithInterceptor(
 	invoker := func(ctx context.Context, method string, req, reply interface{}, _ *grpc.ClientConn, opts ...grpc.CallOption) error {
 		return ch.invoke(ctx, method, req, reply, opts...)
 	}
-	return ch.unaryInterceptor(ctx, method, args, reply, nil, invoker)
+	return ch.unaryInterceptor(ctx, method, args, reply, nil, invoker, opts...)
 }
 
 func (ch *webrtcClientChannel) invoke(
