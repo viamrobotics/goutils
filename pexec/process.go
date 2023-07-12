@@ -8,6 +8,7 @@ package pexec
 import (
 	"encoding/json"
 	"io"
+	"reflect"
 	"syscall"
 	"time"
 
@@ -39,10 +40,22 @@ type ProcessConfig struct {
 	// NOTE(benjirewis): use `jsonschema:"-"` struct tag to avoid issues with
 	// jsonschema reflection (go functions cannot be encoded to JSON).
 	OnUnexpectedExit func(int) bool `jsonschema:"-"`
+
+	alreadyValidated bool
+	cachedErr        error
 }
 
 // Validate ensures all parts of the config are valid.
 func (config *ProcessConfig) Validate(path string) error {
+	if config.alreadyValidated {
+		return config.cachedErr
+	}
+	config.cachedErr = config.validate(path)
+	config.alreadyValidated = true
+	return config.cachedErr
+}
+
+func (config *ProcessConfig) validate(path string) error {
 	if config.ID == "" {
 		return utils.NewConfigValidationFieldRequiredError(path, "id")
 	}
@@ -119,4 +132,14 @@ func (config ProcessConfig) MarshalJSON() ([]byte, error) {
 		// OnUnexpectedExit cannot be converted to JSON.
 	}
 	return json.Marshal(temp)
+}
+
+// Equals checks if the two configs are deeply equal to each other.
+func (config ProcessConfig) Equals(other ProcessConfig) bool {
+	config.alreadyValidated = false
+	config.cachedErr = nil
+	other.alreadyValidated = false
+	other.cachedErr = nil
+	//nolint:govet
+	return reflect.DeepEqual(config, other)
 }

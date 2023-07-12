@@ -57,12 +57,27 @@ func TestProcessConfigValidate(t *testing.T) {
 	test.That(t, err, test.ShouldNotBeNil)
 	test.That(t, err.Error(), test.ShouldContainSubstring, `"name" is required`)
 
+	// assert that mutating the ProcessConfig to be invalid (StopTimeout < 100)
+	// does not change cached validation error.
 	invalidConfig.Name = "foo"
 	invalidConfig.StopTimeout = 50
 	err = invalidConfig.Validate("path")
 	test.That(t, err, test.ShouldNotBeNil)
+	test.That(t, err.Error(), test.ShouldContainSubstring, `"name" is required`)
+
+	invalidConfig = ProcessConfig{
+		ID:          "id1",
+		Name:        "foo",
+		StopTimeout: 50,
+	}
+	err = invalidConfig.Validate("path")
+	test.That(t, err, test.ShouldNotBeNil)
 	test.That(t, err.Error(), test.ShouldContainSubstring, `stop_timeout should not be less than 100ms`)
 
-	invalidConfig.StopTimeout = 0
-	test.That(t, invalidConfig.Validate("path"), test.ShouldBeNil)
+	validConfig := ProcessConfig{
+		ID:          "id1",
+		Name:        "foo",
+		StopTimeout: time.Second,
+	}
+	test.That(t, validConfig.Validate("path"), test.ShouldBeNil)
 }
