@@ -56,6 +56,19 @@ func (u *UserInfo) GetBool(name string) bool {
 	return b
 }
 
+// GetUpdatedAt gets the timestamp indicating when the user's auth0 profile was last updated/modified.
+func (u *UserInfo) GetUpdatedAt() string {
+	if u.Properties == nil {
+		return ""
+	}
+
+	updatedAt, ok := u.Properties["updated_at"].(string)
+	if !ok {
+		return ""
+	}
+	return updatedAt
+}
+
 // GetLoggedInUserInfo figures out if the session is associated with a user.
 func GetLoggedInUserInfo(sessions *SessionManager, r *http.Request) (UserInfo, error) {
 	ui := UserInfo{LoggedIn: false, Properties: map[string]interface{}{"email": ""}}
