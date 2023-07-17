@@ -283,6 +283,7 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 		grpc_zap.UnaryServerInterceptor(grpcLogger),
 		unaryServerCodeInterceptor(),
 	)
+	unaryInterceptors = append(unaryInterceptors, UnaryServerTracingInterceptor(grpcLogger))
 	unaryAuthIntPos := -1
 	if !sOpts.unauthenticated {
 		unaryInterceptors = append(unaryInterceptors, server.authUnaryInterceptor)
@@ -315,6 +316,7 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 		grpc_zap.StreamServerInterceptor(grpcLogger),
 		streamServerCodeInterceptor(),
 	)
+	streamInterceptors = append(streamInterceptors, StreamServerTracingInterceptor(grpcLogger))
 	streamAuthIntPos := -1
 	if !sOpts.unauthenticated {
 		streamInterceptors = append(streamInterceptors, server.authStreamInterceptor)
