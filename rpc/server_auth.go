@@ -162,6 +162,12 @@ func (ss *simpleServer) signAccessTokenForEntity(
 	return tokenString, nil
 }
 
+func (ss *simpleServer) canByPassAuthCheck(
+	fullMethod string,
+) bool {
+	return ss.publicMethods[fullMethod]
+}
+
 func (ss *simpleServer) authUnaryInterceptor(
 	ctx context.Context,
 	req interface{},
@@ -171,6 +177,9 @@ func (ss *simpleServer) authUnaryInterceptor(
 	if !ss.exemptMethods[info.FullMethod] {
 		nextCtx, err := ss.ensureAuthed(ctx)
 		if err != nil {
+			if status, _ := status.FromError(err); status.Code() == codes.Unauthenticated && !ss.canByPassAuthCheck(info.FullMethod) {
+				return handler(ctx, req)
+			}
 			return nil, err
 		}
 		ctx = nextCtx
@@ -187,6 +196,9 @@ func (ss *simpleServer) authStreamInterceptor(
 	if !ss.exemptMethods[info.FullMethod] {
 		nextCtx, err := ss.ensureAuthed(serverStream.Context())
 		if err != nil {
+			if status, _ := status.FromError(err); status.Code() == codes.Unauthenticated && !ss.canByPassAuthCheck(info.FullMethod) {
+				return handler(srv, serverStream)
+			}
 			return err
 		}
 		serverStream = ctxWrappedServerStream{serverStream, nextCtx}

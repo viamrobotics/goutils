@@ -33,6 +33,9 @@ type serverOptions struct {
 	// allowUnauthenticatedHealthCheck allows the server to have an unauthenticated healthcheck endpoint
 	allowUnauthenticatedHealthCheck bool
 
+	// publicMethods is a list of publicMethods that are allowed to bypass auth for
+	publicMethods []string
+
 	// authRSAPrivateKey is used to sign JWTs for authentication
 	authRSAPrivateKey *rsa.PrivateKey
 
@@ -427,10 +430,18 @@ func WithStatsHandler(handler stats.Handler) ServerOption {
 }
 
 // WithAllowUnauthenticatedHealthCheck returns a server option that
-// allows the health check to be unauthenticated
+// allows the health check to be unauthenticated.
 func WithAllowUnauthenticatedHealthCheck() ServerOption {
 	return newFuncServerOption(func(o *serverOptions) error {
 		o.allowUnauthenticatedHealthCheck = true
+		return nil
+	})
+}
+
+// WithPublicMethods returns a server option with grpc methods that can bypass auth validation.
+func WithPublicMethods(fullMethods []string) ServerOption {
+	return newFuncServerOption(func(o *serverOptions) error {
+		o.publicMethods = fullMethods
 		return nil
 	})
 }

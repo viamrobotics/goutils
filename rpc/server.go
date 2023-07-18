@@ -119,10 +119,12 @@ type simpleServer struct {
 	signalingServer         *WebRTCSignalingServer
 	mdnsServers             []*zeroconf.Server
 	exemptMethods           map[string]bool
-	tlsConfig               *tls.Config
-	firstSeenTLSCertLeaf    *x509.Certificate
-	stopped                 bool
-	logger                  golog.Logger
+	// public methods is a list of methods that have optional auth
+	publicMethods        map[string]bool
+	tlsConfig            *tls.Config
+	firstSeenTLSCertLeaf *x509.Certificate
+	stopped              bool
+	logger               golog.Logger
 
 	// auth
 
@@ -260,6 +262,7 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 		authAudience:         sOpts.authAudience,
 		authIssuer:           sOpts.authIssuer,
 		exemptMethods:        make(map[string]bool),
+		publicMethods:        make(map[string]bool),
 		tlsConfig:            sOpts.tlsConfig,
 		firstSeenTLSCertLeaf: firstSeenTLSCertLeaf,
 		logger:               logger,
@@ -296,9 +299,10 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 			info *grpc.UnaryServerInfo,
 			handler grpc.UnaryHandler,
 		) (interface{}, error) {
-			if server.exemptMethods[info.FullMethod] {
+			if server.exemptMethods[info.FullMethod] || server.canByPassAuthCheck(info.FullMethod) {
 				return handler(ctx, req)
 			}
+
 			return sOpts.unaryInterceptor(ctx, req, info, handler)
 		})
 	}
@@ -329,7 +333,7 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 			info *grpc.StreamServerInfo,
 			handler grpc.StreamHandler,
 		) error {
-			if server.exemptMethods[info.FullMethod] {
+			if server.exemptMethods[info.FullMethod] || server.canByPassAuthCheck(info.FullMethod) {
 				return handler(srv, serverStream)
 			}
 			return sOpts.streamInterceptor(srv, serverStream, info, handler)
@@ -373,6 +377,12 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 	if sOpts.allowUnauthenticatedHealthCheck {
 		server.exemptMethods[healthCheckMethod] = true
 		server.exemptMethods[healthWatchMethod] = true
+	}
+
+	if len(sOpts.publicMethods) > 0 {
+		for _, method := range sOpts.publicMethods {
+			server.publicMethods[method] = true
+		}
 	}
 
 	if sOpts.authToHandler != nil {

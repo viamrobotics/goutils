@@ -525,6 +525,15 @@ func TestServerAuthJWTAudienceAndID(t *testing.T) {
 	}
 }
 
+func TestServerPublicMethods(t *testing.T) {
+	// logger := golog.NewTestLogger(t)
+	// rpcServer, err := NewServer(logger,
+	//
+	//	WithPublicMethods([]string{}), // what will be the echo serve
+	//
+	// )
+}
+
 func TestServerAuthKeyFunc(t *testing.T) {
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
