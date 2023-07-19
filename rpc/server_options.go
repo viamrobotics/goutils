@@ -33,7 +33,7 @@ type serverOptions struct {
 	// allowUnauthenticatedHealthCheck allows the server to have an unauthenticated healthcheck endpoint
 	allowUnauthenticatedHealthCheck bool
 
-	// publicMethods is a list of publicMethods that are allowed to bypass auth for
+	// publicMethods are api routes that attempt, but do not require, authentication
 	publicMethods []string
 
 	// authRSAPrivateKey is used to sign JWTs for authentication

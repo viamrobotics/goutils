@@ -118,8 +118,9 @@ type simpleServer struct {
 	signalingCallQueue      WebRTCCallQueue
 	signalingServer         *WebRTCSignalingServer
 	mdnsServers             []*zeroconf.Server
-	exemptMethods           map[string]bool
-	// public methods is a list of methods that have optional auth
+	// exempt methods do not perform any auth
+	exemptMethods map[string]bool
+	// public methods attempt, but do not require, authentication
 	publicMethods        map[string]bool
 	tlsConfig            *tls.Config
 	firstSeenTLSCertLeaf *x509.Certificate

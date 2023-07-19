@@ -652,7 +652,6 @@ func TestServerPublicMethods(t *testing.T) {
 		err = <-errChan
 		test.That(t, err, test.ShouldBeNil)
 	})
-
 }
 
 func TestServerAuthKeyFunc(t *testing.T) {

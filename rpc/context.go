@@ -70,7 +70,7 @@ func ContextAuthEntity(ctx context.Context) (EntityInfo, bool) {
 	if authEntityValue == nil {
 		return EntityInfo{}, false
 	}
-	authEntity, ok := ctx.Value(ctxKeyAuthEntity).(EntityInfo)
+	authEntity, ok := authEntityValue.(EntityInfo)
 	if !ok || authEntity.Entity == "" {
 		return EntityInfo{}, false
 	}
