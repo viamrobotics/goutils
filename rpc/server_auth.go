@@ -179,20 +179,19 @@ func (ss *simpleServer) authUnaryInterceptor(
 		return handler(ctx, req)
 	}
 
-	var nextCtx context.Context
-	var err error
 	// optional auth
 	if ss.isPublicMethod(info.FullMethod) {
-		nextCtx, err = ss.tryAuth(ctx)
+		nextCtx, err := ss.tryAuth(ctx)
 		if err != nil {
 			return nil, err
 		}
-	} else {
-		// private method
-		nextCtx, err = ss.ensureAuthed(ctx)
-		if err != nil {
-			return nil, err
-		}
+		return handler(nextCtx, req)
+	}
+
+	// private auth
+	nextCtx, err := ss.ensureAuthed(ctx)
+	if err != nil {
+		return nil, err
 	}
 
 	return handler(nextCtx, req)
@@ -204,25 +203,24 @@ func (ss *simpleServer) authStreamInterceptor(
 	info *grpc.StreamServerInfo,
 	handler grpc.StreamHandler,
 ) error {
-	var nextCtx context.Context
-	var err error
-
-	// no auth required
 	if ss.exemptMethods[info.FullMethod] {
 		return handler(srv, serverStream)
 	}
+
 	// optional auth
 	if ss.isPublicMethod(info.FullMethod) {
-		nextCtx, err = ss.tryAuth(serverStream.Context())
+		nextCtx, err := ss.tryAuth(serverStream.Context())
 		if err != nil {
 			return err
 		}
-	} else {
-		// private method
-		nextCtx, err = ss.ensureAuthed(serverStream.Context())
-		if err != nil {
-			return err
-		}
+		serverStream = ctxWrappedServerStream{serverStream, nextCtx}
+		return handler(nextCtx, serverStream)
+	}
+
+	// private auth
+	nextCtx, err := ss.ensureAuthed(serverStream.Context())
+	if err != nil {
+		return err
 	}
 
 	serverStream = ctxWrappedServerStream{serverStream, nextCtx}
@@ -273,13 +271,14 @@ var validSigningMethods = []string{
 
 // tryAuth is called for public methods where auth is not required but preferable.
 func (ss *simpleServer) tryAuth(ctx context.Context) (context.Context, error) {
-	ctx, err := ss.ensureAuthed(ctx)
+	nextCtx, err := ss.ensureAuthed(ctx)
 	if err != nil {
 		if status, _ := status.FromError(err); status.Code() != codes.Unauthenticated {
-			return ctx, err
+			return nil, err
 		}
+		return ctx, nil
 	}
-	return ctx, nil
+	return nextCtx, nil
 }
 
 func (ss *simpleServer) ensureAuthed(ctx context.Context) (context.Context, error) {
