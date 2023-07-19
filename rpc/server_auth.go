@@ -211,7 +211,6 @@ func (ss *simpleServer) authStreamInterceptor(
 	if ss.exemptMethods[info.FullMethod] {
 		return handler(srv, serverStream)
 	}
-
 	// optional auth
 	if ss.isPublicMethod(info.FullMethod) {
 		nextCtx, err = ss.tryAuth(serverStream.Context())
