@@ -299,10 +299,9 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 			info *grpc.UnaryServerInfo,
 			handler grpc.UnaryHandler,
 		) (interface{}, error) {
-			if server.exemptMethods[info.FullMethod] || server.canByPassAuthCheck(info.FullMethod) {
+			if server.exemptMethods[info.FullMethod] {
 				return handler(ctx, req)
 			}
-
 			return sOpts.unaryInterceptor(ctx, req, info, handler)
 		})
 	}
@@ -333,7 +332,7 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 			info *grpc.StreamServerInfo,
 			handler grpc.StreamHandler,
 		) error {
-			if server.exemptMethods[info.FullMethod] || server.canByPassAuthCheck(info.FullMethod) {
+			if server.exemptMethods[info.FullMethod] {
 				return handler(srv, serverStream)
 			}
 			return sOpts.streamInterceptor(srv, serverStream, info, handler)
@@ -379,10 +378,8 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 		server.exemptMethods[healthWatchMethod] = true
 	}
 
-	if len(sOpts.publicMethods) > 0 {
-		for _, method := range sOpts.publicMethods {
-			server.publicMethods[method] = true
-		}
+	for _, method := range sOpts.publicMethods {
+		server.publicMethods[method] = true
 	}
 
 	if sOpts.authToHandler != nil {
