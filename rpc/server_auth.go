@@ -162,20 +162,39 @@ func (ss *simpleServer) signAccessTokenForEntity(
 	return tokenString, nil
 }
 
+func (ss *simpleServer) isPublicMethod(
+	fullMethod string,
+) bool {
+	return ss.publicMethods[fullMethod]
+}
+
 func (ss *simpleServer) authUnaryInterceptor(
 	ctx context.Context,
 	req interface{},
 	info *grpc.UnaryServerInfo,
 	handler grpc.UnaryHandler,
 ) (interface{}, error) {
-	if !ss.exemptMethods[info.FullMethod] {
-		nextCtx, err := ss.ensureAuthed(ctx)
+	// no auth
+	if ss.exemptMethods[info.FullMethod] {
+		return handler(ctx, req)
+	}
+
+	// optional auth
+	if ss.isPublicMethod(info.FullMethod) {
+		nextCtx, err := ss.tryAuth(ctx)
 		if err != nil {
 			return nil, err
 		}
-		ctx = nextCtx
+		return handler(nextCtx, req)
 	}
-	return handler(ctx, req)
+
+	// private auth
+	nextCtx, err := ss.ensureAuthed(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return handler(nextCtx, req)
 }
 
 func (ss *simpleServer) authStreamInterceptor(
@@ -184,13 +203,27 @@ func (ss *simpleServer) authStreamInterceptor(
 	info *grpc.StreamServerInfo,
 	handler grpc.StreamHandler,
 ) error {
-	if !ss.exemptMethods[info.FullMethod] {
-		nextCtx, err := ss.ensureAuthed(serverStream.Context())
+	if ss.exemptMethods[info.FullMethod] {
+		return handler(srv, serverStream)
+	}
+
+	// optional auth
+	if ss.isPublicMethod(info.FullMethod) {
+		nextCtx, err := ss.tryAuth(serverStream.Context())
 		if err != nil {
 			return err
 		}
 		serverStream = ctxWrappedServerStream{serverStream, nextCtx}
+		return handler(nextCtx, serverStream)
 	}
+
+	// private auth
+	nextCtx, err := ss.ensureAuthed(serverStream.Context())
+	if err != nil {
+		return err
+	}
+
+	serverStream = ctxWrappedServerStream{serverStream, nextCtx}
 	return handler(srv, serverStream)
 }
 
@@ -234,6 +267,18 @@ var validSigningMethods = []string{
 	"HS256",
 	"HS384",
 	"RS256",
+}
+
+// tryAuth is called for public methods where auth is not required but preferable.
+func (ss *simpleServer) tryAuth(ctx context.Context) (context.Context, error) {
+	nextCtx, err := ss.ensureAuthed(ctx)
+	if err != nil {
+		if status, _ := status.FromError(err); status.Code() != codes.Unauthenticated {
+			return nil, err
+		}
+		return ctx, nil
+	}
+	return nextCtx, nil
 }
 
 func (ss *simpleServer) ensureAuthed(ctx context.Context) (context.Context, error) {

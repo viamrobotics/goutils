@@ -118,11 +118,14 @@ type simpleServer struct {
 	signalingCallQueue      WebRTCCallQueue
 	signalingServer         *WebRTCSignalingServer
 	mdnsServers             []*zeroconf.Server
-	exemptMethods           map[string]bool
-	tlsConfig               *tls.Config
-	firstSeenTLSCertLeaf    *x509.Certificate
-	stopped                 bool
-	logger                  golog.Logger
+	// exempt methods do not perform any auth
+	exemptMethods map[string]bool
+	// public methods attempt, but do not require, authentication
+	publicMethods        map[string]bool
+	tlsConfig            *tls.Config
+	firstSeenTLSCertLeaf *x509.Certificate
+	stopped              bool
+	logger               golog.Logger
 
 	// auth
 
@@ -260,6 +263,7 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 		authAudience:         sOpts.authAudience,
 		authIssuer:           sOpts.authIssuer,
 		exemptMethods:        make(map[string]bool),
+		publicMethods:        make(map[string]bool),
 		tlsConfig:            sOpts.tlsConfig,
 		firstSeenTLSCertLeaf: firstSeenTLSCertLeaf,
 		logger:               logger,
@@ -373,6 +377,10 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 	if sOpts.allowUnauthenticatedHealthCheck {
 		server.exemptMethods[healthCheckMethod] = true
 		server.exemptMethods[healthWatchMethod] = true
+	}
+
+	for _, method := range sOpts.publicMethods {
+		server.publicMethods[method] = true
 	}
 
 	if sOpts.authToHandler != nil {
