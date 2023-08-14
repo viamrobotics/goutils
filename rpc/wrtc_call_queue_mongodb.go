@@ -87,6 +87,8 @@ type mongoDBWebRTCCallQueue struct {
 	csStateUpdates              chan changeStreamStateUpdate
 	csCtxCancel                 func()
 
+	// function to update access times on robot parts based on this call queue
+	updateRobotPartConnectivity *func(hostnames []string)
 	// 1 caller/answerer -> 1 caller id -> 1 event stream
 	callExchangeSubs map[string]map[*mongodbCallExchange]struct{}
 
@@ -125,6 +127,7 @@ func NewMongoDBWebRTCCallQueue(
 	maxHostCallers uint64,
 	client *mongo.Client,
 	logger golog.Logger,
+	updateRobotPartConnectivity func(hostnames []string),
 ) (WebRTCCallQueue, error) {
 	if operatorID == "" {
 		return nil, errors.New("expected non-empty operatorID")
@@ -201,9 +204,10 @@ func NewMongoDBWebRTCCallQueue(
 		cancelFunc:    cancelFunc,
 		logger:        logger.With("operator_id", operatorID),
 
-		csStateUpdates:        make(chan changeStreamStateUpdate),
-		callExchangeSubs:      map[string]map[*mongodbCallExchange]struct{}{},
-		waitingForNewCallSubs: map[string]map[*mongodbNewCallEventHandler]struct{}{},
+		csStateUpdates:              make(chan changeStreamStateUpdate),
+		callExchangeSubs:            map[string]map[*mongodbCallExchange]struct{}{},
+		waitingForNewCallSubs:       map[string]map[*mongodbNewCallEventHandler]struct{}{},
+		updateRobotPartConnectivity: &updateRobotPartConnectivity,
 	}
 
 	queue.activeBackgroundWorkers.Add(2)
@@ -336,7 +340,6 @@ func (queue *mongoDBWebRTCCallQueue) operatorLivenessLoop() {
 		if !utils.SelectContextOrWaitChan(queue.cancelCtx, ticker.C) {
 			return
 		}
-
 		type callerAnswererQueueSizes struct {
 			Caller   uint64
 			Answerer uint64
@@ -362,9 +365,17 @@ func (queue *mongoDBWebRTCCallQueue) operatorLivenessLoop() {
 			}
 		}
 		queue.csStateMu.RUnlock()
+		// put a time stamp in the operator to show when this was updated
+		// then when the operator goes offline, we should update the robot part collection
 
 		hostSizes := make(bson.A, 0, len(hosts))
+		hostsWithAnswerers := make([]string, 0)
+
 		for host, sizes := range hosts {
+			if sizes.Answerer >= 1 {
+				hostsWithAnswerers = append(hostsWithAnswerers, host)
+			}
+
 			hostSizes = append(hostSizes, bson.D{
 				{webrtcOperatorHostsHostField, host},
 				{webrtcOperatorHostsCallerSizeField, sizes.Caller},
@@ -384,6 +395,10 @@ func (queue *mongoDBWebRTCCallQueue) operatorLivenessLoop() {
 			if !errors.Is(err, context.Canceled) {
 				queue.logger.Errorw("failed to update operator document for self", "error", err)
 			}
+		}
+
+		if queue.updateRobotPartConnectivity != nil && len(hostsWithAnswerers) > 0 {
+			(*queue.updateRobotPartConnectivity)(hostsWithAnswerers)
 		}
 	}
 }
