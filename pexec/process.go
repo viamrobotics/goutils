@@ -22,11 +22,14 @@ const defaultStopTimeout = time.Second * 10
 
 // A ProcessConfig describes how to manage a system process.
 type ProcessConfig struct {
-	ID          string
-	Name        string
-	Args        []string
-	CWD         string
-	OneShot     bool
+	ID      string
+	Name    string
+	Args    []string
+	CWD     string
+	OneShot bool
+	// Optional. When present, we will try to look up the Uid of the named user
+	// and run the process as that user.
+	Username    string
 	Log         bool
 	LogWriter   io.Writer
 	StopSignal  syscall.Signal
@@ -75,6 +78,7 @@ type configData struct {
 	Args        []string `json:"args"`
 	CWD         string   `json:"cwd"`
 	OneShot     bool     `json:"one_shot"`
+	Username    string   `json:"username"`
 	Log         bool     `json:"log"`
 	StopSignal  string   `json:"stop_signal,omitempty"`
 	StopTimeout string   `json:"stop_timeout,omitempty"`
@@ -88,12 +92,13 @@ func (config *ProcessConfig) UnmarshalJSON(data []byte) error {
 	}
 
 	*config = ProcessConfig{
-		ID:      temp.ID,
-		Name:    temp.Name,
-		Args:    temp.Args,
-		CWD:     temp.CWD,
-		OneShot: temp.OneShot,
-		Log:     temp.Log,
+		ID:       temp.ID,
+		Name:     temp.Name,
+		Args:     temp.Args,
+		CWD:      temp.CWD,
+		OneShot:  temp.OneShot,
+		Username: temp.Username,
+		Log:      temp.Log,
 		// OnUnexpectedExit cannot be specified in JSON.
 	}
 
@@ -126,6 +131,7 @@ func (config ProcessConfig) MarshalJSON() ([]byte, error) {
 		Args:        config.Args,
 		CWD:         config.CWD,
 		OneShot:     config.OneShot,
+		Username:    config.Username,
 		Log:         config.Log,
 		StopSignal:  stopSig,
 		StopTimeout: config.StopTimeout.String(),

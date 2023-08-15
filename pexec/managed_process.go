@@ -51,6 +51,7 @@ func NewManagedProcess(config ProcessConfig, logger golog.Logger) ManagedProcess
 		name:             config.Name,
 		args:             config.Args,
 		cwd:              config.CWD,
+		username:         config.Username,
 		oneShot:          config.OneShot,
 		shouldLog:        config.Log,
 		onUnexpectedExit: config.OnUnexpectedExit,
@@ -71,6 +72,7 @@ type managedProcess struct {
 	args      []string
 	cwd       string
 	oneShot   bool
+	username  string
 	shouldLog bool
 	cmd       *exec.Cmd
 
