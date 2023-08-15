@@ -155,4 +155,32 @@ func TestMongoDBWebRTCCallQueueMulti(t *testing.T) {
 		t.Logf("received offer %d=%s", (maxHostAnswerersSize*2)+1, exchange.UUID())
 		exchanges[0] = exchange
 	})
+
+	t.Run("ActiveAnswerer", func(t *testing.T) {
+		client := testutils.BackingMongoDBClient(t)
+		activeAnswererChannelStub := make(chan int, 1)
+		defer close(activeAnswererChannelStub)
+
+		logger := golog.NewTestLogger(t)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		test.That(t, client.Database(mongodbWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
+		answererQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), uuid.NewString()+"-answerer",
+			1, client, logger, func(hostnames []string) { activeAnswererChannelStub <- len(hostnames) })
+		test.That(t, err, test.ShouldBeNil)
+		defer answererQueue.Close()
+
+		host1 := primitive.NewObjectID().Hex()
+		host2 := primitive.NewObjectID().Hex()
+		go func() {
+			_, _ = answererQueue.RecvOffer(ctx, []string{host1, host2})
+		}()
+		time.Sleep(time.Second * 2)
+
+		test.That(t, len(activeAnswererChannelStub), test.ShouldEqual, 1)
+		val, ok := <-activeAnswererChannelStub
+		test.That(t, ok, test.ShouldBeTrue)
+		test.That(t, val, test.ShouldEqual, 2)
+	})
 }
