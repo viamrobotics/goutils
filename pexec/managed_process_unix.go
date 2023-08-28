@@ -106,12 +106,14 @@ func (p *managedProcess) kill() (bool, error) {
 	return forceKilled, nil
 }
 
-func isWaitErrUnknown(err string, forceKilled bool) bool {
-	// This can easily happen if the process does not handle interrupts gracefully
-	// and it won't provide us any exit code info.
+func isWaitErrUnknown(err string, _ bool) bool {
+	// TODO: ensure processes handle interrupts gracefully.
+	//  For now, ignore signals caused by improper handling of interrupts since they provide no exit code, exception, or
+	//  other status information.
 	switch err {
-	case "signal: interrupt", "signal: terminated", "signal: killed":
+	case "signal: interrupt", "signal: terminated", "signal: killed", "signal: segmentation fault":
 		return true
+	default:
+		return false
 	}
-	return false
 }
