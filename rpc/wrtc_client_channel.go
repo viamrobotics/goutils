@@ -32,7 +32,7 @@ var (
 // A webrtcClientChannel reflects the client end of a gRPC connection serviced over
 // a WebRTC data channel.
 type webrtcClientChannel struct {
-	streamIDCounter   uint64
+	streamIDCounter uint64
 	*webrtcBaseChannel
 	mu                sync.Mutex
 	streams           map[uint64]activeWebRTCClientStream
