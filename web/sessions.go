@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/edaniels/golog"
-	"github.com/edaniels/golog"
 	"github.com/pkg/errors"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
