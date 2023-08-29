@@ -4,16 +4,28 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"net/http"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/edaniels/golog"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.opencensus.io/trace"
+	mongoutils "go.viam.com/utils/mongo"
+)
+
+var (
+	webSessionsIndex = []mongo.IndexModel{
+		{
+			Keys: bson.D{
+				{Key: "lastUpdated", Value: 1},
+			},
+			Options: options.Index().SetExpireAfterSeconds(30 * 24 * 3600),
+		},
+	}
 )
 
 // SessionManager handles working with sessions from http.
@@ -150,8 +162,12 @@ func (s *Session) Save(ctx context.Context, r *http.Request, w http.ResponseWrit
 // -----
 
 // NewMongoDBSessionStore new MongoDB backed store.
-func NewMongoDBSessionStore(coll *mongo.Collection) Store {
-	return &mongoDBSessionStore{collection: coll}
+func NewMongoDBSessionStore(ctx context.Context,coll *mongo.Collection) (Store, error) {
+	if err := mongoutils.EnsureIndexes(ctx, coll, webSessionsIndex...); err != nil {
+		return nil, errors.Wrap(err, "Failed to create indexes for webSessionsCollection")
+	}
+
+	return &mongoDBSessionStore{collection: coll}, nil
 }
 
 type mongoDBSessionStore struct {
