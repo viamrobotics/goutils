@@ -21,7 +21,7 @@ import (
 var webSessionsIndex = []mongo.IndexModel{
 	{
 		Keys: bson.D{
-			{Key: "lastUpdated", Value: 1},
+			{Key: "lastUpdate", Value: 1},
 		},
 		Options: options.Index().SetExpireAfterSeconds(30 * 24 * 3600),
 	},
