@@ -28,16 +28,16 @@ func RandomAlphaString(size int) string {
 		if err != nil {
 			panic(err)
 		}
-		val := int(valBig.Int64())
+		val := valBig.Int64()
 		chance, err := rand.Int(rand.Reader, fiftyFityChance)
 		if err != nil {
 			panic(err)
 		}
 		switch chance.Int64() {
 		case 0:
-			chars = append(chars, alphaLowers[val%len(alphaLowers)])
+			chars = append(chars, alphaLowers[val%int64(len(alphaLowers))])
 		case 1:
-			chars = append(chars, alphaUppers[val%len(alphaUppers)])
+			chars = append(chars, alphaUppers[val%int64(len(alphaUppers))])
 		}
 	}
 	return string(chars)
