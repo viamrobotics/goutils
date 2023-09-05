@@ -11,7 +11,7 @@ const alphaLowers string = "abcdefghijklmnopqrstuvwxyz"
 
 var (
 	alphaUppers     = strings.ToUpper(alphaLowers)
-	maxIntBig       = big.NewInt(math.MaxInt64)
+	maxInt32        = big.NewInt(math.MaxInt32)
 	fiftyFityChance = big.NewInt(2)
 )
 
@@ -24,7 +24,7 @@ func RandomAlphaString(size int) string {
 	}
 	chars := make([]byte, 0, size)
 	for i := 0; i < size; i++ {
-		valBig, err := rand.Int(rand.Reader, maxIntBig)
+		valBig, err := rand.Int(rand.Reader, maxInt32)
 		if err != nil {
 			panic(err)
 		}
