@@ -64,6 +64,8 @@ type dialOptions struct {
 	// interceptors
 	unaryInterceptor  grpc.UnaryClientInterceptor
 	streamInterceptor grpc.StreamClientInterceptor
+
+	timeout float64
 }
 
 // DialMulticastDNSOptions dictate any special settings to apply while dialing via mDNS.

@@ -28,7 +28,12 @@ func Dial(ctx context.Context, address string, logger golog.Logger, opts ...Dial
 		logger = zap.NewNop().Sugar()
 	}
 
-	return dialInner(ctx, address, logger, &dOpts)
+	if (dOpts.timeout == 0) {
+		dOpts.timeout = 20 // default to 20sec to match _defaultOfferDeadline in goutils/rpc/wrtc_call_queue.go
+	}
+	timeoutCtx, timeoutCancel := context.WithTimeout(ctx, time.Duration(dOpts.timeout * float64(time.Second)))
+	defer timeoutCancel()
+	return dialInner(timeoutCtx, address, logger, &dOpts)
 }
 
 func dialInner(
