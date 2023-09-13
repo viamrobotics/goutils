@@ -70,7 +70,6 @@ func dialInner(
 			conn, _, err := dial(ctx, address, address, logger, dOpts, true)
 			return conn, err
 		})
-
 	if err != nil {
 		return nil, err
 	}
@@ -213,7 +212,8 @@ func dialMulticastDNS(
 		defer resolver.Shutdown()
 		for _, candidate := range candidates {
 			entries := make(chan *zeroconf.ServiceEntry)
-			var lookupCtx context.Context; var cancel context.CancelFunc
+			var lookupCtx context.Context
+			var cancel context.CancelFunc
 			if _, ok := ctx.Deadline(); ok {
 				lookupCtx, cancel = context.WithCancel(ctx)
 			} else {
