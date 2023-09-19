@@ -200,6 +200,40 @@ func MakeSimpleMultiAuthHandler(forEntities, expectedPayloads []string) AuthHand
 	})
 }
 
+// SimpleMultiAuthPairHandler works similarly to `MakeSimpleMultiAuthHandler` with the addtion of
+// supporting a key, id pair used to ensure that a key that maps to the 
+func MakeSimpleMultiAuthPairHandler(forEntities, expectedPayloads []string) AuthHandler {
+	if len(expectedPayloads) == 0 {
+		panic("expected at least one payload")
+	}
+	entityChecker := MakeEntitiesChecker(forEntities)
+	return AuthHandlerFunc(func(ctx context.Context, entity, payload string) (map[string]string, error) {
+		if err := entityChecker(ctx, entity); err != nil {
+			if errors.Is(err, errCannotAuthEntity) {
+				return nil, errInvalidCredentials
+			}
+			return nil, err
+		}
+
+		payloadB := []byte(payload)
+		payloadKeyB := []byte(payload)
+		for _, expectedPayload := range expectedPayloads {
+			if subtle.ConstantTimeCompare(payloadB, []byte(expectedPayload)) == 1 {
+				// check that the key it maps to is the same as the key that was passed in with the request
+				if subtle.ConstantTimeCompare(payloadKeyB, []byte("")) == 1 {
+					return map[string]string{}, nil
+				}
+			}
+		}
+		return nil, errInvalidCredentials
+	})
+	// We are given a keyID and a key by the user
+	// Perform a lookup of the keyID in the list of pre-populated keyIDs
+	// If the keyID is found, lookup the corresponding key to the ID found in the list of keyIDs
+	// Compare that that ID is the same as the ID passed in the request
+	// Done
+}
+
 // MakeEntitiesChecker checks a list of entities against a given one for use in an auth handler.
 func MakeEntitiesChecker(forEntities []string) func(ctx context.Context, entities ...string) error {
 	return func(ctx context.Context, entities ...string) error {

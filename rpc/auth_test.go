@@ -137,6 +137,14 @@ func TestMakeSimpleMultiAuthHandler(t *testing.T) {
 	})
 }
 
+func TestMakeSimpleMultiAuthPairHandler(t *testing.T) {
+	test.That(t, func() {
+		MakeSimpleMultiAuthPairHandler([]string{"hey"}, nil)
+	}, test.ShouldPanicWith, "expected at least one payload")
+
+
+}
+
 func TestTokenVerificationKeyProviderFunc(t *testing.T) {
 	err1 := errors.New("whoops")
 	capCtx := make(chan struct{})

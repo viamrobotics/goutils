@@ -115,7 +115,7 @@ func (am *APIMiddleware) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	marshaler := protojson.Marshaler{am.MarshalingOptions}
+	marshaler := protojson.Marshaler{Opts: am.MarshalingOptions}
 	js, err := marshaler.Marshal(data)
 	if handleAPIError(w, err, am.Logger, nil) {
 		return
