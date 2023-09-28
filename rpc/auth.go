@@ -200,13 +200,23 @@ func MakeSimpleMultiAuthHandler(forEntities, expectedPayloads []string) AuthHand
 	})
 }
 
-// SimpleMultiAuthPairHandler works similarly to `MakeSimpleMultiAuthHandler` with the addtion of
-// supporting a key, id pair used to ensure that a key that maps to the 
-func MakeSimpleMultiAuthPairHandler(forEntities, expectedPayloads []string) AuthHandler {
+// MakeSimpleMultiAuthPairHandler works similarly to MakeSimpleMultiAuthHandler with the addition of
+// supporting a key, id pair used to ensure that a key that maps to the id matches the key passed
+// during the function call.
+func MakeSimpleMultiAuthPairHandler(forEntities, expectedPayloads []map[string]string) AuthHandler {
 	if len(expectedPayloads) == 0 {
 		panic("expected at least one payload")
 	}
-	entityChecker := MakeEntitiesChecker(forEntities)
+
+	// Create a list of KeyIDs for the entities from our given map since MakeEntitiesChecker takes in a list of entities
+	var forEntitiesList []string
+	for _, entity := range forEntities {
+		for key := range entity {
+			forEntitiesList = append(forEntitiesList, key)
+		}
+	}
+
+	entityChecker := MakeEntitiesChecker(forEntitiesList)
 	return AuthHandlerFunc(func(ctx context.Context, entity, payload string) (map[string]string, error) {
 		if err := entityChecker(ctx, entity); err != nil {
 			if errors.Is(err, errCannotAuthEntity) {
@@ -214,23 +224,37 @@ func MakeSimpleMultiAuthPairHandler(forEntities, expectedPayloads []string) Auth
 			}
 			return nil, err
 		}
+		payloadKeyID := []byte(payload)
 
-		payloadB := []byte(payload)
-		payloadKeyB := []byte(payload)
-		for _, expectedPayload := range expectedPayloads {
-			if subtle.ConstantTimeCompare(payloadB, []byte(expectedPayload)) == 1 {
-				// check that the key it maps to is the same as the key that was passed in with the request
-				if subtle.ConstantTimeCompare(payloadKeyB, []byte("")) == 1 {
-					return map[string]string{}, nil
+		// Find the key that maps to the current payload which is a keyID
+		var payloadKey string
+		for _, entity := range forEntities {
+			for key, value := range entity {
+				if subtle.ConstantTimeCompare([]byte(key), payloadKeyID) == 1 {
+					payloadKey = value
 				}
 			}
+		}
+
+		for _, expectedPayloadMap := range expectedPayloads {
+			for key, value := range expectedPayloadMap {
+				expectedPayloadKeyID := key
+				expectedPayloadKey := value
+				if subtle.ConstantTimeCompare(payloadKeyID, []byte(expectedPayloadKeyID)) == 1 {
+					// check that the key it maps to is the same as the key that was passed in with the request
+					if subtle.ConstantTimeCompare([]byte(payloadKey), []byte(expectedPayloadKey)) == 1 {
+						return map[string]string{}, nil
+					}
+				}
+			}
+
 		}
 		return nil, errInvalidCredentials
 	})
 	// We are given a keyID and a key by the user
 	// Perform a lookup of the keyID in the list of pre-populated keyIDs
 	// If the keyID is found, lookup the corresponding key to the ID found in the list of keyIDs
-	// Compare that that ID is the same as the ID passed in the request
+	// Compare that that key is the same as the key passed in the request
 	// Done
 }
 
