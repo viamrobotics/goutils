@@ -225,8 +225,10 @@ func MakeSimpleMultiAuthPairHandler(forEntities, expectedPayloads []map[string]s
 			return nil, err
 		}
 
-		// Find the key that maps to the current payload which is a keyID
+		// set the keyID to the current payload
 		payloadKeyID := []byte(payload)
+
+		// Find the key that maps to the current payload
 		var payloadKey string
 		for _, pk := range expectedPayloads {
 			for key, value := range pk {
