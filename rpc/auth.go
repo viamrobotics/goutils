@@ -251,11 +251,6 @@ func MakeSimpleMultiAuthPairHandler(forEntities, expectedPayloads []map[string]s
 		}
 		return nil, errInvalidCredentials
 	})
-	// We are given a keyID and a key by the user
-	// Perform a lookup of the keyID in the list of pre-populated keyIDs
-	// If the keyID is found, lookup the corresponding key to the ID found in the list of keyIDs
-	// Compare that that key is the same as the key passed in the request
-	// Done
 }
 
 // MakeEntitiesChecker checks a list of entities against a given one for use in an auth handler.
