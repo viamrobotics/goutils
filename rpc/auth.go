@@ -224,12 +224,12 @@ func MakeSimpleMultiAuthPairHandler(forEntities, expectedPayloads []map[string]s
 			}
 			return nil, err
 		}
-		payloadKeyID := []byte(payload)
 
 		// Find the key that maps to the current payload which is a keyID
+		payloadKeyID := []byte(payload)
 		var payloadKey string
-		for _, entity := range forEntities {
-			for key, value := range entity {
+		for _, pk := range expectedPayloads {
+			for key, value := range pk {
 				if subtle.ConstantTimeCompare([]byte(key), payloadKeyID) == 1 {
 					payloadKey = value
 				}

@@ -150,7 +150,7 @@ func TestMakeSimpleMultiAuthPairHandler(t *testing.T) {
 		test.That(t, err, test.ShouldNotBeNil)
 	})
 
-	t.Run("should validate entities and key", func(t *testing.T) {
+	t.Run("should validate entities and (keyID, key) mappings", func(t *testing.T) {
 		expectedEntitiesMap := []map[string]string{{"one": "1"}, {"two": "2"}, {"three": "3"}}
 		expectedKeysMap := []map[string]string{{"myKeyID": "someKey"}, {"somethingElseKeyID": "someOtherKeyID"}}
 		handler := MakeSimpleMultiAuthPairHandler(expectedEntitiesMap, expectedKeysMap)
