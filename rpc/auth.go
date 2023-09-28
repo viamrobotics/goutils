@@ -249,7 +249,6 @@ func MakeSimpleMultiAuthPairHandler(forEntities, expectedPayloads []map[string]s
 					}
 				}
 			}
-
 		}
 		return nil, errInvalidCredentials
 	})
