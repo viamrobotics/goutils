@@ -1,10 +1,11 @@
 //go:build !windows
+
 package utils
 
 import (
-	"syscall"
 	"os"
 	"os/signal"
+	"syscall"
 )
 
 func notifySignals(channel chan os.Signal) {
