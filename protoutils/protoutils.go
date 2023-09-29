@@ -44,6 +44,7 @@ func InterfaceToMap(data interface{}) (map[string]interface{}, error) {
 	return res, nil
 }
 
+//nolint:dupl
 func interfaceToMapKeepEmpty(data interface{}) (map[string]interface{}, error) {
 	if data == nil {
 		return nil, errors.New("no data passed in")
@@ -177,7 +178,7 @@ func isEmptyValue(v reflect.Value) bool {
 
 // structToMap attempts to coerce a struct into a form acceptable by grpc.
 // shouldOmit specifies whether to ignore empty values if they are tagged omit empty or
-// keep all values
+// keep all values.
 func structToMap(data interface{}, shouldOmitEmpty bool) (map[string]interface{}, error) {
 	t := reflect.TypeOf(data)
 	if t.Kind() == reflect.Ptr {
