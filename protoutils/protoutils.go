@@ -12,8 +12,6 @@ import (
 
 // InterfaceToMap attempts to coerce an interface into a form acceptable by structpb.NewStruct.
 // Expects a struct or a map-like object.
-//
-
 func InterfaceToMap(data interface{}) (map[string]interface{}, error) {
 	return interfaceToMapHelper(data, true)
 }

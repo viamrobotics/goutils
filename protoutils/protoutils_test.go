@@ -72,7 +72,7 @@ var (
 	structTests = []structTest{
 		{"simple struct", simpleStruct, map[string]interface{}{"x": 1.1, "y": 2.2, "z": 3.3}, SimpleStruct{}},
 		{"typed string struct", typedStringStruct, map[string]interface{}{"typed_string": "hello"}, TypedStringStruct{}},
-		{"omit struct", OmitStruct{}, map[string]interface{}{}, OmitStruct{}},
+		{"omit struct", OmitStruct{}, map[string]interface{}{"x": 0.0}, OmitStruct{}},
 		{"ignore struct", IgnoreStruct{X: 1}, map[string]interface{}{}, IgnoreStruct{X: 1}},
 		{"slice struct", sliceStruct, map[string]interface{}{"degrees": []interface{}{1.1, 2.2, 3.3}}, SliceStruct{}},
 		{"map struct", mapStruct, map[string]interface{}{"status": map[string]interface{}{"foo": "bar"}}, MapStruct{}},
@@ -379,7 +379,7 @@ type (
 )
 
 type OmitStruct struct {
-	X float64 `json:"x,omitempty"`
+	X float64 `json:"x"`
 	Y float64 `json:"y,omitempty"`
 }
 type IgnoreStruct struct {
