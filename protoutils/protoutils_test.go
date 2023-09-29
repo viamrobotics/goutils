@@ -182,24 +182,24 @@ func TestInterfaceToMap(t *testing.T) {
 
 func TestMarshalMap(t *testing.T) {
 	t.Run("not a valid map", func(t *testing.T) {
-		_, err := marshalMap(simpleStruct)
+		_, err := marshalMap(simpleStruct, true)
 		test.That(t, err, test.ShouldBeError, errors.New("data of type protoutils.SimpleStruct is not a map"))
 
-		_, err = marshalMap("1")
+		_, err = marshalMap("1", true)
 		test.That(t, err, test.ShouldBeError, errors.New("data of type string is not a map"))
 
-		_, err = marshalMap([]string{"1"})
+		_, err = marshalMap([]string{"1"}, true)
 		test.That(t, err, test.ShouldBeError, errors.New("data of type []string is not a map"))
 
-		_, err = marshalMap(map[int]string{1: "1"})
+		_, err = marshalMap(map[int]string{1: "1"}, true)
 		test.That(t, err, test.ShouldBeError, errors.New("map keys of type int are not strings and do not implement String"))
 
-		_, err = marshalMap(map[interface{}]string{"1": "1"})
+		_, err = marshalMap(map[interface{}]string{"1": "1"}, true)
 		test.That(t, err, test.ShouldBeError, errors.New("map keys of type interface are not strings and do not implement String"))
 	})
 
 	for _, tc := range mapTests {
-		map1, err := marshalMap(tc.Data)
+		map1, err := marshalMap(tc.Data, true)
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, map1, test.ShouldResemble, tc.Expected)
 
@@ -211,19 +211,19 @@ func TestMarshalMap(t *testing.T) {
 
 func TestStructToMap(t *testing.T) {
 	t.Run("not a struct", func(t *testing.T) {
-		_, err := structToMap(map[string]interface{}{"exists": true})
+		_, err := structToMap(map[string]interface{}{"exists": true}, true)
 		test.That(t, err, test.ShouldBeError, errors.New("data of type map[string]interface {} is not a struct"))
 
-		_, err = structToMap(1)
+		_, err = structToMap(1, true)
 		test.That(t, err, test.ShouldBeError, errors.New("data of type int is not a struct"))
 
-		_, err = structToMap([]string{"1"})
+		_, err = structToMap([]string{"1"}, true)
 		test.That(t, err, test.ShouldBeError, errors.New("data of type []string is not a struct"))
 	})
 
 	//nolint:dupl
 	for _, tc := range structTests {
-		map1, err := structToMap(tc.Data)
+		map1, err := structToMap(tc.Data, true)
 		test.That(t, err, test.ShouldBeNil)
 		switch tc.TestName {
 		case "struct with uint":
@@ -256,7 +256,7 @@ func TestStructToMap(t *testing.T) {
 
 func TestMarshalSlice(t *testing.T) {
 	t.Run("not a list", func(t *testing.T) {
-		_, err := marshalSlice(1)
+		_, err := marshalSlice(1, true)
 		test.That(t, err, test.ShouldBeError, errors.New("data of type int is not a slice"))
 	})
 
@@ -304,7 +304,7 @@ func TestMarshalSlice(t *testing.T) {
 		},
 	} {
 		t.Run(tc.TestName, func(t *testing.T) {
-			marshalled, err := marshalSlice(tc.Data)
+			marshalled, err := marshalSlice(tc.Data, true)
 			test.That(t, err, test.ShouldBeNil)
 			test.That(t, len(marshalled), test.ShouldEqual, tc.Length)
 			test.That(t, marshalled, test.ShouldResemble, tc.Expected)
@@ -332,24 +332,33 @@ func TestStructToStructPb(t *testing.T) {
 	}
 }
 
+func TestStructToStructPbOmitEmpty(t *testing.T) {
+	expected := map[string]interface{}{"x": 0.0, "y": 0.0}
+	t.Run("StructToStructPBIgnoreOmitEmpty includes all values", func(t *testing.T) {
+		data, err := StructToStructPbIgnoreOmitEmpty(OmitStruct{})
+		test.That(t, err, test.ShouldBeNil)
+		test.That(t, data.AsMap(), test.ShouldResemble, expected)
+	})
+}
+
 func TestToInterfaceWeirdBugUint(t *testing.T) {
 	a := uint(5)
-	x, err := toInterface(a)
+	x, err := toInterface(a, true)
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, x, test.ShouldEqual, a)
 
-	x, err = toInterface(&a)
+	x, err = toInterface(&a, true)
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, x, test.ShouldEqual, a)
 }
 
 func TestToInterfaceWeirdBugUint8(t *testing.T) {
 	a := uint8(5)
-	x, err := toInterface(a)
+	x, err := toInterface(a, true)
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, x, test.ShouldEqual, a)
 
-	x, err = toInterface(&a)
+	x, err = toInterface(&a, true)
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, x, test.ShouldEqual, a)
 }
