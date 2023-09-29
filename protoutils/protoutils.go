@@ -92,7 +92,7 @@ func StructToStructPb(i interface{}) (*structpb.Struct, error) {
 	return ret, nil
 }
 
-// StructToStructPb converts an arbitrary Go struct to a *structpb.Struct. Only exported fields are included in the
+// StructToStructPbIgnoreOmitEmpty converts an arbitrary Go struct to a *structpb.Struct. Only exported fields are included in the
 // returned proto and any omitempty tag is ignored.
 func StructToStructPbIgnoreOmitEmpty(i interface{}) (*structpb.Struct, error) {
 	encoded, err := interfaceToMapKeepEmpty(i)
