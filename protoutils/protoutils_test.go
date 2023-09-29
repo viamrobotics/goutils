@@ -16,6 +16,8 @@ type mapTest struct {
 	Expected map[string]interface{}
 }
 
+const shouldOmitEmpty = true
+
 var (
 	myUUIDString = "c0ab974c-f32c-11ed-a05b-0242ac120003"
 	myUUID       = uuid.MustParse(myUUIDString)
@@ -70,7 +72,7 @@ var (
 	structTests = []structTest{
 		{"simple struct", simpleStruct, map[string]interface{}{"x": 1.1, "y": 2.2, "z": 3.3}, SimpleStruct{}},
 		{"typed string struct", typedStringStruct, map[string]interface{}{"typed_string": "hello"}, TypedStringStruct{}},
-		{"omit struct", OmitStruct{}, map[string]interface{}{"x": 0.0}, OmitStruct{}},
+		{"omit struct", OmitStruct{}, map[string]interface{}{}, OmitStruct{}},
 		{"ignore struct", IgnoreStruct{X: 1}, map[string]interface{}{}, IgnoreStruct{X: 1}},
 		{"slice struct", sliceStruct, map[string]interface{}{"degrees": []interface{}{1.1, 2.2, 3.3}}, SliceStruct{}},
 		{"map struct", mapStruct, map[string]interface{}{"status": map[string]interface{}{"foo": "bar"}}, MapStruct{}},
@@ -181,24 +183,24 @@ func TestInterfaceToMap(t *testing.T) {
 
 func TestMarshalMap(t *testing.T) {
 	t.Run("not a valid map", func(t *testing.T) {
-		_, err := marshalMap(simpleStruct, true)
+		_, err := marshalMap(simpleStruct, shouldOmitEmpty)
 		test.That(t, err, test.ShouldBeError, errors.New("data of type protoutils.SimpleStruct is not a map"))
 
-		_, err = marshalMap("1", true)
+		_, err = marshalMap("1", shouldOmitEmpty)
 		test.That(t, err, test.ShouldBeError, errors.New("data of type string is not a map"))
 
-		_, err = marshalMap([]string{"1"}, true)
+		_, err = marshalMap([]string{"1"}, shouldOmitEmpty)
 		test.That(t, err, test.ShouldBeError, errors.New("data of type []string is not a map"))
 
-		_, err = marshalMap(map[int]string{1: "1"}, true)
+		_, err = marshalMap(map[int]string{1: "1"}, shouldOmitEmpty)
 		test.That(t, err, test.ShouldBeError, errors.New("map keys of type int are not strings and do not implement String"))
 
-		_, err = marshalMap(map[interface{}]string{"1": "1"}, true)
+		_, err = marshalMap(map[interface{}]string{"1": "1"}, shouldOmitEmpty)
 		test.That(t, err, test.ShouldBeError, errors.New("map keys of type interface are not strings and do not implement String"))
 	})
 
 	for _, tc := range mapTests {
-		map1, err := marshalMap(tc.Data, true)
+		map1, err := marshalMap(tc.Data, shouldOmitEmpty)
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, map1, test.ShouldResemble, tc.Expected)
 
@@ -210,18 +212,18 @@ func TestMarshalMap(t *testing.T) {
 
 func TestStructToMap(t *testing.T) {
 	t.Run("not a struct", func(t *testing.T) {
-		_, err := structToMap(map[string]interface{}{"exists": true}, true)
+		_, err := structToMap(map[string]interface{}{"exists": true}, shouldOmitEmpty)
 		test.That(t, err, test.ShouldBeError, errors.New("data of type map[string]interface {} is not a struct"))
 
-		_, err = structToMap(1, true)
+		_, err = structToMap(1, shouldOmitEmpty)
 		test.That(t, err, test.ShouldBeError, errors.New("data of type int is not a struct"))
 
-		_, err = structToMap([]string{"1"}, true)
+		_, err = structToMap([]string{"1"}, shouldOmitEmpty)
 		test.That(t, err, test.ShouldBeError, errors.New("data of type []string is not a struct"))
 	})
 
 	for _, tc := range structTests {
-		map1, err := structToMap(tc.Data, true)
+		map1, err := structToMap(tc.Data, shouldOmitEmpty)
 		test.That(t, err, test.ShouldBeNil)
 		switch tc.TestName {
 		case "struct with uint":
@@ -254,7 +256,7 @@ func TestStructToMap(t *testing.T) {
 
 func TestMarshalSlice(t *testing.T) {
 	t.Run("not a list", func(t *testing.T) {
-		_, err := marshalSlice(1, true)
+		_, err := marshalSlice(1, shouldOmitEmpty)
 		test.That(t, err, test.ShouldBeError, errors.New("data of type int is not a slice"))
 	})
 
@@ -302,7 +304,7 @@ func TestMarshalSlice(t *testing.T) {
 		},
 	} {
 		t.Run(tc.TestName, func(t *testing.T) {
-			marshalled, err := marshalSlice(tc.Data, true)
+			marshalled, err := marshalSlice(tc.Data, shouldOmitEmpty)
 			test.That(t, err, test.ShouldBeNil)
 			test.That(t, len(marshalled), test.ShouldEqual, tc.Length)
 			test.That(t, marshalled, test.ShouldResemble, tc.Expected)
@@ -341,22 +343,22 @@ func TestStructToStructPbOmitEmpty(t *testing.T) {
 
 func TestToInterfaceWeirdBugUint(t *testing.T) {
 	a := uint(5)
-	x, err := toInterface(a, true)
+	x, err := toInterface(a, shouldOmitEmpty)
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, x, test.ShouldEqual, a)
 
-	x, err = toInterface(&a, true)
+	x, err = toInterface(&a, shouldOmitEmpty)
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, x, test.ShouldEqual, a)
 }
 
 func TestToInterfaceWeirdBugUint8(t *testing.T) {
 	a := uint8(5)
-	x, err := toInterface(a, true)
+	x, err := toInterface(a, shouldOmitEmpty)
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, x, test.ShouldEqual, a)
 
-	x, err = toInterface(&a, true)
+	x, err = toInterface(&a, shouldOmitEmpty)
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, x, test.ShouldEqual, a)
 }
@@ -377,7 +379,7 @@ type (
 )
 
 type OmitStruct struct {
-	X float64 `json:"x"`
+	X float64 `json:"x,omitempty"`
 	Y float64 `json:"y,omitempty"`
 }
 type IgnoreStruct struct {

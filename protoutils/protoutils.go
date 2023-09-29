@@ -13,41 +13,12 @@ import (
 // InterfaceToMap attempts to coerce an interface into a form acceptable by structpb.NewStruct.
 // Expects a struct or a map-like object.
 //
-//nolint:dupl
+
 func InterfaceToMap(data interface{}) (map[string]interface{}, error) {
-	if data == nil {
-		return nil, errors.New("no data passed in")
-	}
-	t := reflect.TypeOf(data)
-	if t.Kind() == reflect.Ptr {
-		t = t.Elem()
-	}
-	var res map[string]interface{}
-	var err error
-	switch t.Kind() {
-	case reflect.Struct:
-		res, err = structToMap(data, true)
-		if err != nil {
-			return nil, err
-		}
-	case reflect.Map:
-		res, err = marshalMap(data, true)
-		if err != nil {
-			return nil, err
-		}
-	case reflect.Array, reflect.Bool, reflect.Chan, reflect.Complex128, reflect.Complex64, reflect.Float32,
-		reflect.Float64, reflect.Func, reflect.Int, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Int8,
-		reflect.Interface, reflect.Invalid, reflect.Pointer, reflect.Slice, reflect.String, reflect.Uint,
-		reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uint8, reflect.Uintptr, reflect.UnsafePointer:
-		fallthrough
-	default:
-		return nil, errors.Errorf("data of type %T and kind %s not a struct or a map-like object", data, t.Kind().String())
-	}
-	return res, nil
+	return interfaceToMapHelper(data, true)
 }
 
-//nolint:dupl
-func interfaceToMapKeepEmpty(data interface{}) (map[string]interface{}, error) {
+func interfaceToMapHelper(data interface{}, shouldOmitEmpty bool) (map[string]interface{}, error) {
 	if data == nil {
 		return nil, errors.New("no data passed in")
 	}
@@ -59,12 +30,12 @@ func interfaceToMapKeepEmpty(data interface{}) (map[string]interface{}, error) {
 	var err error
 	switch t.Kind() {
 	case reflect.Struct:
-		res, err = structToMap(data, false)
+		res, err = structToMap(data, shouldOmitEmpty)
 		if err != nil {
 			return nil, err
 		}
 	case reflect.Map:
-		res, err = marshalMap(data, false)
+		res, err = marshalMap(data, shouldOmitEmpty)
 		if err != nil {
 			return nil, err
 		}
@@ -97,7 +68,7 @@ func StructToStructPb(i interface{}) (*structpb.Struct, error) {
 // StructToStructPbIgnoreOmitEmpty converts an arbitrary Go struct to a *structpb.Struct. Only exported fields are included in the
 // returned proto and any omitempty tag is ignored.
 func StructToStructPbIgnoreOmitEmpty(i interface{}) (*structpb.Struct, error) {
-	encoded, err := interfaceToMapKeepEmpty(i)
+	encoded, err := interfaceToMapHelper(i, false)
 	if err != nil {
 		return nil, errors.Wrap(err,
 			fmt.Sprintf("unable to convert interface %v to a form acceptable to structpb.NewStruct", i))
@@ -179,7 +150,7 @@ func isEmptyValue(v reflect.Value) bool {
 }
 
 // structToMap attempts to coerce a struct into a form acceptable by grpc.
-// shouldOmit specifies whether to ignore empty values if they are tagged omit empty or
+// shouldOmitEmpty specifies whether to ignore empty values if they are tagged omitempty or
 // keep all values.
 func structToMap(data interface{}, shouldOmitEmpty bool) (map[string]interface{}, error) {
 	t := reflect.TypeOf(data)
