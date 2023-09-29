@@ -220,7 +220,6 @@ func TestStructToMap(t *testing.T) {
 		test.That(t, err, test.ShouldBeError, errors.New("data of type []string is not a struct"))
 	})
 
-	
 	for _, tc := range structTests {
 		map1, err := structToMap(tc.Data, true)
 		test.That(t, err, test.ShouldBeNil)
