@@ -12,6 +12,8 @@ import (
 
 // InterfaceToMap attempts to coerce an interface into a form acceptable by structpb.NewStruct.
 // Expects a struct or a map-like object.
+//
+//nolint:dupl
 func InterfaceToMap(data interface{}) (map[string]interface{}, error) {
 	if data == nil {
 		return nil, errors.New("no data passed in")
