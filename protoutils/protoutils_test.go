@@ -147,7 +147,6 @@ func TestInterfaceToMap(t *testing.T) {
 		test.That(t, newStruct.AsMap(), test.ShouldResemble, tc.Expected)
 	}
 
-	//nolint:dupl
 	for _, tc := range structTests {
 		map1, err := InterfaceToMap(tc.Data)
 		test.That(t, err, test.ShouldBeNil)
@@ -221,7 +220,7 @@ func TestStructToMap(t *testing.T) {
 		test.That(t, err, test.ShouldBeError, errors.New("data of type []string is not a struct"))
 	})
 
-	//nolint:dupl
+	
 	for _, tc := range structTests {
 		map1, err := structToMap(tc.Data, true)
 		test.That(t, err, test.ShouldBeNil)
