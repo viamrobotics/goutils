@@ -76,6 +76,9 @@ linters-settings:
       - shadow
   lll:
     line-length: 140
+  revive:
+    disable:
+    - package-comments
 issues:
   exclude:
     - composites
