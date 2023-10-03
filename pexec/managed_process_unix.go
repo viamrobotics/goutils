@@ -66,7 +66,6 @@ func parseSignal(sigStr, name string) (syscall.Signal, error) {
 }
 
 func (p *managedProcess) sysProcAttr() (*syscall.SysProcAttr, error) {
-	// todo reviewer: should I wrap these errors for clarity?
 	attrs := &syscall.SysProcAttr{Setpgid: true}
 	if len(p.username) > 0 {
 		user, err := user.Lookup(p.username)
@@ -77,6 +76,7 @@ func (p *managedProcess) sysProcAttr() (*syscall.SysProcAttr, error) {
 		if err != nil {
 			return nil, err
 		}
+		attrs.Credential = &syscall.Credential{}
 		attrs.Credential.Uid = uint32(val)
 		val, err = strconv.ParseUint(user.Gid, 10, 32)
 		if err != nil {
