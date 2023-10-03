@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
   push:
     branches: [ main ]
-  pull_request: # pull_request_target:
-    # branches: [ main ]
-    # types: [ labeled ]
+  pull_request_target:
+    branches: [ main ]
+    types: [ labeled ]
 
 jobs:
   test_passing:
@@ -22,7 +22,7 @@ jobs:
 
   build_and_test:
     name: Build and Test
-    runs-on: ubuntu-latest
+    runs-on: [x64, qemu-host]
     container:
       image: ghcr.io/viamrobotics/canon:amd64-cache
       options: --platform linux/amd64
@@ -33,7 +33,7 @@ jobs:
 
     steps:
     - name: Check out main branch code
-      if: github.event_name == 'workflow_dispatch' || github.event_name == 'push' || github.event_name == 'pull_request'
+      if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
       uses: actions/checkout@v3
       with:
         fetch-depth: 2
@@ -61,32 +61,33 @@ jobs:
         echo "GITHUB_X_PR_BASE_SHA=${{ github.event.pull_request.base.sha }}" >> $GITHUB_ENV
         echo "GITHUB_X_PR_BASE_REF=${{ github.event.pull_request.base.ref }}" >> $GITHUB_ENV
 
-    # - name: Verify no uncommitted changes from "make build lint"
-    #   run: |
-    #     git init
-    #     git add .
-    #     chown -R testbot .
-    #     sudo -u testbot bash -lc 'make build lint'
-    #     GEN_DIFF=$(git status -s)
-    #     if [ -n "$GEN_DIFF" ]; then
-    #         echo '"make build lint" resulted in changes not in git' 1>&2
-    #         git status
-    #         exit 1
-    #     fi
+    - name: Verify no uncommitted changes from "make build lint"
+      run: |
+        git init
+        git add .
+        chown -R testbot .
+        sudo -u testbot bash -lc 'make build lint'
+        GEN_DIFF=$(git status -s)
+        if [ -n "$GEN_DIFF" ]; then
+            echo '"make build lint" resulted in changes not in git' 1>&2
+            git status
+            exit 1
+        fi
 
-    # - name: Test
-    #   env:
-    #     TEST_MONGODB_URI: ${{ secrets.TEST_MONGODB_URI }}
-    #     MONGODB_TEST_OUTPUT_URI: ${{ secrets.MONGODB_TEST_OUTPUT_URI }}
-    #   run: |
-    #     sudo -u testbot bash -lc 'echo "${{ secrets.ARTIFACT_GOOGLE_APPLICATION_CREDENTIALS }}" | base64 -d > artifact_google_creds.json'
-    #     export ARTIFACT_GOOGLE_APPLICATION_CREDENTIALS=`pwd`/artifact_google_creds.json
-    #     sudo -u testbot --preserve-env=ARTIFACT_GOOGLE_APPLICATION_CREDENTIALS,TEST_MONGODB_URI,MONGODB_TEST_OUTPUT_URI,GITHUB_SHA,GITHUB_RUN_ID,GITHUB_RUN_NUMBER,GITHUB_RUN_ATTEMPT,GITHUB_X_PR_BASE_SHA,GITHUB_X_PR_BASE_REF,GITHUB_X_HEAD_REF,GITHUB_X_HEAD_SHA,GITHUB_REPOSITORY bash -lc 'make cover'
+    - name: Test
+      env:
+        TEST_MONGODB_URI: ${{ secrets.TEST_MONGODB_URI }}
+        MONGODB_TEST_OUTPUT_URI: ${{ secrets.MONGODB_TEST_OUTPUT_URI }}
+      run: |
+        sudo -u testbot bash -lc 'echo "${{ secrets.ARTIFACT_GOOGLE_APPLICATION_CREDENTIALS }}" | base64 -d > artifact_google_creds.json'
+        export ARTIFACT_GOOGLE_APPLICATION_CREDENTIALS=`pwd`/artifact_google_creds.json
+        sudo -u testbot --preserve-env=ARTIFACT_GOOGLE_APPLICATION_CREDENTIALS,TEST_MONGODB_URI,MONGODB_TEST_OUTPUT_URI,GITHUB_SHA,GITHUB_RUN_ID,GITHUB_RUN_NUMBER,GITHUB_RUN_ATTEMPT,GITHUB_X_PR_BASE_SHA,GITHUB_X_PR_BASE_REF,GITHUB_X_HEAD_REF,GITHUB_X_HEAD_SHA,GITHUB_REPOSITORY bash -lc 'make cover'
 
     # this one runs as root for CAP_SETUID
     - name: test run-as-user
-      run: |
-        sudo sh -c "TEST_SUBPROC_USER=testbot go test -v ./pexec -run TestManagedProcessStart"
+      env:
+        TEST_SUBPROC_USER: testbot
+      run: go test -v ./pexec -run TestManagedProcessStart
 
     - name: Add Coverage PR Comment
       uses: marocchino/sticky-pull-request-comment@v2.2.0
