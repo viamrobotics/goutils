@@ -16,7 +16,7 @@ func InterfaceToMap(data interface{}) (map[string]interface{}, error) {
 	return interfaceToMapHelper(data, true)
 }
 
-func interfaceToMapHelper(data interface{}, shouldOmitEmpty bool) (map[string]interface{}, error) {
+func interfaceToMapHelper(data interface{}, ignoreOmitEmpty bool) (map[string]interface{}, error) {
 	if data == nil {
 		return nil, errors.New("no data passed in")
 	}
@@ -28,12 +28,12 @@ func interfaceToMapHelper(data interface{}, shouldOmitEmpty bool) (map[string]in
 	var err error
 	switch t.Kind() {
 	case reflect.Struct:
-		res, err = structToMap(data, shouldOmitEmpty)
+		res, err = structToMap(data, ignoreOmitEmpty)
 		if err != nil {
 			return nil, err
 		}
 	case reflect.Map:
-		res, err = marshalMap(data, shouldOmitEmpty)
+		res, err = marshalMap(data, ignoreOmitEmpty)
 		if err != nil {
 			return nil, err
 		}
@@ -68,8 +68,8 @@ func StructToStructPb(i interface{}) (*structpb.Struct, error) {
 func StructToStructPbIgnoreOmitEmpty(i interface{}) (*structpb.Struct, error) {
 	encoded, err := interfaceToMapHelper(i, false)
 	if err != nil {
-		return nil, errors.Wrap(err,
-			fmt.Sprintf("unable to convert interface %v to a form acceptable to structpb.NewStruct", i))
+		return nil, errors.Wrapf(err,
+			"unable to convert interface %v to a form acceptable to structpb.NewStruct", i)
 	}
 	ret, err := structpb.NewStruct(encoded)
 	if err != nil {
@@ -79,7 +79,7 @@ func StructToStructPbIgnoreOmitEmpty(i interface{}) (*structpb.Struct, error) {
 }
 
 // takes a go type and tries to make it a better type for converting to grpc.
-func toInterface(data interface{}, shouldOmitEmpty bool) (interface{}, error) {
+func toInterface(data interface{}, ignoreOmitEmpty bool) (interface{}, error) {
 	if data == nil {
 		return data, nil
 	}
@@ -95,17 +95,17 @@ func toInterface(data interface{}, shouldOmitEmpty bool) (interface{}, error) {
 	var err error
 	switch t.Kind() {
 	case reflect.Struct:
-		newData, err = structToMap(data, shouldOmitEmpty)
+		newData, err = structToMap(data, ignoreOmitEmpty)
 		if err != nil {
 			return nil, err
 		}
 	case reflect.Map:
-		newData, err = marshalMap(data, shouldOmitEmpty)
+		newData, err = marshalMap(data, ignoreOmitEmpty)
 		if err != nil {
 			return nil, err
 		}
 	case reflect.Slice:
-		newData, err = marshalSlice(data, shouldOmitEmpty)
+		newData, err = marshalSlice(data, ignoreOmitEmpty)
 		if err != nil {
 			return nil, err
 		}
@@ -148,9 +148,8 @@ func isEmptyValue(v reflect.Value) bool {
 }
 
 // structToMap attempts to coerce a struct into a form acceptable by grpc.
-// shouldOmitEmpty specifies whether to ignore empty values if they are tagged omitempty or
-// keep all values.
-func structToMap(data interface{}, shouldOmitEmpty bool) (map[string]interface{}, error) {
+// ignoreOmitEmpty specifies whether to ignore the omitEmpty tag.
+func structToMap(data interface{}, ignoreOmitEmpty bool) (map[string]interface{}, error) {
 	t := reflect.TypeOf(data)
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
@@ -187,11 +186,11 @@ func structToMap(data interface{}, shouldOmitEmpty bool) (map[string]interface{}
 		field := value.Field(i).Interface()
 
 		// If "omitempty" is specified in the tag, it ignores empty values.
-		if shouldOmitEmpty && strings.Contains(tag, "omitempty") && isEmptyValue(reflect.ValueOf(field)) {
+		if ignoreOmitEmpty && strings.Contains(tag, "omitempty") && isEmptyValue(reflect.ValueOf(field)) {
 			continue
 		}
 
-		data, err := toInterface(field, shouldOmitEmpty)
+		data, err := toInterface(field, ignoreOmitEmpty)
 		if err != nil {
 			return nil, err
 		}
@@ -202,7 +201,7 @@ func structToMap(data interface{}, shouldOmitEmpty bool) (map[string]interface{}
 }
 
 // marshalMap attempts to coerce maps of string keys into a form acceptable by grpc.
-func marshalMap(data interface{}, shouldOmitEmpty bool) (map[string]interface{}, error) {
+func marshalMap(data interface{}, ignoreOmitEmpty bool) (map[string]interface{}, error) {
 	s := reflect.ValueOf(data)
 	if s.Kind() != reflect.Map {
 		return nil, errors.Errorf("data of type %T is not a map", data)
@@ -222,7 +221,7 @@ func marshalMap(data interface{}, shouldOmitEmpty bool) (map[string]interface{},
 			key = kstringer.String()
 		}
 		v := iter.Value().Interface()
-		result[key], err = toInterface(v, shouldOmitEmpty)
+		result[key], err = toInterface(v, ignoreOmitEmpty)
 		if err != nil {
 			return nil, err
 		}
@@ -231,7 +230,7 @@ func marshalMap(data interface{}, shouldOmitEmpty bool) (map[string]interface{},
 }
 
 // marshalSlice attempts to coerce list data into a form acceptable by grpc.
-func marshalSlice(data interface{}, shouldOmitEmpty bool) ([]interface{}, error) {
+func marshalSlice(data interface{}, ignoreOmitEmpty bool) ([]interface{}, error) {
 	s := reflect.ValueOf(data)
 	if s.Kind() != reflect.Slice {
 		return nil, errors.Errorf("data of type %T is not a slice", data)
@@ -240,7 +239,7 @@ func marshalSlice(data interface{}, shouldOmitEmpty bool) ([]interface{}, error)
 	newList := make([]interface{}, 0, s.Len())
 	for i := 0; i < s.Len(); i++ {
 		value := s.Index(i).Interface()
-		data, err := toInterface(value, shouldOmitEmpty)
+		data, err := toInterface(value, ignoreOmitEmpty)
 		if err != nil {
 			return nil, err
 		}

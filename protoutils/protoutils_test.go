@@ -334,11 +334,9 @@ func TestStructToStructPb(t *testing.T) {
 
 func TestStructToStructPbOmitEmpty(t *testing.T) {
 	expected := map[string]interface{}{"x": 0.0, "y": 0.0}
-	t.Run("StructToStructPBIgnoreOmitEmpty includes all values", func(t *testing.T) {
-		data, err := StructToStructPbIgnoreOmitEmpty(OmitStruct{})
-		test.That(t, err, test.ShouldBeNil)
-		test.That(t, data.AsMap(), test.ShouldResemble, expected)
-	})
+	data, err := StructToStructPbIgnoreOmitEmpty(OmitStruct{})
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, data.AsMap(), test.ShouldResemble, expected)
 }
 
 func TestToInterfaceWeirdBugUint(t *testing.T) {
