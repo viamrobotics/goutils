@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"os/user"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -28,10 +30,8 @@ import (
 func subprocUser() *user.User {
 	var userInfo *user.User
 	var err error
-	println("getenv", os.Getenv("TEST_SUBPROC_USER"))
 	if usernameFromEnv := os.Getenv("TEST_SUBPROC_USER"); len(usernameFromEnv) > 0 {
 		userInfo, err = user.Lookup(usernameFromEnv)
-		println("running as", userInfo.Name, userInfo.Uid)
 	} else {
 		userInfo, err = user.Current()
 	}
@@ -200,7 +200,7 @@ func TestManagedProcessStart(t *testing.T) {
 		})
 		t.Run("run as user", func(t *testing.T) {
 			if curUser, _ := user.Current(); curUser.Username != "root" {
-				t.Skipf("skipping run-as-user because setuid only works for root / sudo`")
+				t.Skipf("skipping run-as-user because setuid required elevated privileges")
 				return
 			}
 			asUser := subprocUser()
@@ -212,10 +212,8 @@ func TestManagedProcessStart(t *testing.T) {
 				Log:      true,
 			}, golog.NewTestLogger(t))
 			test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
-			contents, _ := os.ReadFile(fmt.Sprintf("/proc/%d/loginuid", proc.(*managedProcess).cmd.Process.Pid))
-			println("temp contents", contents) // deleteme
-			println("comparing", strings.Trim(string(contents), " \n\r"), "---", asUser.Uid)
-			test.That(t, asUser.Uid, test.ShouldEqual, strings.Trim(string(contents), " \n\r"))
+			detectedUid, _ := exec.Command("ps", "--no-headers", "-o", "uid", "-p", strconv.Itoa(proc.(*managedProcess).cmd.Process.Pid)).Output()
+			test.That(t, asUser.Uid, test.ShouldEqual, strings.Trim(string(detectedUid), " \n\r"))
 			test.That(t, proc.Stop(), test.ShouldBeNil)
 		})
 	})
