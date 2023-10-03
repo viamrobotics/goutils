@@ -212,8 +212,8 @@ func TestManagedProcessStart(t *testing.T) {
 				Log:      true,
 			}, golog.NewTestLogger(t))
 			test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
-			detectedUid, _ := exec.Command("ps", "--no-headers", "-o", "uid", "-p", strconv.Itoa(proc.(*managedProcess).cmd.Process.Pid)).Output()
-			test.That(t, asUser.Uid, test.ShouldEqual, strings.Trim(string(detectedUid), " \n\r"))
+			detectedUID, _ := exec.Command("ps", "--no-headers", "-o", "uid", "-p", strconv.Itoa(proc.(*managedProcess).cmd.Process.Pid)).Output()
+			test.That(t, asUser.Uid, test.ShouldEqual, strings.Trim(string(detectedUID), " \n\r"))
 			test.That(t, proc.Stop(), test.ShouldBeNil)
 		})
 	})
