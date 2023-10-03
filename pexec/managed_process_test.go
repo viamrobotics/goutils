@@ -28,8 +28,10 @@ import (
 func subprocUser() *user.User {
 	var userInfo *user.User
 	var err error
+	println("getenv", os.Getenv("TEST_SUBPROC_USER"))
 	if usernameFromEnv := os.Getenv("TEST_SUBPROC_USER"); len(usernameFromEnv) > 0 {
 		userInfo, err = user.Lookup(usernameFromEnv)
+		println("running as", userInfo.Name, userInfo.Uid)
 	} else {
 		userInfo, err = user.Current()
 	}
@@ -211,6 +213,8 @@ func TestManagedProcessStart(t *testing.T) {
 			}, golog.NewTestLogger(t))
 			test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
 			contents, _ := os.ReadFile(fmt.Sprintf("/proc/%d/loginuid", proc.(*managedProcess).cmd.Process.Pid))
+			println("temp contents", contents) // deleteme
+			println("comparing", strings.Trim(string(contents), " \n\r"), "---", asUser.Uid)
 			test.That(t, asUser.Uid, test.ShouldEqual, strings.Trim(string(contents), " \n\r"))
 			test.That(t, proc.Stop(), test.ShouldBeNil)
 		})
