@@ -13,7 +13,7 @@ import (
 // InterfaceToMap attempts to coerce an interface into a form acceptable by structpb.NewStruct.
 // Expects a struct or a map-like object.
 func InterfaceToMap(data interface{}) (map[string]interface{}, error) {
-	return interfaceToMapHelper(data, true)
+	return interfaceToMapHelper(data, false)
 }
 
 func interfaceToMapHelper(data interface{}, ignoreOmitEmpty bool) (map[string]interface{}, error) {
@@ -66,7 +66,7 @@ func StructToStructPb(i interface{}) (*structpb.Struct, error) {
 // StructToStructPbIgnoreOmitEmpty converts an arbitrary Go struct to a *structpb.Struct. Only exported fields are included in the
 // returned proto and any omitempty tag is ignored.
 func StructToStructPbIgnoreOmitEmpty(i interface{}) (*structpb.Struct, error) {
-	encoded, err := interfaceToMapHelper(i, false)
+	encoded, err := interfaceToMapHelper(i, true)
 	if err != nil {
 		return nil, errors.Wrapf(err,
 			"unable to convert interface %v to a form acceptable to structpb.NewStruct", i)
@@ -185,8 +185,8 @@ func structToMap(data interface{}, ignoreOmitEmpty bool) (map[string]interface{}
 
 		field := value.Field(i).Interface()
 
-		// If "omitempty" is specified in the tag, it ignores empty values.
-		if ignoreOmitEmpty && strings.Contains(tag, "omitempty") && isEmptyValue(reflect.ValueOf(field)) {
+		// If "omitempty" is specified in the tag and ignoreOmitEmpty is false, it ignores empty values.
+		if !ignoreOmitEmpty && strings.Contains(tag, "omitempty") && isEmptyValue(reflect.ValueOf(field)) {
 			continue
 		}
 
