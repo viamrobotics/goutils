@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
   push:
     branches: [ main ]
-  pull_request_target:
-    branches: [ main ]
-    types: [ labeled ]
+  pull_request: # pull_request_target:
+    # branches: [ main ]
+    # types: [ labeled ]
 
 jobs:
   test_passing:
