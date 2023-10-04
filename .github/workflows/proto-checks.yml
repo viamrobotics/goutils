@@ -16,23 +16,11 @@ jobs:
       image: ghcr.io/viamrobotics/canon:amd64-cache
       options: --platform linux/amd64
     steps:
-    - uses: docker/login-action@v1
-      with:
-        username: soyybean
-        password: dckr_pat_kXtItMP6C7iN17oWJFCZ2JseVsg
     - uses: actions/checkout@v3
     - uses: bufbuild/buf-setup-action@v1
-      with:
-        username: soyybean
-        password: dckr_pat_kXtItMP6C7iN17oWJFCZ2JseVsg
     # Run all Lint runs
     - uses: bufbuild/buf-lint-action@v1
-      with:
-        username: soyybean
-        password: dckr_pat_kXtItMP6C7iN17oWJFCZ2JseVsg
     # Run breaking change detection against the `main` branch
     - uses: bufbuild/buf-breaking-action@v1
       with:
         against: 'https://github.com/viamrobotics/goutils.git#branch=main'
-        username: soyybean
-        password: dckr_pat_kXtItMP6C7iN17oWJFCZ2JseVsg
