@@ -203,7 +203,6 @@ func MakeSimpleMultiAuthHandler(forEntities, expectedPayloads []string) AuthHand
 // MakeSimpleMultiAuthPairHandler works similarly to MakeSimpleMultiAuthHandler with the addition of
 // supporting a key, id pair used to ensure that a key that maps to the id matches the key passed
 // during the function call.
-
 func MakeSimpleMultiAuthPairHandler(expectedPayloads map[string]string) AuthHandler {
 	if len(expectedPayloads) == 0 {
 		panic("expected at least one payload")
