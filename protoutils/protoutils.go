@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"syscall"
 
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -78,10 +79,16 @@ func StructToStructPbIgnoreOmitEmpty(i interface{}) (*structpb.Struct, error) {
 	return ret, nil
 }
 
+
 // takes a go type and tries to make it a better type for converting to grpc.
 func toInterface(data interface{}, ignoreOmitEmpty bool) (interface{}, error) {
 	if data == nil {
 		return data, nil
+	}
+
+	// check for types that are not reflect-handle-able here
+	if errno, ok := data.(syscall.Errno); ok {
+        data = int(errno)
 	}
 
 	t := reflect.TypeOf(data)
