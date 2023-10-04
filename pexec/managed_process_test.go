@@ -27,18 +27,11 @@ import (
 
 // User for subprocess tests.
 // This looks for TEST_SUBPROC_USER var, otherwise uses current user.
-func subprocUser() *user.User {
-	var userInfo *user.User
-	var err error
+func subprocUser() (*user.User, error) {
 	if usernameFromEnv := os.Getenv("TEST_SUBPROC_USER"); len(usernameFromEnv) > 0 {
-		userInfo, err = user.Lookup(usernameFromEnv)
-	} else {
-		userInfo, err = user.Current()
+		return user.Lookup(usernameFromEnv)
 	}
-	if err != nil {
-		panic(err)
-	}
-	return userInfo
+	return user.Current()
 }
 
 func TestManagedProcessID(t *testing.T) {
@@ -203,7 +196,11 @@ func TestManagedProcessStart(t *testing.T) {
 				t.Skipf("skipping run-as-user because setuid required elevated privileges")
 				return
 			}
-			asUser := subprocUser()
+			asUser, err := subprocUser()
+			if err != nil {
+				t.Error(err)
+				return
+			}
 			proc := NewManagedProcess(ProcessConfig{
 				ID:       "3",
 				Name:     "sleep",
