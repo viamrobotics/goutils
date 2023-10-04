@@ -1,6 +1,7 @@
 package protoutils
 
 import (
+	"syscall"
 	"testing"
 
 	"github.com/google/uuid"
@@ -359,6 +360,13 @@ func TestToInterfaceWeirdBugUint8(t *testing.T) {
 	x, err = toInterface(&a, ignoreOmitEmpty)
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, x, test.ShouldEqual, a)
+}
+
+func TestToInterfaceErrno(t *testing.T) {
+	a := syscall.ENOENT
+	x, err := toInterface(a, ignoreOmitEmpty)
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, x, test.ShouldEqual, int(syscall.ENOENT))
 }
 
 type TypedString string
