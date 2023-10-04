@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
+	"os/user"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -21,6 +24,15 @@ import (
 	"go.viam.com/utils"
 	"go.viam.com/utils/testutils"
 )
+
+// User for subprocess tests.
+// This looks for TEST_SUBPROC_USER var, otherwise uses current user.
+func subprocUser() (*user.User, error) {
+	if usernameFromEnv := os.Getenv("TEST_SUBPROC_USER"); len(usernameFromEnv) > 0 {
+		return user.Lookup(usernameFromEnv)
+	}
+	return user.Current()
+}
 
 func TestManagedProcessID(t *testing.T) {
 	logger := golog.NewTestLogger(t)
@@ -178,6 +190,28 @@ func TestManagedProcessStart(t *testing.T) {
 			} else {
 				test.That(t, string(rd), test.ShouldEqual, "hello\nworld\n")
 			}
+		})
+		t.Run("run as user", func(t *testing.T) {
+			if curUser, _ := user.Current(); curUser.Username != "root" {
+				t.Skipf("skipping run-as-user because setuid required elevated privileges")
+				return
+			}
+			asUser, err := subprocUser()
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			proc := NewManagedProcess(ProcessConfig{
+				ID:       "3",
+				Name:     "sleep",
+				Args:     []string{"100"},
+				Username: asUser.Username,
+				Log:      true,
+			}, golog.NewTestLogger(t))
+			test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
+			detectedUID, _ := exec.Command("ps", "--no-headers", "-o", "uid", "-p", strconv.Itoa(proc.(*managedProcess).cmd.Process.Pid)).Output()
+			test.That(t, asUser.Uid, test.ShouldEqual, strings.Trim(string(detectedUID), " \n\r"))
+			test.That(t, proc.Stop(), test.ShouldBeNil)
 		})
 	})
 }
