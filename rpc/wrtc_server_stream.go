@@ -53,7 +53,7 @@ func newWebRTCServerStream(
 	onDone func(id uint64),
 	logger golog.Logger,
 ) *webrtcServerStream {
-	bs := newWebRTCBaseStream(ctx, cancelCtx, stream, onDone, logger)
+	bs := newWebRTCBaseStream(ctx, cancelCtx, channel.ctx, stream, onDone, logger)
 	s := &webrtcServerStream{
 		webrtcBaseStream: bs,
 		ch:               channel,

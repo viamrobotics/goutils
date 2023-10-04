@@ -17,9 +17,12 @@ import (
 )
 
 type webrtcBaseStream struct {
-	mu            sync.RWMutex
-	ctx           context.Context
-	cancel        context.CancelFunc
+	mu     sync.RWMutex
+	ctx    context.Context
+	cancel context.CancelFunc
+	// channelCtx is the context from the overlying channel (either a
+	// webrtcClientChannel or a webrtcServerChannel).
+	channelCtx    context.Context
 	stream        *webrtcpb.Stream
 	msgCh         chan []byte
 	onDone        func(id uint64)
@@ -38,16 +41,21 @@ type webrtcBaseStream struct {
 func newWebRTCBaseStream(
 	ctx context.Context,
 	cancelCtx func(),
+	// Disable revive linter that complains about this context.Context not being
+	// the first parameter of the function.
+	//nolint:revive
+	channelCtx context.Context,
 	stream *webrtcpb.Stream,
 	onDone func(id uint64),
 	logger golog.Logger,
 ) *webrtcBaseStream {
 	bs := webrtcBaseStream{
-		ctx:    ctx,
-		cancel: cancelCtx,
-		stream: stream,
-		onDone: onDone,
-		logger: logger,
+		ctx:        ctx,
+		cancel:     cancelCtx,
+		channelCtx: channelCtx,
+		stream:     stream,
+		onDone:     onDone,
+		logger:     logger,
 	}
 	bs.msgCh = make(chan []byte, 1)
 	return &bs
@@ -94,6 +102,7 @@ func (s *webrtcBaseStream) RecvMsg(m interface{}) error {
 			return nil, nil
 		}
 	}
+
 	select {
 	case <-s.ctx.Done():
 		msgBytes, err := checkLastOrErr(s.ctx.Err())
@@ -104,6 +113,15 @@ func (s *webrtcBaseStream) RecvMsg(m interface{}) error {
 			return proto.Unmarshal(msgBytes, m.(proto.Message))
 		}
 		return s.ctx.Err()
+	case <-s.channelCtx.Done():
+		msgBytes, err := checkLastOrErr(s.channelCtx.Err())
+		if err != nil {
+			return err
+		}
+		if msgBytes != nil {
+			return proto.Unmarshal(msgBytes, m.(proto.Message))
+		}
+		return s.channelCtx.Err()
 	case msgBytes, ok := <-s.msgCh:
 		if ok {
 			return proto.Unmarshal(msgBytes, m.(proto.Message))

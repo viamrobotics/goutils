@@ -64,6 +64,10 @@ func newBaseChannel(
 	var connIDMu sync.Mutex
 	var peerDoneOnce bool
 	doPeerDone := func() {
+		// Cancel base channel context so streams on the channel will stop trying
+		// to receive messages when the peer is done.
+		ch.cancel()
+
 		if !peerDoneOnce && onPeerDone != nil {
 			peerDoneOnce = true
 			onPeerDone()
