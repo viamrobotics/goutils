@@ -203,52 +203,19 @@ func MakeSimpleMultiAuthHandler(forEntities, expectedPayloads []string) AuthHand
 // MakeSimpleMultiAuthPairHandler works similarly to MakeSimpleMultiAuthHandler with the addition of
 // supporting a key, id pair used to ensure that a key that maps to the id matches the key passed
 // during the function call.
-func MakeSimpleMultiAuthPairHandler(forEntities, expectedPayloads []map[string]string) AuthHandler {
+
+func MakeSimpleMultiAuthPairHandler(expectedPayloads map[string]string) AuthHandler {
 	if len(expectedPayloads) == 0 {
 		panic("expected at least one payload")
 	}
 
-	// Create a list of KeyIDs for the entities from our given map since MakeEntitiesChecker takes in a list of entities
-	var forEntitiesList []string
-	for _, entity := range forEntities {
-		for key := range entity {
-			forEntitiesList = append(forEntitiesList, key)
-		}
-	}
-
-	entityChecker := MakeEntitiesChecker(forEntitiesList)
 	return AuthHandlerFunc(func(ctx context.Context, entity, payload string) (map[string]string, error) {
-		if err := entityChecker(ctx, entity); err != nil {
-			if errors.Is(err, errCannotAuthEntity) {
-				return nil, errInvalidCredentials
-			}
-			return nil, err
+		if _, ok := expectedPayloads[entity]; !ok {
+			return nil, errInvalidCredentials
 		}
 
-		// set the keyID to the current payload
-		payloadKeyID := []byte(payload)
-
-		// Find the key that maps to the current payload
-		var payloadKey string
-		for _, pk := range expectedPayloads {
-			for key, value := range pk {
-				if subtle.ConstantTimeCompare([]byte(key), payloadKeyID) == 1 {
-					payloadKey = value
-				}
-			}
-		}
-
-		for _, expectedPayloadMap := range expectedPayloads {
-			for key, value := range expectedPayloadMap {
-				expectedPayloadKeyID := key
-				expectedPayloadKey := value
-				if subtle.ConstantTimeCompare(payloadKeyID, []byte(expectedPayloadKeyID)) == 1 {
-					// check that the key it maps to is the same as the key that was passed in with the request
-					if subtle.ConstantTimeCompare([]byte(payloadKey), []byte(expectedPayloadKey)) == 1 {
-						return map[string]string{}, nil
-					}
-				}
-			}
+		if subtle.ConstantTimeCompare([]byte(expectedPayloads[entity]), []byte(payload)) == 1 {
+			return map[string]string{}, nil
 		}
 		return nil, errInvalidCredentials
 	})

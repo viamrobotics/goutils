@@ -139,45 +139,21 @@ func TestMakeSimpleMultiAuthHandler(t *testing.T) {
 
 func TestMakeSimpleMultiAuthPairHandler(t *testing.T) {
 	test.That(t, func() {
-		MakeSimpleMultiAuthPairHandler([]map[string]string{{"one": "1"}}, nil)
+		MakeSimpleMultiAuthPairHandler(map[string]string{})
 	}, test.ShouldPanicWith, "expected at least one payload")
 
-	t.Run("with no entities should always fail", func(t *testing.T) {
-		handler := MakeSimpleMultiAuthPairHandler(nil, []map[string]string{{"something": "nothing"}})
-		_, err := handler.Authenticate(context.Background(), "", "something")
-		test.That(t, err, test.ShouldNotBeNil)
-		_, err = handler.Authenticate(context.Background(), "entity", "something")
-		test.That(t, err, test.ShouldNotBeNil)
-	})
+	t.Run("should validate (keyID, key) mappings", func(t *testing.T) {
+		expectedKeysMap := map[string]string{"myKeyID": "someKey", "somethingElseKeyID": "someOtherKeyID"}
+		handler := MakeSimpleMultiAuthPairHandler(expectedKeysMap)
 
-	t.Run("should validate entities and (keyID, key) mappings", func(t *testing.T) {
-		expectedEntitiesMap := []map[string]string{{"one": "1"}, {"two": "2"}, {"three": "3"}}
-		expectedKeysMap := []map[string]string{{"myKeyID": "someKey"}, {"somethingElseKeyID": "someOtherKeyID"}}
-		handler := MakeSimpleMultiAuthPairHandler(expectedEntitiesMap, expectedKeysMap)
+		for key, value := range expectedKeysMap {
+			t.Run(key, func(t *testing.T) {
+				_, err := handler.Authenticate(context.Background(), key, value)
+				test.That(t, err, test.ShouldBeNil)
+				_, err = handler.Authenticate(context.Background(), key, value+"1")
+				test.That(t, err, test.ShouldEqual, errInvalidCredentials)
 
-		var expectedKeys []string
-		for _, ek := range expectedKeysMap {
-			for key := range ek {
-				expectedKeys = append(expectedKeys, key)
-			}
-		}
-
-		var expectedEntities []string
-		for _, en := range expectedEntitiesMap {
-			for key := range en {
-				expectedEntities = append(expectedEntities, key)
-			}
-		}
-
-		for _, expectedKey := range expectedKeys {
-			t.Run(expectedKey, func(t *testing.T) {
-				for _, ent := range expectedEntities {
-					_, err := handler.Authenticate(context.Background(), ent, expectedKey)
-					test.That(t, err, test.ShouldBeNil)
-					_, err = handler.Authenticate(context.Background(), ent, expectedKey+"1")
-					test.That(t, err, test.ShouldEqual, errInvalidCredentials)
-				}
-				_, err := handler.Authenticate(context.Background(), "notent", expectedKey)
+				_, err = handler.Authenticate(context.Background(), "notent", key)
 				test.That(t, err, test.ShouldBeError, errInvalidCredentials)
 			})
 		}
