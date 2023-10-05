@@ -20,7 +20,7 @@ type webrtcBaseStream struct {
 	mu     sync.RWMutex
 	ctx    context.Context
 	cancel context.CancelFunc
-	// channelCtx is the context from the overlying channel (either a
+	// channelCtx is the context from the underlying channel (either a
 	// webrtcClientChannel or a webrtcServerChannel).
 	channelCtx    context.Context
 	stream        *webrtcpb.Stream
@@ -80,6 +80,9 @@ func (s *webrtcBaseStream) RecvMsg(m interface{}) error {
 	}
 
 	checkLastOrErr := func(origErr error) ([]byte, error) {
+		// checkLastOrErr is an attempt to return the most informative, relevant
+		// error message to the user when we cannot receive a message in the base
+		// stream for some reason.
 		select {
 		case msgBytes, ok := <-s.msgCh:
 			if ok {
@@ -103,6 +106,11 @@ func (s *webrtcBaseStream) RecvMsg(m interface{}) error {
 		}
 	}
 
+	// RSDK-4473: There are two ways a stream can be signaled that it should give
+	// up receiving a message:
+	//   - `s.ctx` is canceled due to a timeout or some other grpc/webrtc error.
+	//   - `s.channelCtx` is canceled when the underlying webrtc data channel
+	//      connection experiences an error.
 	select {
 	case <-s.ctx.Done():
 		msgBytes, err := checkLastOrErr(s.ctx.Err())
