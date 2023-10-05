@@ -538,3 +538,53 @@ func TestWebRTCClientChannelWithInterceptor(t *testing.T) {
 
 	wg.Wait()
 }
+
+func TestWebRTCClientChannelCanStopStreamRecvMsg(t *testing.T) {
+	// Regression test for RSDK-4473.
+	testutils.SkipUnlessInternet(t)
+	logger := golog.NewTestLogger(t)
+	pc1, pc2, dc1, dc2 := setupWebRTCPeers(t)
+
+	clientCh := newWebRTCClientChannel(pc1, dc1, logger, nil, nil)
+	defer func() {
+		test.That(t, clientCh.Close(), test.ShouldBeNil)
+	}()
+	serverCh := newBaseChannel(context.Background(), pc2, dc2, nil, logger)
+	defer func() {
+		test.That(t, serverCh.Close(), test.ShouldBeNil)
+	}()
+
+	<-clientCh.Ready()
+	<-serverCh.Ready()
+
+	someStatus, _ := status.FromError(errors.New("wowza"))
+
+	serverFinished := make(chan struct{})
+	once := sync.Once{}
+	serverCh.dataChannel.OnMessage(func(msg webrtc.DataChannelMessage) {
+		// Do not do anything on message reception server-side (no response to
+		// mimic a network outage or lost packet).
+		//
+		// NOTE(benjirewis): two messages will usually be received from the client:
+		// the first specifying the start of the "thing" stream, and the second
+		// carrying the "wowza" status. Use a sync.Once to make sure channel is
+		// closed only once.
+		once.Do(func() { close(serverFinished) })
+	})
+
+	clientStream, err := clientCh.NewStream(context.Background(),
+		&grpc.StreamDesc{ClientStreams: true}, "thing")
+	test.That(t, err, test.ShouldBeNil)
+
+	test.That(t, clientStream.SendMsg(someStatus.Proto()), test.ShouldBeNil)
+
+	// Close client peer connection before receiving a client message. Assert
+	// that RecvMsg does not hang.
+	test.That(t, pc1.Close(), test.ShouldBeNil)
+	var respStatus pbstatus.Status
+	err = clientStream.RecvMsg(&respStatus)
+	test.That(t, err, test.ShouldBeError, context.Canceled)
+	test.That(t, &respStatus, test.ShouldResemble, &pbstatus.Status{})
+
+	<-serverFinished
+}
