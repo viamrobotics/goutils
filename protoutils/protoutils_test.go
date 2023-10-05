@@ -56,6 +56,8 @@ type structTest struct {
 }
 
 var (
+	errnoVal           = syscall.ENOENT
+
 	simpleStruct       = SimpleStruct{X: 1.1, Y: 2.2, Z: 3.3}
 	typedStringStruct  = TypedStringStruct{TypedString: TypedString("hello")}
 	sliceStruct        = SliceStruct{Degrees: []float64{1.1, 2.2, 3.3}}
@@ -67,7 +69,7 @@ var (
 	embeddedStruct     = EmbeddedStruct{simpleStruct, sliceStruct}
 	emptyPointerStruct = EmptyPointerStruct{EmptyStruct: nil}
 	singleByteStruct   = SingleUintStruct{UintValue: uint16(1)}
-	errnoStruct        = ErrnoStruct{Errno: syscall.ENOENT}
+	errnoStruct        = ErrnoStruct{Errno: errnoVal}
 
 	nilPointerResembleVal = EmptyPointerStruct{EmptyStruct: &EmptyStruct{}}
 
@@ -132,7 +134,7 @@ var (
 		{
 			"struct with errno",
 			errnoStruct,
-			map[string]interface{}{"Errno": float64(2.0)},  // cast float64 because pb to map conversion supports double for nums
+			map[string]interface{}{"Errno": float64(errnoVal)},  // cast float64 because pb to map conversion supports double for nums
 			ErrnoStructReturn{},
 		},
 	}
@@ -164,7 +166,7 @@ func TestInterfaceToMap(t *testing.T) {
 		case "struct with uint":
 			test.That(t, map1["UintValue"], test.ShouldEqual, 1)
 		case "struct with errno":
-			test.That(t, map1["Errno"], test.ShouldEqual, 2)
+			test.That(t, map1["Errno"], test.ShouldEqual, errnoVal)
 		default:
 			test.That(t, map1, test.ShouldResemble, tc.Expected)
 		}
@@ -188,7 +190,7 @@ func TestInterfaceToMap(t *testing.T) {
 		case "struct with errno":  // handled separately because mapstructure library can't decode errno
 			returnStruct, ok := tc.Return.(ErrnoStructReturn)
 			test.That(t, ok, test.ShouldBeTrue)
-			test.That(t, returnStruct.Errno, test.ShouldEqual, 2)
+			test.That(t, returnStruct.Errno, test.ShouldEqual, errnoVal)
 		default:
 			test.That(t, tc.Return, test.ShouldResemble, tc.Data)
 		}
@@ -243,7 +245,7 @@ func TestStructToMap(t *testing.T) {
 		case "struct with uint":
 			test.That(t, map1["UintValue"], test.ShouldEqual, 1)
 		case "struct with errno":
-			test.That(t, map1["Errno"], test.ShouldEqual, 2)
+			test.That(t, map1["Errno"], test.ShouldEqual, errnoVal)
 		default:
 			test.That(t, map1, test.ShouldResemble, tc.Expected)
 		}
@@ -267,7 +269,7 @@ func TestStructToMap(t *testing.T) {
 		case "struct with errno":  // handled separately because mapstructure library can't decode errno
 			returnStruct, ok := tc.Return.(ErrnoStructReturn)
 			test.That(t, ok, test.ShouldBeTrue)
-			test.That(t, returnStruct.Errno, test.ShouldEqual, 2)
+			test.That(t, returnStruct.Errno, test.ShouldEqual, errnoVal)
 		default:
 			test.That(t, tc.Return, test.ShouldResemble, tc.Data)
 		}
@@ -382,10 +384,10 @@ func TestToInterfaceWeirdBugUint8(t *testing.T) {
 }
 
 func TestToInterfaceErrno(t *testing.T) {
-	a := syscall.ENOENT
+	a := errnoVal
 	x, err := toInterface(a, ignoreOmitEmpty)
 	test.That(t, err, test.ShouldBeNil)
-	test.That(t, x, test.ShouldEqual, int(syscall.ENOENT))
+	test.That(t, x, test.ShouldEqual, int(errnoVal))
 }
 
 type TypedString string
