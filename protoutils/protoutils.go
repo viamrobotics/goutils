@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"syscall"
 
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -82,6 +83,11 @@ func StructToStructPbIgnoreOmitEmpty(i interface{}) (*structpb.Struct, error) {
 func toInterface(data interface{}, ignoreOmitEmpty bool) (interface{}, error) {
 	if data == nil {
 		return data, nil
+	}
+
+	// handle types that are not supported by reflect here
+	if errno, ok := data.(syscall.Errno); ok {
+		return int(errno), nil
 	}
 
 	t := reflect.TypeOf(data)
