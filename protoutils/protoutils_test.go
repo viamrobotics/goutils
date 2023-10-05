@@ -56,7 +56,7 @@ type structTest struct {
 }
 
 var (
-	errnoVal           = syscall.ENOENT
+	errnoVal = syscall.ENOENT
 
 	simpleStruct       = SimpleStruct{X: 1.1, Y: 2.2, Z: 3.3}
 	typedStringStruct  = TypedStringStruct{TypedString: TypedString("hello")}
@@ -134,7 +134,7 @@ var (
 		{
 			"struct with errno",
 			errnoStruct,
-			map[string]interface{}{"Errno": float64(errnoVal)},  // cast float64 because pb to map conversion supports double for nums
+			map[string]interface{}{"Errno": float64(errnoVal)}, // cast float64 because pb to map conversion supports double for nums
 			ErrnoStructReturn{},
 		},
 	}
@@ -187,7 +187,7 @@ func TestInterfaceToMap(t *testing.T) {
 		switch tc.TestName {
 		case "nil pointer struct":
 			test.That(t, tc.Return, test.ShouldResemble, nilPointerResembleVal)
-		case "struct with errno":  // handled separately because mapstructure library can't decode errno
+		case "struct with errno": // handled separately because mapstructure library can't decode errno
 			returnStruct, ok := tc.Return.(ErrnoStructReturn)
 			test.That(t, ok, test.ShouldBeTrue)
 			test.That(t, returnStruct.Errno, test.ShouldEqual, errnoVal)
@@ -266,7 +266,7 @@ func TestStructToMap(t *testing.T) {
 		switch tc.TestName {
 		case "nil pointer struct":
 			test.That(t, tc.Return, test.ShouldResemble, nilPointerResembleVal)
-		case "struct with errno":  // handled separately because mapstructure library can't decode errno
+		case "struct with errno": // handled separately because mapstructure library can't decode errno
 			returnStruct, ok := tc.Return.(ErrnoStructReturn)
 			test.That(t, ok, test.ShouldBeTrue)
 			test.That(t, returnStruct.Errno, test.ShouldEqual, errnoVal)
@@ -452,7 +452,7 @@ type SingleUintStruct struct {
 }
 
 type ErrnoStruct struct {
-    Errno syscall.Errno
+	Errno syscall.Errno
 }
 
 type ErrnoStructReturn struct {
