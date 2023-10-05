@@ -85,9 +85,9 @@ func toInterface(data interface{}, ignoreOmitEmpty bool) (interface{}, error) {
 		return data, nil
 	}
 
-	// check for types that are not reflect-handle-able here
+	// handle types that are not supported by reflect here
 	if errno, ok := data.(syscall.Errno); ok {
-		data = int(errno)
+		return int(errno), nil
 	}
 
 	t := reflect.TypeOf(data)
