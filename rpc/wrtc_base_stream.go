@@ -17,12 +17,9 @@ import (
 )
 
 type webrtcBaseStream struct {
-	mu     sync.RWMutex
-	ctx    context.Context
-	cancel context.CancelFunc
-	// channelCtx is the context from the underlying channel (either a
-	// webrtcClientChannel or a webrtcServerChannel).
-	channelCtx    context.Context
+	mu            sync.RWMutex
+	ctx           context.Context
+	cancel        context.CancelFunc
 	stream        *webrtcpb.Stream
 	msgCh         chan []byte
 	onDone        func(id uint64)
@@ -41,21 +38,16 @@ type webrtcBaseStream struct {
 func newWebRTCBaseStream(
 	ctx context.Context,
 	cancelCtx func(),
-	// Disable revive linter that complains about this context.Context not being
-	// the first parameter of the function.
-	//nolint:revive
-	channelCtx context.Context,
 	stream *webrtcpb.Stream,
 	onDone func(id uint64),
 	logger golog.Logger,
 ) *webrtcBaseStream {
 	bs := webrtcBaseStream{
-		ctx:        ctx,
-		cancel:     cancelCtx,
-		channelCtx: channelCtx,
-		stream:     stream,
-		onDone:     onDone,
-		logger:     logger,
+		ctx:    ctx,
+		cancel: cancelCtx,
+		stream: stream,
+		onDone: onDone,
+		logger: logger,
 	}
 	bs.msgCh = make(chan []byte, 1)
 	return &bs
@@ -106,11 +98,13 @@ func (s *webrtcBaseStream) RecvMsg(m interface{}) error {
 		}
 	}
 
-	// RSDK-4473: There are two ways a stream can be signaled that it should give
-	// up receiving a message:
-	//   - `s.ctx` is canceled due to a timeout or some other grpc/webrtc error.
-	//   - `s.channelCtx` is canceled when the underlying webrtc data channel
+	// RSDK-4473: There are three ways a stream can be signaled that it should
+	// give up receiving a message:
+	//   - `s.ctx` errors due to a timeout or some other grpc/webrtc error.
+	//   - `s.ctx` is canceled when the underlying webrtc data channel
 	//      connection experiences an error.
+	//   - `s.msgCh` is closed when the stream, channel or connection has been
+	//      closed.
 	select {
 	case <-s.ctx.Done():
 		msgBytes, err := checkLastOrErr(s.ctx.Err())
@@ -121,15 +115,6 @@ func (s *webrtcBaseStream) RecvMsg(m interface{}) error {
 			return proto.Unmarshal(msgBytes, m.(proto.Message))
 		}
 		return s.ctx.Err()
-	case <-s.channelCtx.Done():
-		msgBytes, err := checkLastOrErr(s.channelCtx.Err())
-		if err != nil {
-			return err
-		}
-		if msgBytes != nil {
-			return proto.Unmarshal(msgBytes, m.(proto.Message))
-		}
-		return s.channelCtx.Err()
 	case msgBytes, ok := <-s.msgCh:
 		if ok {
 			return proto.Unmarshal(msgBytes, m.(proto.Message))
