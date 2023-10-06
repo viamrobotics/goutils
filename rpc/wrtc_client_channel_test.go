@@ -3,6 +3,7 @@ package rpc
 import (
 	"context"
 	"errors"
+	"io"
 	"sync"
 	"testing"
 	"time"
@@ -576,14 +577,24 @@ func TestWebRTCClientChannelCanStopStreamRecvMsg(t *testing.T) {
 		&grpc.StreamDesc{ClientStreams: true}, "thing")
 	test.That(t, err, test.ShouldBeNil)
 
+	// Send a message to the server and delay slightly to allow server to receive
+	// the message and close serverFinished.
 	test.That(t, clientStream.SendMsg(someStatus.Proto()), test.ShouldBeNil)
+	time.Sleep(50 * time.Millisecond)
 
 	// Close client peer connection before receiving a client message. Assert
 	// that RecvMsg does not hang.
 	test.That(t, pc1.Close(), test.ShouldBeNil)
 	var respStatus pbstatus.Status
 	err = clientStream.RecvMsg(&respStatus)
-	test.That(t, err, test.ShouldBeError, context.Canceled)
+	test.That(t, err, test.ShouldNotBeNil)
+
+	// The error returned from RecvMsg can be either a context canceled error
+	// or an EOF error. The former is returned when RecvMsg catches the context
+	// error first and reports it. The latter is returned when the goroutine
+	// created in newWebRTCClientStream catches the context error first and
+	// attempts to reset the stream.
+	test.That(t, err.Error(), test.ShouldBeIn, context.Canceled.Error(), io.EOF.Error())
 	test.That(t, &respStatus, test.ShouldResemble, &pbstatus.Status{})
 
 	<-serverFinished
