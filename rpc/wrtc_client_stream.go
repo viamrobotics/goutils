@@ -44,7 +44,7 @@ func newWebRTCClientStream(
 	onDone func(id uint64),
 	logger golog.Logger,
 ) *webrtcClientStream {
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := utils.MergeContext(channel.ctx, ctx)
 	bs := newWebRTCBaseStream(ctx, cancel, stream, onDone, logger)
 	s := &webrtcClientStream{
 		webrtcBaseStream: bs,

@@ -72,6 +72,9 @@ func (s *webrtcBaseStream) RecvMsg(m interface{}) error {
 	}
 
 	checkLastOrErr := func(origErr error) ([]byte, error) {
+		// checkLastOrErr is an attempt to return the most informative, relevant
+		// error message to the user when we cannot receive a message in the base
+		// stream for some reason.
 		select {
 		case msgBytes, ok := <-s.msgCh:
 			if ok {
@@ -94,6 +97,14 @@ func (s *webrtcBaseStream) RecvMsg(m interface{}) error {
 			return nil, nil
 		}
 	}
+
+	// RSDK-4473: There are three ways a stream can be signaled that it should
+	// give up receiving a message:
+	//   - `s.ctx` errors due to a timeout or some other grpc/webrtc error.
+	//   - `s.ctx` is canceled when the underlying webrtc data channel
+	//      connection experiences an error.
+	//   - `s.msgCh` is closed when the stream, channel or connection has been
+	//      closed.
 	select {
 	case <-s.ctx.Done():
 		msgBytes, err := checkLastOrErr(s.ctx.Err())
