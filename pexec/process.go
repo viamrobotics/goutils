@@ -29,11 +29,13 @@ type ProcessConfig struct {
 	OneShot bool
 	// Optional. When present, we will try to look up the Uid of the named user
 	// and run the process as that user.
-	Username    string
-	Log         bool
-	LogWriter   io.Writer
-	StopSignal  syscall.Signal
-	StopTimeout time.Duration
+	Username string
+	// Additional environment variables to pass through to the process.
+	EnvironmentVariables map[string]string
+	Log                  bool
+	LogWriter            io.Writer
+	StopSignal           syscall.Signal
+	StopTimeout          time.Duration
 	// OnUnexpectedExit will be called when the manage goroutine detects an
 	// unexpected exit of the process. The exit code of the crashed process will
 	// be passed in. If the returned bool is true, the manage goroutine will
@@ -73,15 +75,16 @@ func (config *ProcessConfig) validate(path string) error {
 
 // Note: keep this in sync with json-supported fields in ProcessConfig.
 type configData struct {
-	ID          string   `json:"id"`
-	Name        string   `json:"name"`
-	Args        []string `json:"args"`
-	CWD         string   `json:"cwd"`
-	OneShot     bool     `json:"one_shot"`
-	Username    string   `json:"username"`
-	Log         bool     `json:"log"`
-	StopSignal  string   `json:"stop_signal,omitempty"`
-	StopTimeout string   `json:"stop_timeout,omitempty"`
+	ID                   string            `json:"id"`
+	Name                 string            `json:"name"`
+	Args                 []string          `json:"args"`
+	CWD                  string            `json:"cwd"`
+	OneShot              bool              `json:"one_shot"`
+	Username             string            `json:"username"`
+	EnvironmentVariables map[string]string `json:"environment_variables"`
+	Log                  bool              `json:"log"`
+	StopSignal           string            `json:"stop_signal,omitempty"`
+	StopTimeout          string            `json:"stop_timeout,omitempty"`
 }
 
 // UnmarshalJSON parses incoming json.
@@ -92,13 +95,14 @@ func (config *ProcessConfig) UnmarshalJSON(data []byte) error {
 	}
 
 	*config = ProcessConfig{
-		ID:       temp.ID,
-		Name:     temp.Name,
-		Args:     temp.Args,
-		CWD:      temp.CWD,
-		OneShot:  temp.OneShot,
-		Username: temp.Username,
-		Log:      temp.Log,
+		ID:                   temp.ID,
+		Name:                 temp.Name,
+		Args:                 temp.Args,
+		CWD:                  temp.CWD,
+		OneShot:              temp.OneShot,
+		Username:             temp.Username,
+		EnvironmentVariables: temp.EnvironmentVariables,
+		Log:                  temp.Log,
 		// OnUnexpectedExit cannot be specified in JSON.
 	}
 
@@ -126,15 +130,16 @@ func (config ProcessConfig) MarshalJSON() ([]byte, error) {
 		stopSig = config.StopSignal.String()
 	}
 	temp := configData{
-		ID:          config.ID,
-		Name:        config.Name,
-		Args:        config.Args,
-		CWD:         config.CWD,
-		OneShot:     config.OneShot,
-		Username:    config.Username,
-		Log:         config.Log,
-		StopSignal:  stopSig,
-		StopTimeout: config.StopTimeout.String(),
+		ID:                   config.ID,
+		Name:                 config.Name,
+		Args:                 config.Args,
+		CWD:                  config.CWD,
+		OneShot:              config.OneShot,
+		Username:             config.Username,
+		EnvironmentVariables: config.EnvironmentVariables,
+		Log:                  config.Log,
+		StopSignal:           stopSig,
+		StopTimeout:          config.StopTimeout.String(),
 		// OnUnexpectedExit cannot be converted to JSON.
 	}
 	return json.Marshal(temp)

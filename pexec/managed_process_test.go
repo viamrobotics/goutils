@@ -2,6 +2,7 @@ package pexec
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -578,6 +579,38 @@ done`, tempFile.Name()))
 		test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
 		<-watcher1.Events
 		test.That(t, proc.Stop(), test.ShouldBeNil)
+	})
+}
+
+func TestManagedProcessEnvironmentVariables(t *testing.T) {
+	t.Run("Set an environment variable", func(t *testing.T) {
+		logger := golog.NewTestLogger(t)
+		output := new(bytes.Buffer)
+		proc := NewManagedProcess(ProcessConfig{
+			Name:                 "bash",
+			Args:                 []string{"-c", "printf %s $VIAM_HOME"},
+			EnvironmentVariables: map[string]string{"VIAM_HOME": "/opt/viam"},
+			OneShot:              true,
+			LogWriter:            output,
+		}, logger)
+		test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
+		test.That(t, output.String(), test.ShouldEqual, "/opt/viam")
+	})
+
+	t.Run("Overwrite an environment variable", func(t *testing.T) {
+		logger := golog.NewTestLogger(t)
+		// test that the variable already exists
+		test.That(t, os.Getenv("HOME"), test.ShouldNotBeEmpty)
+		output := new(bytes.Buffer)
+		proc := NewManagedProcess(ProcessConfig{
+			Name:                 "bash",
+			Args:                 []string{"-c", "printf %s $HOME"},
+			EnvironmentVariables: map[string]string{"HOME": "/some/dir"},
+			OneShot:              true,
+			LogWriter:            output,
+		}, logger)
+		test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
+		test.That(t, output.String(), test.ShouldEqual, "/some/dir")
 	})
 }
 
