@@ -50,7 +50,7 @@ func NewManagedProcess(config ProcessConfig, logger golog.Logger) ManagedProcess
 	//  If Env contains duplicate environment keys, only the last
 	//  value in the slice for each duplicate key is used.
 	env := os.Environ()
-	for key, value := range config.EnvironmentVariables {
+	for key, value := range config.Environment {
 		env = append(env, fmt.Sprintf("%s=%s", key, value))
 	}
 

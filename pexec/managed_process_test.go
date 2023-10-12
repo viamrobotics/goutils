@@ -583,15 +583,15 @@ done`, tempFile.Name()))
 }
 
 func TestManagedProcessEnvironmentVariables(t *testing.T) {
-	t.Run("set an environment variable on one shot process", func(t *testing.T) {
+	t.Run("set an environment variable on one-shot process", func(t *testing.T) {
 		logger := golog.NewTestLogger(t)
 		output := new(bytes.Buffer)
 		proc := NewManagedProcess(ProcessConfig{
-			Name:                 "bash",
-			Args:                 []string{"-c", "printenv VIAM_HOME"},
-			EnvironmentVariables: map[string]string{"VIAM_HOME": "/opt/viam"},
-			OneShot:              true,
-			LogWriter:            output,
+			Name:        "bash",
+			Args:        []string{"-c", "printenv VIAM_HOME"},
+			Environment: map[string]string{"VIAM_HOME": "/opt/viam"},
+			OneShot:     true,
+			LogWriter:   output,
 		}, logger)
 		test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
 		test.That(t, output.String(), test.ShouldEqual, "/opt/viam\n")
@@ -601,10 +601,10 @@ func TestManagedProcessEnvironmentVariables(t *testing.T) {
 		logReader, logWriter := io.Pipe()
 		logger := golog.NewTestLogger(t)
 		proc := NewManagedProcess(ProcessConfig{
-			Name:                 "bash",
-			Args:                 []string{"-c", "printenv VIAM_HOME"},
-			EnvironmentVariables: map[string]string{"VIAM_HOME": "/opt/viam"},
-			LogWriter:            logWriter,
+			Name:        "bash",
+			Args:        []string{"-c", "printenv VIAM_HOME"},
+			Environment: map[string]string{"VIAM_HOME": "/opt/viam"},
+			LogWriter:   logWriter,
 		}, logger)
 		test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
 		bufferedLogReader := bufio.NewReader(logReader)
@@ -620,11 +620,11 @@ func TestManagedProcessEnvironmentVariables(t *testing.T) {
 		test.That(t, os.Getenv("HOME"), test.ShouldNotBeEmpty)
 		output := new(bytes.Buffer)
 		proc := NewManagedProcess(ProcessConfig{
-			Name:                 "bash",
-			Args:                 []string{"-c", "printenv HOME"},
-			EnvironmentVariables: map[string]string{"HOME": "/some/dir"},
-			OneShot:              true,
-			LogWriter:            output,
+			Name:        "bash",
+			Args:        []string{"-c", "printenv HOME"},
+			Environment: map[string]string{"HOME": "/some/dir"},
+			OneShot:     true,
+			LogWriter:   output,
 		}, logger)
 		test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
 		test.That(t, output.String(), test.ShouldEqual, "/some/dir\n")
