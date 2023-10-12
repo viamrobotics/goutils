@@ -2,6 +2,7 @@ package pexec
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -578,6 +579,55 @@ done`, tempFile.Name()))
 		test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
 		<-watcher1.Events
 		test.That(t, proc.Stop(), test.ShouldBeNil)
+	})
+}
+
+func TestManagedProcessEnvironmentVariables(t *testing.T) {
+	t.Run("set an environment variable on one-shot process", func(t *testing.T) {
+		logger := golog.NewTestLogger(t)
+		output := new(bytes.Buffer)
+		proc := NewManagedProcess(ProcessConfig{
+			Name:        "bash",
+			Args:        []string{"-c", "printenv VIAM_HOME"},
+			Environment: map[string]string{"VIAM_HOME": "/opt/viam"},
+			OneShot:     true,
+			LogWriter:   output,
+		}, logger)
+		test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
+		test.That(t, output.String(), test.ShouldEqual, "/opt/viam\n")
+	})
+
+	t.Run("set an environment variable on non one-shot process", func(t *testing.T) {
+		logReader, logWriter := io.Pipe()
+		logger := golog.NewTestLogger(t)
+		proc := NewManagedProcess(ProcessConfig{
+			Name:        "bash",
+			Args:        []string{"-c", "printenv VIAM_HOME"},
+			Environment: map[string]string{"VIAM_HOME": "/opt/viam"},
+			LogWriter:   logWriter,
+		}, logger)
+		test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
+		bufferedLogReader := bufio.NewReader(logReader)
+		output, err := bufferedLogReader.ReadString('\n')
+		test.That(t, err, test.ShouldBeNil)
+		test.That(t, output, test.ShouldEqual, "/opt/viam\n")
+		test.That(t, proc.Stop(), test.ShouldBeNil)
+	})
+
+	t.Run("overwrite an environment variable", func(t *testing.T) {
+		logger := golog.NewTestLogger(t)
+		// test that the variable already exists
+		test.That(t, os.Getenv("HOME"), test.ShouldNotBeEmpty)
+		output := new(bytes.Buffer)
+		proc := NewManagedProcess(ProcessConfig{
+			Name:        "bash",
+			Args:        []string{"-c", "printenv HOME"},
+			Environment: map[string]string{"HOME": "/some/dir"},
+			OneShot:     true,
+			LogWriter:   output,
+		}, logger)
+		test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
+		test.That(t, output.String(), test.ShouldEqual, "/some/dir\n")
 	})
 }
 
