@@ -583,7 +583,7 @@ done`, tempFile.Name()))
 }
 
 func TestManagedProcessEnvironmentVariables(t *testing.T) {
-	t.Run("Set an environment variable", func(t *testing.T) {
+	t.Run("set an environment variable", func(t *testing.T) {
 		logger := golog.NewTestLogger(t)
 		output := new(bytes.Buffer)
 		proc := NewManagedProcess(ProcessConfig{
@@ -597,7 +597,7 @@ func TestManagedProcessEnvironmentVariables(t *testing.T) {
 		test.That(t, output.String(), test.ShouldEqual, "/opt/viam")
 	})
 
-	t.Run("Overwrite an environment variable", func(t *testing.T) {
+	t.Run("overwrite an environment variable", func(t *testing.T) {
 		logger := golog.NewTestLogger(t)
 		// test that the variable already exists
 		test.That(t, os.Getenv("HOME"), test.ShouldNotBeEmpty)

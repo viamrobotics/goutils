@@ -31,6 +31,7 @@ type ProcessConfig struct {
 	// and run the process as that user.
 	Username string
 	// Additional environment variables to pass through to the process.
+	// Will overwrite existing environment variables.
 	EnvironmentVariables map[string]string
 	Log                  bool
 	LogWriter            io.Writer
