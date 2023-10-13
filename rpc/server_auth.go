@@ -239,7 +239,7 @@ func (wrapped ctxWrappedServerStream) Context() context.Context {
 func tokenFromContext(ctx context.Context) (string, error) {
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
-		return "", status.Error(codes.Unauthenticated, "authentication required")
+		return "", status.Error(codes.Unauthenticated, "authentication required no md")
 	}
 	authHeader := md.Get(metadataFieldAuthorization)
 	if len(authHeader) != 1 {
@@ -283,6 +283,7 @@ func (ss *simpleServer) tryAuth(ctx context.Context) (context.Context, error) {
 
 func (ss *simpleServer) ensureAuthed(ctx context.Context) (context.Context, error) {
 	tokenString, err := tokenFromContext(ctx)
+	//return nil, errors.New(fmt.Sprintf("ctx %s", t))
 	if err != nil {
 		// check TLS state
 		if ss.tlsAuthHandler == nil {
