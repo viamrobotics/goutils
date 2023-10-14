@@ -320,6 +320,9 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 			}
 			// must spin off to unblock the ICE gatherer
 			utils.PanicCapturingGo(func() {
+				ans.activeBackgroundWorkers.Add(1)
+				defer ans.activeBackgroundWorkers.Done()
+
 				select {
 				case <-initSent:
 				case <-exchangeCtx.Done():
