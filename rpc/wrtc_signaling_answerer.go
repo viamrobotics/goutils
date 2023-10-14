@@ -326,6 +326,7 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 					return
 				}
 				if i == nil {
+					time.Sleep(2 * time.Second)
 					callFlowWG.Wait()
 					if err := sendDone(); err != nil {
 						sendErr(err)
