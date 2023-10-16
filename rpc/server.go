@@ -100,7 +100,7 @@ type Server interface {
 	// limitations of normal gRPC being served from a non-root path.
 	http.Handler
 
-	EnsureAuthed (ctx context.Context) (context.Context, error)
+	EnsureAuthed(ctx context.Context) (context.Context, error)
 }
 
 type simpleServer struct {

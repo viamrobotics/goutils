@@ -30,7 +30,9 @@ func (ss *simpleServer) authHandlers(forType CredentialsType) (credAuthHandlers,
 }
 
 const (
-	MetadataFieldAuthorization     = "authorization"
+	// MetadataFieldAuthorization is a constant for the authorization header key.
+	MetadataFieldAuthorization = "authorization"
+	// AuthorizationValuePrefixBearer is a constant for the Bearer token prefix.
 	AuthorizationValuePrefixBearer = "Bearer "
 )
 
