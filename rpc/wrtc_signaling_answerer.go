@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -320,15 +321,20 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 			}
 			// must spin off to unblock the ICE gatherer
 			utils.PanicCapturingGo(func() {
-				ans.activeBackgroundWorkers.Add(1)
-				defer ans.activeBackgroundWorkers.Done()
+				// ans.activeBackgroundWorkers.Add(1)
+				// defer ans.activeBackgroundWorkers.Done()
 
 				select {
 				case <-initSent:
 				case <-exchangeCtx.Done():
 					return
 				}
+				// there are no more candidates coming during this negotiation
 				if icecandidate == nil {
+					if _, ok := os.LookupEnv("TEST_DELAY_FINISH_NEGOTIATION"); ok {
+						ans.logger.Debug("Sleeping to delay the end of the negotiation")
+						time.Sleep(1 * time.Second)
+					}
 					callFlowWG.Wait()
 					if err := sendDone(); err != nil {
 						sendErr(err)

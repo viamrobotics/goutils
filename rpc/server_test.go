@@ -33,6 +33,7 @@ import (
 )
 
 func TestServer(t *testing.T) {
+	t.Setenv("TEST_DELAY_FINISH_NEGOTIATION", "t")
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
 
