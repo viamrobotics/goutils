@@ -329,10 +329,6 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 					return
 				}
 				if icecandidate == nil {
-					// TODO(mp): remove this sleep! it's there to repro a flaky test
-					// failure:
-					// https://viam.atlassian.net/browse/RSDK-4293?focusedCommentId=20176
-					time.Sleep(2 * time.Second)
 					callFlowWG.Wait()
 					if err := sendDone(); err != nil {
 						sendErr(err)
