@@ -23,8 +23,9 @@ import (
 	"go.viam.com/utils"
 )
 
-// Auth0Config config for auth0.
-type Auth0Config struct {
+// AuthProviderConfig config options with constants that will probably need to be manually configured after
+// retrieval from the auth provider web UI or API (e.g. for Auth0, FusionAuth).
+type AuthProviderConfig struct {
 	Domain     string
 	ClientID   string
 	Secret     string
@@ -32,21 +33,21 @@ type Auth0Config struct {
 	EnableTest bool
 }
 
-type auth0State struct {
-	config   Auth0Config
+type authProviderState struct {
+	config   AuthProviderConfig
 	sessions *SessionManager
 
-	authOIConfig       *oidc.Config
-	authConfig         oauth2.Config
-	auth0HTTPTransport *http.Transport
+	authOIConfig  *oidc.Config
+	authConfig    oauth2.Config
+	httpTransport *http.Transport
 }
 
-func (s *auth0State) Close() error {
-	s.auth0HTTPTransport.CloseIdleConnections()
+func (s *authProviderState) Close() error {
+	s.httpTransport.CloseIdleConnections()
 	return nil
 }
 
-func (s *auth0State) newAuthProvider(ctx context.Context) (*oidc.Provider, error) {
+func (s *authProviderState) newAuthProvider(ctx context.Context) (*oidc.Provider, error) {
 	p, err := oidc.NewProvider(ctx, s.config.Domain)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get provider: %w", err)
@@ -54,27 +55,27 @@ func (s *auth0State) newAuthProvider(ctx context.Context) (*oidc.Provider, error
 	return p, nil
 }
 
-// InstallAuth0 does initial setup and installs routes for auth0.
-func InstallAuth0(
+// InstallAuthProvider does initial setup and installs routes for the given provider
+func InstallAuthProvider(
 	ctx context.Context,
 	mux *goji.Mux,
 	sessions *SessionManager,
-	config Auth0Config,
+	config AuthProviderConfig,
 	logger golog.Logger,
 ) (io.Closer, error) {
 	if config.Domain == "" {
-		return nil, errors.New("need a domain for auth0")
+		return nil, errors.New("need a domain for auth provider")
 	}
 
 	if config.BaseURL == "" {
-		return nil, errors.New("need a base URL for auth0")
+		return nil, errors.New("need a base URL for auth provider")
 	}
 
 	if sessions == nil {
-		return nil, errors.New("sessions needed for auth0")
+		return nil, errors.New("sessions needed for auth provider")
 	}
 
-	state := &auth0State{
+	state := &authProviderState{
 		config:   config,
 		sessions: sessions,
 	}
@@ -92,7 +93,7 @@ func InstallAuth0(
 		httpTransport.CloseIdleConnections()
 		return nil, err
 	}
-	state.auth0HTTPTransport = &httpTransport
+	state.httpTransport = &httpTransport
 
 	state.authConfig = oauth2.Config{
 		ClientID:     config.ClientID,
@@ -114,7 +115,7 @@ func InstallAuth0(
 }
 
 type callbackHandler struct {
-	state  *auth0State
+	state  *authProviderState
 	logger golog.Logger
 }
 
@@ -197,7 +198,7 @@ func (h *callbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // Handle programmatically generated access + id tokens
 // Currently used only in testing.
 type tokenCallbackHandler struct {
-	state  *auth0State
+	state  *authProviderState
 	logger golog.Logger
 }
 
@@ -264,7 +265,7 @@ func (h *tokenCallbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request)
 	http.Redirect(w, r, backto, http.StatusSeeOther)
 }
 
-func verifyAndSaveToken(ctx context.Context, state *auth0State, session *Session, token *oauth2.Token) (*Session, error) {
+func verifyAndSaveToken(ctx context.Context, state *authProviderState, session *Session, token *oauth2.Token) (*Session, error) {
 	rawIDToken, ok := token.Extra("id_token").(string)
 	if !ok {
 		return nil, errors.New("no id_token field in oauth2 token")
@@ -296,7 +297,7 @@ func verifyAndSaveToken(ctx context.Context, state *auth0State, session *Session
 // --------------------------------
 
 type loginHandler struct {
-	state  *auth0State
+	state  *authProviderState
 	logger golog.Logger
 }
 
@@ -346,7 +347,7 @@ func (h *loginHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // --------------------------------
 
 type logoutHandler struct {
-	state  *auth0State
+	state  *authProviderState
 	logger golog.Logger
 }
 
