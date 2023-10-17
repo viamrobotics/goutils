@@ -306,7 +306,7 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 			return err
 		}
 
-		var callFlowWG sync.WaitGroup
+		var pendingCandidates sync.WaitGroup
 		waitOneHost := make(chan struct{})
 		var waitOneHostOnce sync.Once
 		pc.OnICECandidate(func(icecandidate *webrtc.ICECandidate) {
@@ -314,7 +314,7 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 				return
 			}
 			if icecandidate != nil {
-				callFlowWG.Add(1)
+				pendingCandidates.Add(1)
 				if icecandidate.Typ == webrtc.ICECandidateTypeHost {
 					waitOneHostOnce.Do(func() {
 						close(waitOneHost)
@@ -327,7 +327,7 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 				defer ans.activeBackgroundWorkers.Done()
 
 				if icecandidate != nil {
-					defer callFlowWG.Done()
+					defer pendingCandidates.Done()
 				}
 
 				select {
@@ -343,7 +343,7 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 						ans.logger.Debug("Sleeping to delay the end of the negotiation")
 						time.Sleep(1 * time.Second)
 					}
-					callFlowWG.Wait()
+					pendingCandidates.Wait()
 					if err := sendDone(); err != nil {
 						sendErr(err)
 					}
