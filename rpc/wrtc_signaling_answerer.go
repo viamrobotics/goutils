@@ -21,7 +21,7 @@ import (
 	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
 )
 
-const testDelayNegotiationVar = "TEST_DELAY_FINISH_NEGOTIATION"
+const testDelayAnswererNegotiationVar = "TEST_DELAY_ANSWERER_NEGOTIATION"
 
 // A webrtcSignalingAnswerer listens for and answers calls with a given signaling service. It is
 // directly connected to a Server that will handle the actual calls/connections over WebRTC
@@ -337,7 +337,7 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 				}
 				// there are no more candidates coming during this negotiation
 				if icecandidate == nil {
-					if _, ok := os.LookupEnv(testDelayNegotiationVar); ok {
+					if _, ok := os.LookupEnv(testDelayAnswererNegotiationVar); ok {
 						// RSDK-4293: Introducing a sleep here replicates the conditions
 						// for a prior goroutine leak.
 						ans.logger.Debug("Sleeping to delay the end of the negotiation")

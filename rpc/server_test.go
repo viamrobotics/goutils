@@ -33,7 +33,7 @@ import (
 )
 
 func TestServer(t *testing.T) {
-	t.Setenv(testDelayNegotiationVar, "t")
+	t.Setenv(testDelayAnswererNegotiationVar, "t")
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
 
