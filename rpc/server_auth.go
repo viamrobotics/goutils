@@ -241,14 +241,14 @@ func (wrapped ctxWrappedServerStream) Context() context.Context {
 func tokenFromContext(ctx context.Context) (string, error) {
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
-		return "", status.Error(codes.Unauthenticated, "authentication required no md")
+		return "", status.Error(codes.Unauthenticated, "authentication required")
 	}
 	authHeader := md.Get(MetadataFieldAuthorization)
 	if len(authHeader) != 1 {
 		return "", status.Error(codes.Unauthenticated, "authentication required")
 	}
 	if !strings.HasPrefix(authHeader[0], AuthorizationValuePrefixBearer) {
-		return "", status.Errorf(codes.Unauthenticated, "expected Authorization: %s", AuthorizationValuePrefixBearer)
+		return "", status.Errorf(codes.Unauthenticated, "expected authorization header with prefix: %s", AuthorizationValuePrefixBearer)
 	}
 	return strings.TrimPrefix(authHeader[0], AuthorizationValuePrefixBearer), nil
 }
