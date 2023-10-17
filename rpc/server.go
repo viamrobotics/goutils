@@ -99,6 +99,8 @@ type Server interface {
 	// This is useful in a scenario where all gRPC is served from the root path due to
 	// limitations of normal gRPC being served from a non-root path.
 	http.Handler
+
+	EnsureAuthed(ctx context.Context) (context.Context, error)
 }
 
 type simpleServer struct {
@@ -662,6 +664,10 @@ func (ss *simpleServer) GRPCHandler() http.Handler {
 			w.WriteHeader(http.StatusBadRequest)
 		}
 	})
+}
+
+func (ss *simpleServer) EnsureAuthed(ctx context.Context) (context.Context, error) {
+	return ss.ensureAuthed(ctx)
 }
 
 // ServeHTTP is an all-in-one handler for any kind of gRPC traffic. This is useful
