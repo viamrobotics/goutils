@@ -326,6 +326,10 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 				ans.activeBackgroundWorkers.Add(1)
 				defer ans.activeBackgroundWorkers.Done()
 
+				if icecandidate != nil {
+					defer callFlowWG.Done()
+				}
+
 				select {
 				case <-initSent:
 				case <-exchangeCtx.Done():
@@ -345,7 +349,6 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 					}
 					return
 				}
-				defer callFlowWG.Done()
 				iProto := iceCandidateToProto(icecandidate)
 				if err := client.Send(&webrtcpb.AnswerResponse{
 					Uuid: uuid,
