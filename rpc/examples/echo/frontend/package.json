@@ -21,6 +21,7 @@
   },
   "scripts": {
     "prepare": "./etc/prepare.sh",
+    "build": "npx webpack",
     "test": "echo \"Error: no test specified\" && exit 1"
   }
 }
