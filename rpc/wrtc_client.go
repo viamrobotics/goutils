@@ -223,13 +223,13 @@ func dialWebRTC(
 		var pendingCandidates sync.WaitGroup
 		waitOneHost := make(chan struct{})
 		var waitOneHostOnce sync.Once
-		pc.OnICECandidate(func(i *webrtc.ICECandidate) {
+		pc.OnICECandidate(func(icecandidate *webrtc.ICECandidate) {
 			if exchangeCtx.Err() != nil {
 				return
 			}
-			if i != nil {
+			if icecandidate != nil {
 				pendingCandidates.Add(1)
-				if i.Typ == webrtc.ICECandidateTypeHost {
+				if icecandidate.Typ == webrtc.ICECandidateTypeHost {
 					waitOneHostOnce.Do(func() {
 						close(waitOneHost)
 					})
@@ -237,7 +237,7 @@ func dialWebRTC(
 			}
 			// must spin off to unblock the ICE gatherer
 			utils.PanicCapturingGo(func() {
-				if i != nil {
+				if icecandidate != nil {
 					defer pendingCandidates.Done()
 				}
 				select {
@@ -245,14 +245,14 @@ func dialWebRTC(
 				case <-exchangeCtx.Done():
 					return
 				}
-				if i == nil {
+				if icecandidate == nil {
 					pendingCandidates.Wait()
 					if err := sendDone(); err != nil {
 						sendErr(err)
 					}
 					return
 				}
-				iProto := iceCandidateToProto(i)
+				iProto := iceCandidateToProto(icecandidate)
 				if _, err := signalingClient.CallUpdate(exchangeCtx, &webrtcpb.CallUpdateRequest{
 					Uuid: uuid,
 					Update: &webrtcpb.CallUpdateRequest_Candidate{
