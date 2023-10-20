@@ -24,7 +24,7 @@
     "prepare": "./etc/prepare.sh",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write '**/*.{ts,js}'",
-    "build": "webpack",
+    "build": "npx webpack",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
