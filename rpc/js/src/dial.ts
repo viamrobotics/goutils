@@ -356,7 +356,8 @@ export async function dialWebRTC(
 
   const { pc, dc } = await newPeerConnectionForClient(
     webrtcOpts !== undefined && webrtcOpts.disableTrickleICE,
-    webrtcOpts?.rtcConfig
+    webrtcOpts?.rtcConfig,
+    webrtcOpts.priority
   );
   let successful = false;
 

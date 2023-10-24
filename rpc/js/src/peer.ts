@@ -5,7 +5,8 @@ interface ReadyPeer {
 
 export async function newPeerConnectionForClient(
   disableTrickle: boolean,
-  rtcConfig?: RTCConfiguration
+  rtcConfig?: RTCConfiguration,
+  priority?: number
 ): Promise<ReadyPeer> {
   if (!rtcConfig) {
     rtcConfig = {
@@ -60,9 +61,14 @@ export async function newPeerConnectionForClient(
 
       if (description.type === "offer") {
         await peerConnection.setLocalDescription();
-        negotiationChannel.send(
-          btoa(JSON.stringify(peerConnection.localDescription))
-        );
+        let description = {
+          sdp: peerConnection.localDescription?.sdp,
+          type: peerConnection.localDescription?.type,
+        };
+        if (priority) {
+          description.sdp = description.sdp + `a=x-priority:${priority}\r\n`;
+        }
+        negotiationChannel.send(btoa(JSON.stringify(description)));
       }
     } catch (e) {
       console.error(e);
@@ -75,9 +81,14 @@ export async function newPeerConnectionForClient(
     }
     try {
       await peerConnection.setLocalDescription();
-      negotiationChannel.send(
-        btoa(JSON.stringify(peerConnection.localDescription))
-      );
+      let description = {
+        sdp: peerConnection.localDescription?.sdp,
+        type: peerConnection.localDescription?.type,
+      };
+      if (priority) {
+        description.sdp = description.sdp + `a=x-priority:${priority}\r\n`;
+      }
+      negotiationChannel.send(btoa(JSON.stringify(description)));
     } catch (e) {
       console.error(e);
     }
