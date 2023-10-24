@@ -4,6 +4,7 @@ interface ReadyPeer {
 }
 export declare function newPeerConnectionForClient(
   disableTrickle: boolean,
-  rtcConfig?: RTCConfiguration
+  rtcConfig?: RTCConfiguration,
+  priority?: number
 ): Promise<ReadyPeer>;
 export {};
