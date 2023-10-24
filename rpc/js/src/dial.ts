@@ -74,6 +74,10 @@ export interface DialWebRTCOptions {
   //
   // If enabled, other auth options have no affect. Eg. authEntity, credentials, signalingAuthEntity, signalingCredentials.
   signalingAccessToken?: string;
+
+  // `priority` is the priority of the current WebRTC connection. If only one WebRTC
+  // connection is allowed and another peer with a higher priority attempts to connect,
+  // the higher priority connection will unseat the lower priority connection.
   priority?: number;
 }
 
