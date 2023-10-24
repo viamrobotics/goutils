@@ -74,6 +74,7 @@ export interface DialWebRTCOptions {
   //
   // If enabled, other auth options have no affect. Eg. authEntity, credentials, signalingAuthEntity, signalingCredentials.
   signalingAccessToken?: string;
+  priority?: number;
 }
 
 export interface Credentials {
@@ -565,7 +566,15 @@ export async function dialWebRTC(
     client.start({ "rpc-host": host });
 
     const callRequest = new CallRequest();
-    const encodedSDP = btoa(JSON.stringify(pc.localDescription));
+    let description = {
+      sdp: pc.localDescription?.sdp,
+      type: pc.localDescription?.type,
+    };
+    if (opts.webrtcOptions?.priority) {
+      description.sdp =
+        description.sdp + `a=x-priority:${opts.webrtcOptions?.priority}\r\n`;
+    }
+    const encodedSDP = btoa(JSON.stringify(description));
     callRequest.setSdp(encodedSDP);
     if (webrtcOpts && webrtcOpts.disableTrickleICE) {
       callRequest.setDisableTrickle(webrtcOpts.disableTrickleICE);
