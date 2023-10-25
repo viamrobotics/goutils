@@ -576,8 +576,7 @@ export async function dialWebRTC(
       type: pc.localDescription?.type,
     };
     if (opts.webrtcOptions?.priority) {
-      description.sdp =
-        description.sdp + `a=x-priority:${opts.webrtcOptions?.priority}\r\n`;
+      description.sdp = [description.sdp, `a=x-priority:${opts.webrtcOptions?.priority}\r\n`].join("");
     }
     const encodedSDP = btoa(JSON.stringify(description));
     callRequest.setSdp(encodedSDP);

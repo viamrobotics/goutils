@@ -66,7 +66,7 @@ export async function newPeerConnectionForClient(
           type: peerConnection.localDescription?.type,
         };
         if (priority) {
-          description.sdp = description.sdp + `a=x-priority:${priority}\r\n`;
+          description.sdp = [description.sdp, `a=x-priority:${opts.webrtcOptions?.priority}\r\n`].join("");
         }
         negotiationChannel.send(btoa(JSON.stringify(description)));
       }
@@ -86,7 +86,7 @@ export async function newPeerConnectionForClient(
         type: peerConnection.localDescription?.type,
       };
       if (priority) {
-        description.sdp = description.sdp + `a=x-priority:${priority}\r\n`;
+        description.sdp = [description.sdp, `a=x-priority:${opts.webrtcOptions?.priority}\r\n`].join("");
       }
       negotiationChannel.send(btoa(JSON.stringify(description)));
     } catch (e) {
