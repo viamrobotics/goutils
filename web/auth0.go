@@ -33,8 +33,9 @@ type AuthProviderConfig struct {
 	EnableTest bool
 }
 
+// AuthProvider should include all state that we need to share with auth callbacks or to make customizations on the
+// internals of the specific auth mechanisms we implement for a particular provider.
 type AuthProvider struct {
-	logger golog.Logger
 	io.Closer
 
 	config   AuthProviderConfig
@@ -44,7 +45,7 @@ type AuthProvider struct {
 	authConfig    oauth2.Config
 	httpTransport *http.Transport
 
-	redirectUrl string
+	redirectURL string
 
 	// important to have different auth providers have different cookie name so that we force
 	// a re-login and throw away old browser state if we migrate auth providers
@@ -52,6 +53,7 @@ type AuthProvider struct {
 	stateCookieMaxAge time.Duration
 }
 
+// Close called by io.Closer
 func (s *AuthProvider) Close() error {
 	s.httpTransport.CloseIdleConnections()
 	return nil
@@ -88,7 +90,7 @@ func InstallAuth0(
 		authProvider,
 		// see https://auth0.com/docs/authenticate/login/logout/redirect-users-after-logout
 		"/v2/logout",
-		authProvider.redirectUrl,
+		authProvider.redirectURL,
 		authProvider.stateCookieName,
 		authProvider.stateCookieMaxAge,
 		logger)
@@ -96,6 +98,7 @@ func InstallAuth0(
 	return authProvider, nil
 }
 
+// InstallAuth0 does initial setup and installs routes for FusionAuth
 func InstallFusionAuth(
 	ctx context.Context,
 	mux *goji.Mux,
@@ -117,7 +120,7 @@ func InstallFusionAuth(
 		mux,
 		authProvider,
 		"/logout",
-		authProvider.redirectUrl,
+		authProvider.redirectURL,
 		authProvider.stateCookieName,
 		authProvider.stateCookieMaxAge,
 		logger)
@@ -147,7 +150,7 @@ func installAuthProvider(
 	state := &AuthProvider{
 		config:            config,
 		sessions:          sessions,
-		redirectUrl:       redirectUrl,
+		redirectURL:       redirectUrl,
 		stateCookieName:   providerCookieName,
 		stateCookieMaxAge: time.Minute * 10,
 	}
@@ -180,8 +183,8 @@ func installAuthProvider(
 func installAuthProviderRoutes(
 	mux *goji.Mux,
 	authProvider *AuthProvider,
-	providerLogoutUrl string,
-	redirectSuffix string,
+	providerLogoutURL string,
+	redirectURL string,
 	redirectStateCookieName string,
 	redirectStateCookieMaxAge time.Duration,
 	logger golog.Logger) {
@@ -190,14 +193,14 @@ func installAuthProviderRoutes(
 		logger,
 		redirectStateCookieName,
 		redirectStateCookieMaxAge})
-	mux.Handle(pat.New(redirectSuffix), &callbackHandler{
+	mux.Handle(pat.New(redirectURL), &callbackHandler{
 		authProvider,
 		logger,
 		redirectStateCookieName})
 	mux.Handle(pat.New("/logout"), &logoutHandler{
 		authProvider,
 		logger,
-		providerLogoutUrl,
+		providerLogoutURL,
 	})
 
 	if authProvider.config.EnableTest {
