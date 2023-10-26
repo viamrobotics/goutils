@@ -26,7 +26,7 @@ import {
   OptionalWebRTCConfigResponse,
 } from "./gen/proto/rpc/webrtc/v1/signaling_pb";
 import { SignalingService } from "./gen/proto/rpc/webrtc/v1/signaling_pb_service";
-import { addCustomSdpFields, newPeerConnectionForClient } from "./peer";
+import { addSdpFields, newPeerConnectionForClient } from "./peer";
 
 export interface DialOptions {
   authEntity?: string;
@@ -569,7 +569,7 @@ export async function dialWebRTC(
     client.start({ "rpc-host": host });
 
     const callRequest = new CallRequest();
-    const description = addCustomSdpFields(
+    const description = addSdpFields(
       pc.localDescription,
       opts.webrtcOptions?.additionalSdpFields
     );

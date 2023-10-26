@@ -3,7 +3,7 @@ interface ReadyPeer {
   dc: RTCDataChannel;
 }
 
-export function addCustomSdpFields(
+export function addSdpFields(
   localDescription?: RTCSessionDescription | null,
   sdpFields?: Record<string, string | number>
 ) {
@@ -15,7 +15,7 @@ export function addCustomSdpFields(
     Object.keys(sdpFields).forEach((key) => {
       description.sdp = [
         description.sdp,
-        `a=x-${key}:${sdpFields[key as keyof typeof sdpFields]}\r\n`,
+        `a=${key}:${sdpFields[key as keyof typeof sdpFields]}\r\n`,
       ].join("");
     });
   }
@@ -80,7 +80,7 @@ export async function newPeerConnectionForClient(
 
       if (description.type === "offer") {
         await peerConnection.setLocalDescription();
-        const newDescription = addCustomSdpFields(
+        const newDescription = addSdpFields(
           peerConnection.localDescription,
           additionalSdpFields
         );
@@ -97,7 +97,7 @@ export async function newPeerConnectionForClient(
     }
     try {
       await peerConnection.setLocalDescription();
-      const newDescription = addCustomSdpFields(
+      const newDescription = addSdpFields(
         peerConnection.localDescription,
         additionalSdpFields
       );

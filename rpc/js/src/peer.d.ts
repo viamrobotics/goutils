@@ -2,7 +2,7 @@ interface ReadyPeer {
   pc: RTCPeerConnection;
   dc: RTCDataChannel;
 }
-export declare function addCustomSdpFields(
+export declare function addSdpFields(
   localDescription?: RTCSessionDescription | null,
   sdpFields?: Record<string, string | number>
 ): {
