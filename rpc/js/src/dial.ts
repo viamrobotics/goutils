@@ -75,8 +75,8 @@ export interface DialWebRTCOptions {
   // If enabled, other auth options have no affect. Eg. authEntity, credentials, signalingAuthEntity, signalingCredentials.
   signalingAccessToken?: string;
 
-  // `additionalSDPValues` is an object of additional SDP values that we want to pass into the connection's call request.
-  additionalSdpFields?: object;
+  // `additionalSDPValues` is a collection of additional SDP values that we want to pass into the connection's call request.
+  additionalSdpFields?: Record<string, string | number>;
 }
 
 export interface Credentials {
@@ -570,8 +570,8 @@ export async function dialWebRTC(
 
     const callRequest = new CallRequest();
     const description = addCustomSdpFields(
-      opts.webrtcOptions?.additionalSdpFields,
-      pc.localDescription
+      pc.localDescription,
+      opts.webrtcOptions?.additionalSdpFields
     );
     const encodedSDP = btoa(JSON.stringify(description));
     callRequest.setSdp(encodedSDP);

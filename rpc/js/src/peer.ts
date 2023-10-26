@@ -4,8 +4,8 @@ interface ReadyPeer {
 }
 
 export function addCustomSdpFields(
-  sdpFields?: object,
-  localDescription?: RTCSessionDescription | null
+  localDescription?: RTCSessionDescription | null,
+  sdpFields?: Record<string, string | number>
 ) {
   let description = {
     sdp: localDescription?.sdp,
@@ -25,7 +25,7 @@ export function addCustomSdpFields(
 export async function newPeerConnectionForClient(
   disableTrickle: boolean,
   rtcConfig?: RTCConfiguration,
-  additionalSdpFields?: object
+  additionalSdpFields?: Record<string, string | number>
 ): Promise<ReadyPeer> {
   if (!rtcConfig) {
     rtcConfig = {
@@ -81,8 +81,8 @@ export async function newPeerConnectionForClient(
       if (description.type === "offer") {
         await peerConnection.setLocalDescription();
         const newDescription = addCustomSdpFields(
-          additionalSdpFields,
-          peerConnection.localDescription
+          peerConnection.localDescription,
+          additionalSdpFields
         );
         negotiationChannel.send(btoa(JSON.stringify(newDescription)));
       }
@@ -98,8 +98,8 @@ export async function newPeerConnectionForClient(
     try {
       await peerConnection.setLocalDescription();
       const newDescription = addCustomSdpFields(
-        additionalSdpFields,
-        peerConnection.localDescription
+        peerConnection.localDescription,
+        additionalSdpFields
       );
       negotiationChannel.send(btoa(JSON.stringify(newDescription)));
     } catch (e) {

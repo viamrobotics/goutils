@@ -3,8 +3,8 @@ interface ReadyPeer {
   dc: RTCDataChannel;
 }
 export declare function addCustomSdpFields(
-  sdpFields?: object,
-  localDescription?: RTCSessionDescription | null
+  localDescription?: RTCSessionDescription | null,
+  sdpFields?: Record<string, string | number>
 ): {
   sdp: string | undefined;
   type: RTCSdpType | undefined;
@@ -12,6 +12,6 @@ export declare function addCustomSdpFields(
 export declare function newPeerConnectionForClient(
   disableTrickle: boolean,
   rtcConfig?: RTCConfiguration,
-  additionalSdpFields?: object
+  additionalSdpFields?: Record<string, string | number>
 ): Promise<ReadyPeer>;
 export {};
