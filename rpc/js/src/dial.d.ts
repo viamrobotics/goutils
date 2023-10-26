@@ -15,6 +15,7 @@ export interface DialWebRTCOptions {
   signalingExternalAuthToEntity?: string;
   signalingCredentials?: Credentials;
   signalingAccessToken?: string;
+  additionalSdpFields?: Record<string, string | number>;
 }
 export interface Credentials {
   type: string;

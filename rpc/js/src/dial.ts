@@ -26,7 +26,7 @@ import {
   OptionalWebRTCConfigResponse,
 } from "./gen/proto/rpc/webrtc/v1/signaling_pb";
 import { SignalingService } from "./gen/proto/rpc/webrtc/v1/signaling_pb_service";
-import { newPeerConnectionForClient } from "./peer";
+import { addSdpFields, newPeerConnectionForClient } from "./peer";
 
 export interface DialOptions {
   authEntity?: string;
@@ -74,6 +74,9 @@ export interface DialWebRTCOptions {
   //
   // If enabled, other auth options have no affect. Eg. authEntity, credentials, signalingAuthEntity, signalingCredentials.
   signalingAccessToken?: string;
+
+  // `additionalSDPValues` is a collection of additional SDP values that we want to pass into the connection's call request.
+  additionalSdpFields?: Record<string, string | number>;
 }
 
 export interface Credentials {
@@ -351,7 +354,8 @@ export async function dialWebRTC(
 
   const { pc, dc } = await newPeerConnectionForClient(
     webrtcOpts !== undefined && webrtcOpts.disableTrickleICE,
-    webrtcOpts?.rtcConfig
+    webrtcOpts?.rtcConfig,
+    webrtcOpts?.additionalSdpFields
   );
   let successful = false;
 
@@ -565,7 +569,11 @@ export async function dialWebRTC(
     client.start({ "rpc-host": host });
 
     const callRequest = new CallRequest();
-    const encodedSDP = btoa(JSON.stringify(pc.localDescription));
+    const description = addSdpFields(
+      pc.localDescription,
+      opts.webrtcOptions?.additionalSdpFields
+    );
+    const encodedSDP = btoa(JSON.stringify(description));
     callRequest.setSdp(encodedSDP);
     if (webrtcOpts && webrtcOpts.disableTrickleICE) {
       callRequest.setDisableTrickle(webrtcOpts.disableTrickleICE);

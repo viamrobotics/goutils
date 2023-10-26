@@ -3,9 +3,29 @@ interface ReadyPeer {
   dc: RTCDataChannel;
 }
 
+export function addSdpFields(
+  localDescription?: RTCSessionDescription | null,
+  sdpFields?: Record<string, string | number>
+) {
+  let description = {
+    sdp: localDescription?.sdp,
+    type: localDescription?.type,
+  };
+  if (sdpFields) {
+    Object.keys(sdpFields).forEach((key) => {
+      description.sdp = [
+        description.sdp,
+        `a=${key}:${sdpFields[key as keyof typeof sdpFields]}\r\n`,
+      ].join("");
+    });
+  }
+  return description;
+}
+
 export async function newPeerConnectionForClient(
   disableTrickle: boolean,
-  rtcConfig?: RTCConfiguration
+  rtcConfig?: RTCConfiguration,
+  additionalSdpFields?: Record<string, string | number>
 ): Promise<ReadyPeer> {
   if (!rtcConfig) {
     rtcConfig = {
@@ -60,9 +80,11 @@ export async function newPeerConnectionForClient(
 
       if (description.type === "offer") {
         await peerConnection.setLocalDescription();
-        negotiationChannel.send(
-          btoa(JSON.stringify(peerConnection.localDescription))
+        const newDescription = addSdpFields(
+          peerConnection.localDescription,
+          additionalSdpFields
         );
+        negotiationChannel.send(btoa(JSON.stringify(newDescription)));
       }
     } catch (e) {
       console.error(e);
@@ -75,9 +97,11 @@ export async function newPeerConnectionForClient(
     }
     try {
       await peerConnection.setLocalDescription();
-      negotiationChannel.send(
-        btoa(JSON.stringify(peerConnection.localDescription))
+      const newDescription = addSdpFields(
+        peerConnection.localDescription,
+        additionalSdpFields
       );
+      negotiationChannel.send(btoa(JSON.stringify(newDescription)));
     } catch (e) {
       console.error(e);
     }
