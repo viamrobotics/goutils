@@ -98,7 +98,7 @@ func InstallAuth0(
 	return authProvider, nil
 }
 
-// InstallAuth0 does initial setup and installs routes for FusionAuth
+// InstallFusionAuth does initial setup and installs routes for FusionAuth
 func InstallFusionAuth(
 	ctx context.Context,
 	mux *goji.Mux,
