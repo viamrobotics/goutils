@@ -26,7 +26,7 @@ import {
   OptionalWebRTCConfigResponse,
 } from "./gen/proto/rpc/webrtc/v1/signaling_pb";
 import { SignalingService } from "./gen/proto/rpc/webrtc/v1/signaling_pb_service";
-import { newPeerConnectionForClient } from "./peer";
+import { addCustomSdpFields, newPeerConnectionForClient } from "./peer";
 
 export interface DialOptions {
   authEntity?: string;
@@ -75,10 +75,8 @@ export interface DialWebRTCOptions {
   // If enabled, other auth options have no affect. Eg. authEntity, credentials, signalingAuthEntity, signalingCredentials.
   signalingAccessToken?: string;
 
-  // `priority` is the priority of the current WebRTC connection. If only one WebRTC
-  // connection is allowed and another peer with a higher priority attempts to connect,
-  // the higher priority connection will unseat the lower priority connection.
-  priority?: number;
+  // `additionalSDPValues` is an object of additional SDP values that we want to pass into the connection's call request.
+  additionalSdpFields?: object;
 }
 
 export interface Credentials {
@@ -357,7 +355,7 @@ export async function dialWebRTC(
   const { pc, dc } = await newPeerConnectionForClient(
     webrtcOpts !== undefined && webrtcOpts.disableTrickleICE,
     webrtcOpts?.rtcConfig,
-    webrtcOpts.priority
+    webrtcOpts.additionalSdpFields
   );
   let successful = false;
 
@@ -571,16 +569,10 @@ export async function dialWebRTC(
     client.start({ "rpc-host": host });
 
     const callRequest = new CallRequest();
-    let description = {
-      sdp: pc.localDescription?.sdp,
-      type: pc.localDescription?.type,
-    };
-    if (opts.webrtcOptions?.priority) {
-      description.sdp = [
-        description.sdp,
-        `a=x-priority:${opts.webrtcOptions?.priority}\r\n`,
-      ].join("");
-    }
+    const description = addCustomSdpFields(
+      opts.webrtcOptions?.additionalSdpFields,
+      pc.localDescription
+    );
     const encodedSDP = btoa(JSON.stringify(description));
     callRequest.setSdp(encodedSDP);
     if (webrtcOpts && webrtcOpts.disableTrickleICE) {

@@ -3,10 +3,29 @@ interface ReadyPeer {
   dc: RTCDataChannel;
 }
 
+export function addCustomSdpFields(
+  sdpFields?: object,
+  localDescription?: RTCSessionDescription | null
+) {
+  let description = {
+    sdp: localDescription?.sdp,
+    type: localDescription?.type,
+  };
+  if (sdpFields) {
+    Object.keys(sdpFields).forEach((key) => {
+      description.sdp = [
+        description.sdp,
+        `a=x-${key}:${sdpFields[key as keyof typeof sdpFields]}\r\n`,
+      ].join("");
+    });
+  }
+  return description;
+}
+
 export async function newPeerConnectionForClient(
   disableTrickle: boolean,
   rtcConfig?: RTCConfiguration,
-  priority?: number
+  additionalSdpFields?: object
 ): Promise<ReadyPeer> {
   if (!rtcConfig) {
     rtcConfig = {
@@ -61,17 +80,11 @@ export async function newPeerConnectionForClient(
 
       if (description.type === "offer") {
         await peerConnection.setLocalDescription();
-        let description = {
-          sdp: peerConnection.localDescription?.sdp,
-          type: peerConnection.localDescription?.type,
-        };
-        if (priority) {
-          description.sdp = [
-            description.sdp,
-            `a=x-priority:${priority}\r\n`,
-          ].join("");
-        }
-        negotiationChannel.send(btoa(JSON.stringify(description)));
+        const newDescription = addCustomSdpFields(
+          additionalSdpFields,
+          peerConnection.localDescription
+        );
+        negotiationChannel.send(btoa(JSON.stringify(newDescription)));
       }
     } catch (e) {
       console.error(e);
@@ -84,17 +97,11 @@ export async function newPeerConnectionForClient(
     }
     try {
       await peerConnection.setLocalDescription();
-      let description = {
-        sdp: peerConnection.localDescription?.sdp,
-        type: peerConnection.localDescription?.type,
-      };
-      if (priority) {
-        description.sdp = [
-          description.sdp,
-          `a=x-priority:${priority}\r\n`,
-        ].join("");
-      }
-      negotiationChannel.send(btoa(JSON.stringify(description)));
+      const newDescription = addCustomSdpFields(
+        additionalSdpFields,
+        peerConnection.localDescription
+      );
+      negotiationChannel.send(btoa(JSON.stringify(newDescription)));
     } catch (e) {
       console.error(e);
     }
