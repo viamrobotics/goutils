@@ -202,6 +202,11 @@ func installAuthProviderRoutes(
 		logger,
 		providerLogoutURL,
 	})
+	mux.Handle(pat.New("/token"), &tokenHandler{
+		authProvider,
+		logger,
+		redirectStateCookieName,
+		redirectStateCookieMaxAge})
 
 	if authProvider.config.EnableTest {
 		mux.Handle(pat.New("/token-callback"), &tokenCallbackHandler{authProvider, logger})
@@ -382,6 +387,59 @@ func verifyAndSaveToken(ctx context.Context, state *AuthProvider, session *Sessi
 	session.Data["profile"] = profile
 
 	return session, nil
+}
+
+// --------------------------------
+type tokenHandler struct {
+	state                     *AuthProvider
+	logger                    golog.Logger
+	redirectStateCookieName   string
+	redirectStateCookieMaxAge time.Duration
+}
+
+func (h *tokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	ctx, span := trace.StartSpan(ctx, r.URL.Path)
+	defer span.End()
+
+	// Generate random state
+	b := make([]byte, 32)
+	_, err := rand.Read(b)
+	if HandleError(w, err, h.logger, "error getting random number") {
+		return
+	}
+	state := base64.StdEncoding.EncodeToString(b)
+
+	session, err := h.state.sessions.Get(r, true)
+	if HandleError(w, err, h.logger, "error getting session") {
+		return
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     h.redirectStateCookieName,
+		Value:    fmt.Sprintf("%s:%s", session.id, state),
+		Path:     "/",
+		MaxAge:   int(h.redirectStateCookieMaxAge.Seconds()),
+		Secure:   r.TLS != nil,
+		SameSite: http.SameSiteLaxMode,
+		HttpOnly: true,
+	})
+
+	if r.FormValue("backto") != "" {
+		session.Data["backto"] = r.FormValue("backto")
+	}
+	if session.Data["backto"] == "" {
+		session.Data["backto"] = r.Header.Get("Referer")
+	}
+	err = session.Save(ctx, r, w)
+	if HandleError(w, err, h.logger, "error saving session") {
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, err = w.Write([]byte(h.state.authConfig.AuthCodeURL(state)))
+	utils.UncheckedError(err)
 }
 
 // --------------------------------
