@@ -1,10 +1,10 @@
-import type { grpc } from "@improbable-eng/grpc-web";
-import { BaseChannel } from "./BaseChannel";
+import type { grpc } from '@improbable-eng/grpc-web';
+import { BaseChannel } from './BaseChannel';
 import {
   RequestHeaders,
   RequestMessage,
   Stream,
-} from "./gen/proto/rpc/webrtc/v1/grpc_pb";
+} from './gen/proto/rpc/webrtc/v1/grpc_pb';
 export declare class ClientChannel extends BaseChannel {
   private streamIDCounter;
   private readonly streams;

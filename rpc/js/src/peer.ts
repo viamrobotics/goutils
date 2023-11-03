@@ -16,7 +16,7 @@ export function addSdpFields(
       description.sdp = [
         description.sdp,
         `a=${key}:${sdpFields[key as keyof typeof sdpFields]}\r\n`,
-      ].join("");
+      ].join('');
     });
   }
   return description;
@@ -31,7 +31,7 @@ export async function newPeerConnectionForClient(
     rtcConfig = {
       iceServers: [
         {
-          urls: "stun:global.stun.twilio.com:3478",
+          urls: 'stun:global.stun.twilio.com:3478',
         },
       ],
     };
@@ -42,19 +42,19 @@ export async function newPeerConnectionForClient(
   const result = new Promise<ReadyPeer>((resolve) => {
     pResolve = resolve;
   });
-  const dataChannel = peerConnection.createDataChannel("data", {
+  const dataChannel = peerConnection.createDataChannel('data', {
     id: 0,
     negotiated: true,
     ordered: true,
   });
-  dataChannel.binaryType = "arraybuffer";
+  dataChannel.binaryType = 'arraybuffer';
 
-  const negotiationChannel = peerConnection.createDataChannel("negotiation", {
+  const negotiationChannel = peerConnection.createDataChannel('negotiation', {
     id: 1,
     negotiated: true,
     ordered: true,
   });
-  negotiationChannel.binaryType = "arraybuffer";
+  negotiationChannel.binaryType = 'arraybuffer';
 
   let ignoreOffer = false;
   const polite = true;
@@ -69,8 +69,8 @@ export async function newPeerConnectionForClient(
       );
 
       const offerCollision =
-        description.type === "offer" &&
-        (description || peerConnection.signalingState !== "stable");
+        description.type === 'offer' &&
+        (description || peerConnection.signalingState !== 'stable');
       ignoreOffer = !polite && offerCollision;
       if (ignoreOffer) {
         return;
@@ -78,7 +78,7 @@ export async function newPeerConnectionForClient(
 
       await peerConnection.setRemoteDescription(description);
 
-      if (description.type === "offer") {
+      if (description.type === 'offer') {
         await peerConnection.setLocalDescription();
         const newDescription = addSdpFields(
           peerConnection.localDescription,

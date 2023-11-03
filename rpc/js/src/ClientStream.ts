@@ -1,7 +1,7 @@
-import { grpc } from "@improbable-eng/grpc-web";
-import { BaseStream } from "./BaseStream";
-import type { ClientChannel } from "./ClientChannel";
-import { GRPCError } from "./errors";
+import { grpc } from '@improbable-eng/grpc-web';
+import { BaseStream } from './BaseStream';
+import type { ClientChannel } from './ClientChannel';
+import { GRPCError } from './errors';
 import {
   Metadata,
   PacketMessage,
@@ -13,7 +13,7 @@ import {
   ResponseTrailers,
   Stream,
   Strings,
-} from "./gen/proto/rpc/webrtc/v1/grpc_pb";
+} from './gen/proto/rpc/webrtc/v1/grpc_pb';
 
 // see golang/client_stream.go
 const maxRequestMessagePacketDataSize = 16373;
@@ -42,7 +42,7 @@ export class ClientStream extends BaseStream implements grpc.Transport {
     try {
       this.channel.writeHeaders(this.stream, requestHeaders);
     } catch (error) {
-      console.error("error writing headers", error);
+      console.error('error writing headers', error);
       this.closeWithRecvError(error as Error);
     }
   }
@@ -60,7 +60,7 @@ export class ClientStream extends BaseStream implements grpc.Transport {
     try {
       this.channel.writeReset(this.stream);
     } catch (error) {
-      console.error("error writing reset", error);
+      console.error('error writing reset', error);
       this.closeWithRecvError(error as Error);
     }
   }
@@ -110,7 +110,7 @@ export class ClientStream extends BaseStream implements grpc.Transport {
         this.channel.writeMessage(this.stream, requestMessage);
       }
     } catch (error) {
-      console.error("error writing message", error);
+      console.error('error writing message', error);
       this.closeWithRecvError(error as Error);
     }
   }
@@ -119,22 +119,22 @@ export class ClientStream extends BaseStream implements grpc.Transport {
     switch (resp.getTypeCase()) {
       case Response.TypeCase.HEADERS:
         if (this.headersReceived) {
-          this.closeWithRecvError(new Error("headers already received"));
+          this.closeWithRecvError(new Error('headers already received'));
           return;
         }
         if (this.trailersReceived) {
-          this.closeWithRecvError(new Error("headers received after trailers"));
+          this.closeWithRecvError(new Error('headers received after trailers'));
           return;
         }
         this.processHeaders(resp.getHeaders()!);
         break;
       case Response.TypeCase.MESSAGE:
         if (!this.headersReceived) {
-          this.closeWithRecvError(new Error("headers not yet received"));
+          this.closeWithRecvError(new Error('headers not yet received'));
           return;
         }
         if (this.trailersReceived) {
-          this.closeWithRecvError(new Error("headers received after trailers"));
+          this.closeWithRecvError(new Error('headers received after trailers'));
           return;
         }
         this.processMessage(resp.getMessage()!);
@@ -143,7 +143,7 @@ export class ClientStream extends BaseStream implements grpc.Transport {
         this.processTrailers(resp.getTrailers()!);
         break;
       default:
-        console.error("unknown response type", resp.getTypeCase());
+        console.error('unknown response type', resp.getTypeCase());
         break;
     }
   }
@@ -172,14 +172,14 @@ export class ClientStream extends BaseStream implements grpc.Transport {
     if (status) {
       statusCode = status.getCode();
       statusMessage = status.getMessage();
-      headers.set("grpc-status", `${status.getCode()}`);
+      headers.set('grpc-status', `${status.getCode()}`);
       if (statusMessage !== undefined) {
-        headers.set("grpc-message", status.getMessage());
+        headers.set('grpc-message', status.getMessage());
       }
     } else {
       statusCode = 0;
-      headers.set("grpc-status", "0");
-      statusMessage = "";
+      headers.set('grpc-status', '0');
+      statusMessage = '';
     }
 
     const headerBytes = headersToBytes(headers);
@@ -202,7 +202,7 @@ export function encodeASCII(input: string): Uint8Array {
   for (let i = 0; i !== input.length; ++i) {
     const charCode = input.charCodeAt(i);
     if (!isValidHeaderAscii(charCode)) {
-      throw new Error("Metadata contains invalid ASCII");
+      throw new Error('Metadata contains invalid ASCII');
     }
     encoded[i] = charCode;
   }
@@ -217,9 +217,9 @@ function isValidHeaderAscii(val: number): boolean {
 }
 
 function headersToBytes(headers: grpc.Metadata): Uint8Array {
-  let asString = "";
+  let asString = '';
   headers.forEach((key, values) => {
-    asString += `${key}: ${values.join(", ")}\r\n`;
+    asString += `${key}: ${values.join(', ')}\r\n`;
   });
   return encodeASCII(asString);
 }
