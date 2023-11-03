@@ -404,41 +404,40 @@ func (h *tokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx, span := trace.StartSpan(ctx, r.URL.Path)
 	defer span.End()
 
-	// Generate random state
-	b := make([]byte, 32)
-	_, err := rand.Read(b)
-	if HandleError(w, err, h.logger, "error getting random number") {
-		return
-	}
-	state := base64.StdEncoding.EncodeToString(b)
-
-	session, err := h.state.sessions.Get(r, true)
-	if HandleError(w, err, h.logger, "error getting session") {
+	stateCookie, err := r.Cookie(h.redirectStateCookieName)
+	if HandleError(w, err, h.logger, "getting redirect cookie") {
 		return
 	}
 	http.SetCookie(w, &http.Cookie{
 		Name:     h.redirectStateCookieName,
-		Value:    fmt.Sprintf("%s:%s", session.id, state),
+		Value:    "",
 		Path:     "/",
-		MaxAge:   int(h.redirectStateCookieMaxAge.Seconds()),
+		MaxAge:   -1,
 		Secure:   r.TLS != nil,
 		SameSite: http.SameSiteLaxMode,
 		HttpOnly: true,
 	})
+	stateParts := strings.SplitN(stateCookie.Value, ":", 2)
+	if len(stateParts) != 2 {
+		w.WriteHeader(http.StatusBadRequest)
+		_, err := w.Write([]byte("invalid state parameter"))
+		utils.UncheckedError(err)
+		return
+	}
+	if r.URL.Query().Get("state") != stateParts[1] {
+		http.Error(w, "Invalid state parameter", http.StatusBadRequest)
+		return
+	}
 
-	if r.FormValue("backto") != "" {
-		session.Data["backto"] = r.FormValue("backto")
-	}
-	if session.Data["backto"] == "" {
-		session.Data["backto"] = r.Header.Get("Referer")
-	}
-	err = session.Save(ctx, r, w)
-	if HandleError(w, err, h.logger, "error saving session") {
+	token, err := h.state.authConfig.Exchange(ctx, r.URL.Query().Get("code"))
+	if err != nil {
+		h.logger.Debugw("no token found", "error", err)
+		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, err = w.Write([]byte(h.state.authConfig.AuthCodeURL(state)))
+	_, err = w.Write([]byte(token.AccessToken))
 	utils.UncheckedError(err)
 }
 
