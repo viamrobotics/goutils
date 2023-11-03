@@ -424,20 +424,21 @@ func (h *tokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		utils.UncheckedError(err)
 		return
 	}
-	if r.URL.Query().Get("state") != stateParts[1] {
-		http.Error(w, "Invalid state parameter", http.StatusBadRequest)
+
+	session, err := h.state.sessions.store.Get(r.Context(), stateParts[0])
+	if HandleError(w, err, h.logger, "getting session") {
 		return
 	}
 
-	token, err := h.state.authConfig.Exchange(ctx, r.URL.Query().Get("code"))
-	if err != nil {
-		h.logger.Debugw("no token found", "error", err)
-		w.WriteHeader(http.StatusUnauthorized)
-		return
-	}
+	//token, err := h.state.authConfig.Exchange(ctx, r.URL.Query().Get("code"))
+	//if err != nil {
+	//	h.logger.Debugw("no token found", "error", err)
+	//	w.WriteHeader(http.StatusUnauthorized)
+	//	return
+	//}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, err = w.Write([]byte(token.AccessToken))
+	_, err = w.Write([]byte(session.Data["access_token"].(string)))
 	utils.UncheckedError(err)
 }
 
