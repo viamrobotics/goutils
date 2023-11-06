@@ -1,11 +1,11 @@
 import { grpc } from '@improbable-eng/grpc-web';
 export interface DialOptions {
-  authEntity?: string;
-  credentials?: Credentials;
+  authEntity?: string | undefined;
+  credentials?: Credentials | undefined;
   webrtcOptions?: DialWebRTCOptions;
-  externalAuthAddress?: string;
-  externalAuthToEntity?: string;
-  accessToken?: string;
+  externalAuthAddress?: string | undefined;
+  externalAuthToEntity?: string | undefined;
+  accessToken?: string | undefined;
 }
 export interface DialWebRTCOptions {
   disableTrickleICE: boolean;

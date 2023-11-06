@@ -10,7 +10,7 @@ export class BaseChannel {
   private pReject: ((reason?: unknown) => void) | undefined;
 
   private closed = false;
-  private closedReason?: Error;
+  private closedReason: Error | undefined;
 
   protected maxDataChannelSize = 65535;
 
