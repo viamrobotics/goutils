@@ -1,9 +1,9 @@
 module.exports = {
-  mode: "production",
-  entry: "./src/index.ts",
-  devtool: "inline-source-map",
+  mode: 'production',
+  entry: './src/index.ts',
+  devtool: 'inline-source-map',
   output: {
-    libraryTarget: "module",
+    libraryTarget: 'module',
   },
   module: {
     rules: [
@@ -11,12 +11,12 @@ module.exports = {
         test: /\.ts$/,
         include: /src/,
         exclude: /node_modules/,
-        loader: "ts-loader",
+        loader: 'ts-loader',
       },
     ],
   },
   resolve: {
-    extensions: [".ts", ".js"],
+    extensions: ['.ts', '.js'],
   },
   experiments: {
     outputModule: true,

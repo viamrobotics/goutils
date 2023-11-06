@@ -8,11 +8,11 @@ export class ConnectionClosedError extends Error {
     if (error instanceof ConnectionClosedError) {
       return true;
     }
-    if (typeof error === "string") {
-      return error === "Response closed without headers";
+    if (typeof error === 'string') {
+      return error === 'Response closed without headers';
     }
     if (error instanceof Error) {
-      return error.message === "Response closed without headers";
+      return error.message === 'Response closed without headers';
     }
     return false;
   }

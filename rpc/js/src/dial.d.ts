@@ -1,4 +1,4 @@
-import { grpc } from "@improbable-eng/grpc-web";
+import { grpc } from '@improbable-eng/grpc-web';
 export interface DialOptions {
   authEntity?: string;
   credentials?: Credentials;

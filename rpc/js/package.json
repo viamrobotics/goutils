@@ -8,7 +8,8 @@
   },
   "devDependencies": {
     "@types/google-protobuf": "^3.7.4",
-    "prettier": "^2.8.8",
+    "@viamrobotics/prettier-config": "^0.3.4",
+    "prettier": "^3.0.3",
     "set-value": ">=4.0.1",
     "ts-loader": "^9.4.1",
     "ts-protoc-gen": "^0.14.0",
@@ -23,7 +24,7 @@
   "scripts": {
     "prepare": "./etc/prepare.sh",
     "typecheck": "tsc --noEmit",
-    "format": "prettier --write '**/*.{ts,js}'",
+    "format": "prettier --write '**/*.{ts,js,cjs}'",
     "build": "npx webpack",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
