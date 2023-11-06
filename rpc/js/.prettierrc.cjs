@@ -1,2 +1,2 @@
-// .prettierrc.cjs
+'use strict';
 module.exports = '@viamrobotics/prettier-config';
