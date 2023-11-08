@@ -6,7 +6,7 @@ export declare class BaseChannel {
   private pResolve;
   private pReject;
   private closed;
-  private closedReason?;
+  private closedReason;
   protected maxDataChannelSize: number;
   constructor(peerConn: RTCPeerConnection, dataChannel: RTCDataChannel);
   close(): void;

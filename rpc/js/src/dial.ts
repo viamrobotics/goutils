@@ -29,11 +29,11 @@ import { SignalingService } from './gen/proto/rpc/webrtc/v1/signaling_pb_service
 import { addSdpFields, newPeerConnectionForClient } from './peer';
 
 export interface DialOptions {
-  authEntity?: string;
-  credentials?: Credentials;
+  authEntity?: string | undefined;
+  credentials?: Credentials | undefined;
   webrtcOptions?: DialWebRTCOptions;
-  externalAuthAddress?: string;
-  externalAuthToEntity?: string;
+  externalAuthAddress?: string | undefined;
+  externalAuthToEntity?: string | undefined;
 
   // `accessToken` allows a pre-authenticated client to dial with
   // an authorization header. Direct dial will have the access token
@@ -42,7 +42,7 @@ export interface DialOptions {
   //
   // If enabled, other auth options have no affect. Eg. authEntity, credentials,
   // externalAuthAddress, externalAuthToEntity, webrtcOptions.signalingAccessToken
-  accessToken?: string;
+  accessToken?: string | undefined;
 }
 
 export interface DialWebRTCOptions {

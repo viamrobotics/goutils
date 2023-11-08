@@ -7,7 +7,7 @@ export declare class BaseStream {
   protected closed: boolean;
   private readonly packetBuf;
   private packetBufSize;
-  private err?;
+  private err;
   constructor(
     stream: Stream,
     onDone: (id: number) => void,

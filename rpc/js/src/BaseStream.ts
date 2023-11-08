@@ -11,7 +11,7 @@ export class BaseStream {
   protected closed: boolean = false;
   private readonly packetBuf: Array<Uint8Array> = [];
   private packetBufSize = 0;
-  private err?: Error;
+  private err: Error | undefined;
 
   constructor(
     stream: Stream,

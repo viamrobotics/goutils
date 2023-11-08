@@ -1,46 +1,14 @@
 {
+  "extends": "@viamrobotics/typescript-config/base.json",
   "compilerOptions": {
     "target": "ES5",
     "useDefineForClassFields": true,
-    "declaration": true,
-    "strict": true,
     "importHelpers": true,
+    "module": "commonjs",
     "moduleResolution": "Node",
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "skipLibCheck": true,
-    "stripInternal": true,
-    "esModuleInterop": true,
-    "allowSyntheticDefaultImports": true,
-    "noEmitOnError": true,
-    "noImplicitAny": true,
-    "noImplicitThis": true,
-    "alwaysStrict": true,
-    "strictNullChecks": true,
-    "strictFunctionTypes": true,
-    "strictBindCallApply": true,
-    "strictPropertyInitialization": true,
-    "types": [],
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noImplicitReturns": true,
-    "noFallthroughCasesInSwitch": true,
-    "noUncheckedIndexedAccess": true,
-    "noImplicitOverride": true,
-    "forceConsistentCasingInFileNames": true,
-    "importsNotUsedAsValues": "error",
-    "sourceMap": true,
-    "baseUrl": "./",
-    "lib": [
-      "ESNext",
-      "DOM",
-      "DOM.iterable",
-    ]
+    "verbatimModuleSyntax": false,
+    "lib": ["ESNext", "DOM", "DOM.iterable"]
   },
-  "include": [
-    "src"
-  ],
-  "exclude": [
-    "node_modules"
-  ],
+  "include": ["src"],
+  "exclude": ["node_modules", "src/gen"]
 }
