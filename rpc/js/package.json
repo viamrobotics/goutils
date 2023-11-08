@@ -32,6 +32,7 @@
   "scripts": {
     "prepare": "./etc/prepare.sh",
     "typecheck": "tsc --noEmit",
+    "lint": "eslint '.*.cjs' '**/*.{ts,js,cjs}' --quiet",
     "format": "prettier --write '**/*.{ts,js,cjs}'",
     "build": "npx webpack",
     "test": "echo \"Error: no test specified\" && exit 1"
