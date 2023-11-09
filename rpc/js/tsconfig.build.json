@@ -9,5 +9,5 @@
     "verbatimModuleSyntax": false,
     "lib": ["ESNext", "DOM", "DOM.iterable"]
   },
-  "exclude": ["**/*.test.ts"]
+  "exclude": ["src/*.d.ts", ".*.cjs", "*.js"]
 }

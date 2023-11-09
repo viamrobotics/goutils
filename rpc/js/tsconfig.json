@@ -1,5 +1,5 @@
 {
   "extends": "@viamrobotics/typescript-config/base.json",
-  "include": ["src"],
+  "include": ["src", ".*.cjs", "*.js"],
   "exclude": ["node_modules", "src/gen"]
 }
