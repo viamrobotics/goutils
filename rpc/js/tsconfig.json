@@ -1,14 +1,5 @@
 {
   "extends": "@viamrobotics/typescript-config/base.json",
-  "compilerOptions": {
-    "target": "ES5",
-    "useDefineForClassFields": true,
-    "importHelpers": true,
-    "module": "commonjs",
-    "moduleResolution": "Node",
-    "verbatimModuleSyntax": false,
-    "lib": ["ESNext", "DOM", "DOM.iterable"]
-  },
   "include": ["src"],
   "exclude": ["node_modules", "src/gen"]
 }
