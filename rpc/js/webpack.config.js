@@ -1,3 +1,5 @@
+const path = require('node:path');
+
 module.exports = {
   mode: 'production',
   entry: './src/index.ts',
@@ -9,9 +11,10 @@ module.exports = {
     rules: [
       {
         test: /\.ts$/,
-        include: /src/,
-        exclude: /node_modules/,
         loader: 'ts-loader',
+        options: {
+          configFile: path.join(__dirname, './tsconfig.build.json'),
+        },
       },
     ],
   },

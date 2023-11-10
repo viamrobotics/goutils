@@ -7,9 +7,11 @@ module.exports = {
     tsconfigRootDir: __dirname,
     project: './tsconfig.json',
   },
+  env: { node: true, browser: true },
   rules: {
     // TODO(nj, 2023-11-09): remove overrides and fix issues
     'unicorn/filename-case': 'warn',
+    'unicorn/prefer-module': 'warn',
     'unicorn/numeric-separators-style': 'warn',
     'unicorn/no-array-for-each': 'warn',
     'unicorn/prefer-add-event-listener': 'warn',
@@ -33,6 +35,7 @@ module.exports = {
     'no-implicit-coercion': 'warn',
     'one-var': 'warn',
     'func-style': 'warn',
+    'no-undef': 'warn',
     'array-callback-return': 'warn',
     'multiline-comment-style': 'warn',
     'prefer-named-capture-group': 'warn',
@@ -60,6 +63,8 @@ module.exports = {
     '@typescript-eslint/prefer-nullish-coalescing': 'warn',
     '@typescript-eslint/no-misused-promises': 'warn',
     '@typescript-eslint/require-await': 'warn',
+    '@typescript-eslint/no-unsafe-assignment': 'warn',
+    '@typescript-eslint/no-var-requires': 'warn',
     'sonarjs/cognitive-complexity': 'warn',
     'sonarjs/no-duplicated-branches': 'warn',
   },

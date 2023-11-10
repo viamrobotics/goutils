@@ -1,13 +1,4 @@
 {
   "extends": "./tsconfig.json",
-  "compilerOptions": {
-    "target": "ES5",
-    "useDefineForClassFields": true,
-    "importHelpers": true,
-    "module": "commonjs",
-    "moduleResolution": "Node",
-    "verbatimModuleSyntax": false,
-    "lib": ["ESNext", "DOM", "DOM.iterable"]
-  },
-  "exclude": ["src/*.d.ts", ".*.cjs", "*.js"]
+  "include": ["src"]
 }
