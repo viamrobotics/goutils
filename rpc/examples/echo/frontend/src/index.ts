@@ -75,7 +75,7 @@ async function doEchos(client: EchoServiceClient) {
 			pReject(err);
 			return
 		}
-		console.log(resp.toObject());
+		console.log(resp.getMessage());
 		pResolve(resp);
 	});
 	await done;
@@ -89,7 +89,7 @@ async function doEchos(client: EchoServiceClient) {
 	});
 	const multiStream = client.echoMultiple(echoMultipleRequest);
 	multiStream.on("data", (message: EchoMultipleResponse) => {
-		console.log(message.toObject());
+		console.log(message.getMessage());
 	});
 	multiStream.on("end", ({ code, details }: { code: number, details: string, metadata: grpc.Metadata }) => {
 		if (code !== 0) {
@@ -115,7 +115,7 @@ async function doEchos(client: EchoServiceClient) {
 	let msgCount = 0;
 	bidiStream.on("data", (message: EchoMultipleResponse) => {
 		msgCount++
-		console.log(message.toObject());
+		console.log(message.getMessage());
 		if (msgCount == 3) {
 			pResolve(undefined);
 		}

@@ -9,6 +9,14 @@ build:
 run-server: build
 	go run server/cmd/main.go -instance-name=echo-server
 
+.PHONY: install-playwright
+install-playwright:
+	npm install
+	npx playwright install --with-deps
+
+test-run-server: build install-playwright
+	npx playwright test
+
 run-client:
 	go run client/main.go -host=echo-server
 
