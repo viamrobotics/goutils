@@ -41,7 +41,7 @@ type AuthProvider struct {
 	config   AuthProviderConfig
 	sessions *SessionManager
 
-	authOIConfig  *oidc.Config
+	oidcConfig    *oidc.Config
 	authConfig    oauth2.Config
 	httpTransport *http.Transport
 
@@ -155,7 +155,7 @@ func installAuthProvider(
 		stateCookieMaxAge: time.Minute * 10,
 	}
 
-	state.authOIConfig = &oidc.Config{
+	state.oidcConfig = &oidc.Config{
 		ClientID: config.ClientID,
 	}
 
@@ -371,7 +371,7 @@ func verifyAndSaveToken(ctx context.Context, state *AuthProvider, session *Sessi
 		return nil, err
 	}
 
-	idToken, err := p.Verifier(state.authOIConfig).Verify(ctx, rawIDToken)
+	idToken, err := p.Verifier(state.oidcConfig).Verify(ctx, rawIDToken)
 	if err != nil {
 		return nil, errors.New("failed to verify ID Token: " + err.Error())
 	}
