@@ -74,6 +74,9 @@ jobs:
             exit 1
         fi
 
+    - name: Test web client
+      run: sudo -u testbot bash -lc 'make test-web'
+
     - name: Test
       env:
         TEST_MONGODB_URI: ${{ secrets.TEST_MONGODB_URI }}
