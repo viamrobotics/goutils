@@ -230,6 +230,7 @@ func (h *callbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if HandleError(w, err, h.logger, "getting redirect cookie") {
 		return
 	}
+
 	//http.SetCookie(w, &http.Cookie{
 	//	Name:     h.redirectStateCookieName,
 	//	Value:    "",
@@ -239,6 +240,7 @@ func (h *callbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	//	SameSite: http.SameSiteLaxMode,
 	//	HttpOnly: true,
 	//})
+
 	stateParts := strings.SplitN(stateCookie.Value, ":", 2)
 	if len(stateParts) != 2 {
 		w.WriteHeader(http.StatusBadRequest)
@@ -263,7 +265,6 @@ func (h *callbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
-
 	session, err = verifyAndSaveToken(ctx, h.state, session, token)
 	if HandleError(w, err, h.logger) {
 		return
@@ -397,6 +398,11 @@ type tokenHandler struct {
 	redirectStateCookieMaxAge time.Duration
 }
 
+type tokenResponse struct {
+	token       oauth2.Token
+	redirectURL string
+}
+
 func (h *tokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
@@ -408,15 +414,17 @@ func (h *tokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if HandleError(w, err, h.logger, "getting redirect cookie") {
 		return
 	}
-	http.SetCookie(w, &http.Cookie{
-		Name:     h.redirectStateCookieName,
-		Value:    "",
-		Path:     "/",
-		MaxAge:   -1,
-		Secure:   r.TLS != nil,
-		SameSite: http.SameSiteLaxMode,
-		HttpOnly: true,
-	})
+
+	// http.SetCookie(w, &http.Cookie{
+	// 	Name:     h.redirectStateCookieName,
+	// 	Value:    "",
+	// 	Path:     "/",
+	// 	MaxAge:   -1,
+	// 	Secure:   r.TLS != nil,
+	// 	SameSite: http.SameSiteLaxMode,
+	// 	HttpOnly: true,
+	// })
+
 	stateParts := strings.SplitN(stateCookie.Value, ":", 2)
 	if len(stateParts) != 2 {
 		w.WriteHeader(http.StatusBadRequest)
@@ -430,15 +438,48 @@ func (h *tokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//token, err := h.state.authConfig.Exchange(ctx, r.URL.Query().Get("code"))
-	//if err != nil {
-	//	h.logger.Debugw("no token found", "error", err)
-	//	w.WriteHeader(http.StatusUnauthorized)
-	//	return
-	//}
+	state := r.URL.Query().Get("state")
+	if state != stateParts[1] {
+		http.Error(w, "Invalid state parameter", http.StatusBadRequest)
+		return
+	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, err = w.Write([]byte(session.Data["access_token"].(string)))
+	code := r.URL.Query().Get("code")
+	token, err := h.state.authConfig.Exchange(ctx, code)
+	if err != nil {
+		h.logger.Debugw("no token found", "error", err)
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	session, err = verifyAndSaveToken(ctx, h.state, session, token)
+	if HandleError(w, err, h.logger) {
+		return
+	}
+
+	backto, _ := session.Data["backto"].(string)
+	if len(backto) == 0 {
+		backto = "/"
+	}
+
+	session.Data["backto"] = ""
+	err = session.Save(ctx, r, w)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	data, err := json.Marshal(&tokenResponse{token: *token, redirectURL: h.state.redirectURL})
+	if err != nil {
+		temp := errors.New("failed to verify marshal token data: " + err.Error())
+		w.WriteHeader(http.StatusInternalServerError)
+		_, err = w.Write([]byte(temp.Error()))
+		h.logger.Error(temp)
+		return
+	}
+
+	_, err = w.Write(data)
 	utils.UncheckedError(err)
 }
 
@@ -488,6 +529,14 @@ func (h *loginHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	err = session.Save(ctx, r, w)
 	if HandleError(w, err, h.logger, "error saving session") {
+		return
+	}
+
+	redirect := r.URL.Query().Get("redirect_uri")
+	if redirect != "" {
+		config := h.state.authConfig
+		config.RedirectURL = redirect
+		http.Redirect(w, r, config.AuthCodeURL(state), http.StatusTemporaryRedirect)
 		return
 	}
 
