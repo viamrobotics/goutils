@@ -110,7 +110,7 @@ func InstallFusionAuth(
 		ctx,
 		sessions,
 		config,
-		"/callback",
+		"/auth/callback",
 		"fa_redirect_state")
 	if err != nil {
 		return nil, err
