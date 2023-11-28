@@ -1,47 +1,24 @@
 import * as PW from "@playwright/test";
 
 PW.test("receives responses", async ({ page }) => {
-  page.on("console", async (msg: PW.ConsoleMessage) => {
-    await page.evaluate((text: string) => {
-      const div = document.createElement("div");
-      div.innerText = text;
-      div.setAttribute("data-testid", "log");
-      document.body.appendChild(div);
-    }, msg.text());
-  });
-
   await page.goto("/");
-  await page.waitForResponse("**/Echo");
-  await page.waitForResponse("**/EchoMultiple");
-  await page.waitForResponse("**/EchoBiDi");
-  await page.waitForResponse("**/EchoBiDi");
-  const texts = await page.getByTestId("log").allInnerTexts();
-  const expected = [
-    "WebRTC",
-    "hello",
-    "h",
-    "e",
-    "l",
-    "l",
-    "o",
-    "?",
-    "o",
-    "n",
-    "e",
-    "t",
-    "w",
-    "o",
-    "Direct",
-    "hello",
-    "h",
-    "e",
-    "l",
-    "l",
-    "o",
-    "?",
-    "o",
-    "n",
-    "e",
+  const table: [string, string[]][] = [
+    ["unary-wrtc", ["hello"]],
+    ["multi-wrtc", ["h", "e", "l", "l", "o", "?"]],
+    ["bidi-wrtc", ["o", "n", "e", "t", "w", "o"]],
+    ["unary-direct", ["hello"]],
+    ["multi-direct", ["h", "e", "l", "l", "o", "?"]],
+    // gRPC-web does not yet support bidirectional streaming so we expect to
+    // only receive a response to our first request.
+    ["bidi-direct", ["o", "n", "e"]],
   ];
-  PW.expect(texts).toStrictEqual(expected);
+
+  for (const [testid, expected] of table) {
+    const actual = await page
+      .getByTestId(testid)
+      .evaluate((elem) =>
+        Array.from(elem.querySelectorAll("div")).map((div) => div.innerText),
+      );
+    PW.expect(actual).toStrictEqual(expected);
+  }
 });

@@ -12,7 +12,8 @@ run-server: build
 .PHONY: install-playwright
 install-playwright:
 	npm install
-	npx playwright install --with-deps
+	# npx playwright install --with-deps
+	npx playwright install
 
 test-run-server: build install-playwright
 	npx playwright test
