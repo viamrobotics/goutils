@@ -49,7 +49,7 @@ buf-web: tool-install
 lint: tool-install lint-go lint-web
 
 lint-web:
-	cd rpc/js && npm install && npm run format
+	cd rpc/js && npm install && npm run lint && npm run format
 
 lint-go: tool-install
 	PATH=$(PATH_WITH_TOOLS) buf lint

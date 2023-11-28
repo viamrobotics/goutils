@@ -9,6 +9,6 @@
     "verbatimModuleSyntax": false,
     "lib": ["ESNext", "DOM", "DOM.iterable"]
   },
-  "include": ["src"],
+  "include": ["src", ".*.cjs", "*.js"],
   "exclude": ["node_modules", "src/gen"]
 }
