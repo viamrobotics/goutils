@@ -34,7 +34,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint '.*.cjs' '**/*.{ts,js,cjs}' --quiet",
     "format": "prettier --write '**/*.{ts,js,cjs}'",
-    "build": "npx webpack",
+    "build:webpack": "npx webpack",
+    "build:vite": "vite build",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
