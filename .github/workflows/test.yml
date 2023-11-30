@@ -83,6 +83,14 @@ jobs:
         export ARTIFACT_GOOGLE_APPLICATION_CREDENTIALS=`pwd`/artifact_google_creds.json
         sudo -u testbot --preserve-env=ARTIFACT_GOOGLE_APPLICATION_CREDENTIALS,TEST_MONGODB_URI,MONGODB_TEST_OUTPUT_URI,GITHUB_SHA,GITHUB_RUN_ID,GITHUB_RUN_NUMBER,GITHUB_RUN_ATTEMPT,GITHUB_X_PR_BASE_SHA,GITHUB_X_PR_BASE_REF,GITHUB_X_HEAD_REF,GITHUB_X_HEAD_SHA,GITHUB_REPOSITORY bash -lc 'make cover'
 
+    - name: Upload test.json
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: test.json
+        path: json.log
+        retention-days: 30
+
     # this one runs as root for CAP_SETUID
     - name: test run-as-user
       env:
