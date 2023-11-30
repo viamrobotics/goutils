@@ -42,7 +42,7 @@ export default defineConfig({
       use: { ...devices["Desktop Firefox"] },
     },
 
-    // TODO: resolve Safari tests
+    // TODO(RSDK-4494): fix safari tests
     // {
     //   name: "webkit",
     //   use: { ...devices["Desktop Safari"] },
