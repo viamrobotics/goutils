@@ -110,7 +110,7 @@ func InstallFusionAuth(
 		ctx,
 		sessions,
 		config,
-		"/auth/callback",
+		"/callback",
 		"fa_redirect_state")
 	if err != nil {
 		return nil, err
@@ -231,15 +231,15 @@ func (h *callbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//http.SetCookie(w, &http.Cookie{
-	//	Name:     h.redirectStateCookieName,
-	//	Value:    "",
-	//	Path:     "/",
-	//	MaxAge:   -1,
-	//	Secure:   r.TLS != nil,
-	//	SameSite: http.SameSiteLaxMode,
-	//	HttpOnly: true,
-	//})
+	http.SetCookie(w, &http.Cookie{
+		Name:     h.redirectStateCookieName,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		Secure:   r.TLS != nil,
+		SameSite: http.SameSiteLaxMode,
+		HttpOnly: true,
+	})
 
 	stateParts := strings.SplitN(stateCookie.Value, ":", 2)
 	if len(stateParts) != 2 {
@@ -281,6 +281,36 @@ func (h *callbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "viam.auth.token",
+		Value:    token.AccessToken,
+		Path:     "/",
+		Expires:  token.Expiry,
+		Secure:   r.TLS != nil,
+		SameSite: http.SameSiteLaxMode,
+		HttpOnly: true,
+	})
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "viam.auth.refresh",
+		Value:    token.RefreshToken,
+		Path:     "/",
+		Expires:  token.Expiry,
+		Secure:   r.TLS != nil,
+		SameSite: http.SameSiteLaxMode,
+		HttpOnly: true,
+	})
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "viam.auth.expiry",
+		Value:    token.Expiry.String(),
+		Path:     "/",
+		Expires:  token.Expiry,
+		Secure:   r.TLS != nil,
+		SameSite: http.SameSiteLaxMode,
+		HttpOnly: true,
+	})
 
 	_, err = w.Write([]byte(fmt.Sprintf(`<html>
 <head>
@@ -399,8 +429,9 @@ type tokenHandler struct {
 }
 
 type tokenResponse struct {
-	token       oauth2.Token
-	redirectURL string
+	AccessToken  string `json:"accessToken"`
+	RefreshToken string `json:"refreshToken"`
+	Expiry       string `json:"expiry"`
 }
 
 func (h *tokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -410,67 +441,31 @@ func (h *tokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx, span := trace.StartSpan(ctx, r.URL.Path)
 	defer span.End()
 
-	stateCookie, err := r.Cookie(h.redirectStateCookieName)
-	if HandleError(w, err, h.logger, "getting redirect cookie") {
+	token, err := r.Cookie("viam.auth.token")
+	if HandleError(w, err, h.logger, "getting token cookie") {
 		return
 	}
 
-	// http.SetCookie(w, &http.Cookie{
-	// 	Name:     h.redirectStateCookieName,
-	// 	Value:    "",
-	// 	Path:     "/",
-	// 	MaxAge:   -1,
-	// 	Secure:   r.TLS != nil,
-	// 	SameSite: http.SameSiteLaxMode,
-	// 	HttpOnly: true,
-	// })
-
-	stateParts := strings.SplitN(stateCookie.Value, ":", 2)
-	if len(stateParts) != 2 {
-		w.WriteHeader(http.StatusBadRequest)
-		_, err := w.Write([]byte("invalid state parameter"))
-		utils.UncheckedError(err)
+	refresh, err := r.Cookie("viam.auth.refresh")
+	if HandleError(w, err, h.logger, "getting refresh cookie") {
 		return
 	}
 
-	session, err := h.state.sessions.store.Get(r.Context(), stateParts[0])
-	if HandleError(w, err, h.logger, "getting session") {
+	expiry, err := r.Cookie("viam.auth.expiry")
+	if HandleError(w, err, h.logger, "getting expiry cookie") {
 		return
 	}
 
-	state := r.URL.Query().Get("state")
-	if state != stateParts[1] {
-		http.Error(w, "Invalid state parameter", http.StatusBadRequest)
-		return
+	response := &tokenResponse{
+		AccessToken:  token.Value,
+		RefreshToken: refresh.Value,
+		Expiry:       expiry.Value,
 	}
 
-	code := r.URL.Query().Get("code")
-	token, err := h.state.authConfig.Exchange(ctx, code)
-	if err != nil {
-		h.logger.Debugw("no token found", "error", err)
-		w.WriteHeader(http.StatusUnauthorized)
-		return
-	}
-
-	session, err = verifyAndSaveToken(ctx, h.state, session, token)
-	if HandleError(w, err, h.logger) {
-		return
-	}
-
-	backto, _ := session.Data["backto"].(string)
-	if len(backto) == 0 {
-		backto = "/"
-	}
-
-	session.Data["backto"] = ""
-	err = session.Save(ctx, r, w)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+	h.logger.Debugf("response: %v", response)
 
 	w.Header().Set("Content-Type", "application/json")
-	data, err := json.Marshal(&tokenResponse{token: *token, redirectURL: h.state.redirectURL})
+	data, err := json.Marshal(response)
 	if err != nil {
 		temp := errors.New("failed to verify marshal token data: " + err.Error())
 		w.WriteHeader(http.StatusInternalServerError)
@@ -478,6 +473,36 @@ func (h *tokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.logger.Error(temp)
 		return
 	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "viam.auth.token",
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		Secure:   r.TLS != nil,
+		SameSite: http.SameSiteLaxMode,
+		HttpOnly: true,
+	})
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "viam.auth.refresh",
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		Secure:   r.TLS != nil,
+		SameSite: http.SameSiteLaxMode,
+		HttpOnly: true,
+	})
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "viam.auth.expiry",
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		Secure:   r.TLS != nil,
+		SameSite: http.SameSiteLaxMode,
+		HttpOnly: true,
+	})
 
 	_, err = w.Write(data)
 	utils.UncheckedError(err)
