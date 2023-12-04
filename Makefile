@@ -64,7 +64,7 @@ test: test-go test-web
 test-go: tool-install
 	PATH=$(PATH_WITH_TOOLS) ./etc/test.bash
 
-test-web: build-web
+test-web:
 	$(MAKE) -C rpc/examples/echo test-run-server
 
 # examples

@@ -24,6 +24,15 @@ For example, try running a simple echo server with:
 make example-echo/run-server
 ```
 
+### Automated Web Browser Tests
+
+You can web browser tests locally with the following commands:
+
+```
+make build-web  # one time step
+make test-web
+```
+
 ## Windows Support
 
 Windows 10 22H2 and up.
