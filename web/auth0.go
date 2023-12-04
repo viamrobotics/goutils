@@ -231,15 +231,15 @@ func (h *callbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.SetCookie(w, &http.Cookie{
-		Name:     h.redirectStateCookieName,
-		Value:    "",
-		Path:     "/",
-		MaxAge:   -1,
-		Secure:   r.TLS != nil,
-		SameSite: http.SameSiteLaxMode,
-		HttpOnly: true,
-	})
+	// http.SetCookie(w, &http.Cookie{
+	// 	Name:     h.redirectStateCookieName,
+	// 	Value:    "",
+	// 	Path:     "/",
+	// 	MaxAge:   -1,
+	// 	Secure:   r.TLS != nil,
+	// 	SameSite: http.SameSiteLaxMode,
+	// 	HttpOnly: true,
+	// })
 
 	stateParts := strings.SplitN(stateCookie.Value, ":", 2)
 	if len(stateParts) != 2 {
@@ -304,7 +304,7 @@ func (h *callbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	http.SetCookie(w, &http.Cookie{
 		Name:     "viam.auth.expiry",
-		Value:    token.Expiry.String(),
+		Value:    token.Expiry.Format(time.RFC3339),
 		Path:     "/",
 		Expires:  token.Expiry,
 		Secure:   r.TLS != nil,
