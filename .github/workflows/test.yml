@@ -75,7 +75,7 @@ jobs:
         fi
 
     - name: Test js library
-      run: sudo -u testbot bash -lc 'make test-web'
+      run: sudo -u testbot bash -lc 'CI=true make test-web'
 
     - if: failure()
       name: Upload js test report
