@@ -14,7 +14,10 @@ test("receives responses", async ({ page }) => {
   ];
 
   for (const [testID, expected] of table) {
-    const messages = page.getByTestId(testID).locator("div");
+    await expect(page.getByTestId(testID).getByTestId("message")).toHaveCount(
+      expected.length,
+    );
+    const messages = page.getByTestId(testID).getByTestId("message");
     const contents = await messages.allTextContents();
 
     expect(contents).toStrictEqual(expected);

@@ -23,6 +23,7 @@ function createElemForResponse(text: string, method: string, type: string) {
     throw new Error(`expecting to find selector '${selector}'`);
   }
   const inner = document.createElement("div");
+  inner.setAttribute("data-testid", "message");
   inner.innerText = text;
   elem.appendChild(inner);
 }
