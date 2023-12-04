@@ -82,7 +82,7 @@ jobs:
       uses: actions/upload-artifact@v3
       with:
         name: playwright-report
-        path: rpc/examples/echo/playwright-report/
+        path: $GITHUB_WORKSPACE/rpc/examples/echo/playwright-report/
         retention-days: 30
 
     - name: Test go library
