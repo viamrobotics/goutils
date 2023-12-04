@@ -1,6 +1,6 @@
-import * as PW from "@playwright/test";
+import { test, expect } from "@playwright/test";
 
-PW.test("receives responses", async ({ page }) => {
+test("receives responses", async ({ page }) => {
   await page.goto("/");
   const table: [string, string[]][] = [
     ["unary-wrtc", ["hello"]],
@@ -14,7 +14,7 @@ PW.test("receives responses", async ({ page }) => {
   ];
 
   for (const [testID, expected] of table) {
-    const messages = page.getByTestId(testID).locator('div');
+    const messages = page.getByTestId(testID).locator("div");
     const contents = await messages.allTextContents();
 
     expect(contents).toStrictEqual(expected);
