@@ -17,10 +17,14 @@ declare global {
 }
 
 function createElemForResponse(text: string, method: string, type: string) {
-  const elems = document.querySelectorAll(`[data-testid="${type}-${method}"]`);
-  const inner = document.createElement('div');
-  inner.innerText = text
-  elems[0].appendChild(inner)
+  const selector = `[data-testid="${type}-${method}"]`;
+  const elem = document.querySelector(selector);
+  if (!elem) {
+    throw new Error(`expecting to find selector '${selector}'`);
+  }
+  const inner = document.createElement("div");
+  inner.innerText = text;
+  elem.appendChild(inner);
 }
 
 async function getClients() {
