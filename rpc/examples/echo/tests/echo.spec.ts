@@ -13,12 +13,10 @@ PW.test("receives responses", async ({ page }) => {
     ["bidi-direct", ["o", "n", "e"]],
   ];
 
-  for (const [testid, expected] of table) {
-    const actual = await page
-      .getByTestId(testid)
-      .evaluate((elem) =>
-        Array.from(elem.querySelectorAll("div")).map((div) => div.innerText),
-      );
-    PW.expect(actual).toStrictEqual(expected);
+  for (const [testID, expected] of table) {
+    const messages = page.getByTestId(testID).locator('div');
+    const contents = await messages.allTextContents();
+
+    expect(contents).toStrictEqual(expected);
   }
 });
