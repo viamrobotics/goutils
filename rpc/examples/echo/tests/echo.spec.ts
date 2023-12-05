@@ -15,8 +15,7 @@ test("receives responses", async ({ page }) => {
 
   for (const [testID, expected] of table) {
     const messages = page.getByTestId(testID).getByTestId("message");
-    // TODO: this test fails on purpose
-    await expect(messages).toHaveCount(expected.length + 1);
+    await expect(messages).toHaveCount(expected.length);
     await expect(messages).toContainText(expected);
   }
 });
