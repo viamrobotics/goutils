@@ -78,6 +78,11 @@ jobs:
       run: sudo -u testbot bash -lc 'CI=true make test-web'
 
     - if: failure()
+      run: |
+        pwd
+        ls
+
+    - if: failure()
       name: Upload js test report
       uses: actions/upload-artifact@v3
       with:
