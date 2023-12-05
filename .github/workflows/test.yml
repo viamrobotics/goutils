@@ -79,10 +79,10 @@ jobs:
 
     - if: failure()
       name: Upload js test report
-      uses: actions/upload-artifact@0b7f8abb1508181956e8e162db84b466c27e18ce #v3.1.2
+      uses: actions/upload-artifact@v3
       with:
         name: playwright-report
-        path: rpc/examples/echo/playwright-report/
+        path: ${{ github.workspace}}/rpc/examples/echo/playwright-report
         retention-days: 30
 
     - name: Test go library
