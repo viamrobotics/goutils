@@ -23,9 +23,9 @@ export default defineConfig({
     minify: true,
     target: 'esnext',
     lib: {
-      entry: path.resolve(__dirname),
-      name: 'sdk',
-      fileName: (format) => `main.${format}.js`,
+      entry: 'src/main.ts',
+      formats: ['es'],
+      fileName: 'main',
     },
     rollupOptions: {
       onwarn: (warning, warn) => {

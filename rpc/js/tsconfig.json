@@ -4,11 +4,14 @@
     "target": "ES5",
     "useDefineForClassFields": true,
     "importHelpers": true,
-    "module": "commonjs",
+    "module": "ESNext",
     "moduleResolution": "Node",
     "verbatimModuleSyntax": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "outDir": "dist",
     "lib": ["ESNext", "DOM", "DOM.iterable"]
   },
-  "include": ["src", ".*.cjs", "*.js"],
+  "include": ["src"],
   "exclude": ["node_modules", "src/gen"]
 }
