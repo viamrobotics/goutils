@@ -4,6 +4,7 @@ module.exports = {
   root: true,
   extends: ['@viamrobotics/eslint-config'],
   parserOptions: {
+    tsconfigRootDir: __dirname,
     project: './tsconfig.json',
   },
   env: { node: true, browser: true },

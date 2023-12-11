@@ -5,13 +5,14 @@
     "useDefineForClassFields": true,
     "importHelpers": true,
     "module": "ESNext",
-    "moduleResolution": "Node",
+    "moduleResolution": "bundler",
     "verbatimModuleSyntax": false,
     "declaration": true,
     "emitDeclarationOnly": true,
     "outDir": "dist",
     "lib": ["ESNext", "DOM", "DOM.iterable"]
   },
+  "types": ["vitest"],
   "include": ["src"],
   "exclude": ["node_modules", "src/gen"]
 }
