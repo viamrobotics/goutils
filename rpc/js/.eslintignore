@@ -1,2 +1,5 @@
+.eslintrc.cjs
+.prettierrc.cjs
+dist/*
 src/gen
-src/*.d.ts
+vite.config.ts
