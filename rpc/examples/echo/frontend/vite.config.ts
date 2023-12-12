@@ -18,7 +18,6 @@ export default defineConfig({
         /gen\//u,
       ],
     },
-    minify: true,
     target: "esnext",
     lib: {
       entry: "src/index.ts",
