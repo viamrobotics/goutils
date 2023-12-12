@@ -23,7 +23,7 @@ export default defineConfig({
     minify: true,
     target: "esnext",
     lib: {
-      entry: "src/index.ts",
+      entry: "src/main.ts",
       formats: ["es"],
       fileName: "main",
     },
