@@ -2,4 +2,3 @@
 .prettierrc.cjs
 dist/*
 src/gen
-vite.config.ts
