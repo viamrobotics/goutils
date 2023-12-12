@@ -3,6 +3,7 @@
     "alwaysStrict": true,
     "sourceMap": true,
     "target": "es5",
+    "resolveJsonModule": true,
     "removeComments": true,
     "noImplicitReturns": true,
     "noImplicitAny": true,
@@ -13,6 +14,5 @@
     "esModuleInterop": true,
     "lib": ["es2015", "es2017.object", "dom"],
     "baseUrl": "./"
-  },
-  "types": ["vitest"]
+  }
 }

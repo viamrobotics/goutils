@@ -1,4 +1,3 @@
-import path from "node:path";
 import { defineConfig } from "vite";
 
 import pkg from "./package.json";
@@ -34,8 +33,5 @@ export default defineConfig({
         warn(warning);
       },
     },
-  },
-  test: {
-    mockReset: true,
   },
 });
