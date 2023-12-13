@@ -12,5 +12,38 @@
       window.accessToken = {{ .AccessToken }}
     </script>
     <script src="./static/main.js"></script>
+  <style>
+    table {
+      border-collapse: collapse;
+    }
+    td, th {
+      border: 1px solid #999;
+      padding: 0.5rem;
+    }
+  </style>
   </head>
+  <body>
+    <table>
+      <tr>
+        <th></th>
+        <th>WebRTC</th>
+        <th>Direct gRPC</th>
+      </tr>
+      <tr>
+        <th>Unary</th>
+        <td data-testid="unary-wrtc"></td>
+        <td data-testid="unary-direct"></td>
+      </tr>
+      <tr>
+        <th>Multiple</th>
+        <td data-testid="multi-wrtc"></td>
+        <td data-testid="multi-direct"></td>
+      </tr>
+      <tr>
+        <th>BiDi</th>
+        <td data-testid="bidi-wrtc"></td>
+        <td data-testid="bidi-direct"></td>
+      </tr>
+    </table>
+  </body>
 </html>

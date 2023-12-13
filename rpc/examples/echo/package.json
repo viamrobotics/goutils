@@ -1,0 +1,14 @@
+{
+  "name": "echo",
+  "version": "1.0.0",
+  "description": "This example server demonstrates how to run gRPC accessible via `grpc`, `grpc-web`, `grpc-gateway`, and `grpc-over-webrtc` all on the same port while hosting other HTTP services.",
+  "main": "index.js",
+  "scripts": {},
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@playwright/test": "^1.39.0",
+    "@types/node": "^20.9.0"
+  }
+}
