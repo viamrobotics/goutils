@@ -17,6 +17,7 @@
     "typescript": "^4.8.4",
     "vite": "^4.0.0"
   },
+  "type": "module",
   "scripts": {
     "prepare": "./etc/prepare.sh",
     "build": "vite build",
