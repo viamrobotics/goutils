@@ -9,6 +9,9 @@ export default defineConfig({
     __VERSION__: JSON.stringify(pkg.version),
   },
   build: {
+    // This config is necessary to transform libraries on the list into ES modules.
+    // This can be removed if protobuf-es or a code generating tool that has good
+    // support for ES modules is used.
     commonjsOptions: {
       transformMixedEsModules: true,
       include: [
@@ -18,7 +21,6 @@ export default defineConfig({
         /gen\//u,
       ],
     },
-    target: 'esnext',
     lib: {
       entry: 'src/main.ts',
       formats: ['es'],

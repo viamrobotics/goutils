@@ -1,4 +1,2 @@
-.eslintrc.cjs
-.prettierrc.cjs
 dist/*
 src/gen
