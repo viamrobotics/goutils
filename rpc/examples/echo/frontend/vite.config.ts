@@ -12,7 +12,6 @@ export default defineConfig({
     commonjsOptions: {
       transformMixedEsModules: true,
       include: [
-        /exponential-backoff/u,
         /google-protobuf/u,
         /@improbable-eng\/grpc-web/u,
         /gen\//u,
