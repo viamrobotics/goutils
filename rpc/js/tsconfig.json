@@ -7,10 +7,6 @@
     "module": "ESNext",
     "moduleResolution": "node",
     "verbatimModuleSyntax": false,
-    "declaration": true,
-    "emitDeclarationOnly": true,
-    "rootDir": "src",
-    "outDir": "dist",
     "lib": ["ESNext", "DOM", "DOM.iterable"]
   },
   "include": ["src", "vite.config.ts", ".*.cjs"],
