@@ -3,6 +3,7 @@
     "alwaysStrict": true,
     "sourceMap": true,
     "target": "es5",
+    "resolveJsonModule": true,
     "removeComments": true,
     "noImplicitReturns": true,
     "noImplicitAny": true,
@@ -11,11 +12,7 @@
     "noFallthroughCasesInSwitch": true,
     "noEmitOnError": true,
     "esModuleInterop": true,
-    "lib": [
-        "es2015",
-        "es2017.object",
-        "dom"
-    ],
+    "lib": ["es2015", "es2017.object", "dom"],
     "baseUrl": "./"
   }
 }
