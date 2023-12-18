@@ -1,14 +1,14 @@
-import type { grpc } from "@improbable-eng/grpc-web";
-import { BaseChannel } from "./BaseChannel";
-import { ClientStream } from "./ClientStream";
-import { ConnectionClosedError } from "./errors";
+import type { grpc } from '@improbable-eng/grpc-web';
+import { BaseChannel } from './BaseChannel';
+import { ClientStream } from './ClientStream';
+import { ConnectionClosedError } from './errors';
 import {
   Request,
   RequestHeaders,
   RequestMessage,
   Response,
   Stream,
-} from "./gen/proto/rpc/webrtc/v1/grpc_pb";
+} from './gen/proto/rpc/webrtc/v1/grpc_pb';
 
 // MaxStreamCount is the max number of streams a channel can have.
 let MaxStreamCount = 256;
@@ -25,16 +25,16 @@ export class ClientChannel extends BaseChannel {
     super(pc, dc);
     dc.onmessage = (event: MessageEvent<unknown>) =>
       this.onChannelMessage(event);
-    pc.addEventListener("iceconnectionstatechange", () => {
+    pc.addEventListener('iceconnectionstatechange', () => {
       const state = pc.iceConnectionState;
       if (
-        !(state === "failed" || state === "disconnected" || state === "closed")
+        !(state === 'failed' || state === 'disconnected' || state === 'closed')
       ) {
         return;
       }
       this.onConnectionTerminated();
     });
-    dc.addEventListener("close", () => this.onConnectionTerminated());
+    dc.addEventListener('close', () => this.onConnectionTerminated());
   }
 
   public transportFactory(): grpc.TransportFactory {
@@ -45,8 +45,8 @@ export class ClientChannel extends BaseChannel {
 
   private onConnectionTerminated() {
     // we may call this twice but we know closed will be true at this point.
-    this.closeWithReason(new ConnectionClosedError("data channel closed"));
-    const err = new ConnectionClosedError("connection terminated");
+    this.closeWithReason(new ConnectionClosedError('data channel closed'));
+    const err = new ConnectionClosedError('connection terminated');
     for (const streamId in this.streams) {
       const stream = this.streams[streamId]!;
       stream.cs.closeWithRecvError(err);
@@ -58,20 +58,20 @@ export class ClientChannel extends BaseChannel {
     try {
       resp = Response.deserializeBinary(event.data);
     } catch (e) {
-      console.error("error deserializing message", e);
+      console.error('error deserializing message', e);
       return;
     }
 
     const stream = resp.getStream();
     if (stream === undefined) {
-      console.error("no stream id; discarding");
+      console.error('no stream id; discarding');
       return;
     }
 
     const id = stream.getId();
     const activeStream = this.streams[id];
     if (activeStream === undefined) {
-      console.error("no stream for id; discarding", "id", id);
+      console.error('no stream for id; discarding', 'id', id);
       return;
     }
     activeStream.cs.onResponse(resp);
@@ -89,14 +89,14 @@ export class ClientChannel extends BaseChannel {
   ): grpc.Transport {
     if (this.isClosed()) {
       return new FailingClientStream(
-        new ConnectionClosedError("connection closed"),
+        new ConnectionClosedError('connection closed'),
         opts
       );
     }
     let activeStream = this.streams[stream.getId()];
     if (activeStream === undefined) {
       if (Object.keys(this.streams).length > MaxStreamCount) {
-        return new FailingClientStream(new Error("stream limit hit"), opts);
+        return new FailingClientStream(new Error('stream limit hit'), opts);
       }
       const clientStream = new ClientStream(
         this,

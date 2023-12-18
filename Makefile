@@ -49,7 +49,7 @@ buf-web: tool-install
 lint: tool-install lint-go lint-web
 
 lint-web:
-	cd rpc/js && npm install && npm run format
+	cd rpc/js && npm install && npm run lint && npm run format
 
 lint-go: tool-install
 	PATH=$(PATH_WITH_TOOLS) buf lint
@@ -59,8 +59,13 @@ lint-go: tool-install
 cover: tool-install
 	PATH=$(PATH_WITH_TOOLS) ./etc/test.bash cover
 
-test: tool-install
+test: test-go test-web
+
+test-go: tool-install
 	PATH=$(PATH_WITH_TOOLS) ./etc/test.bash
+
+test-web:
+	$(MAKE) -C rpc/examples/echo test-run-server
 
 # examples
 
