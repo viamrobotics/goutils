@@ -23,8 +23,9 @@ import (
 	"go.viam.com/utils"
 )
 
-// Auth0Config config for auth0.
-type Auth0Config struct {
+// AuthProviderConfig config options with constants that will probably need to be manually configured after
+// retrieval from the auth provider web UI or API (e.g. for Auth0, FusionAuth).
+type AuthProviderConfig struct {
 	Domain     string
 	ClientID   string
 	Secret     string
@@ -32,21 +33,33 @@ type Auth0Config struct {
 	EnableTest bool
 }
 
-type auth0State struct {
-	config   Auth0Config
+// AuthProvider should include all state that we need to share with auth callbacks or to make customizations on the
+// internals of the specific auth mechanisms we implement for a particular provider.
+type AuthProvider struct {
+	io.Closer
+
+	config   AuthProviderConfig
 	sessions *SessionManager
 
-	authOIConfig       *oidc.Config
-	authConfig         oauth2.Config
-	auth0HTTPTransport *http.Transport
+	oidcConfig    *oidc.Config
+	authConfig    oauth2.Config
+	httpTransport *http.Transport
+
+	redirectURL string
+
+	// important to have different auth providers have different cookie name so that we force
+	// a re-login and throw away old browser state if we migrate auth providers
+	stateCookieName   string
+	stateCookieMaxAge time.Duration
 }
 
-func (s *auth0State) Close() error {
-	s.auth0HTTPTransport.CloseIdleConnections()
+// Close called by io.Closer.
+func (s *AuthProvider) Close() error {
+	s.httpTransport.CloseIdleConnections()
 	return nil
 }
 
-func (s *auth0State) newAuthProvider(ctx context.Context) (*oidc.Provider, error) {
+func (s *AuthProvider) newAuthProvider(ctx context.Context) (*oidc.Provider, error) {
 	p, err := oidc.NewProvider(ctx, s.config.Domain)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get provider: %w", err)
@@ -59,28 +72,90 @@ func InstallAuth0(
 	ctx context.Context,
 	mux *goji.Mux,
 	sessions *SessionManager,
-	config Auth0Config,
+	config AuthProviderConfig,
 	logger golog.Logger,
 ) (io.Closer, error) {
+	authProvider, err := installAuthProvider(
+		ctx,
+		sessions,
+		config,
+		"/callback",
+		"auth0_redirect_state")
+	if err != nil {
+		return nil, err
+	}
+
+	installAuthProviderRoutes(
+		mux,
+		authProvider,
+		// see https://auth0.com/docs/authenticate/login/logout/redirect-users-after-logout
+		"/v2/logout",
+		authProvider.redirectURL,
+		authProvider.stateCookieName,
+		authProvider.stateCookieMaxAge,
+		logger)
+
+	return authProvider, nil
+}
+
+// InstallFusionAuth does initial setup and installs routes for FusionAuth.
+func InstallFusionAuth(
+	ctx context.Context,
+	mux *goji.Mux,
+	sessions *SessionManager,
+	config AuthProviderConfig,
+	logger golog.Logger,
+) (io.Closer, error) {
+	authProvider, err := installAuthProvider(
+		ctx,
+		sessions,
+		config,
+		"/callback",
+		"fa_redirect_state")
+	if err != nil {
+		return nil, err
+	}
+
+	installAuthProviderRoutes(
+		mux,
+		authProvider,
+		"/logout",
+		authProvider.redirectURL,
+		authProvider.stateCookieName,
+		authProvider.stateCookieMaxAge,
+		logger)
+
+	return authProvider, nil
+}
+
+func installAuthProvider(
+	ctx context.Context,
+	sessions *SessionManager,
+	config AuthProviderConfig,
+	redirectURL string,
+	providerCookieName string,
+) (*AuthProvider, error) {
 	if config.Domain == "" {
-		return nil, errors.New("need a domain for auth0")
+		return nil, errors.New("need a domain for auth provider")
 	}
 
 	if config.BaseURL == "" {
-		return nil, errors.New("need a base URL for auth0")
+		return nil, errors.New("need a base URL for auth provider")
 	}
 
 	if sessions == nil {
-		return nil, errors.New("sessions needed for auth0")
+		return nil, errors.New("sessions needed for auth provider")
 	}
 
-	state := &auth0State{
-		config:   config,
-		sessions: sessions,
+	state := &AuthProvider{
+		config:            config,
+		sessions:          sessions,
+		redirectURL:       redirectURL,
+		stateCookieName:   providerCookieName,
+		stateCookieMaxAge: time.Minute * 10,
 	}
 
-	// init auth
-	state.authOIConfig = &oidc.Config{
+	state.oidcConfig = &oidc.Config{
 		ClientID: config.ClientID,
 	}
 
@@ -92,36 +167,61 @@ func InstallAuth0(
 		httpTransport.CloseIdleConnections()
 		return nil, err
 	}
-	state.auth0HTTPTransport = &httpTransport
+	state.httpTransport = &httpTransport
 
 	state.authConfig = oauth2.Config{
 		ClientID:     config.ClientID,
 		ClientSecret: config.Secret,
-		RedirectURL:  config.BaseURL + "/callback",
+		RedirectURL:  config.BaseURL + redirectURL,
 		Endpoint:     p.Endpoint(),
 		Scopes:       []string{oidc.ScopeOpenID, "profile", "email"},
-	}
-
-	mux.Handle(pat.New("/callback"), &callbackHandler{state, logger})
-	mux.Handle(pat.New("/login"), &loginHandler{state, logger})
-	mux.Handle(pat.New("/logout"), &logoutHandler{state, logger})
-
-	if state.config.EnableTest {
-		mux.Handle(pat.New("/token-callback"), &tokenCallbackHandler{state, logger})
 	}
 
 	return state, nil
 }
 
-type callbackHandler struct {
-	state  *auth0State
-	logger golog.Logger
+func installAuthProviderRoutes(
+	mux *goji.Mux,
+	authProvider *AuthProvider,
+	providerLogoutURL string,
+	redirectURL string,
+	redirectStateCookieName string,
+	redirectStateCookieMaxAge time.Duration,
+	logger golog.Logger,
+) {
+	mux.Handle(pat.New("/login"), &loginHandler{
+		authProvider,
+		logger,
+		redirectStateCookieName,
+		redirectStateCookieMaxAge,
+	})
+	mux.Handle(pat.New(redirectURL), &callbackHandler{
+		authProvider,
+		logger,
+		redirectStateCookieName,
+	})
+	mux.Handle(pat.New("/logout"), &logoutHandler{
+		authProvider,
+		logger,
+		providerLogoutURL,
+	})
+	mux.Handle(pat.New("/token"), &tokenHandler{
+		authProvider,
+		logger,
+		redirectStateCookieName,
+		redirectStateCookieMaxAge,
+	})
+
+	if authProvider.config.EnableTest {
+		mux.Handle(pat.New("/token-callback"), &tokenCallbackHandler{authProvider, logger})
+	}
 }
 
-const (
-	auth0RedirectStateCookieName   = "auth0_redirect_state"
-	auth0RedirectStateCookieMaxAge = time.Minute * 10
-)
+type callbackHandler struct {
+	state                   *AuthProvider
+	logger                  golog.Logger
+	redirectStateCookieName string
+}
 
 func (h *callbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
@@ -130,12 +230,13 @@ func (h *callbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx, span := trace.StartSpan(ctx, r.URL.Path)
 	defer span.End()
 
-	stateCookie, err := r.Cookie(auth0RedirectStateCookieName)
+	stateCookie, err := r.Cookie(h.redirectStateCookieName)
 	if HandleError(w, err, h.logger, "getting redirect cookie") {
 		return
 	}
+
 	http.SetCookie(w, &http.Cookie{
-		Name:     auth0RedirectStateCookieName,
+		Name:     h.redirectStateCookieName,
 		Value:    "",
 		Path:     "/",
 		MaxAge:   -1,
@@ -143,6 +244,7 @@ func (h *callbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteLaxMode,
 		HttpOnly: true,
 	})
+
 	stateParts := strings.SplitN(stateCookie.Value, ":", 2)
 	if len(stateParts) != 2 {
 		w.WriteHeader(http.StatusBadRequest)
@@ -167,7 +269,6 @@ func (h *callbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
-
 	session, err = verifyAndSaveToken(ctx, h.state, session, token)
 	if HandleError(w, err, h.logger) {
 		return
@@ -185,6 +286,36 @@ func (h *callbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	http.SetCookie(w, &http.Cookie{
+		Name:     "viam.auth.token",
+		Value:    token.AccessToken,
+		Path:     "/",
+		Expires:  token.Expiry,
+		Secure:   r.TLS != nil,
+		SameSite: http.SameSiteLaxMode,
+		HttpOnly: true,
+	})
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "viam.auth.refresh",
+		Value:    token.RefreshToken,
+		Path:     "/",
+		Expires:  token.Expiry,
+		Secure:   r.TLS != nil,
+		SameSite: http.SameSiteLaxMode,
+		HttpOnly: true,
+	})
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "viam.auth.expiry",
+		Value:    token.Expiry.Format(time.RFC3339),
+		Path:     "/",
+		Expires:  token.Expiry,
+		Secure:   r.TLS != nil,
+		SameSite: http.SameSiteLaxMode,
+		HttpOnly: true,
+	})
+
 	_, err = w.Write([]byte(fmt.Sprintf(`<html>
 <head>
 <meta http-equiv="refresh" content="0;URL='%s'"/>
@@ -197,7 +328,7 @@ func (h *callbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // Handle programmatically generated access + id tokens
 // Currently used only in testing.
 type tokenCallbackHandler struct {
-	state  *auth0State
+	state  *AuthProvider
 	logger golog.Logger
 }
 
@@ -264,7 +395,7 @@ func (h *tokenCallbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request)
 	http.Redirect(w, r, backto, http.StatusSeeOther)
 }
 
-func verifyAndSaveToken(ctx context.Context, state *auth0State, session *Session, token *oauth2.Token) (*Session, error) {
+func verifyAndSaveToken(ctx context.Context, state *AuthProvider, session *Session, token *oauth2.Token) (*Session, error) {
 	rawIDToken, ok := token.Extra("id_token").(string)
 	if !ok {
 		return nil, errors.New("no id_token field in oauth2 token")
@@ -275,7 +406,7 @@ func verifyAndSaveToken(ctx context.Context, state *auth0State, session *Session
 		return nil, err
 	}
 
-	idToken, err := p.Verifier(state.authOIConfig).Verify(ctx, rawIDToken)
+	idToken, err := p.Verifier(state.oidcConfig).Verify(ctx, rawIDToken)
 	if err != nil {
 		return nil, errors.New("failed to verify ID Token: " + err.Error())
 	}
@@ -293,18 +424,111 @@ func verifyAndSaveToken(ctx context.Context, state *auth0State, session *Session
 	return session, nil
 }
 
+// --------------------------------.
+type tokenHandler struct {
+	state                     *AuthProvider
+	logger                    golog.Logger
+	redirectStateCookieName   string
+	redirectStateCookieMaxAge time.Duration
+}
+
+type tokenResponse struct {
+	AccessToken  string `json:"accessToken"`
+	RefreshToken string `json:"refreshToken"`
+	Expiry       string `json:"expiry"`
+}
+
+func (h *tokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	_, span := trace.StartSpan(ctx, r.URL.Path)
+	defer span.End()
+
+	token, err := r.Cookie("viam.auth.token")
+	if HandleError(w, err, h.logger, "getting token cookie") {
+		return
+	}
+
+	refresh, err := r.Cookie("viam.auth.refresh")
+	if HandleError(w, err, h.logger, "getting refresh cookie") {
+		return
+	}
+
+	expiry, err := r.Cookie("viam.auth.expiry")
+	if HandleError(w, err, h.logger, "getting expiry cookie") {
+		return
+	}
+
+	response := &tokenResponse{
+		AccessToken:  token.Value,
+		RefreshToken: refresh.Value,
+		Expiry:       expiry.Value,
+	}
+
+	h.logger.Debugf("response: %v", response)
+
+	w.Header().Set("Content-Type", "application/json")
+	data, err := json.Marshal(response)
+	if err != nil {
+		temp := errors.New("failed to verify marshal token data: " + err.Error())
+		w.WriteHeader(http.StatusInternalServerError)
+		_, err = w.Write([]byte(temp.Error()))
+		if err != nil {
+			utils.UncheckedError(err)
+		}
+		h.logger.Error(temp)
+		return
+	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "viam.auth.token",
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		Secure:   r.TLS != nil,
+		SameSite: http.SameSiteLaxMode,
+		HttpOnly: true,
+	})
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "viam.auth.refresh",
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		Secure:   r.TLS != nil,
+		SameSite: http.SameSiteLaxMode,
+		HttpOnly: true,
+	})
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "viam.auth.expiry",
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		Secure:   r.TLS != nil,
+		SameSite: http.SameSiteLaxMode,
+		HttpOnly: true,
+	})
+
+	_, err = w.Write(data)
+	utils.UncheckedError(err)
+}
+
 // --------------------------------
 
 type loginHandler struct {
-	state  *auth0State
-	logger golog.Logger
+	state                     *AuthProvider
+	logger                    golog.Logger
+	redirectStateCookieName   string
+	redirectStateCookieMaxAge time.Duration
 }
 
 func (h *loginHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	ctx, span := trace.StartSpan(ctx, r.URL.Path)
+	_, span := trace.StartSpan(ctx, r.URL.Path)
 	defer span.End()
 
 	// Generate random state
@@ -320,10 +544,10 @@ func (h *loginHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.SetCookie(w, &http.Cookie{
-		Name:     auth0RedirectStateCookieName,
+		Name:     h.redirectStateCookieName,
 		Value:    fmt.Sprintf("%s:%s", session.id, state),
 		Path:     "/",
-		MaxAge:   int(auth0RedirectStateCookieMaxAge.Seconds()),
+		MaxAge:   int(h.redirectStateCookieMaxAge.Seconds()),
 		Secure:   r.TLS != nil,
 		SameSite: http.SameSiteLaxMode,
 		HttpOnly: true,
@@ -340,14 +564,23 @@ func (h *loginHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	redirect := r.URL.Query().Get("redirect_uri")
+	if redirect != "" {
+		config := h.state.authConfig
+		config.RedirectURL = redirect
+		http.Redirect(w, r, config.AuthCodeURL(state), http.StatusTemporaryRedirect)
+		return
+	}
+
 	http.Redirect(w, r, h.state.authConfig.AuthCodeURL(state), http.StatusTemporaryRedirect)
 }
 
 // --------------------------------
 
 type logoutHandler struct {
-	state  *auth0State
-	logger golog.Logger
+	state             *AuthProvider
+	logger            golog.Logger
+	providerLogoutURL string
 }
 
 func (h *logoutHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -362,7 +595,7 @@ func (h *logoutHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	logoutURL.Path = "/v2/logout"
+	logoutURL.Path = h.providerLogoutURL
 	parameters := url.Values{}
 
 	parameters.Add("returnTo", h.state.config.BaseURL)
