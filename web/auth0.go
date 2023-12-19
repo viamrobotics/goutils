@@ -53,7 +53,7 @@ type AuthProvider struct {
 	stateCookieMaxAge time.Duration
 }
 
-// Close called by io.Closer
+// Close called by io.Closer.
 func (s *AuthProvider) Close() error {
 	s.httpTransport.CloseIdleConnections()
 	return nil
@@ -98,7 +98,7 @@ func InstallAuth0(
 	return authProvider, nil
 }
 
-// InstallFusionAuth does initial setup and installs routes for FusionAuth
+// InstallFusionAuth does initial setup and installs routes for FusionAuth.
 func InstallFusionAuth(
 	ctx context.Context,
 	mux *goji.Mux,
@@ -132,7 +132,7 @@ func installAuthProvider(
 	ctx context.Context,
 	sessions *SessionManager,
 	config AuthProviderConfig,
-	redirectUrl string,
+	redirectURL string,
 	providerCookieName string,
 ) (*AuthProvider, error) {
 	if config.Domain == "" {
@@ -150,7 +150,7 @@ func installAuthProvider(
 	state := &AuthProvider{
 		config:            config,
 		sessions:          sessions,
-		redirectURL:       redirectUrl,
+		redirectURL:       redirectURL,
 		stateCookieName:   providerCookieName,
 		stateCookieMaxAge: time.Minute * 10,
 	}
@@ -172,7 +172,7 @@ func installAuthProvider(
 	state.authConfig = oauth2.Config{
 		ClientID:     config.ClientID,
 		ClientSecret: config.Secret,
-		RedirectURL:  config.BaseURL + redirectUrl,
+		RedirectURL:  config.BaseURL + redirectURL,
 		Endpoint:     p.Endpoint(),
 		Scopes:       []string{oidc.ScopeOpenID, "profile", "email"},
 	}
@@ -187,16 +187,19 @@ func installAuthProviderRoutes(
 	redirectURL string,
 	redirectStateCookieName string,
 	redirectStateCookieMaxAge time.Duration,
-	logger golog.Logger) {
+	logger golog.Logger,
+) {
 	mux.Handle(pat.New("/login"), &loginHandler{
 		authProvider,
 		logger,
 		redirectStateCookieName,
-		redirectStateCookieMaxAge})
+		redirectStateCookieMaxAge,
+	})
 	mux.Handle(pat.New(redirectURL), &callbackHandler{
 		authProvider,
 		logger,
-		redirectStateCookieName})
+		redirectStateCookieName,
+	})
 	mux.Handle(pat.New("/logout"), &logoutHandler{
 		authProvider,
 		logger,
@@ -206,7 +209,8 @@ func installAuthProviderRoutes(
 		authProvider,
 		logger,
 		redirectStateCookieName,
-		redirectStateCookieMaxAge})
+		redirectStateCookieMaxAge,
+	})
 
 	if authProvider.config.EnableTest {
 		mux.Handle(pat.New("/token-callback"), &tokenCallbackHandler{authProvider, logger})
@@ -420,7 +424,7 @@ func verifyAndSaveToken(ctx context.Context, state *AuthProvider, session *Sessi
 	return session, nil
 }
 
-// --------------------------------
+// --------------------------------.
 type tokenHandler struct {
 	state                     *AuthProvider
 	logger                    golog.Logger
@@ -438,7 +442,7 @@ func (h *tokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	ctx, span := trace.StartSpan(ctx, r.URL.Path)
+	_, span := trace.StartSpan(ctx, r.URL.Path)
 	defer span.End()
 
 	token, err := r.Cookie("viam.auth.token")
@@ -470,6 +474,9 @@ func (h *tokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		temp := errors.New("failed to verify marshal token data: " + err.Error())
 		w.WriteHeader(http.StatusInternalServerError)
 		_, err = w.Write([]byte(temp.Error()))
+		if err != nil {
+			utils.UncheckedError(err)
+		}
 		h.logger.Error(temp)
 		return
 	}
@@ -521,7 +528,7 @@ func (h *loginHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	ctx, span := trace.StartSpan(ctx, r.URL.Path)
+	_, span := trace.StartSpan(ctx, r.URL.Path)
 	defer span.End()
 
 	// Generate random state
@@ -573,7 +580,7 @@ func (h *loginHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 type logoutHandler struct {
 	state             *AuthProvider
 	logger            golog.Logger
-	providerLogoutUrl string
+	providerLogoutURL string
 }
 
 func (h *logoutHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -588,7 +595,7 @@ func (h *logoutHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	logoutURL.Path = h.providerLogoutUrl
+	logoutURL.Path = h.providerLogoutURL
 	parameters := url.Values{}
 
 	parameters.Add("returnTo", h.state.config.BaseURL)
