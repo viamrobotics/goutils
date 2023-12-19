@@ -30,8 +30,10 @@ func (ss *simpleServer) authHandlers(forType CredentialsType) (credAuthHandlers,
 }
 
 const (
-	metadataFieldAuthorization     = "authorization"
-	authorizationValuePrefixBearer = "Bearer "
+	// MetadataFieldAuthorization is a constant for the authorization header key.
+	MetadataFieldAuthorization = "authorization"
+	// AuthorizationValuePrefixBearer is a constant for the Bearer token prefix.
+	AuthorizationValuePrefixBearer = "Bearer "
 )
 
 // JWTClaims extends jwt.RegisteredClaims with information about the credentials as well
@@ -72,7 +74,7 @@ func (ss *simpleServer) Authenticate(ctx context.Context, req *rpcpb.Authenticat
 	if !ok {
 		return nil, errors.New("expected metadata")
 	}
-	if len(md[metadataFieldAuthorization]) != 0 {
+	if len(md[MetadataFieldAuthorization]) != 0 {
 		return nil, status.Error(codes.InvalidArgument, "already authenticated; cannot re-authenticate")
 	}
 	if req.Credentials == nil {
@@ -241,14 +243,14 @@ func tokenFromContext(ctx context.Context) (string, error) {
 	if !ok {
 		return "", status.Error(codes.Unauthenticated, "authentication required")
 	}
-	authHeader := md.Get(metadataFieldAuthorization)
+	authHeader := md.Get(MetadataFieldAuthorization)
 	if len(authHeader) != 1 {
 		return "", status.Error(codes.Unauthenticated, "authentication required")
 	}
-	if !strings.HasPrefix(authHeader[0], authorizationValuePrefixBearer) {
-		return "", status.Errorf(codes.Unauthenticated, "expected Authorization: %s", authorizationValuePrefixBearer)
+	if !strings.HasPrefix(authHeader[0], AuthorizationValuePrefixBearer) {
+		return "", status.Errorf(codes.Unauthenticated, "expected authorization header with prefix: %s", AuthorizationValuePrefixBearer)
 	}
-	return strings.TrimPrefix(authHeader[0], authorizationValuePrefixBearer), nil
+	return strings.TrimPrefix(authHeader[0], AuthorizationValuePrefixBearer), nil
 }
 
 var errNotTLSAuthed = errors.New("not authenticated via TLS")

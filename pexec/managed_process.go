@@ -46,13 +46,22 @@ func NewManagedProcess(config ProcessConfig, logger golog.Logger) ManagedProcess
 		config.StopTimeout = defaultStopTimeout
 	}
 
+	// From os/exec/exec.go:
+	//  If Env contains duplicate environment keys, only the last
+	//  value in the slice for each duplicate key is used.
+	env := os.Environ()
+	for key, value := range config.Environment {
+		env = append(env, fmt.Sprintf("%s=%s", key, value))
+	}
+
 	return &managedProcess{
 		id:               config.ID,
 		name:             config.Name,
 		args:             config.Args,
 		cwd:              config.CWD,
-		username:         config.Username,
 		oneShot:          config.OneShot,
+		username:         config.Username,
+		env:              env,
 		shouldLog:        config.Log,
 		onUnexpectedExit: config.OnUnexpectedExit,
 		managingCh:       make(chan struct{}),
@@ -73,6 +82,7 @@ type managedProcess struct {
 	cwd       string
 	oneShot   bool
 	username  string
+	env       []string
 	shouldLog bool
 	cmd       *exec.Cmd
 
@@ -120,6 +130,7 @@ func (p *managedProcess) Start(ctx context.Context) error {
 		if cmd.SysProcAttr, err = p.sysProcAttr(); err != nil {
 			return err
 		}
+		cmd.Env = p.env
 		cmd.Dir = p.cwd
 		var runErr error
 		if p.shouldLog || p.logWriter != nil {
@@ -154,6 +165,7 @@ func (p *managedProcess) Start(ctx context.Context) error {
 	if cmd.SysProcAttr, err = p.sysProcAttr(); err != nil {
 		return err
 	}
+	cmd.Env = p.env
 	cmd.Dir = p.cwd
 
 	var stdOut, stdErr io.ReadCloser

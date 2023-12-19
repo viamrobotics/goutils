@@ -118,7 +118,7 @@ func TestServerAuth(t *testing.T) {
 		gStatus, ok = status.FromError(err)
 		test.That(t, ok, test.ShouldBeTrue)
 		test.That(t, gStatus.Code(), test.ShouldEqual, codes.Unauthenticated)
-		test.That(t, gStatus.Message(), test.ShouldContainSubstring, "expected Authorization")
+		test.That(t, gStatus.Message(), test.ShouldContainSubstring, "expected authorization header with prefix")
 
 		md = make(metadata.MD)
 		md.Set("authorization", "Bearer ")
@@ -203,7 +203,7 @@ func TestServerAuth(t *testing.T) {
 		test.That(t, httpResp2.StatusCode, test.ShouldEqual, 200)
 		rd, err = io.ReadAll(httpResp2.Body)
 		test.That(t, err, test.ShouldBeNil)
-		test.That(t, httpResp2.Header["Grpc-Message"], test.ShouldResemble, []string{"expected Authorization: Bearer"})
+		test.That(t, httpResp2.Header["Grpc-Message"], test.ShouldResemble, []string{"expected authorization header with prefix: Bearer"})
 		test.That(t, string(rd), test.ShouldResemble, "")
 
 		req, err = http.NewRequest(http.MethodPost, httpURL, strings.NewReader(grpcWebReq))

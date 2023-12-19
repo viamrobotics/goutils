@@ -200,6 +200,26 @@ func MakeSimpleMultiAuthHandler(forEntities, expectedPayloads []string) AuthHand
 	})
 }
 
+// MakeSimpleMultiAuthPairHandler works similarly to MakeSimpleMultiAuthHandler with the addition of
+// supporting a key, id pair used to ensure that a key that maps to the id matches the key passed
+// during the function call.
+func MakeSimpleMultiAuthPairHandler(expectedPayloads map[string]string) AuthHandler {
+	if len(expectedPayloads) == 0 {
+		panic("expected at least one payload")
+	}
+
+	return AuthHandlerFunc(func(ctx context.Context, entity, payload string) (map[string]string, error) {
+		if _, ok := expectedPayloads[entity]; !ok {
+			return nil, errInvalidCredentials
+		}
+
+		if subtle.ConstantTimeCompare([]byte(expectedPayloads[entity]), []byte(payload)) == 1 {
+			return map[string]string{}, nil
+		}
+		return nil, errInvalidCredentials
+	})
+}
+
 // MakeEntitiesChecker checks a list of entities against a given one for use in an auth handler.
 func MakeEntitiesChecker(forEntities []string) func(ctx context.Context, entities ...string) error {
 	return func(ctx context.Context, entities ...string) error {

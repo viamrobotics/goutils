@@ -16,6 +16,18 @@ declare global {
 	}
 }
 
+function createElemForResponse(text: string, method: string, type: string) {
+  const selector = `[data-testid="${type}-${method}"]`;
+  const elem = document.querySelector(selector);
+  if (!elem) {
+    throw new Error(`expecting to find selector '${selector}'`);
+  }
+  const inner = document.createElement("div");
+  inner.setAttribute("data-testid", "message");
+  inner.innerText = text;
+  elem.appendChild(inner);
+}
+
 async function getClients() {
 	const webrtcHost = window.webrtcHost;
 	const opts: DialOptions = {
@@ -45,21 +57,19 @@ async function getClients() {
 		opts.webrtcOptions!.signalingExternalAuthToEntity = opts.externalAuthToEntity;
 	}
 
-	console.log("WebRTC")
 	const webRTCConn = await dialWebRTC(thisHost, webrtcHost, opts);
 	const webrtcClient = new EchoServiceClient(webrtcHost, { transport: webRTCConn.transportFactory });
-	await doEchos(webrtcClient);
+	await renderResponses(webrtcClient, "wrtc");
 
-	console.log("Direct") // bi-di may not work
 	const directTransport = await dialDirect(thisHost, opts);
 	const directClient = new EchoServiceClient(thisHost, { transport: directTransport });
-	await doEchos(directClient);
+	await renderResponses(directClient, "direct");
 }
 getClients().catch(e => {
 	console.error("error getting clients", e);
 });
 
-async function doEchos(client: EchoServiceClient) {
+async function renderResponses(client: EchoServiceClient, method: string) {
 	const echoRequest = new EchoRequest();
 	echoRequest.setMessage("hello");
 
@@ -75,7 +85,7 @@ async function doEchos(client: EchoServiceClient) {
 			pReject(err);
 			return
 		}
-		console.log(resp.toObject());
+		createElemForResponse(resp.getMessage(), method, "unary");
 		pResolve(resp);
 	});
 	await done;
@@ -89,7 +99,7 @@ async function doEchos(client: EchoServiceClient) {
 	});
 	const multiStream = client.echoMultiple(echoMultipleRequest);
 	multiStream.on("data", (message: EchoMultipleResponse) => {
-		console.log(message.toObject());
+		createElemForResponse(message.getMessage(), method, "multi");
 	});
 	multiStream.on("end", ({ code, details }: { code: number, details: string, metadata: grpc.Metadata }) => {
 		if (code !== 0) {
@@ -115,7 +125,7 @@ async function doEchos(client: EchoServiceClient) {
 	let msgCount = 0;
 	bidiStream.on("data", (message: EchoMultipleResponse) => {
 		msgCount++
-		console.log(message.toObject());
+		createElemForResponse(message.getMessage(), method, "bidi");
 		if (msgCount == 3) {
 			pResolve(undefined);
 		}

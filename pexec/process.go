@@ -29,7 +29,10 @@ type ProcessConfig struct {
 	OneShot bool
 	// Optional. When present, we will try to look up the Uid of the named user
 	// and run the process as that user.
-	Username    string
+	Username string
+	// Environment variables to pass through to the process.
+	// Will overwrite existing environment variables.
+	Environment map[string]string
 	Log         bool
 	LogWriter   io.Writer
 	StopSignal  syscall.Signal
@@ -73,15 +76,16 @@ func (config *ProcessConfig) validate(path string) error {
 
 // Note: keep this in sync with json-supported fields in ProcessConfig.
 type configData struct {
-	ID          string   `json:"id"`
-	Name        string   `json:"name"`
-	Args        []string `json:"args"`
-	CWD         string   `json:"cwd"`
-	OneShot     bool     `json:"one_shot"`
-	Username    string   `json:"username"`
-	Log         bool     `json:"log"`
-	StopSignal  string   `json:"stop_signal,omitempty"`
-	StopTimeout string   `json:"stop_timeout,omitempty"`
+	ID          string            `json:"id"`
+	Name        string            `json:"name"`
+	Args        []string          `json:"args"`
+	CWD         string            `json:"cwd"`
+	OneShot     bool              `json:"one_shot"`
+	Username    string            `json:"username"`
+	Environment map[string]string `json:"env"`
+	Log         bool              `json:"log"`
+	StopSignal  string            `json:"stop_signal,omitempty"`
+	StopTimeout string            `json:"stop_timeout,omitempty"`
 }
 
 // UnmarshalJSON parses incoming json.
@@ -92,13 +96,14 @@ func (config *ProcessConfig) UnmarshalJSON(data []byte) error {
 	}
 
 	*config = ProcessConfig{
-		ID:       temp.ID,
-		Name:     temp.Name,
-		Args:     temp.Args,
-		CWD:      temp.CWD,
-		OneShot:  temp.OneShot,
-		Username: temp.Username,
-		Log:      temp.Log,
+		ID:          temp.ID,
+		Name:        temp.Name,
+		Args:        temp.Args,
+		CWD:         temp.CWD,
+		OneShot:     temp.OneShot,
+		Username:    temp.Username,
+		Environment: temp.Environment,
+		Log:         temp.Log,
 		// OnUnexpectedExit cannot be specified in JSON.
 	}
 
@@ -132,6 +137,7 @@ func (config ProcessConfig) MarshalJSON() ([]byte, error) {
 		CWD:         config.CWD,
 		OneShot:     config.OneShot,
 		Username:    config.Username,
+		Environment: config.Environment,
 		Log:         config.Log,
 		StopSignal:  stopSig,
 		StopTimeout: config.StopTimeout.String(),

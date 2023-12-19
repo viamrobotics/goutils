@@ -137,6 +137,29 @@ func TestMakeSimpleMultiAuthHandler(t *testing.T) {
 	})
 }
 
+func TestMakeSimpleMultiAuthPairHandler(t *testing.T) {
+	test.That(t, func() {
+		MakeSimpleMultiAuthPairHandler(map[string]string{})
+	}, test.ShouldPanicWith, "expected at least one payload")
+
+	t.Run("should validate (keyID, key) mappings", func(t *testing.T) {
+		expectedKeysMap := map[string]string{"myKeyID": "someKey", "somethingElseKeyID": "someOtherKeyID"}
+		handler := MakeSimpleMultiAuthPairHandler(expectedKeysMap)
+
+		for key, value := range expectedKeysMap {
+			t.Run(key, func(t *testing.T) {
+				_, err := handler.Authenticate(context.Background(), key, value)
+				test.That(t, err, test.ShouldBeNil)
+				_, err = handler.Authenticate(context.Background(), key, value+"1")
+				test.That(t, err, test.ShouldEqual, errInvalidCredentials)
+
+				_, err = handler.Authenticate(context.Background(), "notent", key)
+				test.That(t, err, test.ShouldBeError, errInvalidCredentials)
+			})
+		}
+	})
+}
+
 func TestTokenVerificationKeyProviderFunc(t *testing.T) {
 	err1 := errors.New("whoops")
 	capCtx := make(chan struct{})

@@ -4,10 +4,18 @@ all: build
 
 build:
 	export NODE_OPTIONS=--openssl-legacy-provider && node --version 2>/dev/null || unset NODE_OPTIONS;\
-	cd frontend && npm install && npx webpack
+	cd frontend && npm install && npm run build
 
 run-server: build
 	go run server/cmd/main.go -instance-name=echo-server
+
+.PHONY: install-playwright
+install-playwright:
+	npm install
+	npx playwright install --with-deps
+
+test-run-server: build install-playwright
+	npx playwright test
 
 run-client:
 	go run client/main.go -host=echo-server
