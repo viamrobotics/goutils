@@ -623,6 +623,7 @@ func (queue *mongoDBWebRTCCallQueue) processNextSubscriptionEvent(next mongoutil
 				"answerer operator id", callResp.AnswererOperatorID,
 				"answerer error", callResp.AnswererError,
 				"answerer done", callResp.AnswererDone,
+				"number of answer channels", len(answerChans),
 			)
 		}
 
