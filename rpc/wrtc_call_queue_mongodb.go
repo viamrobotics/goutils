@@ -615,8 +615,15 @@ func (queue *mongoDBWebRTCCallQueue) processNextSubscriptionEvent(next mongoutil
 			queue.logger.Warnw(
 				"all answerers for host too busy to answer call",
 				"id", callResp.ID,
-				"host",
-				callResp.Host,
+				"host", callResp.Host,
+				"collection", next.Event.NS.Collection,
+				"caller operator id", callResp.CallerOperatorID,
+				"caller error", callResp.CallerError,
+				"caller done", callResp.CallerDone,
+				"answerer operator id", callResp.AnswererOperatorID,
+				"answerer error", callResp.AnswererError,
+				"answerer done", callResp.AnswererDone,
+				"number of answer channels", len(answerChans),
 			)
 		}
 
