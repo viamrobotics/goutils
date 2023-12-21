@@ -38,7 +38,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint '**/*.{ts,js,cjs}' --quiet",
     "format": "prettier --write '**/*.{ts,js,cjs}'",
-    "build": "vite build",
+    "build": "vite build && tsc --project tsconfig.build.json",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
