@@ -249,7 +249,7 @@ class authenticatedTransport implements grpc.Transport {
   }
 }
 
-interface WebRTCConnection {
+export interface WebRTCConnection {
   transportFactory: grpc.TransportFactory;
   peerConnection: RTCPeerConnection;
 }
