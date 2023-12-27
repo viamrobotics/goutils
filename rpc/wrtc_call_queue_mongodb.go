@@ -314,7 +314,8 @@ func (newCall *mongodbNewCallEventHandler) Send(event mongodbCallEvent, logger *
 		}
 	})
 	logger.Infow("returning from send",
-		"Event", event.Call)
+		"Event", event.Call,
+		"Sent", sent)
 	return sent
 }
 
