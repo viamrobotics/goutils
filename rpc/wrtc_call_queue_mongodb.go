@@ -16,6 +16,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.uber.org/multierr"
+	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -300,7 +301,7 @@ type mongodbNewCallEventHandler struct {
 	receiveOnce sync.Once
 }
 
-func (newCall *mongodbNewCallEventHandler) Send(event mongodbCallEvent) bool {
+func (newCall *mongodbNewCallEventHandler) Send(event mongodbCallEvent, logger *zap.SugaredLogger) bool {
 	var sent bool
 	newCall.receiveOnce.Do(func() {
 		// should always work
@@ -308,8 +309,13 @@ func (newCall *mongodbNewCallEventHandler) Send(event mongodbCallEvent) bool {
 		case newCall.eventChan <- event:
 			sent = true
 		default:
+			logger.Infow("Hit default select in send",
+				"Event", event.Call)
 		}
 	})
+	logger.Infow("returning from send",
+		"Event", event.Call,
+		"Sent", sent)
 	return sent
 }
 
@@ -599,6 +605,7 @@ func (queue *mongoDBWebRTCCallQueue) processNextSubscriptionEvent(next mongoutil
 				return
 			}
 			event := mongodbCallEvent{Call: callResp}
+			queue.logger.Infof("Number of answer channels: %d", len(answerChans))
 			for answerChan := range answerChans {
 				// We will send on this channel just once and it will eventually
 				// unsubscribe. We are not concerned with looping over channels
@@ -607,7 +614,7 @@ func (queue *mongoDBWebRTCCallQueue) processNextSubscriptionEvent(next mongoutil
 				// though, we want to send the events as fast as possible as mentioned
 				// above and cannot block on the send to see if the receiver locked
 				// the document.
-				if answerChan.Send(event) {
+				if answerChan.Send(event, queue.logger) {
 					return
 				}
 			}
