@@ -605,6 +605,7 @@ func (queue *mongoDBWebRTCCallQueue) processNextSubscriptionEvent(next mongoutil
 				return
 			}
 			event := mongodbCallEvent{Call: callResp}
+			queue.logger.Infof("Number of answer channels: %d", len(answerChans))
 			for answerChan := range answerChans {
 				// We will send on this channel just once and it will eventually
 				// unsubscribe. We are not concerned with looping over channels
@@ -617,7 +618,6 @@ func (queue *mongoDBWebRTCCallQueue) processNextSubscriptionEvent(next mongoutil
 					return
 				}
 			}
-			queue.logger.Infof("Number of answer channels: %d", len(answerChans))
 			callAnswererTooBusy.Inc(queue.operatorID)
 			queue.logger.Warnw(
 				"all answerers for host too busy to answer call",
