@@ -80,7 +80,7 @@ func (ans *webrtcSignalingAnswerer) Start() {
 	defer ans.startStopMu.Unlock()
 
 	for i := 0; i < defaultMaxAnswerers; i++ {
-		ans.startAnswerer()
+		ans.startAnswerer(i)
 	}
 }
 
@@ -100,7 +100,7 @@ func checkExceptionalError(err error) error {
 	return err
 }
 
-func (ans *webrtcSignalingAnswerer) startAnswerer() {
+func (ans *webrtcSignalingAnswerer) startAnswerer(answererIndex int) {
 	var connInUse ClientConn
 	var connMu sync.Mutex
 	reconnect := func() error {
@@ -140,6 +140,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 		md.Append(RPCHostMetadataField, ans.hosts...)
 		answerCtx := metadata.NewOutgoingContext(ans.closeCtx, md)
 		answerClient, err := client.Answer(answerCtx)
+		ans.logger.Infow("client answering", "index", answererIndex, "err", err, "answerer client", answerClient)
 		if err != nil {
 			return nil, multierr.Combine(err, conn.Close())
 		}
@@ -165,7 +166,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 			var err error
 			client, err = newAnswer()
 			if err == nil {
-				err = ans.answer(client)
+				err = ans.answer(client, answererIndex)
 			}
 			// Exceptional errors represent a broken connection and require reconnecting. Common
 			// errors represent that an operation has failed, but can be safely retried over the
@@ -218,7 +219,8 @@ func (ans *webrtcSignalingAnswerer) Stop() {
 // attempts to establish a WebRTC connection with the caller via ICE. Once established,
 // the designated WebRTC data channel is passed off to the underlying Server which
 // is then used as the server end of a gRPC connection.
-func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_AnswerClient) (err error) {
+func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_AnswerClient, answererIndex int) (err error) {
+	ans.logger.Infow("trying to answer call offer", "index", answererIndex)
 	resp, err := client.Recv()
 	if err != nil {
 		return err
@@ -262,6 +264,7 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 	}
 	var successful bool
 	defer func() {
+		ans.logger.Info("successful establish connection", "channel", answererIndex)
 		if !(successful && err == nil) {
 			err = multierr.Combine(err, pc.Close())
 		}

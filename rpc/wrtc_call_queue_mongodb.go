@@ -16,6 +16,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.uber.org/multierr"
+	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -300,7 +301,7 @@ type mongodbNewCallEventHandler struct {
 	receiveOnce sync.Once
 }
 
-func (newCall *mongodbNewCallEventHandler) Send(event mongodbCallEvent) bool {
+func (newCall *mongodbNewCallEventHandler) Send(event mongodbCallEvent, logger *zap.SugaredLogger) bool {
 	var sent bool
 	newCall.receiveOnce.Do(func() {
 		// should always work
@@ -308,8 +309,13 @@ func (newCall *mongodbNewCallEventHandler) Send(event mongodbCallEvent) bool {
 		case newCall.eventChan <- event:
 			sent = true
 		default:
+			logger.Infow("Hit default select in send",
+				"Event", event.Call)
 		}
 	})
+	logger.Infow("returning from send",
+		"Event", event.Call,
+		"Sent", sent)
 	return sent
 }
 
@@ -591,14 +597,21 @@ func (queue *mongoDBWebRTCCallQueue) processNextSubscriptionEvent(next mongoutil
 			if _, ok := queue.csTrackingHosts[callResp.Host]; !ok {
 				// no one connected to this operator is currently subscribed to insert
 				// events for this host; skip
+				// we do this because each server is listening to an event and each host only lives on one server
+				// it could be on another server
 				return
 			}
+			// if the answerer exists in the tracking hosts and not in the csTrackingHosts it means that
+			// it has just come online and it does not yet currently have a subscription event tied to it
+			// we do this processs of change stream swapping when this happens so this will happen after the change streams swaps
+			// to account for the new answerer that came online
 			answerChans := queue.waitingForNewCallSubs[callResp.Host]
 			if len(answerChans) == 0 {
 				queue.logger.Debugw("no answerer is around for this new call; the next answerer will find the document instead", "host", callResp.Host)
 				return
 			}
 			event := mongodbCallEvent{Call: callResp}
+			queue.logger.Infow("answerer channels for host", "host", callResp.Host, "channels size", len(answerChans))
 			for answerChan := range answerChans {
 				// We will send on this channel just once and it will eventually
 				// unsubscribe. We are not concerned with looping over channels
@@ -607,7 +620,7 @@ func (queue *mongoDBWebRTCCallQueue) processNextSubscriptionEvent(next mongoutil
 				// though, we want to send the events as fast as possible as mentioned
 				// above and cannot block on the send to see if the receiver locked
 				// the document.
-				if answerChan.Send(event) {
+				if answerChan.Send(event, queue.logger) {
 					return
 				}
 			}
@@ -615,8 +628,15 @@ func (queue *mongoDBWebRTCCallQueue) processNextSubscriptionEvent(next mongoutil
 			queue.logger.Warnw(
 				"all answerers for host too busy to answer call",
 				"id", callResp.ID,
-				"host",
-				callResp.Host,
+				"host", callResp.Host,
+				"collection", next.Event.NS.Collection,
+				"caller operator id", callResp.CallerOperatorID,
+				"caller error", callResp.CallerError,
+				"caller done", callResp.CallerDone,
+				"answerer operator id", callResp.AnswererOperatorID,
+				"answerer error", callResp.AnswererError,
+				"answerer done", callResp.AnswererDone,
+				"number of answer channels", len(answerChans),
 			)
 		}
 
@@ -741,6 +761,7 @@ func (queue *mongoDBWebRTCCallQueue) subscribeForNewCallOnHosts(
 			alreadyTrackedCount++
 		}
 		hostSubs, ok := queue.waitingForNewCallSubs[host]
+		queue.logger.Infof("subscribers for host: %v", hostSubs)
 		if !ok {
 			hostSubs = map[*mongodbNewCallEventHandler]struct{}{}
 			queue.waitingForNewCallSubs[host] = hostSubs
@@ -1032,6 +1053,9 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 		startedAtWindow := time.Now().Add(-getDefaultOfferDeadline()).Add(getDefaultOfferCloseToDeadline())
 
 		// but also check first if there is anything for us.
+		// first we wait to see if there is a caller waiting for us in the Callers Collection
+		// If err != nil that means the doc doesn't exist yet or there is another error
+		// we care if the doc doesn't yet exist
 		result := queue.callsColl.FindOneAndUpdate(
 			recvOfferCtx,
 			bson.D{
@@ -1056,7 +1080,7 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 				if err := recvOfferCtx.Err(); err != nil {
 					return false, err
 				}
-
+				queue.logger.Info("\n blocking on call \n")
 				select {
 				case <-recvOfferCtx.Done():
 					return false, recvOfferCtx.Err()
@@ -1107,6 +1131,7 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 				}
 			}
 			retry, err := getFirstResult()
+			queue.logger.Infof("\n got the result - retry: %v - err - %v \n", retry, err)
 			if err != nil {
 				return mongodbWebRTCCall{}, false, err
 			}
@@ -1204,6 +1229,10 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 			return true
 		}
 	}
+	// at this point we know that there are both callers and answerers that are both live
+	// and trying to connect to each other
+	// as both are doing trickle ice and generating new candidates with SDPs that are being updated in the
+	// table we try each of them as they come in to make a match
 	queue.activeBackgroundWorkers.Add(1)
 	utils.PanicCapturingGo(func() {
 		defer queue.activeBackgroundWorkers.Done()

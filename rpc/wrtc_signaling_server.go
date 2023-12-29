@@ -136,7 +136,7 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 	if err := srv.validateHosts(host); err != nil {
 		return err
 	}
-
+	srv.logger.Infoln("I am in the caller")
 	uuid, respCh, respDone, sendCancel, err := srv.callQueue.SendOfferInit(ctx, host, req.Sdp, req.DisableTrickle)
 	if err != nil {
 		return err
@@ -313,6 +313,7 @@ func (srv *WebRTCSignalingServer) clearAdditionalICEServers(hosts []string) {
 func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_AnswerServer) error {
 	ctx := server.Context()
 	hosts, err := HostsFromCtx(ctx)
+
 	if err != nil {
 		return err
 	}
@@ -320,6 +321,7 @@ func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 		return err
 	}
 	defer srv.clearAdditionalICEServers(hosts)
+	srv.logger.Info("Annswer.Hosts: %v", hosts)
 
 	offer, err := srv.callQueue.RecvOffer(ctx, hosts)
 	if err != nil {
