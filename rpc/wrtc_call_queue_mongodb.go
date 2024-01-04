@@ -79,7 +79,9 @@ type mongoDBWebRTCCallQueue struct {
 	cancelCtx  context.Context
 	cancelFunc func()
 
-	csStateMu                   sync.RWMutex
+	csStateMu sync.RWMutex
+	// this is a counter that increases based on errors / answerers or callers coming live
+	// and indicates whether the changestream needs to swap
 	csManagerSeq                atomic.Uint64
 	csLastEventClusterTime      primitive.Timestamp
 	csLastResumeToken           bson.Raw
@@ -422,18 +424,18 @@ func (queue *mongoDBWebRTCCallQueue) changeStreamManager() {
 		}
 	}()
 	var lastSeq uint64
-	var ranOnce bool
+	var ranOnce bool // this is only for the first time the changestream is setup
 	for {
 		// Note(erd): this could use condition variables instead in order to be efficient about
 		// change stream restarts, but it does not feel worth the complexity right now :o)
 		if !utils.SelectContextOrWaitChan(queue.cancelCtx, ticker.C) {
 			return
 		}
-
 		currSeq := queue.csManagerSeq.Load()
 		if ranOnce && lastSeq == currSeq {
 			continue
 		}
+		queue.logger.Infof("swapping the change streams")
 		lastSeq = currSeq
 		ranOnce = true
 
@@ -458,6 +460,8 @@ func (queue *mongoDBWebRTCCallQueue) changeStreamManager() {
 		}
 		queue.csStateMu.Unlock()
 
+		// this is updating the changestream based on whether there is a new
+		// answerer that is coming online or if there is a new caller that is coming online
 		cs, err := queue.callsColl.Watch(queue.cancelCtx, []bson.D{
 			{
 				{"$match", bson.D{
@@ -503,6 +507,8 @@ func (queue *mongoDBWebRTCCallQueue) changeStreamManager() {
 
 		select {
 		case <-queue.cancelCtx.Done():
+			// this is the server's cancelCtx being called
+			// should stop the entire call queue managed by CS, not just a single CS
 			nextCSCtxCancel()
 			return
 		case queue.csStateUpdates <- changeStreamStateUpdate{
@@ -510,6 +516,7 @@ func (queue *mongoDBWebRTCCallQueue) changeStreamManager() {
 			ResumeToken:  resumeToken,
 			ClusterTime:  clusterTime,
 		}:
+			queue.logger.Infof("swapping changestream")
 			// close old; goroutine may linger a bit
 			if queue.csCtxCancel != nil {
 				queue.csCtxCancel()
@@ -760,6 +767,10 @@ func (queue *mongoDBWebRTCCallQueue) subscribeForNewCallOnHosts(
 		if _, ok := queue.csTrackingHosts[host]; ok {
 			alreadyTrackedCount++
 		}
+		// if the host is not being tracked check if there is an answerer for it
+		// if there is not an an answerer then add a new subscriber channel for this
+		// "hosts's subscribers" and adds the new event channel with a lock around csStateMu
+		//  each time this function is called there should only ever be a difference of a single answerer
 		hostSubs, ok := queue.waitingForNewCallSubs[host]
 		queue.logger.Infof("subscribers for host: %v", hostSubs)
 		if !ok {
@@ -782,6 +793,7 @@ func (queue *mongoDBWebRTCCallQueue) subscribeForNewCallOnHosts(
 
 	if alreadyTrackedCount == len(hosts) {
 		queue.csStateMu.Unlock()
+		// there is no new call its just a new answerer for a host we already have a subscriber channel for
 		return subChan, unsub, nil
 	}
 
@@ -789,13 +801,19 @@ func (queue *mongoDBWebRTCCallQueue) subscribeForNewCallOnHosts(
 		close(ready)
 	})
 	queue.csStateMu.Unlock()
+	// this tells the changestream manager that a new answerer has come live
+	// and we need to swap the changestreams
 	queue.csManagerSeq.Add(1)
 
 	select {
 	case <-ctx.Done():
+		// if the ctx is done then you delete all hosts internally stored as snwerers
 		unsub()
 		return nil, nil, ctx.Err()
 	case <-ready:
+		// this is executed when the ready channel is closed
+		// this should be pretty instant after we increase the counter to account for the new answerer
+		// this returns the new subChan and unSub for the existing answerer
 		return subChan, unsub, nil
 	}
 }
@@ -1131,7 +1149,6 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 				}
 			}
 			retry, err := getFirstResult()
-			queue.logger.Infof("\n got the result - retry: %v - err - %v \n", retry, err)
 			if err != nil {
 				return mongodbWebRTCCall{}, false, err
 			}
