@@ -430,7 +430,7 @@ func WithStatsHandler(handler stats.Handler) ServerOption {
 }
 
 // WithAllowUnauthenticatedHealthCheck returns a server option that
-// allows the health check to be unauthenticated
+// allows the health check to be unauthenticated.
 func WithAllowUnauthenticatedHealthCheck() ServerOption {
 	return newFuncServerOption(func(o *serverOptions) error {
 		o.allowUnauthenticatedHealthCheck = true

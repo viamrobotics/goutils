@@ -424,7 +424,7 @@ func (queue *mongoDBWebRTCCallQueue) changeStreamManager() {
 		}
 	}()
 	var lastSeq uint64
-	var ranOnce bool // this is only for the first time the changestream is setup
+	var isInitialized bool // this is only for the first time the changestream is setup
 	for {
 		// Note(erd): this could use condition variables instead in order to be efficient about
 		// change stream restarts, but it does not feel worth the complexity right now :o)
@@ -432,12 +432,11 @@ func (queue *mongoDBWebRTCCallQueue) changeStreamManager() {
 			return
 		}
 		currSeq := queue.csManagerSeq.Load()
-		if ranOnce && lastSeq == currSeq {
+		if isInitialized && lastSeq == currSeq {
 			continue
 		}
-		queue.logger.Infof("swapping the change streams")
 		lastSeq = currSeq
-		ranOnce = true
+		isInitialized = true
 
 		queue.csStateMu.Lock()
 		hosts := make([]string, 0, len(queue.waitingForNewCallSubs))
@@ -460,7 +459,7 @@ func (queue *mongoDBWebRTCCallQueue) changeStreamManager() {
 		}
 		queue.csStateMu.Unlock()
 
-		// this is updating the changestream based on whether there is a new
+		// note(roxy): this is updating the changestream based on whether there is a new
 		// answerer that is coming online or if there is a new caller that is coming online
 		cs, err := queue.callsColl.Watch(queue.cancelCtx, []bson.D{
 			{
@@ -507,7 +506,7 @@ func (queue *mongoDBWebRTCCallQueue) changeStreamManager() {
 
 		select {
 		case <-queue.cancelCtx.Done():
-			// this is the server's cancelCtx being called
+			// note(roxy): this is the server's cancelCtx being called
 			// should stop the entire call queue managed by CS, not just a single CS
 			nextCSCtxCancel()
 			return
@@ -516,7 +515,6 @@ func (queue *mongoDBWebRTCCallQueue) changeStreamManager() {
 			ResumeToken:  resumeToken,
 			ClusterTime:  clusterTime,
 		}:
-			queue.logger.Infof("swapping changestream")
 			// close old; goroutine may linger a bit
 			if queue.csCtxCancel != nil {
 				queue.csCtxCancel()
@@ -608,10 +606,11 @@ func (queue *mongoDBWebRTCCallQueue) processNextSubscriptionEvent(next mongoutil
 				// it could be on another server
 				return
 			}
-			// if the answerer exists in the tracking hosts and not in the csTrackingHosts it means that
-			// it has just come online and it does not yet currently have a subscription event tied to it
-			// we do this processs of change stream swapping when this happens so this will happen after the change streams swaps
-			// to account for the new answerer that came online
+
+			// note(roxy): if the host is in the csTrackingHosts it means that there was an answerer online in the last change stream
+			// but there is no longer an answerer tied to the event on this server
+			// this disparity happens because the changestream has not yet updated based on the dropped answerer
+
 			answerChans := queue.waitingForNewCallSubs[callResp.Host]
 			if len(answerChans) == 0 {
 				queue.logger.Debugw("no answerer is around for this new call; the next answerer will find the document instead", "host", callResp.Host)
@@ -631,6 +630,7 @@ func (queue *mongoDBWebRTCCallQueue) processNextSubscriptionEvent(next mongoutil
 					return
 				}
 			}
+			// if we get there its because none of the answer channels were able to send on the event
 			callAnswererTooBusy.Inc(queue.operatorID)
 			queue.logger.Warnw(
 				"all answerers for host too busy to answer call",
@@ -764,15 +764,19 @@ func (queue *mongoDBWebRTCCallQueue) subscribeForNewCallOnHosts(
 
 	var alreadyTrackedCount int
 	for _, host := range hosts {
+		// even if there are multiple subscribers, it still
+		// all maps to a single host
+
 		if _, ok := queue.csTrackingHosts[host]; ok {
 			alreadyTrackedCount++
 		}
 		// if the host is not being tracked check if there is an answerer for it
-		// if there is not an an answerer then add a new subscriber channel for this
+		// if this is the first time an answerer is coming online for this host, then we
+		// populate an initial map with 1
+		// otherwise we just add the new subcriber to the map
 		// "hosts's subscribers" and adds the new event channel with a lock around csStateMu
 		//  each time this function is called there should only ever be a difference of a single answerer
 		hostSubs, ok := queue.waitingForNewCallSubs[host]
-		queue.logger.Infof("subscribers for host: %v", hostSubs)
 		if !ok {
 			hostSubs = map[*mongodbNewCallEventHandler]struct{}{}
 			queue.waitingForNewCallSubs[host] = hostSubs
@@ -880,7 +884,6 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 		Host:             host,
 		CallerSDP:        sdp,
 	}
-
 	events, unsubscribe := queue.subscribeToCall(host, call.ID, "caller")
 
 	offerDeadline := time.Now().Add(getDefaultOfferDeadline())
@@ -1094,11 +1097,12 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 			if !errors.Is(err, mongo.ErrNoDocuments) {
 				return mongodbWebRTCCall{}, false, err
 			}
+
 			getFirstResult := func() (bool, error) {
+				// bool is whether we should retry taking the offer
 				if err := recvOfferCtx.Err(); err != nil {
 					return false, err
 				}
-				queue.logger.Info("\n blocking on call \n")
 				select {
 				case <-recvOfferCtx.Done():
 					return false, recvOfferCtx.Err()
@@ -1125,6 +1129,7 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 						return false, err
 					}
 					if result.MatchedCount == 1 && result.ModifiedCount == 1 {
+						// this means we have picked up the offer
 						return false, nil
 					}
 
