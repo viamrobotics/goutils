@@ -40,11 +40,12 @@ var (
 		},
 	})
 
-	callAnswererTooBusy = statz.NewCounter1[string]("rpc.webrtc/call_answerer_too_busy", statz.MetricConfig{
+	callAnswererTooBusy = statz.NewCounter2[string, string]("rpc.webrtc/call_answerer_too_busy", statz.MetricConfig{
 		Description: "The number of times all answerers were too busy to handle a new call.",
 		Unit:        units.Dimensionless,
 		Labels: []statz.Label{
 			{Name: "operator_id", Description: "The queue operator ID."},
+			{Name: "hostname", Description: "The robot being requested"},
 		},
 	})
 
@@ -618,7 +619,7 @@ func (queue *mongoDBWebRTCCallQueue) processNextSubscriptionEvent(next mongoutil
 					return
 				}
 			}
-			callAnswererTooBusy.Inc(queue.operatorID)
+			callAnswererTooBusy.Inc(queue.operatorID, callResp.Host)
 			queue.logger.Warnw(
 				"all answerers for host too busy to answer call",
 				"id", callResp.ID,
