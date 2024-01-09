@@ -24,6 +24,26 @@ func TestStringSet(t *testing.T) {
 	ss := NewStringSet("foo")
 	_, ok := ss["foo"]
 	test.That(t, ok, test.ShouldBeTrue)
+
+	// Adding a new value
+	ss.Add("bar")
+
+	_, ok = ss["bar"]
+	test.That(t, ok, test.ShouldBeTrue)
+	_, ok = ss["foo"]
+	test.That(t, ok, test.ShouldBeTrue)
+
+	// Removing a value
+	ss.Remove("bar")
+	_, ok = ss["bar"]
+	test.That(t, ok, test.ShouldBeFalse)
+	_, ok = ss["foo"]
+	test.That(t, ok, test.ShouldBeTrue)
+
+	// Removing a value that doesn't exist
+	ss.Remove("no-op")
+	_, ok = ss["foo"]
+	test.That(t, ok, test.ShouldBeTrue)
 }
 
 func TestStringSliceRemove(t *testing.T) {
