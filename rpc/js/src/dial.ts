@@ -120,6 +120,7 @@ async function makeAuthenticatedTransportFactory(
 ): Promise<grpc.TransportFactory> {
   let accessToken = '';
   const getExtraMetadata = async (): Promise<grpc.Metadata> => {
+    const md = new grpc.Metadata();
     // TODO(GOUT-10): handle expiration
     if (accessToken == '') {
       let thisAccessToken = '';
@@ -204,7 +205,6 @@ async function makeAuthenticatedTransportFactory(
         accessToken = thisAccessToken;
       }
     }
-    const md = new grpc.Metadata();
     md.set('authorization', `Bearer ${accessToken}`);
     return md;
   };
