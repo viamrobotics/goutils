@@ -12,6 +12,7 @@ import (
 	"github.com/edaniels/golog"
 	"github.com/edaniels/zeroconf"
 	"github.com/pkg/errors"
+	"go.uber.org/multierr"
 	"go.uber.org/zap"
 )
 
@@ -88,6 +89,11 @@ func dialInner(
 // no way to connect on any of them.
 var ErrConnectionOptionsExhausted = errors.New("exhausted all connection options with no way to connect")
 
+type dialSuccess struct {
+	conn   ClientConn
+	cached bool
+}
+
 func dial(
 	ctx context.Context,
 	address string,
@@ -110,76 +116,114 @@ func dial(
 		}
 	}
 
+	connCh := make(chan dialSuccess, 2)
+	errCh := make(chan error, 2)
+	var dialAttempts int
 	if !dOpts.mdnsOptions.Disable && tryLocal && isJustDomain {
-		conn, cached, err := dialMulticastDNS(ctx, address, logger, dOpts)
-		if err != nil {
-			logger.Warnw("error dialing with mDNS; falling back to other methods", "error", err)
-		}
+		dialAttempts++
+		go func() {
+			conn, cached, err := dialMulticastDNS(ctx, address, logger, dOpts)
+			if err != nil {
+				logger.Warnw("error dialing with mDNS; falling back to other methods", "error", err)
+				errCh <- nil
+				return
+			}
 
-		if conn != nil {
-			return conn, cached, err
-		}
+			if conn != nil {
+				connCh <- dialSuccess{conn, cached}
+				return
+			}
+
+			errCh <- nil
+		}()
 	}
 
 	if !dOpts.webrtcOpts.Disable {
-		signalingAddress := dOpts.webrtcOpts.SignalingServerAddress
-		if signalingAddress == "" || dOpts.webrtcOpts.AllowAutoDetectAuthOptions {
-			if signalingAddress == "" {
-				// try WebRTC at same address
-				signalingAddress = address
-			}
-			target, port, err := getWebRTCTargetFromAddressWithDefaults(signalingAddress)
-			if err != nil {
-				return nil, false, err
-			}
-			fixupWebRTCOptions(dOpts, target, port)
+		dialAttempts++
+		go func() {
+			signalingAddress := dOpts.webrtcOpts.SignalingServerAddress
+			if signalingAddress == "" || dOpts.webrtcOpts.AllowAutoDetectAuthOptions {
+				if signalingAddress == "" {
+					// try WebRTC at same address
+					signalingAddress = address
+				}
+				target, port, err := getWebRTCTargetFromAddressWithDefaults(signalingAddress)
+				if err != nil {
+					errCh <- err
+					return
+				}
+				fixupWebRTCOptions(dOpts, target, port)
 
-			// When connecting to an external signaler for WebRTC, we assume we can use the external auth's material.
-			// This path is also called by an mdns direct connection and ignores that case.
-			// This will skip all Authenticate/AuthenticateTo calls for the signaler.
-			if !dOpts.usingMDNS && dOpts.authMaterial == "" && dOpts.webrtcOpts.SignalingExternalAuthAuthMaterial != "" {
-				logger.Debug("using signaling's external auth as auth material")
-				dOpts.authMaterial = dOpts.webrtcOpts.SignalingExternalAuthAuthMaterial
-				dOpts.creds = Credentials{}
+				// When connecting to an external signaler for WebRTC, we assume we can use the external auth's material.
+				// This path is also called by an mdns direct connection and ignores that case.
+				// This will skip all Authenticate/AuthenticateTo calls for the signaler.
+				if !dOpts.usingMDNS && dOpts.authMaterial == "" && dOpts.webrtcOpts.SignalingExternalAuthAuthMaterial != "" {
+					logger.Debug("using signaling's external auth as auth material")
+					dOpts.authMaterial = dOpts.webrtcOpts.SignalingExternalAuthAuthMaterial
+					dOpts.creds = Credentials{}
+				}
 			}
-		}
 
-		if dOpts.debug {
-			logger.Debugw(
-				"trying WebRTC",
-				"signaling_server", dOpts.webrtcOpts.SignalingServerAddress,
-				"host", originalAddress,
-			)
-		}
-
-		conn, cached, err := dialFunc(
-			ctx,
-			"webrtc",
-			fmt.Sprintf("%s->%s", dOpts.webrtcOpts.SignalingServerAddress, originalAddress),
-			buildKeyExtra(dOpts),
-			func() (ClientConn, error) {
-				return dialWebRTC(
-					ctx,
-					dOpts.webrtcOpts.SignalingServerAddress,
-					originalAddress,
-					dOpts,
-					logger,
+			if dOpts.debug {
+				logger.Debugw(
+					"trying WebRTC",
+					"signaling_server", dOpts.webrtcOpts.SignalingServerAddress,
+					"host", originalAddress,
 				)
-			})
-		if err == nil {
-			if !cached {
-				logger.Debug("connected via WebRTC")
-			} else if dOpts.debug {
-				logger.Debug("connected via WebRTC (cached)")
 			}
-			return conn, cached, nil
+
+			conn, cached, err := dialFunc(
+				ctx,
+				"webrtc",
+				fmt.Sprintf("%s->%s", dOpts.webrtcOpts.SignalingServerAddress, originalAddress),
+				buildKeyExtra(dOpts),
+				func() (ClientConn, error) {
+					return dialWebRTC(
+						ctx,
+						dOpts.webrtcOpts.SignalingServerAddress,
+						originalAddress,
+						dOpts,
+						logger,
+					)
+				})
+			if err == nil {
+				if !cached {
+					logger.Debug("connected via WebRTC")
+				} else if dOpts.debug {
+					logger.Debug("connected via WebRTC (cached)")
+				}
+				connCh <- dialSuccess{conn, cached}
+				return
+			}
+			if !errors.Is(err, ErrNoWebRTCSignaler) {
+				errCh <- err
+				return
+			}
+			if ctx.Err() != nil {
+				errCh <- err
+				return
+			}
+			errCh <- nil
+		}()
+	}
+
+	var (
+		dialFails  int
+		dialErrors []error
+	)
+	for dialFails < dialAttempts {
+		select {
+		case success := <-connCh:
+			return success.conn, success.cached, nil
+		case err := <-errCh:
+			dialFails++
+			if err != nil {
+				dialErrors = append(dialErrors, err)
+			}
 		}
-		if !errors.Is(err, ErrNoWebRTCSignaler) {
-			return nil, false, err
-		}
-		if ctx.Err() != nil {
-			return nil, false, ctx.Err()
-		}
+	}
+	if len(dialErrors) > 0 {
+		return nil, false, multierr.Combine(dialErrors...)
 	}
 
 	if dOpts.disableDirect {
