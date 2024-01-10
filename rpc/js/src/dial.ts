@@ -29,57 +29,75 @@ import { SignalingService } from './gen/proto/rpc/webrtc/v1/signaling_pb_service
 import { addSdpFields, newPeerConnectionForClient } from './peer';
 
 export interface DialOptions {
+  // TODO: Add doc comments for these properties
   authEntity?: string | undefined;
   credentials?: Credentials | undefined;
   webrtcOptions?: DialWebRTCOptions;
   externalAuthAddress?: string | undefined;
   externalAuthToEntity?: string | undefined;
 
-  // `accessToken` allows a pre-authenticated client to dial with
-  // an authorization header. Direct dial will have the access token
-  // appended to the "Authorization: Bearer" header. WebRTC dial will
-  // appened it to the signaling server communication
-  //
-  // If enabled, other auth options have no affect. Eg. authEntity, credentials,
-  // externalAuthAddress, externalAuthToEntity, webrtcOptions.signalingAccessToken
+  /**
+   * `accessToken` allows a pre-authenticated client to dial with
+   * an authorization header. Direct dial will have the access token
+   * appended to the "Authorization: Bearer" header. WebRTC dial will
+   * appened it to the signaling server communication
+   *
+   * If enabled, other auth options have no affect. Eg. authEntity,
+   * credentials, externalAuthAddress, externalAuthToEntity,
+   * webrtcOptions.signalingAccessToken
+   */
   accessToken?: string | undefined;
 }
 
 export interface DialWebRTCOptions {
+  // TODO: Add doc comments for these properties
   disableTrickleICE: boolean;
   rtcConfig?: RTCConfiguration;
 
-  // signalingAuthEntity is the entity to authenticate as to the signaler.
+  /** `signalingAuthEntity` is the entity to authenticate as to the signaler. */
   signalingAuthEntity?: string;
 
-  // signalingExternalAuthAddress is the address to perform external auth yet.
-  // This is unlikely to be needed since the signaler is typically in the same
-  // place where authentication happens.
+  /**
+   * `signalingExternalAuthAddress` is the address to perform external auth yet.
+   * This is unlikely to be needed since the signaler is typically in the same
+   * place where authentication happens.
+   */
   signalingExternalAuthAddress?: string;
 
-  // signalingExternalAuthToEntity is the entity to authenticate for after
-  // externally authenticating.
-  // This is unlikely to be needed since the signaler is typically in the same
-  // place where authentication happens.
+  /**
+   * `signalingExternalAuthToEntity` is the entity to authenticate for after
+   * externally authenticating. This is unlikely to be needed since the signaler
+   * is typically in the same place where authentication happens.
+   */
   signalingExternalAuthToEntity?: string;
 
-  // signalingCredentials are used to authenticate the request to the signaling server.
+  /**
+   * `signalingCredentials` are used to authenticate the request to the
+   * signaling server.
+   */
   signalingCredentials?: Credentials;
 
-  // `signalingAccessToken` allows a pre-authenticated client to dial with
-  // an authorization header to the signaling server. This skips the Authenticate()
-  // request to the singaling server or external auth but does not skip the
-  // AuthenticateTo() request to retrieve the credentials at the external auth
-  // endpoint.
-  //
-  // If enabled, other auth options have no affect. Eg. authEntity, credentials, signalingAuthEntity, signalingCredentials.
+  /*
+   * `signalingAccessToken` allows a pre-authenticated client to dial with
+   * an authorization header to the signaling server. This skips the
+   * Authenticate() request to the singaling server or external auth but does
+   * not skip the AuthenticateTo() request to retrieve the credentials at the
+   * external auth endpoint.
+   *
+   * If enabled, other auth options have no affect. Eg. authEntity, credentials,
+   * signalingAuthEntity, signalingCredentials.
+   */
   signalingAccessToken?: string;
 
-  // `additionalSDPValues` is a collection of additional SDP values that we want to pass into the connection's call request.
+  /**
+   * `additionalSDPValues` is a collection of additional SDP values that we want
+   * to pass into the connection's call request.
+   */
   additionalSdpFields?: Record<string, string | number>;
 }
 
 export interface Credentials {
+  // TODO: Add doc comments for these properties
   type: string;
   payload: string;
 }
@@ -97,7 +115,7 @@ export async function dialDirect(
   // Client already has access token with no external auth, skip Authenticate process.
   if (
     opts?.accessToken &&
-    !(opts?.externalAuthAddress && opts?.externalAuthToEntity)
+    !(opts.externalAuthAddress && opts.externalAuthToEntity)
   ) {
     const md = new grpc.Metadata();
     md.set('authorization', `Bearer ${opts.accessToken}`);
@@ -106,7 +124,7 @@ export async function dialDirect(
     };
   }
 
-  if (!opts || (!opts?.credentials && !opts?.accessToken)) {
+  if (!opts || (!opts.credentials && !opts.accessToken)) {
     return defaultFactory;
   }
 
@@ -138,13 +156,13 @@ async function makeAuthenticatedTransportFactory(
         creds.setPayload(opts.credentials?.payload!);
         request.setCredentials(creds);
 
-        let done = new Promise<grpc.Metadata>((resolve, reject) => {
+        const done = new Promise<grpc.Metadata>((resolve, reject) => {
           pResolve = resolve;
           pReject = reject;
         });
 
         grpc.invoke(AuthService.Authenticate, {
-          request: request,
+          request,
           host: opts.externalAuthAddress ? opts.externalAuthAddress : address,
           transport: defaultFactory,
           onMessage: (message: AuthenticateResponse) => {
@@ -173,7 +191,7 @@ async function makeAuthenticatedTransportFactory(
         const md = new grpc.Metadata();
         md.set('authorization', `Bearer ${accessToken}`);
 
-        let done = new Promise<grpc.Metadata>((resolve, reject) => {
+        const done = new Promise<grpc.Metadata>((resolve, reject) => {
           pResolve = resolve;
           pReject = reject;
         });
@@ -182,8 +200,8 @@ async function makeAuthenticatedTransportFactory(
         const request = new AuthenticateToRequest();
         request.setEntity(opts.externalAuthToEntity);
         grpc.invoke(ExternalAuthService.AuthenticateTo, {
-          request: request,
-          host: opts.externalAuthAddress!,
+          request,
+          host: opts.externalAuthAddress,
           transport: defaultFactory,
           metadata: md,
           onMessage: (message: AuthenticateToResponse) => {
@@ -266,7 +284,7 @@ async function getOptionalWebRTCConfig(
   let pReject: (reason?: unknown) => void;
 
   let result: WebRTCConfig | undefined;
-  let done = new Promise<WebRTCConfig>((resolve, reject) => {
+  const done = new Promise<WebRTCConfig>((resolve, reject) => {
     pResolve = resolve;
     pReject = reject;
   });
@@ -301,21 +319,25 @@ async function getOptionalWebRTCConfig(
   return result;
 }
 
-// dialWebRTC makes a connection to given host by signaling with the address provided. A Promise is returned
-// upon successful connection that contains a transport factory to use with gRPC client as well as the WebRTC
-// PeerConnection itself. Care should be taken with the PeerConnection and is currently returned for experimental
-// use.
-// TODO(GOUT-7): figure out decent way to handle reconnect on connection termination
+/*
+ * dialWebRTC makes a connection to given host by signaling with the address provided. A Promise is returned
+ * upon successful connection that contains a transport factory to use with gRPC client as well as the WebRTC
+ * PeerConnection itself. Care should be taken with the PeerConnection and is currently returned for experimental
+ * use.
+ * TODO(GOUT-7): figure out decent way to handle reconnect on connection termination
+ */
 export async function dialWebRTC(
   signalingAddress: string,
   host: string,
-  opts?: DialOptions
+  opts: DialOptions = {}
 ): Promise<WebRTCConnection> {
   signalingAddress = signalingAddress.replace(/(\/)$/, '');
   validateDialOptions(opts);
 
-  // TODO(RSDK-2836): In general, this logic should be in parity with the golang implementation.
-  // https://github.com/viamrobotics/goutils/blob/main/rpc/wrtc_client.go#L160-L175
+  /*
+   * TODO(RSDK-2836): In general, this logic should be in parity with the golang implementation.
+   * https://github.com/viamrobotics/goutils/blob/main/rpc/wrtc_client.go#L160-L175
+   */
   const config = await getOptionalWebRTCConfig(signalingAddress, host, opts);
   const additionalIceServers: RTCIceServer[] = config
     .toObject()
@@ -327,12 +349,18 @@ export async function dialWebRTC(
       };
     });
 
-  if (!opts) {
-    opts = {};
-  }
-
   let webrtcOpts: DialWebRTCOptions;
-  if (!opts.webrtcOptions) {
+  if (opts.webrtcOptions) {
+    webrtcOpts = opts.webrtcOptions;
+    if (webrtcOpts.rtcConfig) {
+      webrtcOpts.rtcConfig.iceServers = [
+        ...(webrtcOpts.rtcConfig.iceServers || []),
+        ...additionalIceServers,
+      ];
+    } else {
+      webrtcOpts.rtcConfig = { iceServers: additionalIceServers };
+    }
+  } else {
     // use additional webrtc config as default
     webrtcOpts = {
       disableTrickleICE: config.getDisableTrickle(),
@@ -340,51 +368,34 @@ export async function dialWebRTC(
         iceServers: additionalIceServers,
       },
     };
-  } else {
-    webrtcOpts = opts.webrtcOptions;
-    if (!webrtcOpts.rtcConfig) {
-      webrtcOpts.rtcConfig = { iceServers: additionalIceServers };
-    } else {
-      webrtcOpts.rtcConfig.iceServers = [
-        ...(webrtcOpts.rtcConfig.iceServers || []),
-        ...additionalIceServers,
-      ];
-    }
   }
 
   const { pc, dc } = await newPeerConnectionForClient(
     webrtcOpts !== undefined && webrtcOpts.disableTrickleICE,
-    webrtcOpts?.rtcConfig,
-    webrtcOpts?.additionalSdpFields
+    webrtcOpts.rtcConfig,
+    webrtcOpts.additionalSdpFields
   );
   let successful = false;
 
   try {
     // replace auth entity and creds
-    let optsCopy = opts;
+    const optsCopy: DialOptions = { ...opts };
     if (opts) {
-      optsCopy = { ...opts } as DialOptions;
-
       if (!opts.accessToken) {
-        optsCopy.authEntity = opts?.webrtcOptions?.signalingAuthEntity;
+        optsCopy.authEntity = opts.webrtcOptions?.signalingAuthEntity;
         if (!optsCopy.authEntity) {
-          if (optsCopy.externalAuthAddress) {
-            optsCopy.authEntity = opts.externalAuthAddress?.replace(
-              /^(.*:\/\/)/,
-              ''
-            );
-          } else {
-            optsCopy.authEntity = signalingAddress.replace(/^(.*:\/\/)/, '');
-          }
+          optsCopy.authEntity = optsCopy.externalAuthAddress
+            ? opts.externalAuthAddress?.replace(/^(.*:\/\/)/, '')
+            : signalingAddress.replace(/^(.*:\/\/)/, '');
         }
-        optsCopy.credentials = opts?.webrtcOptions?.signalingCredentials;
-        optsCopy.accessToken = opts?.webrtcOptions?.signalingAccessToken;
+        optsCopy.credentials = opts.webrtcOptions?.signalingCredentials;
+        optsCopy.accessToken = opts.webrtcOptions?.signalingAccessToken;
       }
 
       optsCopy.externalAuthAddress =
-        opts?.webrtcOptions?.signalingExternalAuthAddress;
+        opts.webrtcOptions?.signalingExternalAuthAddress;
       optsCopy.externalAuthToEntity =
-        opts?.webrtcOptions?.signalingExternalAuthToEntity;
+        opts.webrtcOptions?.signalingExternalAuthToEntity;
     }
 
     const directTransport = await dialDirect(signalingAddress, optsCopy);
@@ -449,11 +460,11 @@ export async function dialWebRTC(
     };
 
     let pResolve: (value: unknown) => void;
-    let remoteDescSet = new Promise<unknown>((resolve) => {
+    const remoteDescSet = new Promise<unknown>((resolve) => {
       pResolve = resolve;
     });
     let exchangeDone = false;
-    if (!webrtcOpts?.disableTrickleICE) {
+    if (!webrtcOpts.disableTrickleICE) {
       // set up offer
       const offerDesc = await pc.createOffer();
 
@@ -518,10 +529,9 @@ export async function dialWebRTC(
 
         pResolve(true);
 
-        if (webrtcOpts?.disableTrickleICE) {
+        if (webrtcOpts.disableTrickleICE) {
           exchangeDone = true;
           sendDone();
-          return;
         }
       } else if (response.hasUpdate()) {
         if (!haveInit) {
@@ -538,17 +548,15 @@ export async function dialWebRTC(
           await pc.addIceCandidate(cand);
         } catch (error) {
           sendError(JSON.stringify(error));
-          return;
         }
       } else {
         sendError('unknown CallResponse stage');
-        return;
       }
     });
 
     let clientEndResolve: () => void;
     let clientEndReject: (reason?: unknown) => void;
-    let clientEnd = new Promise<void>((resolve, reject) => {
+    const clientEnd = new Promise<void>((resolve, reject) => {
       clientEndResolve = resolve;
       clientEndReject = reject;
     });
@@ -583,18 +591,22 @@ export async function dialWebRTC(
     const cc = new ClientChannel(pc, dc);
     cc.ready
       .then(() => clientEndResolve())
-      .catch((err) => clientEndReject(err));
+      .catch((error) => clientEndReject(error));
     await clientEnd;
     await cc.ready;
     exchangeDone = true;
     sendDone();
 
-    if (opts?.externalAuthAddress) {
-      // TODO(GOUT-11): prepare AuthenticateTo here
-      // for client channel.
-    } else if (opts?.credentials?.type) {
-      // TODO(GOUT-11): prepare Authenticate here
-      // for client channel
+    if (opts.externalAuthAddress) {
+      /*
+       * TODO(GOUT-11): prepare AuthenticateTo here
+       * for client channel.
+       */
+    } else if (opts.credentials?.type) {
+      /*
+       * TODO(GOUT-11): prepare Authenticate here
+       * for client channel
+       */
     }
 
     successful = true;
@@ -607,7 +619,7 @@ export async function dialWebRTC(
 }
 
 function iceCandidateFromProto(i: ICECandidate): RTCIceCandidateInit {
-  let candidate: RTCIceCandidateInit = {
+  const candidate: RTCIceCandidateInit = {
     candidate: i.getCandidate(),
   };
   if (i.hasSdpMid()) {
@@ -623,7 +635,7 @@ function iceCandidateFromProto(i: ICECandidate): RTCIceCandidateInit {
 }
 
 function iceCandidateToProto(i: RTCIceCandidateInit): ICECandidate {
-  let candidate = new ICECandidate();
+  const candidate = new ICECandidate();
   candidate.setCandidate(i.candidate!);
   if (i.sdpMid) {
     candidate.setSdpMid(i.sdpMid);
@@ -671,7 +683,7 @@ function validateDialOptions(opts?: DialOptions) {
   }
 
   if (
-    opts?.webrtcOptions?.signalingAccessToken &&
+    opts.webrtcOptions?.signalingAccessToken &&
     opts.webrtcOptions.signalingAccessToken.length > 0
   ) {
     if (opts.webrtcOptions.signalingAuthEntity) {
