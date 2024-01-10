@@ -98,20 +98,17 @@ const getInternallyAuthenticatedMetadata = async (
 const getExternallyAuthenticatedMetadata = async (
   authenticatedMetadata: grpc.Metadata,
   transportFactory: grpc.TransportFactory,
-  {
-    externalAuthAddress,
-    externalAuthToEntity,
-  }: Required<Pick<DialOptions, 'externalAuthAddress' | 'externalAuthToEntity'>>
+  { externalAuthAddress, externalAuthToEntity }: DialOptions
 ): Promise<grpc.Metadata> => {
   const request = new AuthenticateToRequest();
-  request.setEntity(externalAuthToEntity);
+  request.setEntity(externalAuthToEntity ?? '');
 
   let accessToken = '';
 
   return new Promise((resolve, reject) => {
     grpc.invoke(ExternalAuthService.AuthenticateTo, {
       request,
-      host: externalAuthAddress,
+      host: externalAuthAddress ?? '',
       transport: transportFactory,
       metadata: authenticatedMetadata,
       onMessage: (message: AuthenticateToResponse) => {

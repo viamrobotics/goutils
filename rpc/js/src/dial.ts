@@ -85,7 +85,7 @@ async function getOptionalWebRTCConfig(
 export async function dialWebRTC(
   signalingAddress: string,
   host: string,
-  opts?: DialOptions
+  opts: DialOptions = {}
 ): Promise<WebRTCConnection> {
   signalingAddress = signalingAddress.replace(/(\/)$/, '');
   validateDialOptions(opts);
@@ -104,10 +104,6 @@ export async function dialWebRTC(
         username: ice.username,
       };
     });
-
-  if (!opts) {
-    opts = {};
-  }
 
   let webrtcOpts: DialWebRTCOptions;
   if (opts.webrtcOptions) {
@@ -139,10 +135,8 @@ export async function dialWebRTC(
 
   try {
     // replace auth entity and creds
-    let optsCopy = opts;
+    const optsCopy: DialOptions = { ...opts };
     if (opts) {
-      optsCopy = { ...opts } as DialOptions;
-
       if (!opts.accessToken) {
         optsCopy.authEntity = opts.webrtcOptions?.signalingAuthEntity;
         if (!optsCopy.authEntity) {

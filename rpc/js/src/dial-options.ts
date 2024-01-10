@@ -53,11 +53,11 @@ export interface DialWebRTCOptions {
 
 export interface DialOptions {
   // TODO: Add doc comments for these properties
-  authEntity?: string;
-  credentials?: Credentials;
+  authEntity?: string | undefined;
+  credentials?: Credentials | undefined;
   webrtcOptions?: DialWebRTCOptions;
-  externalAuthAddress?: string;
-  externalAuthToEntity?: string;
+  externalAuthAddress?: string | undefined;
+  externalAuthToEntity?: string | undefined;
 
   /**
    * `accessToken` allows a pre-authenticated client to dial with
@@ -69,7 +69,7 @@ export interface DialOptions {
    * credentials, externalAuthAddress, externalAuthToEntity,
    * webrtcOptions.signalingAccessToken
    */
-  accessToken?: string;
+  accessToken?: string | undefined;
 }
 
 const validateAccessToken = ({
