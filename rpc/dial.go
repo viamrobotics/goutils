@@ -108,12 +108,10 @@ func dial(
 		dOpts.webrtcOpts.Disable = true
 		dOpts.insecure = true
 		dOpts.disableDirect = false
+	} else if strings.ContainsRune(address, ':') {
+		isJustDomain = false
 	} else {
-		if strings.ContainsRune(address, ':') {
-			isJustDomain = false
-		} else {
-			isJustDomain = net.ParseIP(address) == nil
-		}
+		isJustDomain = net.ParseIP(address) == nil
 	}
 
 	connCh := make(chan dialSuccess, 2)
