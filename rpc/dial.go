@@ -103,14 +103,15 @@ func dial(
 	tryLocal bool,
 ) (ClientConn, bool, error) {
 	var isJustDomain bool
-	if strings.HasPrefix(address, "unix://") {
+	switch {
+	case strings.HasPrefix(address, "unix://"):
 		dOpts.mdnsOptions.Disable = true
 		dOpts.webrtcOpts.Disable = true
 		dOpts.insecure = true
 		dOpts.disableDirect = false
-	} else if strings.ContainsRune(address, ':') {
+	case strings.ContainsRune(address, ':'):
 		isJustDomain = false
-	} else {
+	default:
 		isJustDomain = net.ParseIP(address) == nil
 	}
 
