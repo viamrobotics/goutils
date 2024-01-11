@@ -92,6 +92,7 @@ var ErrConnectionOptionsExhausted = errors.New("exhausted all connection options
 type dialSuccess struct {
 	conn   ClientConn
 	cached bool
+	key    int
 }
 
 func dial(
@@ -117,11 +118,12 @@ func dial(
 
 	connCh := make(chan dialSuccess, 2)
 	errCh := make(chan error, 2)
-	var concurrentDials int
+	var cancels []context.CancelFunc
 	if !dOpts.mdnsOptions.Disable && tryLocal && isJustDomain {
-		concurrentDials++
+		mdnsCtx, cancel := context.WithCancel(ctx)
+		cancels = append(cancels, cancel)
 		go func() {
-			conn, cached, err := dialMulticastDNS(ctx, address, logger, dOpts)
+			conn, cached, err := dialMulticastDNS(mdnsCtx, address, logger, dOpts)
 			if err != nil {
 				logger.Warnw("error dialing with mDNS; falling back to other methods", "error", err)
 				errCh <- nil
@@ -129,7 +131,7 @@ func dial(
 			}
 
 			if conn != nil {
-				connCh <- dialSuccess{conn, cached}
+				connCh <- dialSuccess{conn, cached, 0}
 				return
 			}
 
@@ -138,7 +140,8 @@ func dial(
 	}
 
 	if !dOpts.webrtcOpts.Disable {
-		concurrentDials++
+		wrtcCtx, cancel := context.WithCancel(ctx)
+		cancels = append(cancels, cancel)
 		go func() {
 			signalingAddress := dOpts.webrtcOpts.SignalingServerAddress
 			if signalingAddress == "" || dOpts.webrtcOpts.AllowAutoDetectAuthOptions {
@@ -172,13 +175,13 @@ func dial(
 			}
 
 			conn, cached, err := dialFunc(
-				ctx,
+				wrtcCtx,
 				"webrtc",
 				fmt.Sprintf("%s->%s", dOpts.webrtcOpts.SignalingServerAddress, originalAddress),
 				buildKeyExtra(dOpts),
 				func() (ClientConn, error) {
 					return dialWebRTC(
-						ctx,
+						wrtcCtx,
 						dOpts.webrtcOpts.SignalingServerAddress,
 						originalAddress,
 						dOpts,
@@ -191,14 +194,14 @@ func dial(
 				} else if dOpts.debug {
 					logger.Debug("connected via WebRTC (cached)")
 				}
-				connCh <- dialSuccess{conn, cached}
+				connCh <- dialSuccess{conn, cached, 1}
 				return
 			}
 			if !errors.Is(err, ErrNoWebRTCSignaler) {
 				errCh <- err
 				return
 			}
-			if ctx.Err() != nil {
+			if wrtcCtx.Err() != nil {
 				errCh <- err
 				return
 			}
@@ -210,9 +213,14 @@ func dial(
 		dialFails  int
 		dialErrors []error
 	)
-	for dialFails < concurrentDials {
+	for dialFails < len(cancels) {
 		select {
 		case success := <-connCh:
+			for i, cancel := range cancels {
+				if i != success.key {
+					cancel()
+				}
+			}
 			return success.conn, success.cached, nil
 		case err := <-errCh:
 			dialFails++
