@@ -116,9 +116,9 @@ func dial(
 
 	connCh := make(chan dialSuccess, 2)
 	errCh := make(chan error, 2)
-	var dialAttempts int
+	var concurrentDials int
 	if !dOpts.mdnsOptions.Disable && tryLocal && isJustDomain {
-		dialAttempts++
+		concurrentDials++
 		go func() {
 			conn, cached, err := dialMulticastDNS(ctx, address, logger, dOpts)
 			if err != nil {
@@ -137,7 +137,7 @@ func dial(
 	}
 
 	if !dOpts.webrtcOpts.Disable {
-		dialAttempts++
+		concurrentDials++
 		go func() {
 			signalingAddress := dOpts.webrtcOpts.SignalingServerAddress
 			if signalingAddress == "" || dOpts.webrtcOpts.AllowAutoDetectAuthOptions {
@@ -209,12 +209,15 @@ func dial(
 		dialFails  int
 		dialErrors []error
 	)
-	for dialFails < dialAttempts {
+	for dialFails < concurrentDials {
 		select {
 		case success := <-connCh:
 			return success.conn, success.cached, nil
 		case err := <-errCh:
 			dialFails++
+			// a nil error means that a concurrent dial attempt failed, but it should not
+			// stop us from trying to establish a direct gRPC connection after all
+			// concurrent dial attempts fail.
 			if err != nil {
 				dialErrors = append(dialErrors, err)
 			}
