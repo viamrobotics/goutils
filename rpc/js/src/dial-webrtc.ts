@@ -21,7 +21,7 @@ import { ClientChannel } from './ClientChannel';
 import { ConnectionClosedError } from './errors';
 import { Status } from './gen/google/rpc/status_pb';
 import { iceCandidateToProto, iceCandidateFromProto } from './ice-candidate';
-import { newPeerConnectionForClient, addSdpFields } from './peer';
+import { newPeerConnectionForClient, addSDPFields } from './peer';
 
 export interface WebRTCConnection {
   // TODO: Add doc comments for these properties
@@ -407,7 +407,7 @@ const startClient = (
   client.start({ 'rpc-host': host });
 
   const callRequest = new CallRequest();
-  const description = addSdpFields(
+  const description = addSDPFields(
     peerConnection.localDescription,
     options.additionalSdpFields
   );
