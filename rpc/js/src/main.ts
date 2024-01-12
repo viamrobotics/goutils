@@ -6,6 +6,6 @@ export type {
   DialWebRTCOptions,
 } from './dial-options';
 
-export { dialWebRTC, type WebRTCConnection } from './dial';
+export { dialWebRTC, type WebRTCConnection } from './dial-webrtc';
 
 export { ConnectionClosedError, GRPCError } from './errors';
