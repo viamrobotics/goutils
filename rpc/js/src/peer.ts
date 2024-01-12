@@ -1,42 +1,43 @@
+import { DialWebRTCOptions } from './dial-options';
+
 interface ReadyPeer {
-  pc: RTCPeerConnection;
-  dc: RTCDataChannel;
+  peerConnection: RTCPeerConnection;
+  dataChannel: RTCDataChannel;
 }
 
 export function addSdpFields(
   localDescription?: RTCSessionDescription | null,
   sdpFields?: Record<string, string | number>
 ) {
-  let description = {
+  const description = {
     sdp: localDescription?.sdp,
     type: localDescription?.type,
   };
   if (sdpFields) {
-    Object.keys(sdpFields).forEach((key) => {
+    for (const key of Object.keys(sdpFields)) {
       description.sdp = [
         description.sdp,
-        `a=${key}:${sdpFields[key as keyof typeof sdpFields]}\r\n`,
+        `a=${key}:${sdpFields[key]}\r\n`,
       ].join('');
-    });
+    }
   }
   return description;
 }
 
-export async function newPeerConnectionForClient(
-  disableTrickle: boolean,
-  rtcConfig?: RTCConfiguration,
-  additionalSdpFields?: Record<string, string | number>
-): Promise<ReadyPeer> {
-  if (!rtcConfig) {
-    rtcConfig = {
-      iceServers: [
-        {
-          urls: 'stun:global.stun.twilio.com:3478',
-        },
-      ],
-    };
-  }
-  const peerConnection = new RTCPeerConnection(rtcConfig);
+export const newPeerConnectionForClient = async ({
+  disableTrickleICE,
+  rtcConfig,
+  additionalSdpFields,
+}: DialWebRTCOptions): Promise<ReadyPeer> => {
+  const config = rtcConfig ?? {
+    iceServers: [
+      {
+        urls: 'stun:global.stun.twilio.com:3478',
+      },
+    ],
+  };
+
+  const peerConnection = new RTCPeerConnection(config);
 
   let pResolve: (value: ReadyPeer) => void;
   const result = new Promise<ReadyPeer>((resolve) => {
@@ -59,10 +60,14 @@ export async function newPeerConnectionForClient(
   let ignoreOffer = false;
   const polite = true;
   let negOpen = false;
+
+  // eslint-disable-next-line unicorn/prefer-add-event-listener
   negotiationChannel.onopen = () => {
     negOpen = true;
   };
-  negotiationChannel.onmessage = async (event: MessageEvent<any>) => {
+
+  // eslint-disable-next-line unicorn/prefer-add-event-listener
+  negotiationChannel.onmessage = async (event: MessageEvent) => {
     try {
       const description = new RTCSessionDescription(
         JSON.parse(atob(event.data))
@@ -86,8 +91,8 @@ export async function newPeerConnectionForClient(
         );
         negotiationChannel.send(btoa(JSON.stringify(newDescription)));
       }
-    } catch (e) {
-      console.error(e);
+    } catch (error) {
+      console.error(error);
     }
   };
 
@@ -102,28 +107,28 @@ export async function newPeerConnectionForClient(
         additionalSdpFields
       );
       negotiationChannel.send(btoa(JSON.stringify(newDescription)));
-    } catch (e) {
-      console.error(e);
+    } catch (error) {
+      console.error(error);
     }
   };
 
-  if (!disableTrickle) {
-    return Promise.resolve({ pc: peerConnection, dc: dataChannel });
+  if (!disableTrickleICE) {
+    return { peerConnection, dataChannel };
   }
   // set up offer
   const offerDesc = await peerConnection.createOffer();
   try {
     await peerConnection.setLocalDescription(offerDesc);
-  } catch (e) {
-    return Promise.reject(e);
+  } catch (error) {
+    return Promise.reject(error);
   }
 
   peerConnection.onicecandidate = async (event) => {
     if (event.candidate !== null) {
       return;
     }
-    pResolve({ pc: peerConnection, dc: dataChannel });
+    pResolve({ peerConnection, dataChannel });
   };
 
   return result;
-}
+};
