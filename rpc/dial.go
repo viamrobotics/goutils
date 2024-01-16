@@ -93,6 +93,9 @@ func dial(
 	dOpts *dialOptions,
 	tryLocal bool,
 ) (ClientConn, bool, error) {
+	start := time.Now()
+	defer func() { logger.Infof("dial time: %dms", time.Since(start).Milliseconds()) }()
+
 	var isJustDomain bool
 	if strings.HasPrefix(address, "unix://") {
 		dOpts.mdnsOptions.Disable = true
