@@ -19,6 +19,9 @@ import (
 // via WebRTC if a signaling server is detected or provided. Otherwise it attempts to connect directly.
 // TODO(GOUT-7): figure out decent way to handle reconnect on connection termination.
 func Dial(ctx context.Context, address string, logger golog.Logger, opts ...DialOption) (ClientConn, error) {
+	start := time.Now()
+	defer func() { logger.Infof("dial time: %dms", time.Since(start).Milliseconds()) }()
+
 	var dOpts dialOptions
 	for _, opt := range opts {
 		opt.apply(&dOpts)
@@ -75,7 +78,7 @@ func dialInner(
 	}
 	if cached {
 		if dOpts.debug {
-			logger.Debugw("connected (cached)", "address", address)
+			logger.Infow("connected (cached)", "address", address)
 		}
 	}
 	return conn, nil
@@ -93,9 +96,6 @@ func dial(
 	dOpts *dialOptions,
 	tryLocal bool,
 ) (ClientConn, bool, error) {
-	start := time.Now()
-	defer func() { logger.Infof("dial time: %dms", time.Since(start).Milliseconds()) }()
-
 	var isJustDomain bool
 	if strings.HasPrefix(address, "unix://") {
 		dOpts.mdnsOptions.Disable = true
