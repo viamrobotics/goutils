@@ -116,26 +116,26 @@ func dial(
 		isJustDomain = net.ParseIP(address) == nil
 	}
 
-	connCh := make(chan dialSuccess, 2)
-	errCh := make(chan error, 2)
-	var cancels []context.CancelFunc
+	var (
+		connCh  = make(chan dialSuccess, 2)
+		errCh   = make(chan error, 2)
+		cancels []context.CancelFunc
+	)
 	if !dOpts.mdnsOptions.Disable && tryLocal && isJustDomain {
 		mdnsCtx, cancel := context.WithCancel(ctx)
 		cancels = append(cancels, cancel)
 		go func() {
 			conn, cached, err := dialMulticastDNS(mdnsCtx, address, logger, dOpts)
-			if err != nil {
+			switch {
+			case err != nil:
 				logger.Warnw("error dialing with mDNS; falling back to other methods", "error", err)
 				errCh <- nil
-				return
-			}
-
-			if conn != nil {
+			case conn != nil:
+				// TODO(docs): how can we get a `nil` connection when there is no error?
 				connCh <- dialSuccess{conn, cached, 0}
-				return
+			default:
+				errCh <- nil
 			}
-
-			errCh <- nil
 		}()
 	}
 
@@ -151,6 +151,7 @@ func dial(
 				}
 				target, port, err := getWebRTCTargetFromAddressWithDefaults(signalingAddress)
 				if err != nil {
+					// TODO(docs): why don't we try dialing directly after this error?
 					errCh <- err
 					return
 				}
@@ -188,24 +189,23 @@ func dial(
 						logger,
 					)
 				})
-			if err == nil {
+
+			switch {
+			case err == nil:
 				if !cached {
 					logger.Debug("connected via WebRTC")
 				} else if dOpts.debug {
 					logger.Debug("connected via WebRTC (cached)")
 				}
 				connCh <- dialSuccess{conn, cached, 1}
-				return
-			}
-			if !errors.Is(err, ErrNoWebRTCSignaler) {
+			case !errors.Is(err, ErrNoWebRTCSignaler):
+				// TODO(docs): why don't we try dialing directly after this error?
 				errCh <- err
-				return
-			}
-			if wrtcCtx.Err() != nil {
+			case wrtcCtx.Err() != nil:
 				errCh <- err
-				return
+			default:
+				errCh <- nil
 			}
-			errCh <- nil
 		}()
 	}
 
