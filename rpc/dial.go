@@ -7,12 +7,12 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/edaniels/golog"
 	"github.com/edaniels/zeroconf"
 	"github.com/pkg/errors"
-	"go.uber.org/multierr"
 	"go.uber.org/zap"
 )
 
@@ -89,10 +89,16 @@ func dialInner(
 // no way to connect on any of them.
 var ErrConnectionOptionsExhausted = errors.New("exhausted all connection options with no way to connect")
 
-type dialSuccess struct {
-	conn   ClientConn
+// dialResult contains information about a concurrent dial attempt
+type dialResult struct {
+	// a successfully established connection
+	conn ClientConn
+	// whether or not the connection is reused
 	cached bool
-	key    int
+	// connection errors
+	err error
+	// whether we should skip dialing gRPC directly as a fallback
+	exitEarly bool
 }
 
 func dial(
@@ -103,6 +109,10 @@ func dial(
 	dOpts *dialOptions,
 	tryLocal bool,
 ) (ClientConn, bool, error) {
+	if ctx.Err() != nil {
+		return nil, false, ctx.Err()
+	}
+
 	var isJustDomain bool
 	switch {
 	case strings.HasPrefix(address, "unix://"):
@@ -117,32 +127,35 @@ func dial(
 	}
 
 	var (
-		connCh  = make(chan dialSuccess, 2)
-		errCh   = make(chan error, 2)
-		cancels []context.CancelFunc
+		wg                          sync.WaitGroup
+		dialCh                      = make(chan dialResult)
+		ctxParallel, cancelParallel = context.WithCancel(ctx)
 	)
+	defer cancelParallel()
 	if !dOpts.mdnsOptions.Disable && tryLocal && isJustDomain {
-		mdnsCtx, cancel := context.WithCancel(ctx)
-		cancels = append(cancels, cancel)
+		wg.Add(1)
 		go func() {
-			conn, cached, err := dialMulticastDNS(mdnsCtx, address, logger, dOpts)
+			defer wg.Done()
+			conn, cached, err := dialMulticastDNS(ctxParallel, address, logger, dOpts)
 			switch {
 			case err != nil:
 				logger.Warnw("error dialing with mDNS; falling back to other methods", "error", err)
-				errCh <- nil
+				dialCh <- dialResult{err: err}
 			case conn != nil:
 				// TODO(docs): how can we get a `nil` connection when there is no error?
-				connCh <- dialSuccess{conn, cached, 0}
+				dialCh <- dialResult{conn: conn, cached: cached}
 			default:
-				errCh <- nil
+				errNoConn := errors.New("no connection")
+				logger.Warnw("error dialing with mDNS; falling back to other methods", "error", errNoConn)
+				dialCh <- dialResult{err: errNoConn}
 			}
 		}()
 	}
 
 	if !dOpts.webrtcOpts.Disable {
-		wrtcCtx, cancel := context.WithCancel(ctx)
-		cancels = append(cancels, cancel)
+		wg.Add(1)
 		go func() {
+			defer wg.Done()
 			signalingAddress := dOpts.webrtcOpts.SignalingServerAddress
 			if signalingAddress == "" || dOpts.webrtcOpts.AllowAutoDetectAuthOptions {
 				if signalingAddress == "" {
@@ -152,9 +165,10 @@ func dial(
 				target, port, err := getWebRTCTargetFromAddressWithDefaults(signalingAddress)
 				if err != nil {
 					// TODO(docs): why don't we try dialing directly after this error?
-					errCh <- err
+					dialCh <- dialResult{err: err, exitEarly: true}
 					return
 				}
+				// TODO: add lock or copy dOpts to safely mutate concurrently
 				fixupWebRTCOptions(dOpts, target, port)
 
 				// When connecting to an external signaler for WebRTC, we assume we can use the external auth's material.
@@ -176,13 +190,13 @@ func dial(
 			}
 
 			conn, cached, err := dialFunc(
-				wrtcCtx,
+				ctxParallel,
 				"webrtc",
 				fmt.Sprintf("%s->%s", dOpts.webrtcOpts.SignalingServerAddress, originalAddress),
 				buildKeyExtra(dOpts),
 				func() (ClientConn, error) {
 					return dialWebRTC(
-						wrtcCtx,
+						ctxParallel,
 						dOpts.webrtcOpts.SignalingServerAddress,
 						originalAddress,
 						dOpts,
@@ -197,43 +211,57 @@ func dial(
 				} else if dOpts.debug {
 					logger.Debug("connected via WebRTC (cached)")
 				}
-				connCh <- dialSuccess{conn, cached, 1}
+				dialCh <- dialResult{conn: conn, cached: cached}
 			case !errors.Is(err, ErrNoWebRTCSignaler):
 				// TODO(docs): why don't we try dialing directly after this error?
-				errCh <- err
-			case wrtcCtx.Err() != nil:
-				errCh <- err
+				dialCh <- dialResult{err: err, exitEarly: true}
+			case ctxParallel.Err() != nil:
+				dialCh <- dialResult{err: err, exitEarly: true}
 			default:
-				errCh <- nil
+				dialCh <- dialResult{err: err}
 			}
 		}()
 	}
 
+	go func() {
+		wg.Wait()
+		close(dialCh)
+	}()
+
 	var (
-		dialFails  int
-		dialErrors []error
+		conn   ClientConn
+		cached bool
+		err    error
+		mu     sync.Mutex
 	)
-	for dialFails < len(cancels) {
-		select {
-		case success := <-connCh:
-			for i, cancel := range cancels {
-				if i != success.key {
-					cancel()
+	for result := range dialCh {
+		switch {
+		case result.err == nil && result.conn != nil:
+			mu.Lock()
+			if conn != nil {
+				errClose := conn.Close()
+				if errClose != nil {
+					logger.Warnw("unable to close redundant connection", "error", err)
 				}
 			}
-			return success.conn, success.cached, nil
-		case err := <-errCh:
-			dialFails++
-			// a nil error means that a concurrent dial attempt failed, but it should not
-			// stop us from trying to establish a direct gRPC connection after all
-			// concurrent dial attempts fail.
-			if err != nil {
-				dialErrors = append(dialErrors, err)
-			}
+			conn, cached = result.conn, result.cached
+			mu.Unlock()
+			cancelParallel()
+		case result.err != nil && result.exitEarly:
+			logger.Warnw("failed dial attempt, will not try direct", "error", err)
+			mu.Lock()
+			err = result.err
+			mu.Unlock()
+		default:
+			logger.Warnw("failed dial attempt, may still try direct", "error", err)
 		}
 	}
-	if len(dialErrors) > 0 {
-		return nil, false, multierr.Combine(dialErrors...)
+	wg.Wait()
+	if conn != nil {
+		return conn, cached, nil
+	}
+	if err != nil {
+		return nil, false, err
 	}
 
 	if dOpts.disableDirect {
@@ -242,7 +270,7 @@ func dial(
 	if dOpts.debug {
 		logger.Debugw("trying direct", "address", address)
 	}
-	conn, cached, err := dialDirectGRPC(ctx, address, dOpts, logger)
+	conn, cached, err = dialDirectGRPC(ctx, address, dOpts, logger)
 	if err != nil {
 		return nil, false, err
 	}
@@ -275,10 +303,14 @@ func dialMulticastDNS(
 				logger.Errorw("error performing mDNS query", "error", err)
 				return nil, err
 			}
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
 			// entries gets closed after lookupCtx expires or there is a real entry
-			entry := <-entries
-			if entry != nil {
-				return entry, nil
+			case entry := <-entries:
+				if entry != nil {
+					return entry, nil
+				}
 			}
 		}
 		return nil, ctx.Err()
