@@ -55,7 +55,7 @@ func newWebRTCAPI(isClient bool, logger golog.Logger) (*webrtc.API, error) {
 	settingEngine.SetIncludeLoopbackCandidate(true)
 	settingEngine.SetRelayAcceptanceMinWait(3 * time.Second)
 	settingEngine.SetIPFilter(func(ip net.IP) bool {
-		// Disallow ipv6 connections. Viam <-> GRPC has a compatibility problem.
+		// Disallow ipv6 addresses since grpc-go does not currently support IPv6 scoped literals.
 		// See related grpc-go issue: https://github.com/grpc/grpc-go/issues/3272.
 		//
 		// Stolen from net/ip.go, `IP.String` method.
