@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net"
 	"sync"
 	"time"
 
@@ -53,6 +54,17 @@ func newWebRTCAPI(isClient bool, logger golog.Logger) (*webrtc.API, error) {
 	// while the client (controlling) provides an mDNS candidate that may resolve to 127.0.0.1.
 	settingEngine.SetIncludeLoopbackCandidate(true)
 	settingEngine.SetRelayAcceptanceMinWait(3 * time.Second)
+	settingEngine.SetIPFilter(func(ip net.IP) bool {
+		// Disallow ipv6 addresses since grpc-go does not currently support IPv6 scoped literals.
+		// See related grpc-go issue: https://github.com/grpc/grpc-go/issues/3272.
+		//
+		// Stolen from net/ip.go, `IP.String` method.
+		if p4 := ip.To4(); len(p4) == net.IPv4len {
+			return true
+		}
+
+		return false
+	})
 
 	options := []func(a *webrtc.API){webrtc.WithMediaEngine(&m), webrtc.WithInterceptorRegistry(&i)}
 	if utils.Debug {
