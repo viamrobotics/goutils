@@ -99,6 +99,8 @@ type dialResult struct {
 	err error
 	// whether we should skip dialing gRPC directly as a fallback
 	skipDirect bool
+	// whether a connection was established using mDNS
+	usedMDNS bool
 }
 
 func dial(
@@ -139,16 +141,12 @@ func dial(
 			conn, cached, err := dialMulticastDNS(ctxParallel, address, logger, dOpts)
 			switch {
 			case err != nil:
-				logger.Debug("error dialing with mDNS; falling back to other methods", "error", err)
 				dialCh <- dialResult{err: err}
 			case conn != nil:
-				logger.Debug("connected via mDNS")
 				// TODO(docs): how can we get a `nil` connection when there is no error?
-				dialCh <- dialResult{conn: conn, cached: cached}
+				dialCh <- dialResult{conn: conn, cached: cached, usedMDNS: true}
 			default:
-				errNoConn := errors.New("no connection")
-				logger.Debug("error dialing with mDNS; falling back to other methods", "error", errNoConn)
-				dialCh <- dialResult{err: errNoConn}
+				dialCh <- dialResult{err: errors.New("no connection")}
 			}
 		}()
 	}
@@ -230,10 +228,11 @@ func dial(
 	}()
 
 	var (
-		conn   ClientConn
-		cached bool
-		err    error
-		mu     sync.Mutex
+		conn     ClientConn
+		cached   bool
+		err      error
+		usedMDNS bool
+		mu       sync.Mutex
 	)
 	for result := range dialCh {
 		switch {
@@ -245,7 +244,7 @@ func dial(
 					logger.Warnw("unable to close redundant connection", "error", err)
 				}
 			}
-			conn, cached = result.conn, result.cached
+			conn, cached, usedMDNS = result.conn, result.cached, result.usedMDNS
 			mu.Unlock()
 			cancelParallel()
 		case result.err != nil && result.skipDirect:
@@ -259,6 +258,9 @@ func dial(
 	}
 
 	if conn != nil {
+		if usedMDNS {
+			logger.Debug("connection established with mDNS")
+		}
 		return conn, cached, nil
 	}
 	if err != nil {
