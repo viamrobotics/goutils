@@ -257,7 +257,7 @@ func dial(
 			logger.Debug("failed dial attempt, may still try direct", "error", err)
 		}
 	}
-	wg.Wait()
+
 	if conn != nil {
 		return conn, cached, nil
 	}
