@@ -139,14 +139,15 @@ func dial(
 			conn, cached, err := dialMulticastDNS(ctxParallel, address, logger, dOpts)
 			switch {
 			case err != nil:
-				logger.Warnw("error dialing with mDNS; falling back to other methods", "error", err)
+				logger.Debug("error dialing with mDNS; falling back to other methods", "error", err)
 				dialCh <- dialResult{err: err}
 			case conn != nil:
+				logger.Debug("connected via mDNS")
 				// TODO(docs): how can we get a `nil` connection when there is no error?
 				dialCh <- dialResult{conn: conn, cached: cached}
 			default:
 				errNoConn := errors.New("no connection")
-				logger.Warnw("error dialing with mDNS; falling back to other methods", "error", errNoConn)
+				logger.Debug("error dialing with mDNS; falling back to other methods", "error", errNoConn)
 				dialCh <- dialResult{err: errNoConn}
 			}
 		}()
@@ -248,12 +249,12 @@ func dial(
 			mu.Unlock()
 			cancelParallel()
 		case result.err != nil && result.exitEarly:
-			logger.Warnw("failed dial attempt, will not try direct", "error", err)
+			logger.Debug("failed dial attempt, will not try direct", "error", err)
 			mu.Lock()
 			err = result.err
 			mu.Unlock()
 		default:
-			logger.Warnw("failed dial attempt, may still try direct", "error", err)
+			logger.Debug("failed dial attempt, may still try direct", "error", err)
 		}
 	}
 	wg.Wait()
