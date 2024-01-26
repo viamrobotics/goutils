@@ -135,10 +135,12 @@ func dial(
 	)
 	defer cancelParallel()
 	if !dOpts.mdnsOptions.Disable && tryLocal && isJustDomain {
+		dOptsCopy := *dOpts
+
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			conn, cached, err := dialMulticastDNS(ctxParallel, address, logger, dOpts)
+			conn, cached, err := dialMulticastDNS(ctxParallel, address, logger, &dOptsCopy)
 			switch {
 			case err != nil:
 				dialCh <- dialResult{err: err}
@@ -167,7 +169,6 @@ func dial(
 					dialCh <- dialResult{err: err, skipDirect: true}
 					return
 				}
-				// TODO: add lock or copy dOpts to safely mutate concurrently
 				fixupWebRTCOptions(dOpts, target, port)
 
 				// When connecting to an external signaler for WebRTC, we assume we can use the external auth's material.
