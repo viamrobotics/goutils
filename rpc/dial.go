@@ -89,7 +89,7 @@ func dialInner(
 // no way to connect on any of them.
 var ErrConnectionOptionsExhausted = errors.New("exhausted all connection options with no way to connect")
 
-// dialResult contains information about a concurrent dial attempt
+// dialResult contains information about a concurrent dial attempt.
 type dialResult struct {
 	// a successfully established connection
 	conn ClientConn
