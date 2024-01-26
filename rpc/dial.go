@@ -98,7 +98,7 @@ type dialResult struct {
 	// connection errors
 	err error
 	// whether we should skip dialing gRPC directly as a fallback
-	exitEarly bool
+	skipDirect bool
 }
 
 func dial(
@@ -166,7 +166,7 @@ func dial(
 				target, port, err := getWebRTCTargetFromAddressWithDefaults(signalingAddress)
 				if err != nil {
 					// TODO(docs): why don't we try dialing directly after this error?
-					dialCh <- dialResult{err: err, exitEarly: true}
+					dialCh <- dialResult{err: err, skipDirect: true}
 					return
 				}
 				// TODO: add lock or copy dOpts to safely mutate concurrently
@@ -215,9 +215,9 @@ func dial(
 				dialCh <- dialResult{conn: conn, cached: cached}
 			case !errors.Is(err, ErrNoWebRTCSignaler):
 				// TODO(docs): why don't we try dialing directly after this error?
-				dialCh <- dialResult{err: err, exitEarly: true}
+				dialCh <- dialResult{err: err, skipDirect: true}
 			case ctxParallel.Err() != nil:
-				dialCh <- dialResult{err: err, exitEarly: true}
+				dialCh <- dialResult{err: err, skipDirect: true}
 			default:
 				dialCh <- dialResult{err: err}
 			}
@@ -248,7 +248,7 @@ func dial(
 			conn, cached = result.conn, result.cached
 			mu.Unlock()
 			cancelParallel()
-		case result.err != nil && result.exitEarly:
+		case result.err != nil && result.skipDirect:
 			logger.Debug("failed dial attempt, will not try direct", "error", err)
 			mu.Lock()
 			err = result.err
