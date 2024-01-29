@@ -142,7 +142,8 @@ func dial(
 			case err != nil:
 				dialCh <- dialResult{err: err}
 			case conn != nil:
-				// TODO(docs): how can we get a `nil` connection when there is no error?
+				// TODO(RSDK-6490): investigate why we can get a `nil` connection that is
+				// not accompanied with an error.
 				dialCh <- dialResult{conn: conn, cached: cached, usedMDNS: true}
 			default:
 				dialCh <- dialResult{err: errors.New("no connection")}
