@@ -231,12 +231,10 @@ func dial(
 		cached   bool
 		err      error
 		usedMDNS bool
-		mu       sync.Mutex
 	)
 	for result := range dialCh {
 		switch {
 		case result.err == nil && result.conn != nil:
-			mu.Lock()
 			if conn != nil {
 				errClose := conn.Close()
 				if errClose != nil {
@@ -244,13 +242,10 @@ func dial(
 				}
 			}
 			conn, cached, usedMDNS = result.conn, result.cached, result.usedMDNS
-			mu.Unlock()
 			cancelParallel()
 		case result.err != nil && result.skipDirect:
 			logger.Debug("failed dial attempt, will not try direct", "error", err)
-			mu.Lock()
 			err = result.err
-			mu.Unlock()
 		default:
 			logger.Debug("failed dial attempt, may still try direct", "error", err)
 		}
