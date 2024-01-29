@@ -218,7 +218,7 @@ func dial(
 				// TODO(RSDK-6493): Investigate if we must `skipDirect` here.
 				dialCh <- dialResult{err: err, skipDirect: true}
 			case ctxParallel.Err() != nil:
-				dialCh <- dialResult{err: err, skipDirect: true}
+				dialCh <- dialResult{err: ctxParallel.Err(), skipDirect: true}
 			default:
 				dialCh <- dialResult{err: err}
 			}
