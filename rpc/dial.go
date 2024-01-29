@@ -167,7 +167,7 @@ func dial(
 				}
 				target, port, err := getWebRTCTargetFromAddressWithDefaults(signalingAddress)
 				if err != nil {
-					// TODO(docs): why don't we try dialing directly after this error?
+					// TODO(RSDK-6493): Investigate if we must `skipDirect` here.
 					dialCh <- dialResult{err: err, skipDirect: true}
 					return
 				}
