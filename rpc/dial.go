@@ -125,6 +125,10 @@ func dial(
 		isJustDomain = net.ParseIP(address) == nil
 	}
 
+	// RSDK-6151: We make concurrent dial attempts via mDNS and WebRTC, taking the first
+	// connection that succeeds. We then cancel the slower connection and wait for its
+	// coroutine to complete. If the slower connection succeeds before it can be
+	// cancelled then we explicitly close it to prevent a memory leak.
 	var (
 		wg                          sync.WaitGroup
 		dialCh                      = make(chan dialResult)
