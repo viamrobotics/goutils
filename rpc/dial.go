@@ -96,8 +96,6 @@ type dialResult struct {
 	err error
 	// whether we should skip dialing gRPC directly as a fallback
 	skipDirect bool
-	// whether a connection was established using mDNS
-	usedMDNS bool
 }
 
 func dial(
@@ -148,7 +146,7 @@ func dial(
 			case conn != nil:
 				// TODO(RSDK-6490): investigate why we can get a `nil` connection that is
 				// not accompanied with an error.
-				dialCh <- dialResult{conn: conn, cached: cached, usedMDNS: true}
+				dialCh <- dialResult{conn: conn, cached: cached}
 			default:
 				dialCh <- dialResult{err: errors.New("no connection")}
 			}
@@ -208,10 +206,12 @@ func dial(
 
 			switch {
 			case err == nil:
-				if !cached {
-					logger.Debug("connected via WebRTC")
-				} else if dOpts.debug {
-					logger.Debug("connected via WebRTC (cached)")
+				if dOpts.debug {
+					logger.Debugw("connected via WebRTC",
+						"address", address,
+						"cached", cached,
+						"using mDNS", dOpts.usingMDNS,
+					)
 				}
 				dialCh <- dialResult{conn: conn, cached: cached}
 			case !errors.Is(err, ErrNoWebRTCSignaler):
@@ -225,18 +225,17 @@ func dial(
 		}()
 	}
 
-        // Make sure the slower connection attempt is fully cancelled, or if the attempt succeeded,
-        // close the slower connection.
+	// Make sure the slower connection attempt is fully cancelled, or if the attempt succeeded,
+	// close the slower connection.
 	go func() {
 		wg.Wait()
 		close(dialCh)
 	}()
 
 	var (
-		conn     ClientConn
-		cached   bool
-		err      error
-		usedMDNS bool
+		conn   ClientConn
+		cached bool
+		err    error
 	)
 	for result := range dialCh {
 		switch {
@@ -247,20 +246,14 @@ func dial(
 					logger.Warnw("unable to close redundant connection", "error", err)
 				}
 			}
-			conn, cached, usedMDNS = result.conn, result.cached, result.usedMDNS
+			conn, cached = result.conn, result.cached
 			cancelParallel()
 		case result.err != nil && result.skipDirect:
-			logger.Debug("failed dial attempt, will not try direct", "error", err)
 			err = result.err
-		default:
-			logger.Debug("failed dial attempt, may still try direct", "error", err)
 		}
 	}
 
 	if conn != nil {
-		if usedMDNS {
-			logger.Debug("connection established with mDNS")
-		}
 		return conn, cached, nil
 	}
 	if err != nil {
@@ -277,10 +270,12 @@ func dial(
 	if err != nil {
 		return nil, false, err
 	}
-	if !cached {
-		logger.Debugw("connected via gRPC", "address", address)
-	} else if dOpts.debug {
-		logger.Debugw("connected via gRPC (cached)", "address", address)
+	if dOpts.debug {
+		logger.Debugw("connected via gRPC",
+			"address", address,
+			"cached", cached,
+			"using mDNS", dOpts.usingMDNS,
+		)
 	}
 	return conn, cached, nil
 }
@@ -380,11 +375,6 @@ func dialMulticastDNS(
 
 	conn, cached, err := dial(ctx, localAddress, address, logger, &dOptsCopy, false)
 	if err == nil {
-		if !cached {
-			logger.Debugw("connected via mDNS", "address", localAddress)
-		} else if dOptsCopy.debug {
-			logger.Debugw("connected via mDNS (cached)", "address", localAddress)
-		}
 		return conn, cached, nil
 	}
 	return nil, false, err
