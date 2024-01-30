@@ -225,6 +225,8 @@ func dial(
 		}()
 	}
 
+        // Make sure the slower connection attempt is fully cancelled, or if the attempt succeeded,
+        // close the slower connection.
 	go func() {
 		wg.Wait()
 		close(dialCh)
