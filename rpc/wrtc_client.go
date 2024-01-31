@@ -92,14 +92,14 @@ func DialWebRTC(
 	}
 	dOpts.webrtcOpts.Disable = false
 	dOpts.webrtcOpts.SignalingServerAddress = signalingServer
-	return dialInner(ctx, host, logger, &dOpts)
+	return dialInner(ctx, host, logger, dOpts)
 }
 
 func dialWebRTC(
 	ctx context.Context,
 	signalingServer string,
 	host string,
-	dOpts *dialOptions,
+	dOpts dialOptions,
 	logger golog.Logger,
 ) (ch *webrtcClientChannel, err error) {
 	logger = logger.Named("webrtc")
@@ -112,7 +112,7 @@ func dialWebRTC(
 		"host", host,
 	)
 
-	dOptsCopy := *dOpts
+	dOptsCopy := dOpts
 	if dOpts.webrtcOpts.SignalingInsecure {
 		dOptsCopy.insecure = true
 	} else {
@@ -144,7 +144,7 @@ func dialWebRTC(
 		}
 	}
 
-	conn, _, err := dialDirectGRPC(dialCtx, signalingServer, &dOptsCopy, logger)
+	conn, _, err := dialDirectGRPC(dialCtx, signalingServer, dOptsCopy, logger)
 	if err != nil {
 		return nil, err
 	}

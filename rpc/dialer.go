@@ -218,11 +218,11 @@ func DialDirectGRPC(ctx context.Context, address string, logger golog.Logger, op
 		logger = zap.NewNop().Sugar()
 	}
 
-	return dialInner(ctx, address, logger, &dOpts)
+	return dialInner(ctx, address, logger, dOpts)
 }
 
 // dialDirectGRPC dials a gRPC server directly.
-func dialDirectGRPC(ctx context.Context, address string, dOpts *dialOptions, logger golog.Logger) (ClientConn, bool, error) {
+func dialDirectGRPC(ctx context.Context, address string, dOpts dialOptions, logger golog.Logger) (ClientConn, bool, error) {
 	dialOpts := []grpc.DialOption{
 		grpc.WithBlock(),
 		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(MaxMessageSize)),
@@ -315,7 +315,7 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts *dialOptions, log
 				logger.Debugw("will eventually authenticate externally to entity", "entity", dOpts.externalAuthToEntity)
 				logger.Debugw("dialing direct for external auth", "address", dOpts.externalAuthAddr)
 			}
-			dialOptsCopy := *dOpts
+			dialOptsCopy := dOpts
 			dialOptsCopy.insecure = dOpts.externalAuthInsecure
 			dialOptsCopy.externalAuthAddr = ""
 			dialOptsCopy.externalAuthMaterial = ""
@@ -325,7 +325,7 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts *dialOptions, log
 			// reset the tls config that is used for the external Auth Service.
 			dialOptsCopy.tlsConfig = newDefaultTLSConfig()
 
-			externalConn, externalCached, err := dialDirectGRPC(ctx, dOpts.externalAuthAddr, &dialOptsCopy, logger)
+			externalConn, externalCached, err := dialDirectGRPC(ctx, dOpts.externalAuthAddr, dialOptsCopy, logger)
 			if err != nil {
 				return nil, false, err
 			}
@@ -376,7 +376,7 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts *dialOptions, log
 // is the same between dials. That means any time a new way that differs
 // authentication based on options is introduced, this function should
 // also be updated.
-func buildKeyExtra(opts *dialOptions) string {
+func buildKeyExtra(opts dialOptions) string {
 	hasher := fnv.New128a()
 	if opts.authEntity != "" {
 		hasher.Write([]byte(opts.authEntity))
