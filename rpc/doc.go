@@ -10,10 +10,16 @@ https://github.com/jsmouret/grpc-over-webrtc.
 
 # Connection
 
-All connections to RPC servers are done by way of the Dial method which will try multiple
-mechanisms to connect to a target server. By default it will try to connect in the following
-order: mDNS (direct/WebRTC), WebRTC, Direct gRPC. This ordering can be modified by disabling
-some of these methods with DialOptions.
+All connections to RPC servers are done by way of the Dial method which will try the
+following mechanisms to connect to a target server:
+
+1. mDNS (direct/WebRTC)
+2. WebRTC
+3. Direct gRPC
+
+By default it will try to connect with mDNS (1) and WebRTC (2) in parallel and use the
+first established connection. If both fail then it will try to connection with Direct
+gRPC. This ordering can be modified by disabling some of these methods with DialOptions.
 
 # Direct gRPC
 
