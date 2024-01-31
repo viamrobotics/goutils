@@ -44,7 +44,7 @@ export interface DialOptions {
   // externalAuthAddress, externalAuthToEntity, webrtcOptions.signalingAccessToken
   accessToken?: string | undefined;
 
-  // set timeout in milliseconds for dialing. default is 5000.
+  // set timeout in milliseconds for dialing.
   dialTimeout?: number | undefined;
 }
 
@@ -589,12 +589,14 @@ export async function dialWebRTC(
 
     const cc = new ClientChannel(pc, dc);
 
-    // set timeout for dial attempt
-    setTimeout(() => {
-      if (!successful) {
-        cc.close();
-      }
-    }, opts.dialTimeout ?? 5000);
+    // set timeout for dial attempt if a timeout is specified
+    if (opts.dialTimeout) {
+      setTimeout(() => {
+        if (!successful) {
+          cc.close();
+        }
+      }, opts.dialTimeout);
+    }
 
     cc.ready
       .then(() => clientEndResolve())
