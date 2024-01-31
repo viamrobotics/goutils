@@ -572,9 +572,11 @@ export async function dialWebRTC(
           clientEndReject(new ConnectionClosedError('failed to dial'));
           return;
         }
-        if (cc?.isClosed()){
-          clientEndReject(new ConnectionClosedError('client channel is closed'));
-          return
+        if (cc?.isClosed()) {
+          clientEndReject(
+            new ConnectionClosedError('client channel is closed')
+          );
+          return;
         }
         console.error(statusMessage);
         clientEndReject(statusMessage);
