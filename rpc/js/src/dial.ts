@@ -596,7 +596,7 @@ export async function dialWebRTC(
           cc.close();
         }
       },
-      opts?.dialTimeout ? opts?.dialTimeout : 5000
+      opts.dialTimeout ?? 5000
     );
 
     cc.ready
