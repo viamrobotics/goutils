@@ -43,6 +43,9 @@ export interface DialOptions {
   // If enabled, other auth options have no affect. Eg. authEntity, credentials,
   // externalAuthAddress, externalAuthToEntity, webrtcOptions.signalingAccessToken
   accessToken?: string | undefined;
+
+  // set timeout in milliseconds for dialing the robot. default is 5000.
+  dialTimeout?: number| undefined;
 }
 
 export interface DialWebRTCOptions {
@@ -514,6 +517,10 @@ export async function dialWebRTC(
         const remoteSDP = new RTCSessionDescription(
           JSON.parse(atob(init.getSdp()))
         );
+        if (cc.isClosed()){
+          sendError('client channel is closed');
+          return
+        }
         await pc.setRemoteDescription(remoteSDP);
 
         pResolve(true);
@@ -581,6 +588,14 @@ export async function dialWebRTC(
     client.send(callRequest);
 
     const cc = new ClientChannel(pc, dc);
+
+    // set timeout for dial attempt
+    setTimeout(() => {
+      if(!successful){
+        cc.close()
+      }
+    }, opts?.dialTimeout ? opts?.dialTimeout: 5000)
+    
     cc.ready
       .then(() => clientEndResolve())
       .catch((err) => clientEndReject(err));
