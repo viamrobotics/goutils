@@ -337,41 +337,39 @@ func dialMulticastDNS(
 		logger.Debugw("found address via mDNS", "address", localAddress)
 	}
 
-	dOptsCopy := dOpts
-
 	// Let downstream calls know when mdns was used. This is helpful to inform
 	// when determining if we want to use the external auth credentials for the signaling
 	// in cases where the external signaling is the same as the external auth. For mdns
 	// this isn't the case.
-	dOptsCopy.usingMDNS = true
+	dOpts.usingMDNS = true
 
-	if dOptsCopy.mdnsOptions.RemoveAuthCredentials {
-		dOptsCopy.creds = Credentials{}
-		dOptsCopy.authEntity = ""
-		dOptsCopy.externalAuthToEntity = ""
-		dOptsCopy.externalAuthMaterial = ""
+	if dOpts.mdnsOptions.RemoveAuthCredentials {
+		dOpts.creds = Credentials{}
+		dOpts.authEntity = ""
+		dOpts.externalAuthToEntity = ""
+		dOpts.externalAuthMaterial = ""
 	}
 
 	if hasWebRTC {
-		dOptsCopy.fixupWebRTCOptions(entry.AddrIPv4[0].String(), uint16(entry.Port))
-		if dOptsCopy.mdnsOptions.RemoveAuthCredentials {
-			dOptsCopy.webrtcOpts.SignalingAuthEntity = ""
-			dOptsCopy.webrtcOpts.SignalingCreds = Credentials{}
-			dOptsCopy.webrtcOpts.SignalingExternalAuthAuthMaterial = ""
+		dOpts.fixupWebRTCOptions(entry.AddrIPv4[0].String(), uint16(entry.Port))
+		if dOpts.mdnsOptions.RemoveAuthCredentials {
+			dOpts.webrtcOpts.SignalingAuthEntity = ""
+			dOpts.webrtcOpts.SignalingCreds = Credentials{}
+			dOpts.webrtcOpts.SignalingExternalAuthAuthMaterial = ""
 		}
 	} else {
-		dOptsCopy.webrtcOpts.Disable = true
+		dOpts.webrtcOpts.Disable = true
 	}
 	var tlsConfig *tls.Config
-	if dOptsCopy.tlsConfig == nil {
+	if dOpts.tlsConfig == nil {
 		tlsConfig = newDefaultTLSConfig()
 	} else {
-		tlsConfig = dOptsCopy.tlsConfig.Clone()
+		tlsConfig = dOpts.tlsConfig.Clone()
 	}
 	tlsConfig.ServerName = address
-	dOptsCopy.tlsConfig = tlsConfig
+	dOpts.tlsConfig = tlsConfig
 
-	conn, cached, err := dial(ctx, localAddress, address, logger, dOptsCopy, false)
+	conn, cached, err := dial(ctx, localAddress, address, logger, dOpts, false)
 	if err == nil {
 		return conn, cached, nil
 	}
