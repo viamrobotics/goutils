@@ -44,7 +44,7 @@ export interface DialOptions {
   // externalAuthAddress, externalAuthToEntity, webrtcOptions.signalingAccessToken
   accessToken?: string | undefined;
 
-  // set timeout in milliseconds for dialing the robot. default is 5000.
+  // set timeout in milliseconds for dialing. default is 5000.
   dialTimeout?: number | undefined;
 }
 
