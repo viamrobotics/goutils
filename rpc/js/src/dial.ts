@@ -590,14 +590,11 @@ export async function dialWebRTC(
     const cc = new ClientChannel(pc, dc);
 
     // set timeout for dial attempt
-    setTimeout(
-      () => {
-        if (!successful) {
-          cc.close();
-        }
-      },
-      opts.dialTimeout ?? 5000
-    );
+    setTimeout(() => {
+      if (!successful) {
+        cc.close();
+      }
+    }, opts.dialTimeout ?? 5000);
 
     cc.ready
       .then(() => clientEndResolve())
