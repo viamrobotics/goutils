@@ -500,6 +500,9 @@ export async function dialWebRTC(
       await pc.setLocalDescription(offerDesc);
     }
 
+    // initialize cc here so we can use it in the callbacks
+    let cc: ClientChannel;
+
     let haveInit = false;
     // TS says that CallResponse isn't a valid type here. More investigation required.
     client.onMessage(async (message: ProtobufMessage) => {
@@ -517,7 +520,7 @@ export async function dialWebRTC(
         const remoteSDP = new RTCSessionDescription(
           JSON.parse(atob(init.getSdp()))
         );
-        if (cc.isClosed()) {
+        if (cc?.isClosed()) {
           sendError('client channel is closed');
           return;
         }
@@ -569,6 +572,10 @@ export async function dialWebRTC(
           clientEndReject(new ConnectionClosedError('failed to dial'));
           return;
         }
+        if (cc?.isClosed()){
+          clientEndReject(new ConnectionClosedError('client channel is closed'));
+          return
+        }
         console.error(statusMessage);
         clientEndReject(statusMessage);
       }
@@ -587,7 +594,7 @@ export async function dialWebRTC(
     }
     client.send(callRequest);
 
-    const cc = new ClientChannel(pc, dc);
+    cc = new ClientChannel(pc, dc);
 
     // set timeout for dial attempt if a timeout is specified
     if (opts.dialTimeout) {
