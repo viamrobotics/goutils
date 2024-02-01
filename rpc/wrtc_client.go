@@ -112,39 +112,39 @@ func dialWebRTC(
 		"host", host,
 	)
 
-	dOptsCopy := dOpts
-	if dOpts.webrtcOpts.SignalingInsecure {
-		dOptsCopy.insecure = true
-	} else {
-		dOptsCopy.insecure = false
-	}
+	var dialSignalingServer = func(ctx context.Context, logger golog.Logger, dOpts dialOptions) (ClientConn, error) {
+		dOpts.insecure = dOpts.webrtcOpts.SignalingInsecure
 
-	// replace auth entity and creds
-	dOptsCopy.authEntity = dOpts.webrtcOpts.SignalingAuthEntity
-	dOptsCopy.creds = dOpts.webrtcOpts.SignalingCreds
-	dOptsCopy.externalAuthAddr = dOpts.webrtcOpts.SignalingExternalAuthAddress
-	dOptsCopy.externalAuthToEntity = dOpts.webrtcOpts.SignalingExternalAuthToEntity
-	dOptsCopy.externalAuthInsecure = dOpts.webrtcOpts.SignalingExternalAuthInsecure
-	dOptsCopy.externalAuthMaterial = dOpts.webrtcOpts.SignalingExternalAuthAuthMaterial
+		// replace auth entity and creds
+		dOpts.authEntity = dOpts.webrtcOpts.SignalingAuthEntity
+		dOpts.creds = dOpts.webrtcOpts.SignalingCreds
+		dOpts.externalAuthAddr = dOpts.webrtcOpts.SignalingExternalAuthAddress
+		dOpts.externalAuthToEntity = dOpts.webrtcOpts.SignalingExternalAuthToEntity
+		dOpts.externalAuthInsecure = dOpts.webrtcOpts.SignalingExternalAuthInsecure
+		dOpts.externalAuthMaterial = dOpts.webrtcOpts.SignalingExternalAuthAuthMaterial
 
-	// ignore AuthEntity when auth material is available.
-	if dOptsCopy.authEntity == "" {
-		if dOptsCopy.externalAuthAddr == "" {
-			// if we are not doing external auth, then the entity is assumed to be the actual host.
-			if dOpts.debug {
-				logger.Debugw("auth entity empty; setting to host", "host", host)
+		// ignore AuthEntity when auth material is available.
+		if dOpts.authEntity == "" {
+			if dOpts.externalAuthAddr == "" {
+				// if we are not doing external auth, then the entity is assumed to be the actual host.
+				if dOpts.debug {
+					logger.Debugw("auth entity empty; setting to host", "host", host)
+				}
+				dOpts.authEntity = host
+			} else {
+				// otherwise it's the external auth address.
+				if dOpts.debug {
+					logger.Debugw("auth entity empty; setting to external auth address", "address", dOpts.externalAuthAddr)
+				}
+				dOpts.authEntity = dOpts.externalAuthAddr
 			}
-			dOptsCopy.authEntity = host
-		} else {
-			// otherwise it's the external auth address.
-			if dOpts.debug {
-				logger.Debugw("auth entity empty; setting to external auth address", "address", dOptsCopy.externalAuthAddr)
-			}
-			dOptsCopy.authEntity = dOptsCopy.externalAuthAddr
 		}
+
+		conn, _, err := dialDirectGRPC(ctx, signalingServer, dOpts, logger)
+		return conn, err
 	}
 
-	conn, _, err := dialDirectGRPC(dialCtx, signalingServer, dOptsCopy, logger)
+	conn, err := dialSignalingServer(dialCtx, logger, dOpts)
 	if err != nil {
 		return nil, err
 	}
@@ -169,11 +169,11 @@ func dialWebRTC(
 	}
 
 	config := DefaultWebRTCConfiguration
-	if dOptsCopy.webrtcOpts.Config != nil {
-		config = *dOptsCopy.webrtcOpts.Config
+	if dOpts.webrtcOpts.Config != nil {
+		config = *dOpts.webrtcOpts.Config
 	}
 	extendedConfig := extendWebRTCConfig(&config, configResp.Config)
-	pc, dc, err := newPeerConnectionForClient(ctx, extendedConfig, dOptsCopy.webrtcOpts.DisableTrickleICE, logger)
+	pc, dc, err := newPeerConnectionForClient(ctx, extendedConfig, dOpts.webrtcOpts.DisableTrickleICE, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -214,7 +214,7 @@ func dialWebRTC(
 	}
 
 	remoteDescSet := make(chan struct{})
-	if !dOptsCopy.webrtcOpts.DisableTrickleICE {
+	if !dOpts.webrtcOpts.DisableTrickleICE {
 		offer, err := pc.CreateOffer(nil)
 		if err != nil {
 			return nil, err
@@ -333,7 +333,7 @@ func dialWebRTC(
 				}
 				close(remoteDescSet)
 
-				if dOptsCopy.webrtcOpts.DisableTrickleICE {
+				if dOpts.webrtcOpts.DisableTrickleICE {
 					return sendDone()
 				}
 			case *webrtcpb.CallResponse_Update:
