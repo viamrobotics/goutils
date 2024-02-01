@@ -309,7 +309,6 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts dialOptions, logg
 		}
 		if dOpts.externalAuthAddr != "" {
 			externalConn, err := dialExternalAuthEntity(ctx, logger, dOpts)
-
 			if err != nil {
 				return nil, false, err
 			}

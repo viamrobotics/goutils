@@ -112,7 +112,7 @@ func dialWebRTC(
 		"host", host,
 	)
 
-	var dialSignalingServer = func(ctx context.Context, logger golog.Logger, dOpts dialOptions) (ClientConn, error) {
+	dialSignalingServer := func(ctx context.Context, logger golog.Logger, dOpts dialOptions) (ClientConn, error) {
 		dOpts.insecure = dOpts.webrtcOpts.SignalingInsecure
 
 		// replace auth entity and creds
