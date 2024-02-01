@@ -112,39 +112,7 @@ func dialWebRTC(
 		"host", host,
 	)
 
-	dialSignalingServer := func(ctx context.Context, logger golog.Logger, dOpts dialOptions) (ClientConn, error) {
-		dOpts.insecure = dOpts.webrtcOpts.SignalingInsecure
-
-		// replace auth entity and creds
-		dOpts.authEntity = dOpts.webrtcOpts.SignalingAuthEntity
-		dOpts.creds = dOpts.webrtcOpts.SignalingCreds
-		dOpts.externalAuthAddr = dOpts.webrtcOpts.SignalingExternalAuthAddress
-		dOpts.externalAuthToEntity = dOpts.webrtcOpts.SignalingExternalAuthToEntity
-		dOpts.externalAuthInsecure = dOpts.webrtcOpts.SignalingExternalAuthInsecure
-		dOpts.externalAuthMaterial = dOpts.webrtcOpts.SignalingExternalAuthAuthMaterial
-
-		// ignore AuthEntity when auth material is available.
-		if dOpts.authEntity == "" {
-			if dOpts.externalAuthAddr == "" {
-				// if we are not doing external auth, then the entity is assumed to be the actual host.
-				if dOpts.debug {
-					logger.Debugw("auth entity empty; setting to host", "host", host)
-				}
-				dOpts.authEntity = host
-			} else {
-				// otherwise it's the external auth address.
-				if dOpts.debug {
-					logger.Debugw("auth entity empty; setting to external auth address", "address", dOpts.externalAuthAddr)
-				}
-				dOpts.authEntity = dOpts.externalAuthAddr
-			}
-		}
-
-		conn, _, err := dialDirectGRPC(ctx, signalingServer, dOpts, logger)
-		return conn, err
-	}
-
-	conn, err := dialSignalingServer(dialCtx, logger, dOpts)
+	conn, err := dialSignalingServer(dialCtx, signalingServer, host, logger, dOpts)
 	if err != nil {
 		return nil, err
 	}
@@ -389,4 +357,42 @@ func dialWebRTC(
 	}
 	successful = true
 	return clientCh, nil
+}
+
+func dialSignalingServer(
+	ctx context.Context,
+	signalingServer string,
+	host string,
+	logger golog.Logger,
+	dOpts dialOptions,
+) (ClientConn, error) {
+	dOpts.insecure = dOpts.webrtcOpts.SignalingInsecure
+
+	// replace auth entity and creds
+	dOpts.authEntity = dOpts.webrtcOpts.SignalingAuthEntity
+	dOpts.creds = dOpts.webrtcOpts.SignalingCreds
+	dOpts.externalAuthAddr = dOpts.webrtcOpts.SignalingExternalAuthAddress
+	dOpts.externalAuthToEntity = dOpts.webrtcOpts.SignalingExternalAuthToEntity
+	dOpts.externalAuthInsecure = dOpts.webrtcOpts.SignalingExternalAuthInsecure
+	dOpts.externalAuthMaterial = dOpts.webrtcOpts.SignalingExternalAuthAuthMaterial
+
+	// ignore AuthEntity when auth material is available.
+	if dOpts.authEntity == "" {
+		if dOpts.externalAuthAddr == "" {
+			// if we are not doing external auth, then the entity is assumed to be the actual host.
+			if dOpts.debug {
+				logger.Debugw("auth entity empty; setting to host", "host", host)
+			}
+			dOpts.authEntity = host
+		} else {
+			// otherwise it's the external auth address.
+			if dOpts.debug {
+				logger.Debugw("auth entity empty; setting to external auth address", "address", dOpts.externalAuthAddr)
+			}
+			dOpts.authEntity = dOpts.externalAuthAddr
+		}
+	}
+
+	conn, _, err := dialDirectGRPC(ctx, signalingServer, dOpts, logger)
+	return conn, err
 }
