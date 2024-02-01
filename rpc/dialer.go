@@ -308,7 +308,7 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts dialOptions, logg
 			logger.Debugw("will eventually authenticate as entity", "entity", dOpts.authEntity)
 		}
 		if dOpts.externalAuthAddr != "" {
-			externalConn, err := dialAuthEntity(ctx, logger, dOpts)
+			externalConn, err := dialExternalAuthEntity(ctx, logger, dOpts)
 
 			if err != nil {
 				return nil, false, err
@@ -349,7 +349,7 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts dialOptions, logg
 	return conn, cached, err
 }
 
-func dialAuthEntity(ctx context.Context, logger golog.Logger, dOpts dialOptions) (ClientConn, error) {
+func dialExternalAuthEntity(ctx context.Context, logger golog.Logger, dOpts dialOptions) (ClientConn, error) {
 	if dOpts.externalAuthToEntity == "" {
 		return nil, errors.New("external auth address set but no authenticate to option set")
 	}
