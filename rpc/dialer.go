@@ -308,35 +308,12 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts dialOptions, logg
 			logger.Debugw("will eventually authenticate as entity", "entity", dOpts.authEntity)
 		}
 		if dOpts.externalAuthAddr != "" {
-			if dOpts.externalAuthToEntity == "" {
-				return nil, false, errors.New("external auth address set but no authenticate to option set")
-			}
-			if dOpts.debug {
-				logger.Debugw("will eventually authenticate externally to entity", "entity", dOpts.externalAuthToEntity)
-				logger.Debugw("dialing direct for external auth", "address", dOpts.externalAuthAddr)
-			}
-			dialOptsCopy := dOpts
-			dialOptsCopy.insecure = dOpts.externalAuthInsecure
-			dialOptsCopy.externalAuthAddr = ""
-			dialOptsCopy.externalAuthMaterial = ""
-			dialOptsCopy.creds = Credentials{}
-			dialOptsCopy.authEntity = ""
+			externalConn, err := dialAuthEntity(ctx, logger, dOpts)
 
-			// reset the tls config that is used for the external Auth Service.
-			dialOptsCopy.tlsConfig = newDefaultTLSConfig()
-
-			externalConn, externalCached, err := dialDirectGRPC(ctx, dOpts.externalAuthAddr, dialOptsCopy, logger)
 			if err != nil {
 				return nil, false, err
 			}
 
-			if dOpts.debug {
-				if externalCached {
-					logger.Debugw("connected directly for external auth (cached)", "address", dOpts.externalAuthAddr)
-				} else {
-					logger.Debugw("connected directly for external auth", "address", dOpts.externalAuthAddr)
-				}
-			}
 			closeCredsFunc = externalConn.Close
 			rpcCreds.conn = externalConn
 			rpcCreds.externalAuthToEntity = dOpts.externalAuthToEntity
@@ -370,6 +347,33 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts dialOptions, logg
 		conn = clientConnRPCAuthenticator{conn, rpcCreds}
 	}
 	return conn, cached, err
+}
+
+func dialAuthEntity(ctx context.Context, logger golog.Logger, dOpts dialOptions) (ClientConn, error) {
+	if dOpts.externalAuthToEntity == "" {
+		return nil, errors.New("external auth address set but no authenticate to option set")
+	}
+	if dOpts.debug {
+		logger.Debugw("will eventually authenticate externally to entity", "entity", dOpts.externalAuthToEntity)
+		logger.Debugw("dialing direct for external auth", "address", dOpts.externalAuthAddr)
+	}
+
+	address := dOpts.externalAuthAddr
+	dOpts.externalAuthAddr = ""
+
+	dOpts.insecure = dOpts.externalAuthInsecure
+	dOpts.externalAuthMaterial = ""
+	dOpts.creds = Credentials{}
+	dOpts.authEntity = ""
+
+	// reset the tls config that is used for the external Auth Service.
+	dOpts.tlsConfig = newDefaultTLSConfig()
+
+	conn, cached, err := dialDirectGRPC(ctx, address, dOpts, logger)
+	if dOpts.debug {
+		logger.Debugw("connected directly for external auth", "address", address, "cached", cached)
+	}
+	return conn, err
 }
 
 // buildKeyExtra hashes options to only cache when authentication material
