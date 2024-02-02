@@ -379,43 +379,43 @@ func dialExternalAuthEntity(ctx context.Context, logger golog.Logger, dOpts dial
 // is the same between dials. That means any time a new way that differs
 // authentication based on options is introduced, this function should
 // also be updated.
-func (opts dialOptions) cacheKey() string {
+func (dOpts dialOptions) cacheKey() string {
 	hasher := fnv.New128a()
-	if opts.authEntity != "" {
-		hasher.Write([]byte(opts.authEntity))
+	if dOpts.authEntity != "" {
+		hasher.Write([]byte(dOpts.authEntity))
 	}
-	if opts.creds.Type != "" {
-		hasher.Write([]byte(opts.creds.Type))
+	if dOpts.creds.Type != "" {
+		hasher.Write([]byte(dOpts.creds.Type))
 	}
-	if opts.creds.Payload != "" {
-		hasher.Write([]byte(opts.creds.Payload))
+	if dOpts.creds.Payload != "" {
+		hasher.Write([]byte(dOpts.creds.Payload))
 	}
-	if opts.externalAuthAddr != "" {
-		hasher.Write([]byte(opts.externalAuthAddr))
+	if dOpts.externalAuthAddr != "" {
+		hasher.Write([]byte(dOpts.externalAuthAddr))
 	}
-	if opts.externalAuthToEntity != "" {
-		hasher.Write([]byte(opts.externalAuthToEntity))
+	if dOpts.externalAuthToEntity != "" {
+		hasher.Write([]byte(dOpts.externalAuthToEntity))
 	}
-	if opts.externalAuthMaterial != "" {
-		hasher.Write([]byte(opts.externalAuthMaterial))
+	if dOpts.externalAuthMaterial != "" {
+		hasher.Write([]byte(dOpts.externalAuthMaterial))
 	}
-	if opts.webrtcOpts.SignalingServerAddress != "" {
-		hasher.Write([]byte(opts.webrtcOpts.SignalingServerAddress))
+	if dOpts.webrtcOpts.SignalingServerAddress != "" {
+		hasher.Write([]byte(dOpts.webrtcOpts.SignalingServerAddress))
 	}
-	if opts.webrtcOpts.SignalingExternalAuthAddress != "" {
-		hasher.Write([]byte(opts.webrtcOpts.SignalingExternalAuthAddress))
+	if dOpts.webrtcOpts.SignalingExternalAuthAddress != "" {
+		hasher.Write([]byte(dOpts.webrtcOpts.SignalingExternalAuthAddress))
 	}
-	if opts.webrtcOpts.SignalingExternalAuthToEntity != "" {
-		hasher.Write([]byte(opts.webrtcOpts.SignalingExternalAuthToEntity))
+	if dOpts.webrtcOpts.SignalingExternalAuthToEntity != "" {
+		hasher.Write([]byte(dOpts.webrtcOpts.SignalingExternalAuthToEntity))
 	}
-	if opts.webrtcOpts.SignalingExternalAuthAuthMaterial != "" {
-		hasher.Write([]byte(opts.webrtcOpts.SignalingExternalAuthAuthMaterial))
+	if dOpts.webrtcOpts.SignalingExternalAuthAuthMaterial != "" {
+		hasher.Write([]byte(dOpts.webrtcOpts.SignalingExternalAuthAuthMaterial))
 	}
-	if opts.webrtcOpts.SignalingCreds.Type != "" {
-		hasher.Write([]byte(opts.webrtcOpts.SignalingCreds.Type))
+	if dOpts.webrtcOpts.SignalingCreds.Type != "" {
+		hasher.Write([]byte(dOpts.webrtcOpts.SignalingCreds.Type))
 	}
-	if opts.webrtcOpts.SignalingCreds.Payload != "" {
-		hasher.Write([]byte(opts.webrtcOpts.SignalingCreds.Payload))
+	if dOpts.webrtcOpts.SignalingCreds.Payload != "" {
+		hasher.Write([]byte(dOpts.webrtcOpts.SignalingCreds.Payload))
 	}
 	return hex.EncodeToString(hasher.Sum(nil))
 }
