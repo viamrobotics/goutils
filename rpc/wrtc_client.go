@@ -141,14 +141,14 @@ func dialWebRTC(
 		config = *dOpts.webrtcOpts.Config
 	}
 	extendedConfig := extendWebRTCConfig(&config, configResp.Config)
-	pc, dc, err := newPeerConnectionForClient(ctx, extendedConfig, dOpts.webrtcOpts.DisableTrickleICE, logger)
+	peerConn, dataChannel, err := newPeerConnectionForClient(ctx, extendedConfig, dOpts.webrtcOpts.DisableTrickleICE, logger)
 	if err != nil {
 		return nil, err
 	}
 	var successful bool
 	defer func() {
 		if !successful {
-			err = multierr.Combine(err, pc.Close())
+			err = multierr.Combine(err, peerConn.Close())
 		}
 	}()
 
@@ -183,7 +183,7 @@ func dialWebRTC(
 
 	remoteDescSet := make(chan struct{})
 	if !dOpts.webrtcOpts.DisableTrickleICE {
-		offer, err := pc.CreateOffer(nil)
+		offer, err := peerConn.CreateOffer(nil)
 		if err != nil {
 			return nil, err
 		}
@@ -191,7 +191,7 @@ func dialWebRTC(
 		var pendingCandidates sync.WaitGroup
 		waitOneHost := make(chan struct{})
 		var waitOneHostOnce sync.Once
-		pc.OnICECandidate(func(icecandidate *webrtc.ICECandidate) {
+		peerConn.OnICECandidate(func(icecandidate *webrtc.ICECandidate) {
 			if exchangeCtx.Err() != nil {
 				return
 			}
@@ -232,7 +232,7 @@ func dialWebRTC(
 			})
 		})
 
-		err = pc.SetLocalDescription(offer)
+		err = peerConn.SetLocalDescription(offer)
 		if err != nil {
 			return nil, err
 		}
@@ -244,7 +244,7 @@ func dialWebRTC(
 		}
 	}
 
-	encodedSDP, err := encodeSDP(pc.LocalDescription())
+	encodedSDP, err := encodeSDP(peerConn.LocalDescription())
 	if err != nil {
 		return nil, err
 	}
@@ -264,7 +264,7 @@ func dialWebRTC(
 	}
 
 	//nolint:contextcheck
-	clientCh := newWebRTCClientChannel(pc, dc, logger, dOpts.unaryInterceptor, dOpts.streamInterceptor)
+	clientCh := newWebRTCClientChannel(peerConn, dataChannel, logger, dOpts.unaryInterceptor, dOpts.streamInterceptor)
 
 	exchangeCandidates := func() error {
 		haveInit := false
@@ -295,7 +295,7 @@ func dialWebRTC(
 					return err
 				}
 
-				err = pc.SetRemoteDescription(answer)
+				err = peerConn.SetRemoteDescription(answer)
 				if err != nil {
 					return err
 				}
@@ -312,7 +312,7 @@ func dialWebRTC(
 					return errors.Errorf("uuid mismatch; have=%q want=%q", callResp.Uuid, uuid)
 				}
 				cand := iceCandidateFromProto(s.Update.Candidate)
-				if err := pc.AddICECandidate(cand); err != nil {
+				if err := peerConn.AddICECandidate(cand); err != nil {
 					return err
 				}
 			default:
