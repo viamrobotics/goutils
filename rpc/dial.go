@@ -46,7 +46,7 @@ func dialInner(
 		ctx,
 		"multi",
 		address,
-		buildKeyExtra(dOpts),
+		dOpts.cacheKey(),
 		func() (ClientConn, error) {
 			if dOpts.debug {
 				logger.Debugw("starting to dial", "address", address)
@@ -191,7 +191,7 @@ func dial(
 				ctxParallel,
 				"webrtc",
 				fmt.Sprintf("%s->%s", dOpts.webrtcOpts.SignalingServerAddress, originalAddress),
-				buildKeyExtra(dOpts),
+				dOpts.cacheKey(),
 				func() (ClientConn, error) {
 					return dialWebRTC(
 						ctxParallel,

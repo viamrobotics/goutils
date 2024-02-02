@@ -326,7 +326,7 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts dialOptions, logg
 	var cached bool
 	var err error
 	if ctxDialer := contextDialer(ctx); ctxDialer != nil {
-		conn, cached, err = ctxDialer.DialDirect(ctx, address, buildKeyExtra(dOpts), closeCredsFunc, dialOpts...)
+		conn, cached, err = ctxDialer.DialDirect(ctx, address, dOpts.cacheKey(), closeCredsFunc, dialOpts...)
 	} else {
 		conn, err = grpc.DialContext(ctx, address, dialOpts...)
 		if err == nil && closeCredsFunc != nil {
@@ -375,11 +375,11 @@ func dialExternalAuthEntity(ctx context.Context, logger golog.Logger, dOpts dial
 	return conn, err
 }
 
-// buildKeyExtra hashes options to only cache when authentication material
+// cacheKey hashes options to only cache when authentication material
 // is the same between dials. That means any time a new way that differs
 // authentication based on options is introduced, this function should
 // also be updated.
-func buildKeyExtra(opts dialOptions) string {
+func (opts dialOptions) cacheKey() string {
 	hasher := fnv.New128a()
 	if opts.authEntity != "" {
 		hasher.Write([]byte(opts.authEntity))
