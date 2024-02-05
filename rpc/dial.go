@@ -29,14 +29,14 @@ func Dial(ctx context.Context, address string, logger golog.Logger, opts ...Dial
 		logger = zap.NewNop().Sugar()
 	}
 
-	return dialInner(ctx, address, logger, &dOpts)
+	return dialInner(ctx, address, logger, dOpts)
 }
 
 func dialInner(
 	ctx context.Context,
 	address string,
 	logger golog.Logger,
-	dOpts *dialOptions,
+	dOpts dialOptions,
 ) (ClientConn, error) {
 	if address == "" {
 		return nil, errors.New("address empty")
@@ -46,7 +46,7 @@ func dialInner(
 		ctx,
 		"multi",
 		address,
-		buildKeyExtra(dOpts),
+		dOpts.cacheKey(),
 		func() (ClientConn, error) {
 			if dOpts.debug {
 				logger.Debugw("starting to dial", "address", address)
@@ -103,7 +103,7 @@ func dial(
 	address string,
 	originalAddress string,
 	logger golog.Logger,
-	dOpts *dialOptions,
+	dOpts dialOptions,
 	tryLocal bool,
 ) (ClientConn, bool, error) {
 	if ctx.Err() != nil {
@@ -134,12 +134,10 @@ func dial(
 	)
 	defer cancelParallel()
 	if !dOpts.mdnsOptions.Disable && tryLocal && isJustDomain {
-		dOptsCopy := *dOpts
-
 		wg.Add(1)
-		go func() {
+		go func(dOpts dialOptions) {
 			defer wg.Done()
-			conn, cached, err := dialMulticastDNS(ctxParallel, address, logger, &dOptsCopy)
+			conn, cached, err := dialMulticastDNS(ctxParallel, address, logger, dOpts)
 			switch {
 			case err != nil:
 				dialCh <- dialResult{err: err}
@@ -150,12 +148,12 @@ func dial(
 			default:
 				dialCh <- dialResult{err: errors.New("no connection")}
 			}
-		}()
+		}(dOpts)
 	}
 
 	if !dOpts.webrtcOpts.Disable {
 		wg.Add(1)
-		go func() {
+		go func(dOpts dialOptions) {
 			defer wg.Done()
 			signalingAddress := dOpts.webrtcOpts.SignalingServerAddress
 			if signalingAddress == "" || dOpts.webrtcOpts.AllowAutoDetectAuthOptions {
@@ -169,7 +167,7 @@ func dial(
 					dialCh <- dialResult{err: err, skipDirect: true}
 					return
 				}
-				fixupWebRTCOptions(dOpts, target, port)
+				dOpts.fixupWebRTCOptions(target, port)
 
 				// When connecting to an external signaler for WebRTC, we assume we can use the external auth's material.
 				// This path is also called by an mdns direct connection and ignores that case.
@@ -193,7 +191,7 @@ func dial(
 				ctxParallel,
 				"webrtc",
 				fmt.Sprintf("%s->%s", dOpts.webrtcOpts.SignalingServerAddress, originalAddress),
-				buildKeyExtra(dOpts),
+				dOpts.cacheKey(),
 				func() (ClientConn, error) {
 					return dialWebRTC(
 						ctxParallel,
@@ -222,7 +220,7 @@ func dial(
 			default:
 				dialCh <- dialResult{err: err}
 			}
-		}()
+		}(dOpts)
 	}
 
 	// Make sure the slower connection attempt is fully cancelled, or if the attempt succeeded,
@@ -284,7 +282,7 @@ func dialMulticastDNS(
 	ctx context.Context,
 	address string,
 	logger golog.Logger,
-	dOpts *dialOptions,
+	dOpts dialOptions,
 ) (ClientConn, bool, error) {
 	candidates := []string{address, strings.ReplaceAll(address, ".", "-")}
 	candidateLookup := func(ctx context.Context, candidates []string) (*zeroconf.ServiceEntry, error) {
@@ -339,41 +337,39 @@ func dialMulticastDNS(
 		logger.Debugw("found address via mDNS", "address", localAddress)
 	}
 
-	dOptsCopy := *dOpts
-
 	// Let downstream calls know when mdns was used. This is helpful to inform
 	// when determining if we want to use the external auth credentials for the signaling
 	// in cases where the external signaling is the same as the external auth. For mdns
 	// this isn't the case.
-	dOptsCopy.usingMDNS = true
+	dOpts.usingMDNS = true
 
-	if dOptsCopy.mdnsOptions.RemoveAuthCredentials {
-		dOptsCopy.creds = Credentials{}
-		dOptsCopy.authEntity = ""
-		dOptsCopy.externalAuthToEntity = ""
-		dOptsCopy.externalAuthMaterial = ""
+	if dOpts.mdnsOptions.RemoveAuthCredentials {
+		dOpts.creds = Credentials{}
+		dOpts.authEntity = ""
+		dOpts.externalAuthToEntity = ""
+		dOpts.externalAuthMaterial = ""
 	}
 
 	if hasWebRTC {
-		fixupWebRTCOptions(&dOptsCopy, entry.AddrIPv4[0].String(), uint16(entry.Port))
-		if dOptsCopy.mdnsOptions.RemoveAuthCredentials {
-			dOptsCopy.webrtcOpts.SignalingAuthEntity = ""
-			dOptsCopy.webrtcOpts.SignalingCreds = Credentials{}
-			dOptsCopy.webrtcOpts.SignalingExternalAuthAuthMaterial = ""
+		dOpts.fixupWebRTCOptions(entry.AddrIPv4[0].String(), uint16(entry.Port))
+		if dOpts.mdnsOptions.RemoveAuthCredentials {
+			dOpts.webrtcOpts.SignalingAuthEntity = ""
+			dOpts.webrtcOpts.SignalingCreds = Credentials{}
+			dOpts.webrtcOpts.SignalingExternalAuthAuthMaterial = ""
 		}
 	} else {
-		dOptsCopy.webrtcOpts.Disable = true
+		dOpts.webrtcOpts.Disable = true
 	}
 	var tlsConfig *tls.Config
-	if dOptsCopy.tlsConfig == nil {
+	if dOpts.tlsConfig == nil {
 		tlsConfig = newDefaultTLSConfig()
 	} else {
-		tlsConfig = dOptsCopy.tlsConfig.Clone()
+		tlsConfig = dOpts.tlsConfig.Clone()
 	}
 	tlsConfig.ServerName = address
-	dOptsCopy.tlsConfig = tlsConfig
+	dOpts.tlsConfig = tlsConfig
 
-	conn, cached, err := dial(ctx, localAddress, address, logger, &dOptsCopy, false)
+	conn, cached, err := dial(ctx, localAddress, address, logger, dOpts, false)
 	if err == nil {
 		return conn, cached, nil
 	}
@@ -383,7 +379,7 @@ func dialMulticastDNS(
 // fixupWebRTCOptions sets sensible and secure settings for WebRTC dial options based on
 // auto detection / connection attempts as well as what settings are not set and can be interpreted
 // from non WebRTC dial options (e.g. credentials becoming signaling credentials).
-func fixupWebRTCOptions(dOpts *dialOptions, target string, port uint16) {
+func (dOpts *dialOptions) fixupWebRTCOptions(target string, port uint16) {
 	dOpts.webrtcOpts.SignalingServerAddress = fmt.Sprintf("%s:%d", target, port)
 
 	if !dOpts.webrtcOptsSet {
