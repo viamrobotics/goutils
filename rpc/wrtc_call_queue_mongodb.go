@@ -406,7 +406,7 @@ func (queue *mongoDBWebRTCCallQueue) operatorLivenessLoop() {
 			}
 		}
 
-		if queue.activeAnswerersfunc != nil && len(hostsWithAnswerers) > 0 {
+		if queue.activeAnswerersfunc != nil {
 			(*queue.activeAnswerersfunc)(hostsWithAnswerers)
 		}
 	}
