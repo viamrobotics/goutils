@@ -158,7 +158,7 @@ func TestMongoDBWebRTCCallQueueMulti(t *testing.T) {
 
 	t.Run("ActiveAnswerer", func(t *testing.T) {
 		client := testutils.BackingMongoDBClient(t)
-		activeAnswererChannelStub := make(chan int, 1)
+		activeAnswererChannelStub := make(chan int, 3)
 		defer close(activeAnswererChannelStub)
 
 		logger := golog.NewTestLogger(t)
@@ -166,7 +166,8 @@ func TestMongoDBWebRTCCallQueueMulti(t *testing.T) {
 		defer cancel()
 
 		test.That(t, client.Database(mongodbWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
-		answererQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), uuid.NewString()+"-answerer",
+		answererQueue, err := NewMongoDBWebRTCCallQueue(
+			context.Background(), uuid.NewString()+"-answerer",
 			1, client, logger, func(hostnames []string) { activeAnswererChannelStub <- len(hostnames) })
 		test.That(t, err, test.ShouldBeNil)
 		defer answererQueue.Close()
@@ -174,13 +175,25 @@ func TestMongoDBWebRTCCallQueueMulti(t *testing.T) {
 		host1 := primitive.NewObjectID().Hex()
 		host2 := primitive.NewObjectID().Hex()
 		go func() {
+			// this is mimicking the caller - this sets the hostnames into the hosts array in the operatorLivenessLoop
 			_, _ = answererQueue.RecvOffer(ctx, []string{host1, host2})
 		}()
 		time.Sleep(time.Second * 2)
 
-		test.That(t, len(activeAnswererChannelStub), test.ShouldEqual, 1)
-		val, ok := <-activeAnswererChannelStub
-		test.That(t, ok, test.ShouldBeTrue)
-		test.That(t, val, test.ShouldEqual, 2)
+		// val is zero when no hostnames are online, so repeat until ready to validate tests
+		foundHosts := false
+		ctx, _ = context.WithTimeout(ctx, time.Second*5)
+		for {
+			if ctx.Err() != nil || foundHosts {
+				break
+			}
+			val, ok := <-activeAnswererChannelStub
+			test.That(t, ok, test.ShouldBeTrue)
+			if val > 0 {
+				foundHosts = true
+				test.That(t, val, test.ShouldEqual, 2)
+			}
+		}
+		test.That(t, foundHosts, test.ShouldBeTrue)
 	})
 }

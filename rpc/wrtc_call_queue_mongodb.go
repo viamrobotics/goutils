@@ -378,7 +378,7 @@ func (queue *mongoDBWebRTCCallQueue) operatorLivenessLoop() {
 		// then when the operator goes offline, we should update the robot part collection
 
 		hostSizes := make(bson.A, 0, len(hosts))
-		hostsWithAnswerers := make([]string, 0)
+		hostsWithAnswerers := []string{}
 
 		for host, sizes := range hosts {
 			if sizes.Answerer >= 1 {
@@ -406,7 +406,7 @@ func (queue *mongoDBWebRTCCallQueue) operatorLivenessLoop() {
 			}
 		}
 
-		if queue.activeAnswerersfunc != nil && len(hostsWithAnswerers) > 0 {
+		if queue.activeAnswerersfunc != nil {
 			(*queue.activeAnswerersfunc)(hostsWithAnswerers)
 		}
 	}
