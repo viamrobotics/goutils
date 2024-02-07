@@ -166,7 +166,7 @@ func TestTracingInterceptors(t *testing.T) {
 	streamTest(ctx, client)
 
 	// WebRTC
-	rtcConn, err := dialWebRTC(ctx, listener.Addr().String(), internalSignalingHost, &dialOptions{
+	rtcConn, err := dialWebRTC(ctx, listener.Addr().String(), internalSignalingHost, dialOptions{
 		webrtcOpts: DialWebRTCOptions{
 			SignalingInsecure: true,
 		},

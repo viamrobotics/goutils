@@ -136,7 +136,6 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 	if err := srv.validateHosts(host); err != nil {
 		return err
 	}
-
 	uuid, respCh, respDone, sendCancel, err := srv.callQueue.SendOfferInit(ctx, host, req.Sdp, req.DisableTrickle)
 	if err != nil {
 		return err

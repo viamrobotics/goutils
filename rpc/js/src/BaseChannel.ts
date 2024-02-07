@@ -57,6 +57,7 @@ export class BaseChannel {
     }
     this.closed = true;
     this.closedReason = err;
+    this.pReject?.(err);
     this.peerConn.close();
   }
 

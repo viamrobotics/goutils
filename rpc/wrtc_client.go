@@ -92,14 +92,14 @@ func DialWebRTC(
 	}
 	dOpts.webrtcOpts.Disable = false
 	dOpts.webrtcOpts.SignalingServerAddress = signalingServer
-	return dialInner(ctx, host, logger, &dOpts)
+	return dialInner(ctx, host, logger, dOpts)
 }
 
 func dialWebRTC(
 	ctx context.Context,
 	signalingServer string,
 	host string,
-	dOpts *dialOptions,
+	dOpts dialOptions,
 	logger golog.Logger,
 ) (ch *webrtcClientChannel, err error) {
 	logger = logger.Named("webrtc")
@@ -112,39 +112,7 @@ func dialWebRTC(
 		"host", host,
 	)
 
-	dOptsCopy := *dOpts
-	if dOpts.webrtcOpts.SignalingInsecure {
-		dOptsCopy.insecure = true
-	} else {
-		dOptsCopy.insecure = false
-	}
-
-	// replace auth entity and creds
-	dOptsCopy.authEntity = dOpts.webrtcOpts.SignalingAuthEntity
-	dOptsCopy.creds = dOpts.webrtcOpts.SignalingCreds
-	dOptsCopy.externalAuthAddr = dOpts.webrtcOpts.SignalingExternalAuthAddress
-	dOptsCopy.externalAuthToEntity = dOpts.webrtcOpts.SignalingExternalAuthToEntity
-	dOptsCopy.externalAuthInsecure = dOpts.webrtcOpts.SignalingExternalAuthInsecure
-	dOptsCopy.externalAuthMaterial = dOpts.webrtcOpts.SignalingExternalAuthAuthMaterial
-
-	// ignore AuthEntity when auth material is available.
-	if dOptsCopy.authEntity == "" {
-		if dOptsCopy.externalAuthAddr == "" {
-			// if we are not doing external auth, then the entity is assumed to be the actual host.
-			if dOpts.debug {
-				logger.Debugw("auth entity empty; setting to host", "host", host)
-			}
-			dOptsCopy.authEntity = host
-		} else {
-			// otherwise it's the external auth address.
-			if dOpts.debug {
-				logger.Debugw("auth entity empty; setting to external auth address", "address", dOptsCopy.externalAuthAddr)
-			}
-			dOptsCopy.authEntity = dOptsCopy.externalAuthAddr
-		}
-	}
-
-	conn, _, err := dialDirectGRPC(dialCtx, signalingServer, &dOptsCopy, logger)
+	conn, err := dialSignalingServer(dialCtx, signalingServer, host, logger, dOpts)
 	if err != nil {
 		return nil, err
 	}
@@ -169,18 +137,18 @@ func dialWebRTC(
 	}
 
 	config := DefaultWebRTCConfiguration
-	if dOptsCopy.webrtcOpts.Config != nil {
-		config = *dOptsCopy.webrtcOpts.Config
+	if dOpts.webrtcOpts.Config != nil {
+		config = *dOpts.webrtcOpts.Config
 	}
 	extendedConfig := extendWebRTCConfig(&config, configResp.Config)
-	pc, dc, err := newPeerConnectionForClient(ctx, extendedConfig, dOptsCopy.webrtcOpts.DisableTrickleICE, logger)
+	peerConn, dataChannel, err := newPeerConnectionForClient(ctx, extendedConfig, dOpts.webrtcOpts.DisableTrickleICE, logger)
 	if err != nil {
 		return nil, err
 	}
 	var successful bool
 	defer func() {
 		if !successful {
-			err = multierr.Combine(err, pc.Close())
+			err = multierr.Combine(err, peerConn.Close())
 		}
 	}()
 
@@ -214,8 +182,8 @@ func dialWebRTC(
 	}
 
 	remoteDescSet := make(chan struct{})
-	if !dOptsCopy.webrtcOpts.DisableTrickleICE {
-		offer, err := pc.CreateOffer(nil)
+	if !dOpts.webrtcOpts.DisableTrickleICE {
+		offer, err := peerConn.CreateOffer(nil)
 		if err != nil {
 			return nil, err
 		}
@@ -223,7 +191,7 @@ func dialWebRTC(
 		var pendingCandidates sync.WaitGroup
 		waitOneHost := make(chan struct{})
 		var waitOneHostOnce sync.Once
-		pc.OnICECandidate(func(icecandidate *webrtc.ICECandidate) {
+		peerConn.OnICECandidate(func(icecandidate *webrtc.ICECandidate) {
 			if exchangeCtx.Err() != nil {
 				return
 			}
@@ -264,7 +232,7 @@ func dialWebRTC(
 			})
 		})
 
-		err = pc.SetLocalDescription(offer)
+		err = peerConn.SetLocalDescription(offer)
 		if err != nil {
 			return nil, err
 		}
@@ -276,7 +244,7 @@ func dialWebRTC(
 		}
 	}
 
-	encodedSDP, err := encodeSDP(pc.LocalDescription())
+	encodedSDP, err := encodeSDP(peerConn.LocalDescription())
 	if err != nil {
 		return nil, err
 	}
@@ -296,7 +264,7 @@ func dialWebRTC(
 	}
 
 	//nolint:contextcheck
-	clientCh := newWebRTCClientChannel(pc, dc, logger, dOpts.unaryInterceptor, dOpts.streamInterceptor)
+	clientCh := newWebRTCClientChannel(peerConn, dataChannel, logger, dOpts.unaryInterceptor, dOpts.streamInterceptor)
 
 	exchangeCandidates := func() error {
 		haveInit := false
@@ -327,13 +295,13 @@ func dialWebRTC(
 					return err
 				}
 
-				err = pc.SetRemoteDescription(answer)
+				err = peerConn.SetRemoteDescription(answer)
 				if err != nil {
 					return err
 				}
 				close(remoteDescSet)
 
-				if dOptsCopy.webrtcOpts.DisableTrickleICE {
+				if dOpts.webrtcOpts.DisableTrickleICE {
 					return sendDone()
 				}
 			case *webrtcpb.CallResponse_Update:
@@ -344,7 +312,7 @@ func dialWebRTC(
 					return errors.Errorf("uuid mismatch; have=%q want=%q", callResp.Uuid, uuid)
 				}
 				cand := iceCandidateFromProto(s.Update.Candidate)
-				if err := pc.AddICECandidate(cand); err != nil {
+				if err := peerConn.AddICECandidate(cand); err != nil {
 					return err
 				}
 			default:
@@ -389,4 +357,42 @@ func dialWebRTC(
 	}
 	successful = true
 	return clientCh, nil
+}
+
+func dialSignalingServer(
+	ctx context.Context,
+	signalingServer string,
+	host string,
+	logger golog.Logger,
+	dOpts dialOptions,
+) (ClientConn, error) {
+	dOpts.insecure = dOpts.webrtcOpts.SignalingInsecure
+
+	// replace auth entity and creds
+	dOpts.authEntity = dOpts.webrtcOpts.SignalingAuthEntity
+	dOpts.creds = dOpts.webrtcOpts.SignalingCreds
+	dOpts.externalAuthAddr = dOpts.webrtcOpts.SignalingExternalAuthAddress
+	dOpts.externalAuthToEntity = dOpts.webrtcOpts.SignalingExternalAuthToEntity
+	dOpts.externalAuthInsecure = dOpts.webrtcOpts.SignalingExternalAuthInsecure
+	dOpts.externalAuthMaterial = dOpts.webrtcOpts.SignalingExternalAuthAuthMaterial
+
+	// ignore AuthEntity when auth material is available.
+	if dOpts.authEntity == "" {
+		if dOpts.externalAuthAddr == "" {
+			// if we are not doing external auth, then the entity is assumed to be the actual host.
+			if dOpts.debug {
+				logger.Debugw("auth entity empty; setting to host", "host", host)
+			}
+			dOpts.authEntity = host
+		} else {
+			// otherwise it's the external auth address.
+			if dOpts.debug {
+				logger.Debugw("auth entity empty; setting to external auth address", "address", dOpts.externalAuthAddr)
+			}
+			dOpts.authEntity = dOpts.externalAuthAddr
+		}
+	}
+
+	conn, _, err := dialDirectGRPC(ctx, signalingServer, dOpts, logger)
+	return conn, err
 }

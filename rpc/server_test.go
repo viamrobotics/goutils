@@ -261,7 +261,7 @@ func TestServer(t *testing.T) {
 							es.SetFail(false)
 
 							// WebRTC
-							_, err = dialWebRTC(context.Background(), listener.Addr().String(), "", &dialOptions{
+							_, err = dialWebRTC(context.Background(), listener.Addr().String(), "", dialOptions{
 								tlsConfig: tlsConf,
 								webrtcOpts: DialWebRTCOptions{
 									SignalingInsecure: !secure,
@@ -275,7 +275,7 @@ func TestServer(t *testing.T) {
 								test.That(t, err.Error(), test.ShouldContainSubstring, "non-empty rpc-host")
 							}
 
-							rtcConn, err := dialWebRTC(context.Background(), listener.Addr().String(), host, &dialOptions{
+							rtcConn, err := dialWebRTC(context.Background(), listener.Addr().String(), host, dialOptions{
 								tlsConfig: tlsConf,
 								webrtcOpts: DialWebRTCOptions{
 									SignalingInsecure: !secure,
@@ -284,7 +284,7 @@ func TestServer(t *testing.T) {
 							}, logger)
 							if withAuthentication {
 								test.That(t, err.Error(), test.ShouldContainSubstring, "authentication required")
-								rtcConn, err = dialWebRTC(context.Background(), listener.Addr().String(), host, &dialOptions{
+								rtcConn, err = dialWebRTC(context.Background(), listener.Addr().String(), host, dialOptions{
 									tlsConfig: tlsConf,
 									webrtcOpts: DialWebRTCOptions{
 										SignalingInsecure: !secure,

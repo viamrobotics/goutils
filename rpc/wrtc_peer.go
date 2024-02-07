@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net"
 	"sync"
 	"time"
 
@@ -53,6 +54,17 @@ func newWebRTCAPI(isClient bool, logger golog.Logger) (*webrtc.API, error) {
 	// while the client (controlling) provides an mDNS candidate that may resolve to 127.0.0.1.
 	settingEngine.SetIncludeLoopbackCandidate(true)
 	settingEngine.SetRelayAcceptanceMinWait(3 * time.Second)
+	settingEngine.SetIPFilter(func(ip net.IP) bool {
+		// Disallow ipv6 addresses since grpc-go does not currently support IPv6 scoped literals.
+		// See related grpc-go issue: https://github.com/grpc/grpc-go/issues/3272.
+		//
+		// Stolen from net/ip.go, `IP.String` method.
+		if p4 := ip.To4(); len(p4) == net.IPv4len {
+			return true
+		}
+
+		return false
+	})
 
 	options := []func(a *webrtc.API){webrtc.WithMediaEngine(&m), webrtc.WithInterceptorRegistry(&i)}
 	if utils.Debug {
@@ -67,56 +79,56 @@ func newPeerConnectionForClient(
 	config webrtc.Configuration,
 	disableTrickle bool,
 	logger golog.Logger,
-) (pc *webrtc.PeerConnection, dc *webrtc.DataChannel, err error) {
+) (*webrtc.PeerConnection, *webrtc.DataChannel, error) {
 	webAPI, err := newWebRTCAPI(true, logger)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	pc, err = webAPI.NewPeerConnection(config)
+	peerConn, err := webAPI.NewPeerConnection(config)
 	if err != nil {
 		return nil, nil, err
 	}
 	var successful bool
 	defer func() {
 		if !successful {
-			err = multierr.Combine(err, pc.Close())
+			err = multierr.Combine(err, peerConn.Close())
 		}
 	}()
 
 	negotiated := true
 	ordered := true
 	dataChannelID := uint16(0)
-	dataChannel, err := pc.CreateDataChannel("data", &webrtc.DataChannelInit{
+	dataChannel, err := peerConn.CreateDataChannel("data", &webrtc.DataChannelInit{
 		ID:         &dataChannelID,
 		Negotiated: &negotiated,
 		Ordered:    &ordered,
 	})
 	if err != nil {
-		return pc, nil, err
+		return peerConn, nil, err
 	}
-	dataChannel.OnError(initialDataChannelOnError(pc, logger))
+	dataChannel.OnError(initialDataChannelOnError(peerConn, logger))
 
 	if disableTrickle {
-		offer, err := pc.CreateOffer(nil)
+		offer, err := peerConn.CreateOffer(nil)
 		if err != nil {
-			return pc, nil, err
+			return peerConn, nil, err
 		}
 
 		// Sets the LocalDescription, and starts our UDP listeners
-		err = pc.SetLocalDescription(offer)
+		err = peerConn.SetLocalDescription(offer)
 		if err != nil {
-			return pc, nil, err
+			return peerConn, nil, err
 		}
 
 		// Create channel that is blocked until ICE Gathering is complete
-		gatherComplete := webrtc.GatheringCompletePromise(pc)
+		gatherComplete := webrtc.GatheringCompletePromise(peerConn)
 
 		// Block until ICE Gathering is complete since we signal back one complete SDP
 		// and do not want to wait on trickle ICE.
 		select {
 		case <-ctx.Done():
-			return pc, nil, ctx.Err()
+			return peerConn, nil, ctx.Err()
 		case <-gatherComplete:
 		}
 	}
@@ -124,7 +136,7 @@ func newPeerConnectionForClient(
 	// Will not wait for connection to establish. If you want this in the future,
 	// add a state check to OnICEConnectionStateChange for webrtc.ICEConnectionStateConnected.
 	successful = true
-	return pc, dataChannel, nil
+	return peerConn, dataChannel, nil
 }
 
 func newPeerConnectionForServer(
@@ -133,20 +145,20 @@ func newPeerConnectionForServer(
 	config webrtc.Configuration,
 	disableTrickle bool,
 	logger golog.Logger,
-) (pc *webrtc.PeerConnection, dc *webrtc.DataChannel, err error) {
+) (*webrtc.PeerConnection, *webrtc.DataChannel, error) {
 	webAPI, err := newWebRTCAPI(false, logger)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	pc, err = webAPI.NewPeerConnection(config)
+	peerConn, err := webAPI.NewPeerConnection(config)
 	if err != nil {
 		return nil, nil, err
 	}
 	var successful bool
 	defer func() {
 		if !successful {
-			err = multierr.Combine(err, pc.Close())
+			err = multierr.Combine(err, peerConn.Close())
 		}
 	}()
 
@@ -154,7 +166,7 @@ func newPeerConnectionForServer(
 	var negMu sync.Mutex
 	var negotiationChannel *webrtc.DataChannel
 	var makingOffer bool
-	pc.OnNegotiationNeeded(func() {
+	peerConn.OnNegotiationNeeded(func() {
 		negMu.Lock()
 		if !negOpen {
 			negMu.Unlock()
@@ -165,16 +177,16 @@ func newPeerConnectionForServer(
 		defer func() {
 			makingOffer = false
 		}()
-		offer, err := pc.CreateOffer(nil)
+		offer, err := peerConn.CreateOffer(nil)
 		if err != nil {
 			logger.Errorw("renegotiation: error creating offer", "error", err)
 			return
 		}
-		if err := pc.SetLocalDescription(offer); err != nil {
+		if err := peerConn.SetLocalDescription(offer); err != nil {
 			logger.Errorw("renegotiation: error setting local description", "error", err)
 			return
 		}
-		encodedSDP, err := encodeSDP(pc.LocalDescription())
+		encodedSDP, err := encodeSDP(peerConn.LocalDescription())
 		if err != nil {
 			logger.Errorw("renegotiation: error encoding SDP", "error", err)
 			return
@@ -188,26 +200,26 @@ func newPeerConnectionForServer(
 	negotiated := true
 	ordered := true
 	dataChannelID := uint16(0)
-	dataChannel, err := pc.CreateDataChannel("data", &webrtc.DataChannelInit{
+	dataChannel, err := peerConn.CreateDataChannel("data", &webrtc.DataChannelInit{
 		ID:         &dataChannelID,
 		Negotiated: &negotiated,
 		Ordered:    &ordered,
 	})
 	if err != nil {
-		return pc, dataChannel, err
+		return peerConn, dataChannel, err
 	}
-	dataChannel.OnError(initialDataChannelOnError(pc, logger))
+	dataChannel.OnError(initialDataChannelOnError(peerConn, logger))
 
 	negotiationChannelID := uint16(1)
-	negotiationChannel, err = pc.CreateDataChannel("negotiation", &webrtc.DataChannelInit{
+	negotiationChannel, err = peerConn.CreateDataChannel("negotiation", &webrtc.DataChannelInit{
 		ID:         &negotiationChannelID,
 		Negotiated: &negotiated,
 		Ordered:    &ordered,
 	})
 	if err != nil {
-		return pc, dataChannel, err
+		return peerConn, dataChannel, err
 	}
-	negotiationChannel.OnError(initialDataChannelOnError(pc, logger))
+	negotiationChannel.OnError(initialDataChannelOnError(peerConn, logger))
 
 	negotiationChannel.OnOpen(func() {
 		negMu.Lock()
@@ -227,28 +239,28 @@ func newPeerConnectionForServer(
 			return
 		}
 		offerCollision := (description.Type == webrtc.SDPTypeOffer) &&
-			(makingOffer || pc.SignalingState() != webrtc.SignalingStateStable)
+			(makingOffer || peerConn.SignalingState() != webrtc.SignalingStateStable)
 		ignoreOffer = !polite && offerCollision
 		if ignoreOffer {
 			logger.Debugw("ignoring offer", "polite", polite, "offer_collision", offerCollision)
 		}
 
-		if err := pc.SetRemoteDescription(description); err != nil {
+		if err := peerConn.SetRemoteDescription(description); err != nil {
 			logger.Errorw("renegotiation: error setting remote description", "error", err)
 			return
 		}
 
 		if description.Type == webrtc.SDPTypeOffer {
-			answer, err := pc.CreateAnswer(nil)
+			answer, err := peerConn.CreateAnswer(nil)
 			if err != nil {
 				logger.Errorw("renegotiation: error creating answer", "error", err)
 				return
 			}
-			if err := pc.SetLocalDescription(answer); err != nil {
+			if err := peerConn.SetLocalDescription(answer); err != nil {
 				logger.Errorw("renegotiation: error setting local description", "error", err)
 				return
 			}
-			encodedSDP, err := encodeSDP(pc.LocalDescription())
+			encodedSDP, err := encodeSDP(peerConn.LocalDescription())
 			if err != nil {
 				logger.Errorw("renegotiation: error encoding SDP", "error", err)
 				return
@@ -262,39 +274,39 @@ func newPeerConnectionForServer(
 
 	offer := webrtc.SessionDescription{}
 	if err := decodeSDP(sdp, &offer); err != nil {
-		return pc, dataChannel, err
+		return peerConn, dataChannel, err
 	}
 
-	err = pc.SetRemoteDescription(offer)
+	err = peerConn.SetRemoteDescription(offer)
 	if err != nil {
-		return pc, dataChannel, err
+		return peerConn, dataChannel, err
 	}
 
 	if disableTrickle {
-		answer, err := pc.CreateAnswer(nil)
+		answer, err := peerConn.CreateAnswer(nil)
 		if err != nil {
-			return pc, dataChannel, err
+			return peerConn, dataChannel, err
 		}
 
-		err = pc.SetLocalDescription(answer)
+		err = peerConn.SetLocalDescription(answer)
 		if err != nil {
-			return pc, dataChannel, err
+			return peerConn, dataChannel, err
 		}
 
 		// Create channel that is blocked until ICE Gathering is complete
-		gatherComplete := webrtc.GatheringCompletePromise(pc)
+		gatherComplete := webrtc.GatheringCompletePromise(peerConn)
 
 		// Block until ICE Gathering is complete since we signal back one complete SDP
 		// and do not want to wait on trickle ICE.
 		select {
 		case <-ctx.Done():
-			return pc, nil, ctx.Err()
+			return peerConn, nil, ctx.Err()
 		case <-gatherComplete:
 		}
 	}
 
 	successful = true
-	return pc, dataChannel, nil
+	return peerConn, dataChannel, nil
 }
 
 type webrtcPeerConnectionStats struct {

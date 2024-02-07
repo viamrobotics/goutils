@@ -56,6 +56,18 @@ func NewStringSet(values ...string) StringSet {
 	return set
 }
 
+// Add adds the value to the StringSet
+// if the value already exists it will be a no-op.
+func (ss StringSet) Add(value string) {
+	ss[value] = struct{}{}
+}
+
+// Remove removes the value from the StringSet
+// If the value doesn't exist it will be a no-op.
+func (ss StringSet) Remove(value string) {
+	delete(ss, value)
+}
+
 // StringSliceRemove removes an element from the slice at the given position.
 func StringSliceRemove(from []string, at int) []string {
 	if at >= len(from) {

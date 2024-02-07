@@ -7,6 +7,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/edaniels/golog"
@@ -28,14 +29,14 @@ func Dial(ctx context.Context, address string, logger golog.Logger, opts ...Dial
 		logger = zap.NewNop().Sugar()
 	}
 
-	return dialInner(ctx, address, logger, &dOpts)
+	return dialInner(ctx, address, logger, dOpts)
 }
 
 func dialInner(
 	ctx context.Context,
 	address string,
 	logger golog.Logger,
-	dOpts *dialOptions,
+	dOpts dialOptions,
 ) (ClientConn, error) {
 	if address == "" {
 		return nil, errors.New("address empty")
@@ -45,7 +46,7 @@ func dialInner(
 		ctx,
 		"multi",
 		address,
-		buildKeyExtra(dOpts),
+		dOpts.cacheKey(),
 		func() (ClientConn, error) {
 			if dOpts.debug {
 				logger.Debugw("starting to dial", "address", address)
@@ -85,98 +86,176 @@ func dialInner(
 // no way to connect on any of them.
 var ErrConnectionOptionsExhausted = errors.New("exhausted all connection options with no way to connect")
 
+// dialResult contains information about a concurrent dial attempt.
+type dialResult struct {
+	// a successfully established connection
+	conn ClientConn
+	// whether or not the connection is reused
+	cached bool
+	// connection errors
+	err error
+	// whether we should skip dialing gRPC directly as a fallback
+	skipDirect bool
+}
+
 func dial(
 	ctx context.Context,
 	address string,
 	originalAddress string,
 	logger golog.Logger,
-	dOpts *dialOptions,
+	dOpts dialOptions,
 	tryLocal bool,
 ) (ClientConn, bool, error) {
+	if ctx.Err() != nil {
+		return nil, false, ctx.Err()
+	}
+
 	var isJustDomain bool
-	if strings.HasPrefix(address, "unix://") {
+	switch {
+	case strings.HasPrefix(address, "unix://"):
 		dOpts.mdnsOptions.Disable = true
 		dOpts.webrtcOpts.Disable = true
 		dOpts.insecure = true
 		dOpts.disableDirect = false
-	} else {
-		if strings.ContainsRune(address, ':') {
-			isJustDomain = false
-		} else {
-			isJustDomain = net.ParseIP(address) == nil
-		}
+	case strings.ContainsRune(address, ':'):
+		isJustDomain = false
+	default:
+		isJustDomain = net.ParseIP(address) == nil
 	}
 
+	// We make concurrent dial attempts via mDNS and WebRTC, taking the first connection
+	// that succeeds. We then cancel the slower connection and wait for its coroutine to
+	// complete. If the slower connection succeeds before it can be cancelled then we
+	// explicitly close it to prevent a memory leak.
+	var (
+		wg                          sync.WaitGroup
+		dialCh                      = make(chan dialResult)
+		ctxParallel, cancelParallel = context.WithCancel(ctx)
+	)
+	defer cancelParallel()
 	if !dOpts.mdnsOptions.Disable && tryLocal && isJustDomain {
-		conn, cached, err := dialMulticastDNS(ctx, address, logger, dOpts)
-		if err != nil {
-			logger.Warnw("error dialing with mDNS; falling back to other methods", "error", err)
-		}
-
-		if conn != nil {
-			return conn, cached, err
-		}
+		wg.Add(1)
+		go func(dOpts dialOptions) {
+			defer wg.Done()
+			conn, cached, err := dialMulticastDNS(ctxParallel, address, logger, dOpts)
+			switch {
+			case err != nil:
+				dialCh <- dialResult{err: err}
+			case conn != nil:
+				// TODO(RSDK-6490): investigate why we can get a `nil` connection that is
+				// not accompanied with an error.
+				dialCh <- dialResult{conn: conn, cached: cached}
+			default:
+				dialCh <- dialResult{err: errors.New("no connection")}
+			}
+		}(dOpts)
 	}
 
 	if !dOpts.webrtcOpts.Disable {
-		signalingAddress := dOpts.webrtcOpts.SignalingServerAddress
-		if signalingAddress == "" || dOpts.webrtcOpts.AllowAutoDetectAuthOptions {
-			if signalingAddress == "" {
-				// try WebRTC at same address
-				signalingAddress = address
-			}
-			target, port, err := getWebRTCTargetFromAddressWithDefaults(signalingAddress)
-			if err != nil {
-				return nil, false, err
-			}
-			fixupWebRTCOptions(dOpts, target, port)
+		wg.Add(1)
+		go func(dOpts dialOptions) {
+			defer wg.Done()
+			signalingAddress := dOpts.webrtcOpts.SignalingServerAddress
+			if signalingAddress == "" || dOpts.webrtcOpts.AllowAutoDetectAuthOptions {
+				if signalingAddress == "" {
+					// try WebRTC at same address
+					signalingAddress = address
+				}
+				target, port, err := getWebRTCTargetFromAddressWithDefaults(signalingAddress)
+				if err != nil {
+					// TODO(RSDK-6493): Investigate if we must `skipDirect` here.
+					dialCh <- dialResult{err: err, skipDirect: true}
+					return
+				}
+				dOpts.fixupWebRTCOptions(target, port)
 
-			// When connecting to an external signaler for WebRTC, we assume we can use the external auth's material.
-			// This path is also called by an mdns direct connection and ignores that case.
-			// This will skip all Authenticate/AuthenticateTo calls for the signaler.
-			if !dOpts.usingMDNS && dOpts.authMaterial == "" && dOpts.webrtcOpts.SignalingExternalAuthAuthMaterial != "" {
-				logger.Debug("using signaling's external auth as auth material")
-				dOpts.authMaterial = dOpts.webrtcOpts.SignalingExternalAuthAuthMaterial
-				dOpts.creds = Credentials{}
+				// When connecting to an external signaler for WebRTC, we assume we can use the external auth's material.
+				// This path is also called by an mdns direct connection and ignores that case.
+				// This will skip all Authenticate/AuthenticateTo calls for the signaler.
+				if !dOpts.usingMDNS && dOpts.authMaterial == "" && dOpts.webrtcOpts.SignalingExternalAuthAuthMaterial != "" {
+					logger.Debug("using signaling's external auth as auth material")
+					dOpts.authMaterial = dOpts.webrtcOpts.SignalingExternalAuthAuthMaterial
+					dOpts.creds = Credentials{}
+				}
 			}
-		}
 
-		if dOpts.debug {
-			logger.Debugw(
-				"trying WebRTC",
-				"signaling_server", dOpts.webrtcOpts.SignalingServerAddress,
-				"host", originalAddress,
-			)
-		}
-
-		conn, cached, err := dialFunc(
-			ctx,
-			"webrtc",
-			fmt.Sprintf("%s->%s", dOpts.webrtcOpts.SignalingServerAddress, originalAddress),
-			buildKeyExtra(dOpts),
-			func() (ClientConn, error) {
-				return dialWebRTC(
-					ctx,
-					dOpts.webrtcOpts.SignalingServerAddress,
-					originalAddress,
-					dOpts,
-					logger,
+			if dOpts.debug {
+				logger.Debugw(
+					"trying WebRTC",
+					"signaling_server", dOpts.webrtcOpts.SignalingServerAddress,
+					"host", originalAddress,
 				)
-			})
-		if err == nil {
-			if !cached {
-				logger.Debug("connected via WebRTC")
-			} else if dOpts.debug {
-				logger.Debug("connected via WebRTC (cached)")
 			}
-			return conn, cached, nil
+
+			conn, cached, err := dialFunc(
+				ctxParallel,
+				"webrtc",
+				fmt.Sprintf("%s->%s", dOpts.webrtcOpts.SignalingServerAddress, originalAddress),
+				dOpts.cacheKey(),
+				func() (ClientConn, error) {
+					return dialWebRTC(
+						ctxParallel,
+						dOpts.webrtcOpts.SignalingServerAddress,
+						originalAddress,
+						dOpts,
+						logger,
+					)
+				})
+
+			switch {
+			case err == nil:
+				if dOpts.debug {
+					logger.Debugw("connected via WebRTC",
+						"address", address,
+						"cached", cached,
+						"using mDNS", dOpts.usingMDNS,
+					)
+				}
+				dialCh <- dialResult{conn: conn, cached: cached}
+			case !errors.Is(err, ErrNoWebRTCSignaler):
+				// TODO(RSDK-6493): Investigate if we must `skipDirect` here.
+				dialCh <- dialResult{err: err, skipDirect: true}
+			case ctxParallel.Err() != nil:
+				dialCh <- dialResult{err: ctxParallel.Err(), skipDirect: true}
+			default:
+				dialCh <- dialResult{err: err}
+			}
+		}(dOpts)
+	}
+
+	// Make sure the slower connection attempt is fully cancelled, or if the attempt succeeded,
+	// close the slower connection.
+	go func() {
+		wg.Wait()
+		close(dialCh)
+	}()
+
+	var (
+		conn   ClientConn
+		cached bool
+		err    error
+	)
+	for result := range dialCh {
+		switch {
+		case result.err == nil && result.conn != nil:
+			if conn != nil {
+				errClose := conn.Close()
+				if errClose != nil {
+					logger.Warnw("unable to close redundant connection", "error", err)
+				}
+			}
+			conn, cached = result.conn, result.cached
+			cancelParallel()
+		case result.err != nil && result.skipDirect:
+			err = result.err
 		}
-		if !errors.Is(err, ErrNoWebRTCSignaler) {
-			return nil, false, err
-		}
-		if ctx.Err() != nil {
-			return nil, false, ctx.Err()
-		}
+	}
+
+	if conn != nil {
+		return conn, cached, nil
+	}
+	if err != nil {
+		return nil, false, err
 	}
 
 	if dOpts.disableDirect {
@@ -185,14 +264,16 @@ func dial(
 	if dOpts.debug {
 		logger.Debugw("trying direct", "address", address)
 	}
-	conn, cached, err := dialDirectGRPC(ctx, address, dOpts, logger)
+	conn, cached, err = dialDirectGRPC(ctx, address, dOpts, logger)
 	if err != nil {
 		return nil, false, err
 	}
-	if !cached {
-		logger.Debugw("connected via gRPC", "address", address)
-	} else if dOpts.debug {
-		logger.Debugw("connected via gRPC (cached)", "address", address)
+	if dOpts.debug {
+		logger.Debugw("connected via gRPC",
+			"address", address,
+			"cached", cached,
+			"using mDNS", dOpts.usingMDNS,
+		)
 	}
 	return conn, cached, nil
 }
@@ -201,7 +282,7 @@ func dialMulticastDNS(
 	ctx context.Context,
 	address string,
 	logger golog.Logger,
-	dOpts *dialOptions,
+	dOpts dialOptions,
 ) (ClientConn, bool, error) {
 	candidates := []string{address, strings.ReplaceAll(address, ".", "-")}
 	candidateLookup := func(ctx context.Context, candidates []string) (*zeroconf.ServiceEntry, error) {
@@ -218,10 +299,14 @@ func dialMulticastDNS(
 				logger.Errorw("error performing mDNS query", "error", err)
 				return nil, err
 			}
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
 			// entries gets closed after lookupCtx expires or there is a real entry
-			entry := <-entries
-			if entry != nil {
-				return entry, nil
+			case entry := <-entries:
+				if entry != nil {
+					return entry, nil
+				}
 			}
 		}
 		return nil, ctx.Err()
@@ -252,47 +337,40 @@ func dialMulticastDNS(
 		logger.Debugw("found address via mDNS", "address", localAddress)
 	}
 
-	dOptsCopy := *dOpts
-
 	// Let downstream calls know when mdns was used. This is helpful to inform
 	// when determining if we want to use the external auth credentials for the signaling
 	// in cases where the external signaling is the same as the external auth. For mdns
 	// this isn't the case.
-	dOptsCopy.usingMDNS = true
+	dOpts.usingMDNS = true
 
-	if dOptsCopy.mdnsOptions.RemoveAuthCredentials {
-		dOptsCopy.creds = Credentials{}
-		dOptsCopy.authEntity = ""
-		dOptsCopy.externalAuthToEntity = ""
-		dOptsCopy.externalAuthMaterial = ""
+	if dOpts.mdnsOptions.RemoveAuthCredentials {
+		dOpts.creds = Credentials{}
+		dOpts.authEntity = ""
+		dOpts.externalAuthToEntity = ""
+		dOpts.externalAuthMaterial = ""
 	}
 
 	if hasWebRTC {
-		fixupWebRTCOptions(&dOptsCopy, entry.AddrIPv4[0].String(), uint16(entry.Port))
-		if dOptsCopy.mdnsOptions.RemoveAuthCredentials {
-			dOptsCopy.webrtcOpts.SignalingAuthEntity = ""
-			dOptsCopy.webrtcOpts.SignalingCreds = Credentials{}
-			dOptsCopy.webrtcOpts.SignalingExternalAuthAuthMaterial = ""
+		dOpts.fixupWebRTCOptions(entry.AddrIPv4[0].String(), uint16(entry.Port))
+		if dOpts.mdnsOptions.RemoveAuthCredentials {
+			dOpts.webrtcOpts.SignalingAuthEntity = ""
+			dOpts.webrtcOpts.SignalingCreds = Credentials{}
+			dOpts.webrtcOpts.SignalingExternalAuthAuthMaterial = ""
 		}
 	} else {
-		dOptsCopy.webrtcOpts.Disable = true
+		dOpts.webrtcOpts.Disable = true
 	}
 	var tlsConfig *tls.Config
-	if dOptsCopy.tlsConfig == nil {
+	if dOpts.tlsConfig == nil {
 		tlsConfig = newDefaultTLSConfig()
 	} else {
-		tlsConfig = dOptsCopy.tlsConfig.Clone()
+		tlsConfig = dOpts.tlsConfig.Clone()
 	}
 	tlsConfig.ServerName = address
-	dOptsCopy.tlsConfig = tlsConfig
+	dOpts.tlsConfig = tlsConfig
 
-	conn, cached, err := dial(ctx, localAddress, address, logger, &dOptsCopy, false)
+	conn, cached, err := dial(ctx, localAddress, address, logger, dOpts, false)
 	if err == nil {
-		if !cached {
-			logger.Debugw("connected via mDNS", "address", localAddress)
-		} else if dOptsCopy.debug {
-			logger.Debugw("connected via mDNS (cached)", "address", localAddress)
-		}
 		return conn, cached, nil
 	}
 	return nil, false, err
@@ -301,7 +379,7 @@ func dialMulticastDNS(
 // fixupWebRTCOptions sets sensible and secure settings for WebRTC dial options based on
 // auto detection / connection attempts as well as what settings are not set and can be interpreted
 // from non WebRTC dial options (e.g. credentials becoming signaling credentials).
-func fixupWebRTCOptions(dOpts *dialOptions, target string, port uint16) {
+func (dOpts *dialOptions) fixupWebRTCOptions(target string, port uint16) {
 	dOpts.webrtcOpts.SignalingServerAddress = fmt.Sprintf("%s:%d", target, port)
 
 	if !dOpts.webrtcOptsSet {
