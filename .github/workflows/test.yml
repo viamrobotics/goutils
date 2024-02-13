@@ -119,7 +119,7 @@ jobs:
     # this one runs as root for CAP_SETUID
     - name: test run-as-user
       env:
-        TEST_SUBPROC_USER=runner
+        TEST_SUBPROC_USER: runner
       run: sudo -E go test -v ./pexec -run TestManagedProcessStart
 
     # - name: Add Coverage PR Comment
