@@ -194,18 +194,6 @@ func TestManagedProcessStart(t *testing.T) {
 		})
 		t.Run("run as user", func(t *testing.T) {
 			if curUser, _ := user.Current(); curUser.Username != "root" {
-				t.Log("current user:", curUser)
-				gids, err := curUser.GroupIds()
-				if err != nil {
-					t.Log("error:", err)
-				}
-				for _, gid := range gids {
-					g, err := user.LookupGroupId(gid)
-					if err != nil {
-						t.Log("error:", err)
-					}
-					t.Log("group:", g)
-				}
 				t.Skipf("skipping run-as-user because setuid required elevated privileges")
 				return
 			}
