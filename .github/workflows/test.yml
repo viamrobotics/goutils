@@ -118,9 +118,9 @@ jobs:
 
     # this one runs as root for CAP_SETUID
     - name: test run-as-user
-      run: |
-        whoami
-        TEST_SUBPROC_USER="$whoami" go test -exec sudo -v ./pexec -run TestManagedProcessStart
+      env:
+        TEST_SUBPROC_USER=runner
+      run: sudo -E go test -v ./pexec -run TestManagedProcessStart
 
     # - name: Add Coverage PR Comment
     #   uses: marocchino/sticky-pull-request-comment@v2.2.0
