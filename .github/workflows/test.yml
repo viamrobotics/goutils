@@ -45,7 +45,7 @@ jobs:
         version: "21.x"
 
     - name: Install grpc-web plugin
-      run: npm install -g protoc-gen-grpc-web
+      run: sudo npm install -g protoc-gen-grpc-web
 
     - name: Check out main branch code
       if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
