@@ -16,7 +16,7 @@ jobs:
     if: github.repository_owner == 'viamrobotics'
     runs-on: [x64, qemu-host]
     container:
-      image: ghcr.io/viamrobotics/rdk-devenv:amd64
+      image: ghcr.io/viamrobotics/canon:amd64
     steps:
       - uses: actions/checkout@v3
       - uses: bufbuild/buf-setup-action@v1.8.0
@@ -29,7 +29,7 @@ jobs:
     if: github.repository_owner == 'viamrobotics'
     runs-on: [x64, qemu-host]
     container:
-      image: ghcr.io/viamrobotics/rdk-devenv:amd64
+      image: ghcr.io/viamrobotics/canon:amd64
     strategy:
       matrix:
         repo: ['viamrobotics/python-sdk','viamrobotics/rust-sdk']
