@@ -22,7 +22,7 @@ jobs:
 
   build_and_test:
     name: Build and Test
-    runs-on: [x64, qemu-host]
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     if: |
       github.event_name == 'workflow_dispatch' || github.event_name == 'push' ||
@@ -67,8 +67,7 @@ jobs:
       run: |
         git init
         git add .
-        chown -R testbot .
-        sudo -u testbot bash -lc 'make build lint'
+        make build lint
         GEN_DIFF=$(git status -s)
         if [ -n "$GEN_DIFF" ]; then
             echo '"make build lint" resulted in changes not in git' 1>&2
@@ -77,7 +76,7 @@ jobs:
         fi
 
     - name: Test js library
-      run: sudo -u testbot bash -lc 'CI=true make test-web'
+      run: CI=true make test-web
 
     - if: failure()
       name: Upload js test report
@@ -92,9 +91,9 @@ jobs:
         TEST_MONGODB_URI: ${{ secrets.TEST_MONGODB_URI }}
         MONGODB_TEST_OUTPUT_URI: ${{ secrets.MONGODB_TEST_OUTPUT_URI }}
       run: |
-        sudo -u testbot bash -lc 'echo "${{ secrets.ARTIFACT_GOOGLE_APPLICATION_CREDENTIALS }}" | base64 -d > artifact_google_creds.json'
+        echo "${{ secrets.ARTIFACT_GOOGLE_APPLICATION_CREDENTIALS }}" | base64 -d > artifact_google_creds.json
         export ARTIFACT_GOOGLE_APPLICATION_CREDENTIALS=`pwd`/artifact_google_creds.json
-        sudo -u testbot --preserve-env=ARTIFACT_GOOGLE_APPLICATION_CREDENTIALS,TEST_MONGODB_URI,MONGODB_TEST_OUTPUT_URI,GITHUB_SHA,GITHUB_RUN_ID,GITHUB_RUN_NUMBER,GITHUB_RUN_ATTEMPT,GITHUB_X_PR_BASE_SHA,GITHUB_X_PR_BASE_REF,GITHUB_X_HEAD_REF,GITHUB_X_HEAD_SHA,GITHUB_REPOSITORY bash -lc 'make cover'
+        make cover
 
     - name: Upload test.json
       if: always()
@@ -106,8 +105,6 @@ jobs:
 
     # this one runs as root for CAP_SETUID
     - name: test run-as-user
-      env:
-        TEST_SUBPROC_USER: testbot
       run: go test -v ./pexec -run TestManagedProcessStart
 
     - name: Add Coverage PR Comment
