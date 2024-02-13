@@ -130,9 +130,9 @@ func dial(
 	var (
 		wg                          sync.WaitGroup
 		dialCh                      = make(chan dialResult)
-		ctxParallel, cancelParallel = context.WithCancel(ctx)
+		ctxParallel, cancelParallel = context.WithCancelCause(ctx)
 	)
-	defer cancelParallel()
+	defer cancelParallel(nil)
 	if !dOpts.mdnsOptions.Disable && tryLocal && isJustDomain {
 		wg.Add(1)
 		go func(dOpts dialOptions) {
@@ -245,7 +245,7 @@ func dial(
 				}
 			}
 			conn, cached = result.conn, result.cached
-			cancelParallel()
+			cancelParallel(errors.New("using another established connection"))
 		case result.err != nil && result.skipDirect:
 			err = result.err
 		}
