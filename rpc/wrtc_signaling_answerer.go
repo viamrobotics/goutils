@@ -478,7 +478,12 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 		return err
 	}
 	if err := sendDone(); err != nil {
-		return err
+		// Errors from sendDone (such as EOF) are sometimes caused by the signaling
+		// server "ending" the exchange process earlier than the answerer due to
+		// the caller being able to establish a connection without all the
+		// answerer's ICE candidates (trickle ICE). Only Warn the error here to
+		// avoid accidentally Closing a healthy, established peer connection.
+		ans.logger.Warnw("error ending signaling exchange from answer client", "error", err)
 	}
 	successful = true
 	return nil
