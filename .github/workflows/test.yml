@@ -44,7 +44,7 @@ jobs:
       with:
         version: "21.x"
 
-    - name: Install grpc-web plugin
+    - name: Install protoc-gen-js and plugins
       run: npm install -g protoc-gen-js protoc-gen-grpc-web
 
     - name: Check out main branch code
