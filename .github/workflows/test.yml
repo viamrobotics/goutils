@@ -23,15 +23,17 @@ jobs:
   build_and_test:
     name: Build and Test
     runs-on: [x64, qemu-host]
-    container:
-      image: ghcr.io/viamrobotics/rdk-devenv:amd64-cache
-      options: --platform linux/amd64
     timeout-minutes: 20
     if: |
       github.event_name == 'workflow_dispatch' || github.event_name == 'push' ||
       (github.event_name == 'pull_request_target' && github.event.label.name == 'safe to test' && contains(github.event.pull_request.labels.*.name, 'safe to test'))
 
     steps:
+    - name: Setup go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.20'
+
     - name: Check out main branch code
       if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
       uses: actions/checkout@v3
