@@ -122,7 +122,7 @@ jobs:
         TEST_SUBPROC_USER: subproc_user
       run: |
         sudo useradd $TEST_SUBPROC_USER
-        go test -v ./pexec -run TestManagedProcessStart
+        sudo go test -v ./pexec -run TestManagedProcessStart
 
     - name: Add Coverage PR Comment
       uses: marocchino/sticky-pull-request-comment@v2.2.0
