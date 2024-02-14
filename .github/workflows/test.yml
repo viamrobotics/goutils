@@ -116,12 +116,15 @@ jobs:
         path: json.log
         retention-days: 30
 
-    # TODO(APP-3946): restore this test - it is designed to test the ability to change users.
     # Details: https://github.com/viamrobotics/goutils/pull/245#discussion_r1488649164
     #
     # this one runs as root for CAP_SETUID
     - name: test run-as-user
-      run: go test -v ./pexec -run TestManagedProcessStart
+      env:
+        TEST_SUBPROC_USER: subproc_user
+      run: |
+        useradd $TEST_SUBPROC_USER
+        go test -v ./pexec -run TestManagedProcessStart
 
     - name: Add Coverage PR Comment
       uses: marocchino/sticky-pull-request-comment@v2.2.0
