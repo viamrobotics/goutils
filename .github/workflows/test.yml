@@ -77,7 +77,6 @@ jobs:
         echo "GITHUB_X_PR_BASE_REF=${{ github.event.pull_request.base.ref }}" >> $GITHUB_ENV
 
     - name: Verify no uncommitted changes from "make build lint"
-      if: false
       run: |
         git init
         git add .
@@ -90,7 +89,6 @@ jobs:
         fi
 
     - name: Test js library
-      if: false
       run: CI=true make test-web
 
     - if: failure()
@@ -102,7 +100,6 @@ jobs:
         retention-days: 30
 
     - name: Test go library
-      if: false
       env:
         TEST_MONGODB_URI: ${{ secrets.TEST_MONGODB_URI }}
         MONGODB_TEST_OUTPUT_URI: ${{ secrets.MONGODB_TEST_OUTPUT_URI }}
@@ -112,7 +109,7 @@ jobs:
         make cover
 
     - name: Upload test.json
-      if: false
+      if: always()
       uses: actions/upload-artifact@v3
       with:
         name: test.json
