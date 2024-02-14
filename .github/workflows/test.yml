@@ -116,8 +116,6 @@ jobs:
         path: json.log
         retention-days: 30
 
-    # Details: https://github.com/viamrobotics/goutils/pull/245#discussion_r1488649164
-    #
     # this one runs as root for CAP_SETUID
     - name: test run-as-user
       env:
