@@ -21,7 +21,8 @@ func TestMongoDBWebRTCCallQueue(t *testing.T) {
 		t.Helper()
 		test.That(t, client.Database(mongodbWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
 		logger := golog.NewTestLogger(t)
-		callQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), uuid.NewString(), 50, client, logger, func(hosts []string) {})
+		callQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), uuid.NewString(), 50, client, logger,
+			func(hosts []string, atTime time.Time) {})
 		test.That(t, err, test.ShouldBeNil)
 		return callQueue, callQueue, func() {
 			test.That(t, callQueue.Close(), test.ShouldBeNil)
@@ -39,11 +40,11 @@ func TestMongoDBWebRTCCallQueueMulti(t *testing.T) {
 		test.That(t, client.Database(mongodbWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
 		logger := golog.NewTestLogger(t)
 		callerQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), uuid.NewString()+"-caller",
-			maxCallerQueueSize, client, logger, func(hosts []string) {})
+			maxCallerQueueSize, client, logger, func(hosts []string, atTime time.Time) {})
 		test.That(t, err, test.ShouldBeNil)
 
 		answererQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), uuid.NewString()+"-answerer",
-			maxCallerQueueSize, client, logger, func(hosts []string) {})
+			maxCallerQueueSize, client, logger, func(hosts []string, atTime time.Time) {})
 		test.That(t, err, test.ShouldBeNil)
 		return callerQueue, answererQueue, func() {
 			test.That(t, callerQueue.Close(), test.ShouldBeNil)
@@ -168,7 +169,7 @@ func TestMongoDBWebRTCCallQueueMulti(t *testing.T) {
 		test.That(t, client.Database(mongodbWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
 		answererQueue, err := NewMongoDBWebRTCCallQueue(
 			context.Background(), uuid.NewString()+"-answerer",
-			1, client, logger, func(hostnames []string) { activeAnswererChannelStub <- len(hostnames) })
+			1, client, logger, func(hostnames []string, atTime time.Time) { activeAnswererChannelStub <- len(hostnames) })
 		test.That(t, err, test.ShouldBeNil)
 		defer answererQueue.Close()
 
