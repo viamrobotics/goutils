@@ -49,7 +49,8 @@ func TestDialWithMongoDBQueue(t *testing.T) {
 	logger := golog.NewTestLogger(t)
 	client := testutils.BackingMongoDBClient(t)
 	test.That(t, client.Database(mongodbWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
-	signalingCallQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), uuid.NewString(), 50, client, logger, func(hosts []string) {})
+	signalingCallQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), uuid.NewString(), 50, client, logger,
+		func(hosts []string, atTime time.Time) {})
 	test.That(t, err, test.ShouldBeNil)
 	defer func() {
 		test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)

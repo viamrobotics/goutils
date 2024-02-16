@@ -92,7 +92,7 @@ type mongoDBWebRTCCallQueue struct {
 	csCtxCancel                 func()
 
 	// function to update access times on robot parts based on this call queue
-	activeAnswerersfunc *func(hostnames []string)
+	activeAnswerersfunc *func(hostnames []string, atTime time.Time)
 	// 1 caller/answerer -> 1 caller id -> 1 event stream
 	callExchangeSubs map[string]map[*mongodbCallExchange]struct{}
 
@@ -131,7 +131,7 @@ func NewMongoDBWebRTCCallQueue(
 	maxHostCallers uint64,
 	client *mongo.Client,
 	logger golog.Logger,
-	activeAnswerersfunc func(hostnames []string),
+	activeAnswerersfunc func(hostnames []string, atTime time.Time),
 ) (WebRTCCallQueue, error) {
 	if operatorID == "" {
 		return nil, errors.New("expected non-empty operatorID")
@@ -407,7 +407,7 @@ func (queue *mongoDBWebRTCCallQueue) operatorLivenessLoop() {
 		}
 
 		if queue.activeAnswerersfunc != nil {
-			(*queue.activeAnswerersfunc)(hostsWithAnswerers)
+			(*queue.activeAnswerersfunc)(hostsWithAnswerers, time.Now())
 		}
 	}
 }
