@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 
 	"github.com/edaniels/golog"
-	protov1 "github.com/golang/protobuf/proto" 
+	protov1 "github.com/golang/protobuf/proto" //nolint:staticcheck
 	"github.com/pion/sctp"
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
