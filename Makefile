@@ -15,9 +15,9 @@ build-go: buf-go
 
 build-web: buf-web
 	export NODE_OPTIONS=--openssl-legacy-provider && node --version 2>/dev/null || unset NODE_OPTIONS;\
-	cd rpc/js && npm install && npx webpack && \
-	cd ../examples/echo/frontend && npm install && npx webpack && \
-	cd ../../fileupload/frontend && npm install && npx webpack
+	cd rpc/js && npm install && npm run build && \
+	cd ../examples/echo/frontend && npm install && npm run build && \
+	cd ../../fileupload/frontend && npm install && npm run build
 
 tool-install:
 	GOBIN=`pwd`/$(TOOL_BIN) go install google.golang.org/protobuf/cmd/protoc-gen-go \
@@ -31,7 +31,8 @@ tool-install:
 		github.com/edaniels/golinters/cmd/combined \
 		github.com/golangci/golangci-lint/cmd/golangci-lint \
 		github.com/AlekSi/gocov-xml \
-		github.com/axw/gocov/gocov
+		github.com/axw/gocov/gocov \
+		gotest.tools/gotestsum
 
 buf: buf-go buf-web
 
@@ -48,19 +49,23 @@ buf-web: tool-install
 lint: tool-install lint-go lint-web
 
 lint-web:
-	cd rpc/js && npm install && npm run format
+	cd rpc/js && npm install && npm run lint && npm run format
 
 lint-go: tool-install
 	PATH=$(PATH_WITH_TOOLS) buf lint
 	export pkgs="`go list -f '{{.Dir}}' ./... | grep -v /proto/`" && echo "$$pkgs" | xargs go vet -vettool=$(TOOL_BIN)/combined
 	GOGC=50 $(TOOL_BIN)/golangci-lint run -v --fix --config=./etc/.golangci.yaml
 
-cover:
-	go test -tags=no_skip -race -coverprofile=coverage.txt ./...
-	PATH=$(PATH_WITH_TOOLS) gocov convert coverage.txt | PATH=$(PATH_WITH_TOOLS) gocov-xml > coverage.xml
+cover: tool-install
+	PATH=$(PATH_WITH_TOOLS) ./etc/test.bash cover
 
-test:
-	go test -tags=no_skip -race ./...
+test: test-go test-web
+
+test-go: tool-install
+	PATH=$(PATH_WITH_TOOLS) ./etc/test.bash
+
+test-web:
+	$(MAKE) -C rpc/examples/echo test-run-server
 
 # examples
 

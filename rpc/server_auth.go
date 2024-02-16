@@ -30,8 +30,10 @@ func (ss *simpleServer) authHandlers(forType CredentialsType) (credAuthHandlers,
 }
 
 const (
-	metadataFieldAuthorization     = "authorization"
-	authorizationValuePrefixBearer = "Bearer "
+	// MetadataFieldAuthorization is a constant for the authorization header key.
+	MetadataFieldAuthorization = "authorization"
+	// AuthorizationValuePrefixBearer is a constant for the Bearer token prefix.
+	AuthorizationValuePrefixBearer = "Bearer "
 )
 
 // JWTClaims extends jwt.RegisteredClaims with information about the credentials as well
@@ -72,7 +74,7 @@ func (ss *simpleServer) Authenticate(ctx context.Context, req *rpcpb.Authenticat
 	if !ok {
 		return nil, errors.New("expected metadata")
 	}
-	if len(md[metadataFieldAuthorization]) != 0 {
+	if len(md[MetadataFieldAuthorization]) != 0 {
 		return nil, status.Error(codes.InvalidArgument, "already authenticated; cannot re-authenticate")
 	}
 	if req.Credentials == nil {
@@ -162,20 +164,39 @@ func (ss *simpleServer) signAccessTokenForEntity(
 	return tokenString, nil
 }
 
+func (ss *simpleServer) isPublicMethod(
+	fullMethod string,
+) bool {
+	return ss.publicMethods[fullMethod]
+}
+
 func (ss *simpleServer) authUnaryInterceptor(
 	ctx context.Context,
 	req interface{},
 	info *grpc.UnaryServerInfo,
 	handler grpc.UnaryHandler,
 ) (interface{}, error) {
-	if !ss.exemptMethods[info.FullMethod] {
-		nextCtx, err := ss.ensureAuthed(ctx)
+	// no auth
+	if ss.exemptMethods[info.FullMethod] {
+		return handler(ctx, req)
+	}
+
+	// optional auth
+	if ss.isPublicMethod(info.FullMethod) {
+		nextCtx, err := ss.tryAuth(ctx)
 		if err != nil {
 			return nil, err
 		}
-		ctx = nextCtx
+		return handler(nextCtx, req)
 	}
-	return handler(ctx, req)
+
+	// private auth
+	nextCtx, err := ss.ensureAuthed(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return handler(nextCtx, req)
 }
 
 func (ss *simpleServer) authStreamInterceptor(
@@ -184,13 +205,27 @@ func (ss *simpleServer) authStreamInterceptor(
 	info *grpc.StreamServerInfo,
 	handler grpc.StreamHandler,
 ) error {
-	if !ss.exemptMethods[info.FullMethod] {
-		nextCtx, err := ss.ensureAuthed(serverStream.Context())
+	if ss.exemptMethods[info.FullMethod] {
+		return handler(srv, serverStream)
+	}
+
+	// optional auth
+	if ss.isPublicMethod(info.FullMethod) {
+		nextCtx, err := ss.tryAuth(serverStream.Context())
 		if err != nil {
 			return err
 		}
 		serverStream = ctxWrappedServerStream{serverStream, nextCtx}
+		return handler(nextCtx, serverStream)
 	}
+
+	// private auth
+	nextCtx, err := ss.ensureAuthed(serverStream.Context())
+	if err != nil {
+		return err
+	}
+
+	serverStream = ctxWrappedServerStream{serverStream, nextCtx}
 	return handler(srv, serverStream)
 }
 
@@ -208,14 +243,14 @@ func tokenFromContext(ctx context.Context) (string, error) {
 	if !ok {
 		return "", status.Error(codes.Unauthenticated, "authentication required")
 	}
-	authHeader := md.Get(metadataFieldAuthorization)
+	authHeader := md.Get(MetadataFieldAuthorization)
 	if len(authHeader) != 1 {
 		return "", status.Error(codes.Unauthenticated, "authentication required")
 	}
-	if !strings.HasPrefix(authHeader[0], authorizationValuePrefixBearer) {
-		return "", status.Errorf(codes.Unauthenticated, "expected Authorization: %s", authorizationValuePrefixBearer)
+	if !strings.HasPrefix(authHeader[0], AuthorizationValuePrefixBearer) {
+		return "", status.Errorf(codes.Unauthenticated, "expected authorization header with prefix: %s", AuthorizationValuePrefixBearer)
 	}
-	return strings.TrimPrefix(authHeader[0], authorizationValuePrefixBearer), nil
+	return strings.TrimPrefix(authHeader[0], AuthorizationValuePrefixBearer), nil
 }
 
 var errNotTLSAuthed = errors.New("not authenticated via TLS")
@@ -234,6 +269,18 @@ var validSigningMethods = []string{
 	"HS256",
 	"HS384",
 	"RS256",
+}
+
+// tryAuth is called for public methods where auth is not required but preferable.
+func (ss *simpleServer) tryAuth(ctx context.Context) (context.Context, error) {
+	nextCtx, err := ss.ensureAuthed(ctx)
+	if err != nil {
+		if status, _ := status.FromError(err); status.Code() != codes.Unauthenticated {
+			return nil, err
+		}
+		return ctx, nil
+	}
+	return nextCtx, nil
 }
 
 func (ss *simpleServer) ensureAuthed(ctx context.Context) (context.Context, error) {

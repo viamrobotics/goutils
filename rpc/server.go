@@ -44,6 +44,8 @@ import (
 const (
 	generatedRSAKeyBits = 4096
 	mDNSerr             = "mDNS setup failed; continuing with mDNS disabled"
+	healthCheckMethod   = "/grpc.health.v1.Health/Check"
+	healthWatchMethod   = "/grpc.health.v1.Health/Watch"
 )
 
 // A Server provides a convenient way to get a gRPC server up and running
@@ -97,6 +99,8 @@ type Server interface {
 	// This is useful in a scenario where all gRPC is served from the root path due to
 	// limitations of normal gRPC being served from a non-root path.
 	http.Handler
+
+	EnsureAuthed(ctx context.Context) (context.Context, error)
 }
 
 type simpleServer struct {
@@ -116,11 +120,14 @@ type simpleServer struct {
 	signalingCallQueue      WebRTCCallQueue
 	signalingServer         *WebRTCSignalingServer
 	mdnsServers             []*zeroconf.Server
-	exemptMethods           map[string]bool
-	tlsConfig               *tls.Config
-	firstSeenTLSCertLeaf    *x509.Certificate
-	stopped                 bool
-	logger                  golog.Logger
+	// exempt methods do not perform any auth
+	exemptMethods map[string]bool
+	// public methods attempt, but do not require, authentication
+	publicMethods        map[string]bool
+	tlsConfig            *tls.Config
+	firstSeenTLSCertLeaf *x509.Certificate
+	stopped              bool
+	logger               golog.Logger
 
 	// auth
 
@@ -258,6 +265,7 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 		authAudience:         sOpts.authAudience,
 		authIssuer:           sOpts.authIssuer,
 		exemptMethods:        make(map[string]bool),
+		publicMethods:        make(map[string]bool),
 		tlsConfig:            sOpts.tlsConfig,
 		firstSeenTLSCertLeaf: firstSeenTLSCertLeaf,
 		logger:               logger,
@@ -281,6 +289,7 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 		grpc_zap.UnaryServerInterceptor(grpcLogger),
 		unaryServerCodeInterceptor(),
 	)
+	unaryInterceptors = append(unaryInterceptors, UnaryServerTracingInterceptor(grpcLogger))
 	unaryAuthIntPos := -1
 	if !sOpts.unauthenticated {
 		unaryInterceptors = append(unaryInterceptors, server.authUnaryInterceptor)
@@ -313,6 +322,7 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 		grpc_zap.StreamServerInterceptor(grpcLogger),
 		streamServerCodeInterceptor(),
 	)
+	streamInterceptors = append(streamInterceptors, StreamServerTracingInterceptor(grpcLogger))
 	streamAuthIntPos := -1
 	if !sOpts.unauthenticated {
 		streamInterceptors = append(streamInterceptors, server.authStreamInterceptor)
@@ -364,6 +374,15 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 		}
 		// Update this if the proto method or path changes
 		server.exemptMethods["/proto.rpc.v1.AuthService/Authenticate"] = true
+	}
+
+	if sOpts.allowUnauthenticatedHealthCheck {
+		server.exemptMethods[healthCheckMethod] = true
+		server.exemptMethods[healthWatchMethod] = true
+	}
+
+	for _, method := range sOpts.publicMethods {
+		server.publicMethods[method] = true
 	}
 
 	if sOpts.authToHandler != nil {
@@ -647,6 +666,10 @@ func (ss *simpleServer) GRPCHandler() http.Handler {
 	})
 }
 
+func (ss *simpleServer) EnsureAuthed(ctx context.Context) (context.Context, error) {
+	return ss.ensureAuthed(ctx)
+}
+
 // ServeHTTP is an all-in-one handler for any kind of gRPC traffic. This is useful
 // in a scenario where all gRPC is served from the root path due to limitations of normal
 // gRPC being served from a non-root path.
@@ -759,35 +782,36 @@ func (ss *simpleServer) Stop() error {
 	}
 	ss.stopped = true
 	var err error
+	ss.logger.Info("stopping")
+	for idx, answerer := range ss.webrtcAnswerers {
+		ss.logger.Debugw("stopping WebRTC answerer", "num", idx)
+		answerer.Stop()
+		ss.logger.Debugw("WebRTC answerer stopped", "num", idx)
+	}
 	if ss.signalingServer != nil {
 		ss.signalingServer.Close()
 	}
 	if ss.signalingCallQueue != nil {
 		err = multierr.Combine(err, ss.signalingCallQueue.Close())
 	}
-	ss.logger.Info("stopping server")
+	ss.logger.Debug("stopping gRPC server")
 	defer ss.grpcServer.Stop()
-	ss.logger.Info("canceling service servers for gateway")
+	ss.logger.Debug("canceling service servers for gateway")
 	for _, cancel := range ss.serviceServerCancels {
 		cancel()
 	}
-	ss.logger.Info("service servers for gateway canceled")
-	for idx, answerer := range ss.webrtcAnswerers {
-		ss.logger.Infow("stopping WebRTC answerer", "num", idx)
-		answerer.Stop()
-		ss.logger.Infow("WebRTC answerer stopped", "num", idx)
-	}
+	ss.logger.Debug("service servers for gateway canceled")
 	if ss.webrtcServer != nil {
-		ss.logger.Info("stopping WebRTC server")
+		ss.logger.Debug("stopping WebRTC server")
 		ss.webrtcServer.Stop()
-		ss.logger.Info("WebRTC server stopped")
+		ss.logger.Debug("WebRTC server stopped")
 	}
 	for _, mdnsServer := range ss.mdnsServers {
 		mdnsServer.Shutdown()
 	}
-	ss.logger.Info("shutting down HTTP server")
+	ss.logger.Debug("shutting down HTTP server")
 	err = multierr.Combine(err, ss.httpServer.Shutdown(context.Background()))
-	ss.logger.Info("HTTP server shut down")
+	ss.logger.Debug("HTTP server shut down")
 	ss.activeBackgroundWorkers.Wait()
 	ss.logger.Info("stopped cleanly")
 	return err

@@ -1,6 +1,6 @@
 {
   "name": "@viamrobotics/rpc",
-  "version": "0.1.36",
+  "version": "0.2.3",
   "license": "Apache-2.0",
   "dependencies": {
     "@improbable-eng/grpc-web": "^0.13.0",
@@ -8,23 +8,37 @@
   },
   "devDependencies": {
     "@types/google-protobuf": "^3.7.4",
-    "prettier": "^2.8.8",
+    "@typescript-eslint/eslint-plugin": "^6.10.0",
+    "@typescript-eslint/parser": "^6.10.0",
+    "@viamrobotics/eslint-config": "^0.2.6",
+    "@viamrobotics/prettier-config": "^0.3.4",
+    "@viamrobotics/typescript-config": "^0.1.0",
+    "eslint": "^8.53.0",
+    "eslint-config-prettier": "^9.0.0",
+    "eslint-plugin-sonarjs": "^0.21.0",
+    "eslint-plugin-unicorn": "^48.0.1",
+    "prettier": "^3.0.3",
     "set-value": ">=4.0.1",
     "ts-loader": "^9.4.1",
     "ts-protoc-gen": "^0.14.0",
     "tslib": "^2.4.1",
-    "typescript": "^4.8.4",
-    "vite": "^3.1.4",
-    "webpack": "^5.74.0",
-    "webpack-cli": "^4.10.0"
+    "typescript": "^5.2.2",
+    "vite": "^4.0.0"
   },
-  "main": "dist/main.mjs",
-  "types": "src/index.d.ts",
+  "type": "module",
+  "types": "./dist/main.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/main.d.ts",
+      "import": "./dist/main.js"
+    }
+  },
   "scripts": {
     "prepare": "./etc/prepare.sh",
     "typecheck": "tsc --noEmit",
-    "format": "prettier --write '**/*.{ts,js}'",
-    "build": "tsc && vite build",
+    "lint": "eslint '**/*.{ts,js,cjs}' --quiet",
+    "format": "prettier --write '**/*.{ts,js,cjs}'",
+    "build": "vite build && tsc --project tsconfig.build.json",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
@@ -37,5 +51,9 @@
   },
   "homepage": "https://github.com/viamrobotics/goutils#readme",
   "description": "",
-  "private": false
+  "private": false,
+  "files": [
+    "dist",
+    "src"
+  ]
 }

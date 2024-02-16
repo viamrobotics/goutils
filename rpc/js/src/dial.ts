@@ -1,20 +1,20 @@
-import { grpc } from "@improbable-eng/grpc-web";
-import type { ProtobufMessage } from "@improbable-eng/grpc-web/dist/typings/message";
-import { ClientChannel } from "./ClientChannel";
-import { ConnectionClosedError } from "./errors";
-import { Code } from "./gen/google/rpc/code_pb";
-import { Status } from "./gen/google/rpc/status_pb";
+import { grpc } from '@improbable-eng/grpc-web';
+import type { ProtobufMessage } from '@improbable-eng/grpc-web/dist/typings/message';
+import { ClientChannel } from './ClientChannel';
+import { ConnectionClosedError } from './errors';
+import { Code } from './gen/google/rpc/code_pb';
+import { Status } from './gen/google/rpc/status_pb';
 import {
   AuthenticateRequest,
   AuthenticateResponse,
   AuthenticateToRequest,
   AuthenticateToResponse,
   Credentials as PBCredentials,
-} from "./gen/proto/rpc/v1/auth_pb";
+} from './gen/proto/rpc/v1/auth_pb';
 import {
   AuthService,
   ExternalAuthService,
-} from "./gen/proto/rpc/v1/auth_pb_service";
+} from './gen/proto/rpc/v1/auth_pb_service';
 import {
   CallRequest,
   CallResponse,
@@ -24,16 +24,16 @@ import {
   WebRTCConfig,
   OptionalWebRTCConfigRequest,
   OptionalWebRTCConfigResponse,
-} from "./gen/proto/rpc/webrtc/v1/signaling_pb";
-import { SignalingService } from "./gen/proto/rpc/webrtc/v1/signaling_pb_service";
-import { newPeerConnectionForClient } from "./peer";
+} from './gen/proto/rpc/webrtc/v1/signaling_pb';
+import { SignalingService } from './gen/proto/rpc/webrtc/v1/signaling_pb_service';
+import { addSdpFields, newPeerConnectionForClient } from './peer';
 
 export interface DialOptions {
-  authEntity?: string;
-  credentials?: Credentials;
+  authEntity?: string | undefined;
+  credentials?: Credentials | undefined;
   webrtcOptions?: DialWebRTCOptions;
-  externalAuthAddress?: string;
-  externalAuthToEntity?: string;
+  externalAuthAddress?: string | undefined;
+  externalAuthToEntity?: string | undefined;
 
   // `accessToken` allows a pre-authenticated client to dial with
   // an authorization header. Direct dial will have the access token
@@ -42,7 +42,10 @@ export interface DialOptions {
   //
   // If enabled, other auth options have no affect. Eg. authEntity, credentials,
   // externalAuthAddress, externalAuthToEntity, webrtcOptions.signalingAccessToken
-  accessToken?: string;
+  accessToken?: string | undefined;
+
+  // set timeout in milliseconds for dialing.
+  dialTimeout?: number | undefined;
 }
 
 export interface DialWebRTCOptions {
@@ -74,6 +77,9 @@ export interface DialWebRTCOptions {
   //
   // If enabled, other auth options have no affect. Eg. authEntity, credentials, signalingAuthEntity, signalingCredentials.
   signalingAccessToken?: string;
+
+  // `additionalSDPValues` is a collection of additional SDP values that we want to pass into the connection's call request.
+  additionalSdpFields?: Record<string, string | number>;
 }
 
 export interface Credentials {
@@ -97,7 +103,7 @@ export async function dialDirect(
     !(opts?.externalAuthAddress && opts?.externalAuthToEntity)
   ) {
     const md = new grpc.Metadata();
-    md.set("authorization", `Bearer ${opts.accessToken}`);
+    md.set('authorization', `Bearer ${opts.accessToken}`);
     return (opts: grpc.TransportOptions): grpc.Transport => {
       return new authenticatedTransport(opts, defaultFactory, md);
     };
@@ -115,19 +121,20 @@ async function makeAuthenticatedTransportFactory(
   defaultFactory: grpc.TransportFactory,
   opts: DialOptions
 ): Promise<grpc.TransportFactory> {
-  let accessToken = "";
+  let accessToken = '';
   const getExtraMetadata = async (): Promise<grpc.Metadata> => {
+    const md = new grpc.Metadata();
     // TODO(GOUT-10): handle expiration
-    if (accessToken == "") {
-      let thisAccessToken = "";
+    if (accessToken == '') {
+      let thisAccessToken = '';
 
       let pResolve: (value: grpc.Metadata) => void;
       let pReject: (reason?: unknown) => void;
 
-      if (!opts.accessToken || opts.accessToken === "") {
+      if (!opts.accessToken || opts.accessToken === '') {
         const request = new AuthenticateRequest();
         request.setEntity(
-          opts.authEntity ? opts.authEntity : address.replace(/^(.*:\/\/)/, "")
+          opts.authEntity ? opts.authEntity : address.replace(/^(.*:\/\/)/, '')
         );
         const creds = new PBCredentials();
         creds.setType(opts.credentials?.type!);
@@ -167,13 +174,13 @@ async function makeAuthenticatedTransportFactory(
 
       if (opts.externalAuthAddress && opts.externalAuthToEntity) {
         const md = new grpc.Metadata();
-        md.set("authorization", `Bearer ${accessToken}`);
+        md.set('authorization', `Bearer ${accessToken}`);
 
         let done = new Promise<grpc.Metadata>((resolve, reject) => {
           pResolve = resolve;
           pReject = reject;
         });
-        thisAccessToken = "";
+        thisAccessToken = '';
 
         const request = new AuthenticateToRequest();
         request.setEntity(opts.externalAuthToEntity);
@@ -201,8 +208,7 @@ async function makeAuthenticatedTransportFactory(
         accessToken = thisAccessToken;
       }
     }
-    const md = new grpc.Metadata();
-    md.set("authorization", `Bearer ${accessToken}`);
+    md.set('authorization', `Bearer ${accessToken}`);
     return md;
   };
   const extraMd = await getExtraMetadata();
@@ -246,7 +252,7 @@ class authenticatedTransport implements grpc.Transport {
   }
 }
 
-interface WebRTCConnection {
+export interface WebRTCConnection {
   transportFactory: grpc.TransportFactory;
   peerConnection: RTCPeerConnection;
 }
@@ -271,7 +277,7 @@ async function getOptionalWebRTCConfig(
   grpc.unary(SignalingService.OptionalWebRTCConfig, {
     request: new OptionalWebRTCConfigRequest(),
     metadata: {
-      "rpc-host": host,
+      'rpc-host': host,
     },
     host: signalingAddress,
     transport: directTransport,
@@ -293,7 +299,7 @@ async function getOptionalWebRTCConfig(
   await done;
 
   if (!result) {
-    throw new Error("no config");
+    throw new Error('no config');
   }
   return result;
 }
@@ -308,6 +314,7 @@ export async function dialWebRTC(
   host: string,
   opts?: DialOptions
 ): Promise<WebRTCConnection> {
+  signalingAddress = signalingAddress.replace(/(\/)$/, '');
   validateDialOptions(opts);
 
   // TODO(RSDK-2836): In general, this logic should be in parity with the golang implementation.
@@ -350,7 +357,8 @@ export async function dialWebRTC(
 
   const { pc, dc } = await newPeerConnectionForClient(
     webrtcOpts !== undefined && webrtcOpts.disableTrickleICE,
-    webrtcOpts?.rtcConfig
+    webrtcOpts?.rtcConfig,
+    webrtcOpts?.additionalSdpFields
   );
   let successful = false;
 
@@ -366,10 +374,10 @@ export async function dialWebRTC(
           if (optsCopy.externalAuthAddress) {
             optsCopy.authEntity = opts.externalAuthAddress?.replace(
               /^(.*:\/\/)/,
-              ""
+              ''
             );
           } else {
-            optsCopy.authEntity = signalingAddress.replace(/^(.*:\/\/)/, "");
+            optsCopy.authEntity = signalingAddress.replace(/^(.*:\/\/)/, '');
           }
         }
         optsCopy.credentials = opts?.webrtcOptions?.signalingCredentials;
@@ -388,7 +396,7 @@ export async function dialWebRTC(
       transport: directTransport,
     });
 
-    let uuid = "";
+    let uuid = '';
     // only send once since exchange may end or ICE may end
     let sentDoneOrErrorOnce = false;
     const sendError = (err: string) => {
@@ -405,7 +413,7 @@ export async function dialWebRTC(
       grpc.unary(SignalingService.CallUpdate, {
         request: callRequestUpdate,
         metadata: {
-          "rpc-host": host,
+          'rpc-host': host,
         },
         host: signalingAddress,
         transport: directTransport,
@@ -429,7 +437,7 @@ export async function dialWebRTC(
       grpc.unary(SignalingService.CallUpdate, {
         request: callRequestUpdate,
         metadata: {
-          "rpc-host": host,
+          'rpc-host': host,
         },
         host: signalingAddress,
         transport: directTransport,
@@ -472,7 +480,7 @@ export async function dialWebRTC(
         grpc.unary(SignalingService.CallUpdate, {
           request: callRequestUpdate,
           metadata: {
-            "rpc-host": host,
+            'rpc-host': host,
           },
           host: signalingAddress,
           transport: directTransport,
@@ -484,13 +492,16 @@ export async function dialWebRTC(
             if (exchangeDone || iceComplete) {
               return;
             }
-            console.error("error sending candidate", statusMessage);
+            console.error('error sending candidate', statusMessage);
           },
         });
       };
 
       await pc.setLocalDescription(offerDesc);
     }
+
+    // initialize cc here so we can use it in the callbacks
+    let cc: ClientChannel;
 
     let haveInit = false;
     // TS says that CallResponse isn't a valid type here. More investigation required.
@@ -499,7 +510,7 @@ export async function dialWebRTC(
 
       if (response.hasInit()) {
         if (haveInit) {
-          sendError("got init stage more than once");
+          sendError('got init stage more than once');
           return;
         }
         const init = response.getInit()!;
@@ -509,6 +520,10 @@ export async function dialWebRTC(
         const remoteSDP = new RTCSessionDescription(
           JSON.parse(atob(init.getSdp()))
         );
+        if (cc?.isClosed()) {
+          sendError('client channel is closed');
+          return;
+        }
         await pc.setRemoteDescription(remoteSDP);
 
         pResolve(true);
@@ -520,7 +535,7 @@ export async function dialWebRTC(
         }
       } else if (response.hasUpdate()) {
         if (!haveInit) {
-          sendError("got update stage before init stage");
+          sendError('got update stage before init stage');
           return;
         }
         if (response.getUuid() !== uuid) {
@@ -536,7 +551,7 @@ export async function dialWebRTC(
           return;
         }
       } else {
-        sendError("unknown CallResponse stage");
+        sendError('unknown CallResponse stage');
         return;
       }
     });
@@ -553,25 +568,45 @@ export async function dialWebRTC(
           clientEndResolve();
           return;
         }
-        if (statusMessage === "Response closed without headers") {
-          clientEndReject(new ConnectionClosedError("failed to dial"));
+        if (statusMessage === 'Response closed without headers') {
+          clientEndReject(new ConnectionClosedError('failed to dial'));
+          return;
+        }
+        if (cc?.isClosed()) {
+          clientEndReject(
+            new ConnectionClosedError('client channel is closed')
+          );
           return;
         }
         console.error(statusMessage);
         clientEndReject(statusMessage);
       }
     );
-    client.start({ "rpc-host": host });
+    client.start({ 'rpc-host': host });
 
     const callRequest = new CallRequest();
-    const encodedSDP = btoa(JSON.stringify(pc.localDescription));
+    const description = addSdpFields(
+      pc.localDescription,
+      opts.webrtcOptions?.additionalSdpFields
+    );
+    const encodedSDP = btoa(JSON.stringify(description));
     callRequest.setSdp(encodedSDP);
     if (webrtcOpts && webrtcOpts.disableTrickleICE) {
       callRequest.setDisableTrickle(webrtcOpts.disableTrickleICE);
     }
     client.send(callRequest);
 
-    const cc = new ClientChannel(pc, dc);
+    cc = new ClientChannel(pc, dc);
+
+    // set timeout for dial attempt if a timeout is specified
+    if (opts.dialTimeout) {
+      setTimeout(() => {
+        if (!successful) {
+          cc.close();
+        }
+      }, opts.dialTimeout);
+    }
+
     cc.ready
       .then(() => clientEndResolve())
       .catch((err) => clientEndReject(err));
@@ -635,27 +670,27 @@ function validateDialOptions(opts?: DialOptions) {
 
   if (opts.accessToken && opts.accessToken.length > 0) {
     if (opts.authEntity) {
-      throw new Error("cannot set authEntity with accessToken");
+      throw new Error('cannot set authEntity with accessToken');
     }
 
     if (opts.credentials) {
-      throw new Error("cannot set credentials with accessToken");
+      throw new Error('cannot set credentials with accessToken');
     }
 
     if (opts.webrtcOptions) {
       if (opts.webrtcOptions.signalingAccessToken) {
         throw new Error(
-          "cannot set webrtcOptions.signalingAccessToken with accessToken"
+          'cannot set webrtcOptions.signalingAccessToken with accessToken'
         );
       }
       if (opts.webrtcOptions.signalingAuthEntity) {
         throw new Error(
-          "cannot set webrtcOptions.signalingAuthEntity with accessToken"
+          'cannot set webrtcOptions.signalingAuthEntity with accessToken'
         );
       }
       if (opts.webrtcOptions.signalingCredentials) {
         throw new Error(
-          "cannot set webrtcOptions.signalingCredentials with accessToken"
+          'cannot set webrtcOptions.signalingCredentials with accessToken'
         );
       }
     }
@@ -667,12 +702,12 @@ function validateDialOptions(opts?: DialOptions) {
   ) {
     if (opts.webrtcOptions.signalingAuthEntity) {
       throw new Error(
-        "cannot set webrtcOptions.signalingAuthEntity with webrtcOptions.signalingAccessToken"
+        'cannot set webrtcOptions.signalingAuthEntity with webrtcOptions.signalingAccessToken'
       );
     }
     if (opts.webrtcOptions.signalingCredentials) {
       throw new Error(
-        "cannot set webrtcOptions.signalingCredentials with webrtcOptions.signalingAccessToken"
+        'cannot set webrtcOptions.signalingCredentials with webrtcOptions.signalingAccessToken'
       );
     }
   }

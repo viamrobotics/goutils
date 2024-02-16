@@ -18,7 +18,7 @@ import (
 // ContextualMain calls a main entry point function with a cancellable
 // context via SIGTERM. This should be called once per process so as
 // to not clobber the signals from Notify.
-func ContextualMain(main func(ctx context.Context, args []string, logger golog.Logger) error, logger golog.Logger) {
+func ContextualMain[L ILogger](main func(ctx context.Context, args []string, logger L) error, logger L) {
 	// This will only run on a successful exit due to the fatal error
 	// logic in contextualMain.
 	defer func() {
@@ -31,11 +31,11 @@ func ContextualMain(main func(ctx context.Context, args []string, logger golog.L
 
 // ContextualMainQuit is the same as ContextualMain but catches quit signals into the provided
 // context accessed via ContextMainQuitSignal.
-func ContextualMainQuit(main func(ctx context.Context, args []string, logger golog.Logger) error, logger golog.Logger) {
+func ContextualMainQuit[L ILogger](main func(ctx context.Context, args []string, logger L) error, logger L) {
 	contextualMain(main, true, logger)
 }
 
-func contextualMain(main func(ctx context.Context, args []string, logger golog.Logger) error, quitSignal bool, logger golog.Logger) {
+func contextualMain[L ILogger](main func(ctx context.Context, args []string, logger L) error, quitSignal bool, logger L) {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	if quitSignal {
 		quitC := make(chan os.Signal, 1)
@@ -43,7 +43,7 @@ func contextualMain(main func(ctx context.Context, args []string, logger golog.L
 		ctx = ContextWithQuitSignal(ctx, quitC)
 	}
 	usr1C := make(chan os.Signal, 1)
-	signal.Notify(usr1C, syscall.SIGUSR1)
+	notifySignals(usr1C)
 
 	var signalWatcher sync.WaitGroup
 	signalWatcher.Add(1)
@@ -74,7 +74,7 @@ func contextualMain(main func(ctx context.Context, args []string, logger golog.L
 	}
 }
 
-var fatal = func(logger golog.Logger, args ...interface{}) {
+var fatal = func(logger ILogger, args ...interface{}) {
 	logger.Fatal(args...)
 }
 

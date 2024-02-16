@@ -118,7 +118,7 @@ func TestServerAuth(t *testing.T) {
 		gStatus, ok = status.FromError(err)
 		test.That(t, ok, test.ShouldBeTrue)
 		test.That(t, gStatus.Code(), test.ShouldEqual, codes.Unauthenticated)
-		test.That(t, gStatus.Message(), test.ShouldContainSubstring, "expected Authorization")
+		test.That(t, gStatus.Message(), test.ShouldContainSubstring, "expected authorization header with prefix")
 
 		md = make(metadata.MD)
 		md.Set("authorization", "Bearer ")
@@ -203,7 +203,7 @@ func TestServerAuth(t *testing.T) {
 		test.That(t, httpResp2.StatusCode, test.ShouldEqual, 200)
 		rd, err = io.ReadAll(httpResp2.Body)
 		test.That(t, err, test.ShouldBeNil)
-		test.That(t, httpResp2.Header["Grpc-Message"], test.ShouldResemble, []string{"expected Authorization: Bearer"})
+		test.That(t, httpResp2.Header["Grpc-Message"], test.ShouldResemble, []string{"expected authorization header with prefix: Bearer"})
 		test.That(t, string(rd), test.ShouldResemble, "")
 
 		req, err = http.NewRequest(http.MethodPost, httpURL, strings.NewReader(grpcWebReq))
@@ -523,6 +523,135 @@ func TestServerAuthJWTAudienceAndID(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestServerPublicMethods(t *testing.T) {
+	logger := golog.NewTestLogger(t)
+
+	t.Run("NoAuthSet", func(t *testing.T) {
+		// this is an authenticated server - using the default auth service on server
+		rpcServer, err := NewServer(logger,
+			WithPublicMethods([]string{
+				"/proto.rpc.examples.echo.v1.EchoService/Echo",
+				"/proto.rpc.examples.echo.v1.EchoService/EchoMultiple",
+			}),
+		)
+		defer rpcServer.Stop()
+		test.That(t, err, test.ShouldBeNil)
+		es := echoserver.Server{}
+		err = rpcServer.RegisterServiceServer(
+			context.Background(),
+			&pb.EchoService_ServiceDesc,
+			&es,
+			pb.RegisterEchoServiceHandlerFromEndpoint,
+		)
+		test.That(t, err, test.ShouldBeNil)
+
+		listener, err := net.Listen("tcp", "localhost:0")
+		test.That(t, err, test.ShouldBeNil)
+		grpcOpts := []grpc.DialOption{
+			grpc.WithBlock(),
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+		}
+
+		errChan := make(chan error)
+		go func() {
+			errChan <- rpcServer.Serve(listener)
+		}()
+
+		conn, err := grpc.DialContext(context.Background(), listener.Addr().String(), grpcOpts...)
+		test.That(t, err, test.ShouldBeNil)
+		defer func() {
+			test.That(t, conn.Close(), test.ShouldBeNil)
+		}()
+		client := pb.NewEchoServiceClient(conn)
+		echoResp, err := client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
+		test.That(t, err, test.ShouldBeNil)
+		test.That(t, echoResp, test.ShouldNotBeNil)
+		test.That(t, echoResp.Message, test.ShouldEqual, "hello")
+
+		// test the stream service
+		_, err = client.EchoMultiple(context.Background(), &pb.EchoMultipleRequest{Message: "hello"})
+		test.That(t, err, test.ShouldBeNil)
+		err = <-errChan
+		test.That(t, err, test.ShouldBeNil)
+	})
+
+	t.Run("Given an authenticated client, they can still access the public API", func(t *testing.T) {
+		testPrivKey, err := rsa.GenerateKey(rand.Reader, 512)
+		test.That(t, err, test.ShouldBeNil)
+
+		rpcServer, err := NewServer(logger,
+			// this is the main echo method
+			WithPublicMethods([]string{
+				"/proto.rpc.examples.echo.v1.EchoService/Echo",
+				"/proto.rpc.examples.echo.v1.EchoService/EchoMultiple",
+			}),
+			WithAuthHandler("fake", AuthHandlerFunc(func(ctx context.Context, entity, payload string) (map[string]string, error) {
+				return map[string]string{}, nil
+			})),
+			WithAuthRSAPrivateKey(testPrivKey),
+		)
+
+		defer rpcServer.Stop()
+		test.That(t, err, test.ShouldBeNil)
+		es := echoserver.Server{}
+		err = rpcServer.RegisterServiceServer(
+			context.Background(),
+			&pb.EchoService_ServiceDesc,
+			&es,
+			pb.RegisterEchoServiceHandlerFromEndpoint,
+		)
+		test.That(t, err, test.ShouldBeNil)
+
+		listener, err := net.Listen("tcp", "localhost:0")
+		test.That(t, err, test.ShouldBeNil)
+		grpcOpts := []grpc.DialOption{
+			grpc.WithBlock(),
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+		}
+
+		errChan := make(chan error)
+		go func() {
+			errChan <- rpcServer.Serve(listener)
+		}()
+
+		conn, err := grpc.DialContext(context.Background(), listener.Addr().String(), grpcOpts...)
+		test.That(t, err, test.ShouldBeNil)
+		defer func() {
+			test.That(t, conn.Close(), test.ShouldBeNil)
+		}()
+
+		// setup for auth stuff
+		authClient := rpcpb.NewAuthServiceClient(conn)
+		authResp, err := authClient.Authenticate(
+			context.Background(), &rpcpb.AuthenticateRequest{Entity: "foo", Credentials: &rpcpb.Credentials{
+				Type:    "fake",
+				Payload: "something",
+			}})
+		test.That(t, err, test.ShouldBeNil)
+		_, err = jwt.Parse(authResp.AccessToken, func(token *jwt.Token) (interface{}, error) {
+			return &testPrivKey.PublicKey, nil
+		})
+		test.That(t, err, test.ShouldBeNil)
+
+		md := make(metadata.MD)
+		bearer := fmt.Sprintf("Bearer %s", authResp.AccessToken)
+		md.Set("authorization", bearer)
+		ctx := metadata.NewOutgoingContext(context.Background(), md)
+
+		client := pb.NewEchoServiceClient(conn)
+		echoResp, err := client.Echo(ctx, &pb.EchoRequest{Message: "hello"})
+		test.That(t, err, test.ShouldBeNil)
+		test.That(t, echoResp, test.ShouldNotBeNil)
+		test.That(t, echoResp.Message, test.ShouldEqual, "hello")
+
+		// test the stream service
+		_, err = client.EchoMultiple(context.Background(), &pb.EchoMultipleRequest{Message: "hello"})
+		test.That(t, err, test.ShouldBeNil)
+		err = <-errChan
+		test.That(t, err, test.ShouldBeNil)
+	})
 }
 
 func TestServerAuthKeyFunc(t *testing.T) {

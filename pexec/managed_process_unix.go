@@ -4,6 +4,8 @@ package pexec
 
 import (
 	"os"
+	"os/user"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -63,8 +65,26 @@ func parseSignal(sigStr, name string) (syscall.Signal, error) {
 	}
 }
 
-func sysProcAttr() *syscall.SysProcAttr {
-	return &syscall.SysProcAttr{Setpgid: true}
+func (p *managedProcess) sysProcAttr() (*syscall.SysProcAttr, error) {
+	attrs := &syscall.SysProcAttr{Setpgid: true}
+	if len(p.username) > 0 {
+		user, err := user.Lookup(p.username)
+		if err != nil {
+			return nil, err
+		}
+		val, err := strconv.ParseUint(user.Uid, 10, 32)
+		if err != nil {
+			return nil, err
+		}
+		attrs.Credential = &syscall.Credential{}
+		attrs.Credential.Uid = uint32(val)
+		val, err = strconv.ParseUint(user.Gid, 10, 32)
+		if err != nil {
+			return nil, err
+		}
+		attrs.Credential.Gid = uint32(val)
+	}
+	return attrs, nil
 }
 
 func (p *managedProcess) kill() (bool, error) {

@@ -35,7 +35,7 @@ func TestWebRTCSignalingWithMongoDBQueue(t *testing.T) {
 	logger := golog.NewTestLogger(t)
 	client := testutils.BackingMongoDBClient(t)
 	test.That(t, client.Database(mongodbWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
-	signalingCallQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), uuid.NewString(), 50, client, logger)
+	signalingCallQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), uuid.NewString(), 50, client, logger, func(hosts []string) {})
 	test.That(t, err, test.ShouldBeNil)
 	defer func() {
 		test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
@@ -45,35 +45,35 @@ func TestWebRTCSignalingWithMongoDBQueue(t *testing.T) {
 
 //nolint:thelper
 func testWebRTCSignaling(t *testing.T, signalingCallQueue WebRTCCallQueue, logger golog.Logger) {
-	signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, logger)
-	defer signalingServer.Close()
-
-	grpcListener, err := net.Listen("tcp", "localhost:0")
-	test.That(t, err, test.ShouldBeNil)
-	grpcServer := grpc.NewServer()
-	grpcServer.RegisterService(&webrtcpb.SignalingService_ServiceDesc, signalingServer)
-
-	serveDone := make(chan error)
-	go func() {
-		serveDone <- grpcServer.Serve(grpcListener)
-	}()
-
-	webrtcServer := newWebRTCServer(logger)
-	webrtcServer.RegisterService(&echopb.EchoService_ServiceDesc, &echoserver.Server{})
-
 	hosts := []string{"yeehaw", "woahthere"}
-	answerer := newWebRTCSignalingAnswerer(
-		grpcListener.Addr().String(),
-		hosts,
-		webrtcServer,
-		[]DialOption{WithInsecure()},
-		webrtc.Configuration{},
-		logger,
-	)
-	answerer.Start()
-
 	for _, host := range hosts {
 		t.Run(host, func(t *testing.T) {
+			signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, logger)
+			defer signalingServer.Close()
+
+			grpcListener, err := net.Listen("tcp", "localhost:0")
+			test.That(t, err, test.ShouldBeNil)
+			grpcServer := grpc.NewServer()
+			grpcServer.RegisterService(&webrtcpb.SignalingService_ServiceDesc, signalingServer)
+
+			serveDone := make(chan error)
+			go func() {
+				serveDone <- grpcServer.Serve(grpcListener)
+			}()
+
+			webrtcServer := newWebRTCServer(logger)
+			webrtcServer.RegisterService(&echopb.EchoService_ServiceDesc, &echoserver.Server{})
+
+			answerer := newWebRTCSignalingAnswerer(
+				grpcListener.Addr().String(),
+				hosts,
+				webrtcServer,
+				[]DialOption{WithInsecure()},
+				webrtc.Configuration{},
+				logger,
+			)
+			answerer.Start()
+
 			cc, err := grpc.Dial(grpcListener.Addr().String(), grpc.WithBlock(), grpc.WithTransportCredentials(insecure.NewCredentials()))
 			test.That(t, err, test.ShouldBeNil)
 			defer func() {
@@ -142,11 +142,46 @@ func testWebRTCSignaling(t *testing.T, signalingCallQueue WebRTCCallQueue, logge
 					test.That(t, resp.Message, test.ShouldEqual, "hello")
 				})
 			}
+
+			webrtcServer.Stop()
+			answerer.Stop()
+			grpcServer.Stop()
+			test.That(t, <-serveDone, test.ShouldBeNil)
 		})
 	}
+}
 
-	webrtcServer.Stop()
-	answerer.Stop()
-	grpcServer.Stop()
-	test.That(t, <-serveDone, test.ShouldBeNil)
+func TestWebRTCAnswererImmediateStop(t *testing.T) {
+	// Primarily a regression test for RSDK-3441.
+
+	logger := golog.NewTestLogger(t)
+	signalingCallQueue := NewMemoryWebRTCCallQueue(logger)
+	defer func() {
+		test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
+	}()
+
+	signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, logger)
+	defer signalingServer.Close()
+
+	grpcListener, err := net.Listen("tcp", "localhost:0")
+	test.That(t, err, test.ShouldBeNil)
+
+	webrtcServer := newWebRTCServer(logger)
+	defer webrtcServer.Stop()
+	webrtcServer.RegisterService(&echopb.EchoService_ServiceDesc, &echoserver.Server{})
+
+	hosts := []string{"foo", "bar"}
+	answerer := newWebRTCSignalingAnswerer(
+		grpcListener.Addr().String(),
+		hosts,
+		webrtcServer,
+		[]DialOption{WithInsecure()},
+		webrtc.Configuration{},
+		logger,
+	)
+
+	// Running both asynchronously means Stop will potentially happen before Start,
+	// but this setup still ensures that the two methods do not race each other.
+	go answerer.Start()
+	go answerer.Stop()
 }

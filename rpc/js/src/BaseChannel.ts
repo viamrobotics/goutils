@@ -1,5 +1,5 @@
-import type { ProtobufMessage } from "@improbable-eng/grpc-web/dist/typings/message";
-import { ConnectionClosedError } from "./errors";
+import type { ProtobufMessage } from '@improbable-eng/grpc-web/dist/typings/message';
+import { ConnectionClosedError } from './errors';
 
 export class BaseChannel {
   public readonly ready: Promise<unknown>;
@@ -10,7 +10,7 @@ export class BaseChannel {
   private pReject: ((reason?: unknown) => void) | undefined;
 
   private closed = false;
-  private closedReason?: Error;
+  private closedReason: Error | undefined;
 
   protected maxDataChannelSize = 65535;
 
@@ -28,10 +28,10 @@ export class BaseChannel {
     dataChannel.onerror = (ev: Event) =>
       this.onChannelError(ev as RTCErrorEvent);
 
-    peerConn.addEventListener("iceconnectionstatechange", () => {
+    peerConn.addEventListener('iceconnectionstatechange', () => {
       const state = peerConn.iceConnectionState;
       if (
-        !(state === "failed" || state === "disconnected" || state === "closed")
+        !(state === 'failed' || state === 'disconnected' || state === 'closed')
       ) {
         return;
       }
@@ -57,6 +57,7 @@ export class BaseChannel {
     }
     this.closed = true;
     this.closedReason = err;
+    this.pReject?.(err);
     this.peerConn.close();
   }
 
@@ -65,11 +66,11 @@ export class BaseChannel {
   }
 
   private onChannelClose() {
-    this.closeWithReason(new ConnectionClosedError("data channel closed"));
+    this.closeWithReason(new ConnectionClosedError('data channel closed'));
   }
 
   private onChannelError(ev: RTCErrorEvent) {
-    console.error("channel error", ev);
+    console.error('channel error', ev);
     this.closeWithReason(ev.error);
   }
 

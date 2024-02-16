@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -20,10 +21,14 @@ import (
 	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
 )
 
+const testDelayAnswererNegotiationVar = "TEST_DELAY_ANSWERER_NEGOTIATION"
+
 // A webrtcSignalingAnswerer listens for and answers calls with a given signaling service. It is
 // directly connected to a Server that will handle the actual calls/connections over WebRTC
 // data channels.
 type webrtcSignalingAnswerer struct {
+	startStopMu sync.Mutex // startStopMu guards the Start and Stop methods so they do not happen concurrently.
+
 	address                 string
 	hosts                   []string
 	server                  *webrtcServer
@@ -71,9 +76,28 @@ const (
 // Start connects to the signaling service and listens forever until instructed to stop
 // via Stop.
 func (ans *webrtcSignalingAnswerer) Start() {
+	ans.startStopMu.Lock()
+	defer ans.startStopMu.Unlock()
+
 	for i := 0; i < defaultMaxAnswerers; i++ {
 		ans.startAnswerer()
 	}
+}
+
+func checkExceptionalError(err error) error {
+	s, isGRPCErr := status.FromError(err)
+	if err == nil || errors.Is(err, io.EOF) ||
+		utils.FilterOutError(err, context.Canceled) == nil ||
+		(isGRPCErr &&
+			(s.Code() == codes.DeadlineExceeded ||
+				s.Code() == codes.Canceled ||
+				strings.Contains(s.Message(), "too_many_pings") ||
+				// RSDK-3025: Cloud Run has a max one hour timeout which will terminate gRPC
+				// streams, but leave the underlying connection open.
+				strings.Contains(s.Message(), "upstream max stream duration reached"))) {
+		return nil
+	}
+	return err
 }
 
 func (ans *webrtcSignalingAnswerer) startAnswerer() {
@@ -84,7 +108,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 		conn := connInUse
 		connMu.Unlock()
 		if conn != nil {
-			if err := conn.Close(); err != nil {
+			if err := checkExceptionalError(conn.Close()); err != nil {
 				ans.logger.Errorw("error closing existing signaling connection", "error", err)
 			}
 		}
@@ -143,10 +167,10 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 			if err == nil {
 				err = ans.answer(client)
 			}
-			s, isGRPCErr := status.FromError(err)
-			if err == nil || errors.Is(err, io.EOF) ||
-				(isGRPCErr && (s.Code() == codes.DeadlineExceeded || s.Code() == codes.Canceled || strings.Contains(s.Message(), "too_many_pings"))) ||
-				utils.FilterOutError(err, context.Canceled) == nil {
+			// Exceptional errors represent a broken connection and require reconnecting. Common
+			// errors represent that an operation has failed, but can be safely retried over the
+			// existing connection.
+			if checkExceptionalError(err) == nil {
 				continue
 			}
 
@@ -173,7 +197,8 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 			if conn == nil {
 				return
 			}
-			if err := conn.Close(); err != nil {
+
+			if err := checkExceptionalError(conn.Close()); err != nil {
 				ans.logger.Errorw("error closing signaling connection", "error", err)
 			}
 		}()
@@ -182,6 +207,9 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 
 // Stop waits for the answer to stop listening and return.
 func (ans *webrtcSignalingAnswerer) Stop() {
+	ans.startStopMu.Lock()
+	defer ans.startStopMu.Unlock()
+
 	ans.cancelBackgroundWorkers()
 	ans.activeBackgroundWorkers.Wait()
 }
@@ -278,37 +306,50 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 			return err
 		}
 
-		var callFlowWG sync.WaitGroup
+		var pendingCandidates sync.WaitGroup
 		waitOneHost := make(chan struct{})
 		var waitOneHostOnce sync.Once
-		pc.OnICECandidate(func(i *webrtc.ICECandidate) {
+		pc.OnICECandidate(func(icecandidate *webrtc.ICECandidate) {
 			if exchangeCtx.Err() != nil {
 				return
 			}
-			if i != nil {
-				callFlowWG.Add(1)
-				if i.Typ == webrtc.ICECandidateTypeHost {
+			if icecandidate != nil {
+				pendingCandidates.Add(1)
+				if icecandidate.Typ == webrtc.ICECandidateTypeHost {
 					waitOneHostOnce.Do(func() {
 						close(waitOneHost)
 					})
 				}
 			}
 			// must spin off to unblock the ICE gatherer
+			ans.activeBackgroundWorkers.Add(1)
 			utils.PanicCapturingGo(func() {
+				defer ans.activeBackgroundWorkers.Done()
+
+				if icecandidate != nil {
+					defer pendingCandidates.Done()
+				}
+
 				select {
 				case <-initSent:
 				case <-exchangeCtx.Done():
 					return
 				}
-				if i == nil {
-					callFlowWG.Wait()
+				// there are no more candidates coming during this negotiation
+				if icecandidate == nil {
+					if _, ok := os.LookupEnv(testDelayAnswererNegotiationVar); ok {
+						// RSDK-4293: Introducing a sleep here replicates the conditions
+						// for a prior goroutine leak.
+						ans.logger.Debug("Sleeping to delay the end of the negotiation")
+						time.Sleep(1 * time.Second)
+					}
+					pendingCandidates.Wait()
 					if err := sendDone(); err != nil {
 						sendErr(err)
 					}
 					return
 				}
-				defer callFlowWG.Done()
-				iProto := iceCandidateToProto(i)
+				iProto := iceCandidateToProto(icecandidate)
 				if err := client.Send(&webrtcpb.AnswerResponse{
 					Uuid: uuid,
 					Stage: &webrtcpb.AnswerResponse_Update{
@@ -437,7 +478,12 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 		return err
 	}
 	if err := sendDone(); err != nil {
-		return err
+		// Errors from sendDone (such as EOF) are sometimes caused by the signaling
+		// server "ending" the exchange process earlier than the answerer due to
+		// the caller being able to establish a connection without all the
+		// answerer's ICE candidates (trickle ICE). Only Warn the error here to
+		// avoid accidentally Closing a healthy, established peer connection.
+		ans.logger.Warnw("error ending signaling exchange from answer client", "error", err)
 	}
 	successful = true
 	return nil

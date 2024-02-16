@@ -11,7 +11,7 @@ const alphaLowers string = "abcdefghijklmnopqrstuvwxyz"
 
 var (
 	alphaUppers     = strings.ToUpper(alphaLowers)
-	maxIntBig       = big.NewInt(math.MaxInt64)
+	maxInt32        = big.NewInt(math.MaxInt32)
 	fiftyFityChance = big.NewInt(2)
 )
 
@@ -24,7 +24,7 @@ func RandomAlphaString(size int) string {
 	}
 	chars := make([]byte, 0, size)
 	for i := 0; i < size; i++ {
-		valBig, err := rand.Int(rand.Reader, maxIntBig)
+		valBig, err := rand.Int(rand.Reader, maxInt32)
 		if err != nil {
 			panic(err)
 		}
@@ -54,6 +54,18 @@ func NewStringSet(values ...string) StringSet {
 		set[val] = struct{}{}
 	}
 	return set
+}
+
+// Add adds the value to the StringSet
+// if the value already exists it will be a no-op.
+func (ss StringSet) Add(value string) {
+	ss[value] = struct{}{}
+}
+
+// Remove removes the value from the StringSet
+// If the value doesn't exist it will be a no-op.
+func (ss StringSet) Remove(value string) {
+	delete(ss, value)
 }
 
 // StringSliceRemove removes an element from the slice at the given position.

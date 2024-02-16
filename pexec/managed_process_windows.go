@@ -25,10 +25,14 @@ func parseSignal(sigStr, name string) (syscall.Signal, error) {
 	return 0, errors.New("signals not supported on Windows")
 }
 
-func sysProcAttr() *syscall.SysProcAttr {
-	return &syscall.SysProcAttr{
+func (p *managedProcess) sysProcAttr() (*syscall.SysProcAttr, error) {
+	ret := &syscall.SysProcAttr{
 		CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP,
 	}
+	if len(p.username) > 0 {
+		return nil, errors.Errorf("can't run as user %s, not supported yet on windows", p.username)
+	}
+	return ret, nil
 }
 
 func (p *managedProcess) kill() (bool, error) {

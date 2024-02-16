@@ -2,11 +2,15 @@ package pexec
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
+	"os/user"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -21,6 +25,15 @@ import (
 	"go.viam.com/utils"
 	"go.viam.com/utils/testutils"
 )
+
+// User for subprocess tests.
+// This looks for TEST_SUBPROC_USER var, otherwise uses current user.
+func subprocUser() (*user.User, error) {
+	if usernameFromEnv := os.Getenv("TEST_SUBPROC_USER"); len(usernameFromEnv) > 0 {
+		return user.Lookup(usernameFromEnv)
+	}
+	return user.Current()
+}
 
 func TestManagedProcessID(t *testing.T) {
 	logger := golog.NewTestLogger(t)
@@ -178,6 +191,28 @@ func TestManagedProcessStart(t *testing.T) {
 			} else {
 				test.That(t, string(rd), test.ShouldEqual, "hello\nworld\n")
 			}
+		})
+		t.Run("run as user", func(t *testing.T) {
+			if curUser, _ := user.Current(); curUser.Username != "root" {
+				t.Skipf("skipping run-as-user because setuid required elevated privileges")
+				return
+			}
+			asUser, err := subprocUser()
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			proc := NewManagedProcess(ProcessConfig{
+				ID:       "3",
+				Name:     "sleep",
+				Args:     []string{"100"},
+				Username: asUser.Username,
+				Log:      true,
+			}, golog.NewTestLogger(t))
+			test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
+			detectedUID, _ := exec.Command("ps", "--no-headers", "-o", "uid", "-p", strconv.Itoa(proc.(*managedProcess).cmd.Process.Pid)).Output()
+			test.That(t, asUser.Uid, test.ShouldEqual, strings.Trim(string(detectedUID), " \n\r"))
+			test.That(t, proc.Stop(), test.ShouldBeNil)
 		})
 	})
 }
@@ -544,6 +579,55 @@ done`, tempFile.Name()))
 		test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
 		<-watcher1.Events
 		test.That(t, proc.Stop(), test.ShouldBeNil)
+	})
+}
+
+func TestManagedProcessEnvironmentVariables(t *testing.T) {
+	t.Run("set an environment variable on one-shot process", func(t *testing.T) {
+		logger := golog.NewTestLogger(t)
+		output := new(bytes.Buffer)
+		proc := NewManagedProcess(ProcessConfig{
+			Name:        "bash",
+			Args:        []string{"-c", "printenv VIAM_HOME"},
+			Environment: map[string]string{"VIAM_HOME": "/opt/viam"},
+			OneShot:     true,
+			LogWriter:   output,
+		}, logger)
+		test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
+		test.That(t, output.String(), test.ShouldEqual, "/opt/viam\n")
+	})
+
+	t.Run("set an environment variable on non one-shot process", func(t *testing.T) {
+		logReader, logWriter := io.Pipe()
+		logger := golog.NewTestLogger(t)
+		proc := NewManagedProcess(ProcessConfig{
+			Name:        "bash",
+			Args:        []string{"-c", "printenv VIAM_HOME"},
+			Environment: map[string]string{"VIAM_HOME": "/opt/viam"},
+			LogWriter:   logWriter,
+		}, logger)
+		test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
+		bufferedLogReader := bufio.NewReader(logReader)
+		output, err := bufferedLogReader.ReadString('\n')
+		test.That(t, err, test.ShouldBeNil)
+		test.That(t, output, test.ShouldEqual, "/opt/viam\n")
+		test.That(t, proc.Stop(), test.ShouldBeNil)
+	})
+
+	t.Run("overwrite an environment variable", func(t *testing.T) {
+		logger := golog.NewTestLogger(t)
+		// test that the variable already exists
+		test.That(t, os.Getenv("HOME"), test.ShouldNotBeEmpty)
+		output := new(bytes.Buffer)
+		proc := NewManagedProcess(ProcessConfig{
+			Name:        "bash",
+			Args:        []string{"-c", "printenv HOME"},
+			Environment: map[string]string{"HOME": "/some/dir"},
+			OneShot:     true,
+			LogWriter:   output,
+		}, logger)
+		test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
+		test.That(t, output.String(), test.ShouldEqual, "/some/dir\n")
 	})
 }
 

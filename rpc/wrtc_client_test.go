@@ -3,6 +3,7 @@ package rpc
 import (
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"strings"
 	"testing"
@@ -38,7 +39,7 @@ func TestWebRTCClientServerWithMongoDBQueue(t *testing.T) {
 	logger := golog.NewTestLogger(t)
 	client := testutils.BackingMongoDBClient(t)
 	test.That(t, client.Database(mongodbWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
-	signalingCallQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), uuid.NewString(), 50, client, logger)
+	signalingCallQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), uuid.NewString(), 50, client, logger, func(hosts []string) {})
 	test.That(t, err, test.ShouldBeNil)
 	defer func() {
 		test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
@@ -130,7 +131,7 @@ func TestWebRTCClientDialCancelWithMongoDBQueue(t *testing.T) {
 	logger := golog.NewTestLogger(t)
 	client := testutils.BackingMongoDBClient(t)
 	test.That(t, client.Database(mongodbWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
-	signalingCallQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), uuid.NewString(), 50, client, logger)
+	signalingCallQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), uuid.NewString(), 50, client, logger, func(hosts []string) {})
 	test.That(t, err, test.ShouldBeNil)
 	defer func() {
 		test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
@@ -216,7 +217,7 @@ func TestWebRTCClientDialReflectAnswererErrorWithMongoDBQueue(t *testing.T) {
 	logger := golog.NewTestLogger(t)
 	client := testutils.BackingMongoDBClient(t)
 	test.That(t, client.Database(mongodbWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
-	signalingCallQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), uuid.NewString(), 50, client, logger)
+	signalingCallQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), uuid.NewString(), 50, client, logger, func(hosts []string) {})
 	test.That(t, err, test.ShouldBeNil)
 	defer func() {
 		test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
@@ -307,7 +308,7 @@ func TestWebRTCClientDialConcurrentWithMongoDBQueue(t *testing.T) {
 	logger := golog.NewTestLogger(t)
 	client := testutils.BackingMongoDBClient(t)
 	test.That(t, client.Database(mongodbWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
-	signalingCallQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), uuid.NewString(), 50, client, logger)
+	signalingCallQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), uuid.NewString(), 50, client, logger, func(hosts []string) {})
 	test.That(t, err, test.ShouldBeNil)
 	defer func() {
 		test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
@@ -446,7 +447,7 @@ func TestWebRTCClientAnswerConcurrentWithMongoDBQueue(t *testing.T) {
 	logger := golog.NewTestLogger(t)
 	client := testutils.BackingMongoDBClient(t)
 	test.That(t, client.Database(mongodbWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
-	signalingCallQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), uuid.NewString(), 50, client, logger)
+	signalingCallQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), uuid.NewString(), 50, client, logger, func(hosts []string) {})
 	test.That(t, err, test.ShouldBeNil)
 	defer func() {
 		test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
@@ -527,4 +528,79 @@ func testWebRTCClientAnswerConcurrent(t *testing.T, signalingCallQueue WebRTCCal
 	answerer.Stop()
 	grpcServer.Stop()
 	test.That(t, <-serveDone, test.ShouldBeNil)
+}
+
+func TestWebRTCClientSubsequentStreams(t *testing.T) {
+	logger := golog.NewTestLogger(t)
+	serverOpts := []ServerOption{
+		WithWebRTCServerOptions(WebRTCServerOptions{
+			Enable: true,
+		}),
+		WithUnauthenticated(),
+	}
+	rpcServer, err := NewServer(
+		logger,
+		serverOpts...,
+	)
+	test.That(t, err, test.ShouldBeNil)
+
+	es := echoserver.Server{}
+	err = rpcServer.RegisterServiceServer(
+		context.Background(),
+		&echopb.EchoService_ServiceDesc,
+		&es,
+		echopb.RegisterEchoServiceHandlerFromEndpoint,
+	)
+	test.That(t, err, test.ShouldBeNil)
+
+	listener, err := net.Listen("tcp", "localhost:0")
+	test.That(t, err, test.ShouldBeNil)
+
+	errChan := make(chan error)
+	go func() {
+		errChan <- rpcServer.Serve(listener)
+	}()
+
+	rtcConn, err := DialWebRTC(
+		context.Background(),
+		listener.Addr().String(),
+		rpcServer.InstanceNames()[0],
+		logger,
+		WithDialDebug(),
+		WithInsecure(),
+	)
+	test.That(t, err, test.ShouldBeNil)
+
+	client := echopb.NewEchoServiceClient(rtcConn)
+
+	msg := "hello"
+	echoResp, err := client.Echo(context.Background(), &echopb.EchoRequest{Message: msg})
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, echoResp.GetMessage(), test.ShouldEqual, msg)
+
+	echoResp, err = client.Echo(context.Background(), &echopb.EchoRequest{Message: msg})
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, echoResp.GetMessage(), test.ShouldEqual, msg)
+
+	echoClient, err := client.EchoMultiple(context.Background(), &echopb.EchoMultipleRequest{Message: msg})
+	test.That(t, err, test.ShouldBeNil)
+	var echoMultiResp echopb.EchoMultipleResponse
+	for i := 0; i < 5; i++ {
+		test.That(t, echoClient.RecvMsg(&echoMultiResp), test.ShouldBeNil)
+		test.That(t, echoMultiResp.Message, test.ShouldEqual, msg[i:i+1])
+	}
+	test.That(t, echoClient.RecvMsg(&echoMultiResp), test.ShouldBeError, io.EOF)
+
+	echoClient, err = client.EchoMultiple(context.Background(), &echopb.EchoMultipleRequest{Message: msg})
+	test.That(t, err, test.ShouldBeNil)
+	for i := 0; i < 5; i++ {
+		test.That(t, echoClient.RecvMsg(&echoMultiResp), test.ShouldBeNil)
+		test.That(t, echoMultiResp.Message, test.ShouldEqual, msg[i:i+1])
+	}
+	test.That(t, echoClient.RecvMsg(&echoMultiResp), test.ShouldBeError, io.EOF)
+
+	test.That(t, rtcConn.Close(), test.ShouldBeNil)
+	test.That(t, rpcServer.Stop(), test.ShouldBeNil)
+	err = <-errChan
+	test.That(t, err, test.ShouldBeNil)
 }

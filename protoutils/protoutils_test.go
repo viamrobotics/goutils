@@ -1,8 +1,10 @@
 package protoutils
 
 import (
+	"syscall"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
 	"go.viam.com/test"
@@ -15,7 +17,12 @@ type mapTest struct {
 	Expected map[string]interface{}
 }
 
+const ignoreOmitEmpty = false
+
 var (
+	myUUIDString = "c0ab974c-f32c-11ed-a05b-0242ac120003"
+	myUUID       = uuid.MustParse(myUUIDString)
+
 	simpleMap    = map[string]bool{"exists": true}
 	nilValueMap  = map[string]interface{}{"here": nil}
 	sliceMap     = map[string][]string{"foo": {"bar"}}
@@ -23,6 +30,7 @@ var (
 	pointerMap   = map[string]interface{}{"foo": &simpleStruct}
 	structMap    = map[string]SimpleStruct{"foo": simpleStruct}
 	structMapMap = map[string]MapStruct{"foo": mapStruct}
+	uuidKeyedMap = map[uuid.UUID]string{myUUID: "foo"}
 	mapTests     = []mapTest{
 		{"simple map", simpleMap, map[string]interface{}{"exists": true}},
 		{"nil value map", nilValueMap, map[string]interface{}{"here": nil}},
@@ -34,6 +42,9 @@ var (
 			"struct map of map", structMapMap,
 			map[string]interface{}{"foo": map[string]interface{}{"status": map[string]interface{}{"foo": "bar"}}},
 		},
+		// Regression test for RSDK-2796 (ensure map keys can be non-strings that
+		// implement fmt.Stringer)
+		{"uuid keyed map", uuidKeyedMap, map[string]interface{}{myUUIDString: "foo"}},
 	}
 )
 
@@ -45,6 +56,8 @@ type structTest struct {
 }
 
 var (
+	errnoVal = syscall.ENOENT
+
 	simpleStruct       = SimpleStruct{X: 1.1, Y: 2.2, Z: 3.3}
 	typedStringStruct  = TypedStringStruct{TypedString: TypedString("hello")}
 	sliceStruct        = SliceStruct{Degrees: []float64{1.1, 2.2, 3.3}}
@@ -56,6 +69,7 @@ var (
 	embeddedStruct     = EmbeddedStruct{simpleStruct, sliceStruct}
 	emptyPointerStruct = EmptyPointerStruct{EmptyStruct: nil}
 	singleByteStruct   = SingleUintStruct{UintValue: uint16(1)}
+	errnoStruct        = ErrnoStruct{Errno: errnoVal}
 
 	nilPointerResembleVal = EmptyPointerStruct{EmptyStruct: &EmptyStruct{}}
 
@@ -117,6 +131,12 @@ var (
 			map[string]interface{}{"UintValue": uint(1)},
 			SingleUintStruct{},
 		},
+		{
+			"struct with errno",
+			errnoStruct,
+			map[string]interface{}{"Errno": float64(errnoVal)}, // cast float64 because pb to map conversion supports double for nums
+			ErrnoStructReturn{},
+		},
 	}
 )
 
@@ -139,13 +159,14 @@ func TestInterfaceToMap(t *testing.T) {
 		test.That(t, newStruct.AsMap(), test.ShouldResemble, tc.Expected)
 	}
 
-	//nolint:dupl
 	for _, tc := range structTests {
 		map1, err := InterfaceToMap(tc.Data)
 		test.That(t, err, test.ShouldBeNil)
 		switch tc.TestName {
 		case "struct with uint":
 			test.That(t, map1["UintValue"], test.ShouldEqual, 1)
+		case "struct with errno":
+			test.That(t, map1["Errno"], test.ShouldEqual, errnoVal)
 		default:
 			test.That(t, map1, test.ShouldResemble, tc.Expected)
 		}
@@ -166,6 +187,10 @@ func TestInterfaceToMap(t *testing.T) {
 		switch tc.TestName {
 		case "nil pointer struct":
 			test.That(t, tc.Return, test.ShouldResemble, nilPointerResembleVal)
+		case "struct with errno": // handled separately because mapstructure library can't decode errno
+			returnStruct, ok := tc.Return.(ErrnoStructReturn)
+			test.That(t, ok, test.ShouldBeTrue)
+			test.That(t, returnStruct.Errno, test.ShouldEqual, errnoVal)
 		default:
 			test.That(t, tc.Return, test.ShouldResemble, tc.Data)
 		}
@@ -174,24 +199,24 @@ func TestInterfaceToMap(t *testing.T) {
 
 func TestMarshalMap(t *testing.T) {
 	t.Run("not a valid map", func(t *testing.T) {
-		_, err := marshalMap(simpleStruct)
+		_, err := marshalMap(simpleStruct, ignoreOmitEmpty)
 		test.That(t, err, test.ShouldBeError, errors.New("data of type protoutils.SimpleStruct is not a map"))
 
-		_, err = marshalMap("1")
+		_, err = marshalMap("1", ignoreOmitEmpty)
 		test.That(t, err, test.ShouldBeError, errors.New("data of type string is not a map"))
 
-		_, err = marshalMap([]string{"1"})
+		_, err = marshalMap([]string{"1"}, ignoreOmitEmpty)
 		test.That(t, err, test.ShouldBeError, errors.New("data of type []string is not a map"))
 
-		_, err = marshalMap(map[int]string{1: "1"})
-		test.That(t, err, test.ShouldBeError, errors.New("map keys of type int are not strings"))
+		_, err = marshalMap(map[int]string{1: "1"}, ignoreOmitEmpty)
+		test.That(t, err, test.ShouldBeError, errors.New("map keys of type int are not strings and do not implement String"))
 
-		_, err = marshalMap(map[interface{}]string{"1": "1"})
-		test.That(t, err, test.ShouldBeError, errors.New("map keys of type interface are not strings"))
+		_, err = marshalMap(map[interface{}]string{"1": "1"}, ignoreOmitEmpty)
+		test.That(t, err, test.ShouldBeError, errors.New("map keys of type interface are not strings and do not implement String"))
 	})
 
 	for _, tc := range mapTests {
-		map1, err := marshalMap(tc.Data)
+		map1, err := marshalMap(tc.Data, ignoreOmitEmpty)
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, map1, test.ShouldResemble, tc.Expected)
 
@@ -203,23 +228,24 @@ func TestMarshalMap(t *testing.T) {
 
 func TestStructToMap(t *testing.T) {
 	t.Run("not a struct", func(t *testing.T) {
-		_, err := structToMap(map[string]interface{}{"exists": true})
+		_, err := structToMap(map[string]interface{}{"exists": true}, ignoreOmitEmpty)
 		test.That(t, err, test.ShouldBeError, errors.New("data of type map[string]interface {} is not a struct"))
 
-		_, err = structToMap(1)
+		_, err = structToMap(1, ignoreOmitEmpty)
 		test.That(t, err, test.ShouldBeError, errors.New("data of type int is not a struct"))
 
-		_, err = structToMap([]string{"1"})
+		_, err = structToMap([]string{"1"}, ignoreOmitEmpty)
 		test.That(t, err, test.ShouldBeError, errors.New("data of type []string is not a struct"))
 	})
 
-	//nolint:dupl
 	for _, tc := range structTests {
-		map1, err := structToMap(tc.Data)
+		map1, err := structToMap(tc.Data, ignoreOmitEmpty)
 		test.That(t, err, test.ShouldBeNil)
 		switch tc.TestName {
 		case "struct with uint":
 			test.That(t, map1["UintValue"], test.ShouldEqual, 1)
+		case "struct with errno":
+			test.That(t, map1["Errno"], test.ShouldEqual, errnoVal)
 		default:
 			test.That(t, map1, test.ShouldResemble, tc.Expected)
 		}
@@ -240,6 +266,10 @@ func TestStructToMap(t *testing.T) {
 		switch tc.TestName {
 		case "nil pointer struct":
 			test.That(t, tc.Return, test.ShouldResemble, nilPointerResembleVal)
+		case "struct with errno": // handled separately because mapstructure library can't decode errno
+			returnStruct, ok := tc.Return.(ErrnoStructReturn)
+			test.That(t, ok, test.ShouldBeTrue)
+			test.That(t, returnStruct.Errno, test.ShouldEqual, errnoVal)
 		default:
 			test.That(t, tc.Return, test.ShouldResemble, tc.Data)
 		}
@@ -248,7 +278,7 @@ func TestStructToMap(t *testing.T) {
 
 func TestMarshalSlice(t *testing.T) {
 	t.Run("not a list", func(t *testing.T) {
-		_, err := marshalSlice(1)
+		_, err := marshalSlice(1, ignoreOmitEmpty)
 		test.That(t, err, test.ShouldBeError, errors.New("data of type int is not a slice"))
 	})
 
@@ -296,7 +326,7 @@ func TestMarshalSlice(t *testing.T) {
 		},
 	} {
 		t.Run(tc.TestName, func(t *testing.T) {
-			marshalled, err := marshalSlice(tc.Data)
+			marshalled, err := marshalSlice(tc.Data, ignoreOmitEmpty)
 			test.That(t, err, test.ShouldBeNil)
 			test.That(t, len(marshalled), test.ShouldEqual, tc.Length)
 			test.That(t, marshalled, test.ShouldResemble, tc.Expected)
@@ -324,26 +354,40 @@ func TestStructToStructPb(t *testing.T) {
 	}
 }
 
+func TestStructToStructPbOmitEmpty(t *testing.T) {
+	expected := map[string]interface{}{"x": 0.0, "y": 0.0}
+	data, err := StructToStructPbIgnoreOmitEmpty(OmitStruct{})
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, data.AsMap(), test.ShouldResemble, expected)
+}
+
 func TestToInterfaceWeirdBugUint(t *testing.T) {
 	a := uint(5)
-	x, err := toInterface(a)
+	x, err := toInterface(a, ignoreOmitEmpty)
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, x, test.ShouldEqual, a)
 
-	x, err = toInterface(&a)
+	x, err = toInterface(&a, ignoreOmitEmpty)
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, x, test.ShouldEqual, a)
 }
 
 func TestToInterfaceWeirdBugUint8(t *testing.T) {
 	a := uint8(5)
-	x, err := toInterface(a)
+	x, err := toInterface(a, ignoreOmitEmpty)
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, x, test.ShouldEqual, a)
 
-	x, err = toInterface(&a)
+	x, err = toInterface(&a, ignoreOmitEmpty)
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, x, test.ShouldEqual, a)
+}
+
+func TestToInterfaceErrno(t *testing.T) {
+	a := errnoVal
+	x, err := toInterface(a, ignoreOmitEmpty)
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, x, test.ShouldEqual, int(errnoVal))
 }
 
 type TypedString string
@@ -405,4 +449,12 @@ type EmbeddedStruct struct {
 
 type SingleUintStruct struct {
 	UintValue uint16
+}
+
+type ErrnoStruct struct {
+	Errno syscall.Errno
+}
+
+type ErrnoStructReturn struct {
+	Errno int
 }

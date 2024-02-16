@@ -32,9 +32,9 @@ var (
 // A webrtcClientChannel reflects the client end of a gRPC connection serviced over
 // a WebRTC data channel.
 type webrtcClientChannel struct {
+	streamIDCounter uint64
 	*webrtcBaseChannel
 	mu                sync.Mutex
-	streamIDCounter   uint64
 	streams           map[uint64]activeWebRTCClientStream
 	unaryInterceptor  grpc.UnaryClientInterceptor
 	streamInterceptor grpc.StreamClientInterceptor
@@ -79,7 +79,7 @@ func (ch *webrtcClientChannel) Close() error {
 	}
 	ch.mu.Unlock()
 	for _, s := range streamsToClose {
-		s.cs.close()
+		s.cs.Close()
 	}
 	return ch.webrtcBaseChannel.Close()
 }
@@ -117,7 +117,7 @@ func (ch *webrtcClientChannel) invokeWithInterceptor(
 	invoker := func(ctx context.Context, method string, req, reply interface{}, _ *grpc.ClientConn, opts ...grpc.CallOption) error {
 		return ch.invoke(ctx, method, req, reply, opts...)
 	}
-	return ch.unaryInterceptor(ctx, method, args, reply, nil, invoker)
+	return ch.unaryInterceptor(ctx, method, args, reply, nil, invoker, opts...)
 }
 
 func (ch *webrtcClientChannel) invoke(
@@ -257,6 +257,7 @@ func (ch *webrtcClientChannel) newStream(
 	activeStream, ok := ch.streams[id]
 	if !ok {
 		if len(ch.streams) == WebRTCMaxStreamCount {
+			ch.mu.Unlock()
 			return nil, errWebRTCMaxStreams
 		}
 		clientStream := newWebRTCClientStream(

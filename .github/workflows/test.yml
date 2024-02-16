@@ -22,16 +22,31 @@ jobs:
 
   build_and_test:
     name: Build and Test
-    runs-on: [x64, qemu-host]
-    container:
-      image: ghcr.io/viamrobotics/canon:amd64-cache
-      options: --platform linux/amd64
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     if: |
-      github.event_name == 'workflow_dispatch' || github.event_name == 'push' || 
+      github.event_name == 'workflow_dispatch' || github.event_name == 'push' ||
       (github.event_name == 'pull_request_target' && github.event.label.name == 'safe to test' && contains(github.event.pull_request.labels.*.name, 'safe to test'))
 
     steps:
+    - name: Setup go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.21'
+
+    - name: Setup node
+      uses: actions/setup-node@v3
+      with:
+        node-version: 18
+
+    - name: Install Protoc
+      uses: arduino/setup-protoc@v3
+      with:
+        version: "21.x"
+
+    - name: Install protoc-gen-js and plugins
+      run: npm install -g protoc-gen-js protoc-gen-grpc-web
+
     - name: Check out main branch code
       if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
       uses: actions/checkout@v3
@@ -45,12 +60,27 @@ jobs:
         ref: ${{ github.event.pull_request.head.sha }}
         fetch-depth: 2
 
+    - name: Set main env vars
+      if: github.event_name != 'pull_request_target'
+      run: |
+        echo "GITHUB_X_HEAD_SHA=${GITHUB_SHA}" >> $GITHUB_ENV
+        echo "GITHUB_X_HEAD_REF=${GITHUB_REF_NAME}" >> $GITHUB_ENV
+
+    - name: Set PR env vars
+      if: github.event_name == 'pull_request_target'
+      env:
+        GITHUB_HEAD_REF_SAN: ${{ github.event.pull_request.head.label }}
+      run: |
+        echo "GITHUB_X_HEAD_SHA=${{ github.event.pull_request.head.sha }}" >> $GITHUB_ENV
+        echo "GITHUB_X_HEAD_REF=${GITHUB_HEAD_REF_SAN}" >> $GITHUB_ENV
+        echo "GITHUB_X_PR_BASE_SHA=${{ github.event.pull_request.base.sha }}" >> $GITHUB_ENV
+        echo "GITHUB_X_PR_BASE_REF=${{ github.event.pull_request.base.ref }}" >> $GITHUB_ENV
+
     - name: Verify no uncommitted changes from "make build lint"
       run: |
         git init
         git add .
-        chown -R testbot .
-        sudo -u testbot bash -lc 'make build lint'
+        make build lint
         GEN_DIFF=$(git status -s)
         if [ -n "$GEN_DIFF" ]; then
             echo '"make build lint" resulted in changes not in git' 1>&2
@@ -58,26 +88,41 @@ jobs:
             exit 1
         fi
 
-    - name: Test
+    - name: Test js library
+      run: CI=true make test-web
+
+    - if: failure()
+      name: Upload js test report
+      uses: actions/upload-artifact@v3
+      with:
+        name: playwright-report
+        path: rpc/examples/echo/playwright-report
+        retention-days: 30
+
+    - name: Test go library
       env:
         TEST_MONGODB_URI: ${{ secrets.TEST_MONGODB_URI }}
+        MONGODB_TEST_OUTPUT_URI: ${{ secrets.MONGODB_TEST_OUTPUT_URI }}
       run: |
-        sudo -u testbot bash -lc 'echo "${{ secrets.ARTIFACT_GOOGLE_APPLICATION_CREDENTIALS }}" | base64 -d > artifact_google_creds.json'
+        echo "${{ secrets.ARTIFACT_GOOGLE_APPLICATION_CREDENTIALS }}" | base64 -d > artifact_google_creds.json
         export ARTIFACT_GOOGLE_APPLICATION_CREDENTIALS=`pwd`/artifact_google_creds.json
-        sudo -u testbot --preserve-env=ARTIFACT_GOOGLE_APPLICATION_CREDENTIALS,TEST_MONGODB_URI bash -lc 'make cover'
+        make cover
 
-    - name: Code Coverage Summary Report
-      uses: edaniels/CodeCoverageSummary@v1.2.3
+    - name: Upload test.json
+      if: always()
+      uses: actions/upload-artifact@v3
       with:
-        filename: coverage.xml
-        badge: true
-        fail_below_min: false
-        format: markdown
-        hide_branch_rate: true
-        hide_complexity: true
-        indicators: true
-        output: both
-        thresholds: '50 70'
+        name: test.json
+        path: json.log
+        retention-days: 30
+
+    # this one runs as root for CAP_SETUID
+    - name: test run-as-user
+      env:
+        TEST_SUBPROC_USER: subproc_user
+      run: |
+        sudo useradd $TEST_SUBPROC_USER
+        sudo go test -v ./pexec -run TestManagedProcessStart
 
     - name: Add Coverage PR Comment
       uses: marocchino/sticky-pull-request-comment@v2.2.0
@@ -86,4 +131,3 @@ jobs:
         recreate: true
         path: code-coverage-results.md
         GITHUB_TOKEN: ${{ secrets.GIT_ACCESS_TOKEN }}
-

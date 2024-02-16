@@ -218,11 +218,11 @@ func DialDirectGRPC(ctx context.Context, address string, logger golog.Logger, op
 		logger = zap.NewNop().Sugar()
 	}
 
-	return dialInner(ctx, address, logger, &dOpts)
+	return dialInner(ctx, address, logger, dOpts)
 }
 
 // dialDirectGRPC dials a gRPC server directly.
-func dialDirectGRPC(ctx context.Context, address string, dOpts *dialOptions, logger golog.Logger) (ClientConn, bool, error) {
+func dialDirectGRPC(ctx context.Context, address string, dOpts dialOptions, logger golog.Logger) (ClientConn, bool, error) {
 	dialOpts := []grpc.DialOption{
 		grpc.WithBlock(),
 		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(MaxMessageSize)),
@@ -271,6 +271,7 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts *dialOptions, log
 	}
 	var unaryInterceptors []grpc.UnaryClientInterceptor
 	unaryInterceptors = append(unaryInterceptors, grpc_zap.UnaryClientInterceptor(grpcLogger))
+	unaryInterceptors = append(unaryInterceptors, UnaryClientTracingInterceptor())
 	if dOpts.unaryInterceptor != nil {
 		unaryInterceptors = append(unaryInterceptors, dOpts.unaryInterceptor)
 	}
@@ -279,6 +280,7 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts *dialOptions, log
 
 	var streamInterceptors []grpc.StreamClientInterceptor
 	streamInterceptors = append(streamInterceptors, grpc_zap.StreamClientInterceptor(grpcLogger))
+	streamInterceptors = append(streamInterceptors, StreamClientTracingInterceptor())
 	if dOpts.streamInterceptor != nil {
 		streamInterceptors = append(streamInterceptors, dOpts.streamInterceptor)
 	}
@@ -306,35 +308,11 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts *dialOptions, log
 			logger.Debugw("will eventually authenticate as entity", "entity", dOpts.authEntity)
 		}
 		if dOpts.externalAuthAddr != "" {
-			if dOpts.externalAuthToEntity == "" {
-				return nil, false, errors.New("external auth address set but no authenticate to option set")
-			}
-			if dOpts.debug {
-				logger.Debugw("will eventually authenticate externally to entity", "entity", dOpts.externalAuthToEntity)
-				logger.Debugw("dialing direct for external auth", "address", dOpts.externalAuthAddr)
-			}
-			dialOptsCopy := *dOpts
-			dialOptsCopy.insecure = dOpts.externalAuthInsecure
-			dialOptsCopy.externalAuthAddr = ""
-			dialOptsCopy.externalAuthMaterial = ""
-			dialOptsCopy.creds = Credentials{}
-			dialOptsCopy.authEntity = ""
-
-			// reset the tls config that is used for the external Auth Service.
-			dialOptsCopy.tlsConfig = newDefaultTLSConfig()
-
-			externalConn, externalCached, err := dialDirectGRPC(ctx, dOpts.externalAuthAddr, &dialOptsCopy, logger)
+			externalConn, err := dialExternalAuthEntity(ctx, logger, dOpts)
 			if err != nil {
 				return nil, false, err
 			}
 
-			if dOpts.debug {
-				if externalCached {
-					logger.Debugw("connected directly for external auth (cached)", "address", dOpts.externalAuthAddr)
-				} else {
-					logger.Debugw("connected directly for external auth", "address", dOpts.externalAuthAddr)
-				}
-			}
 			closeCredsFunc = externalConn.Close
 			rpcCreds.conn = externalConn
 			rpcCreds.externalAuthToEntity = dOpts.externalAuthToEntity
@@ -348,7 +326,7 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts *dialOptions, log
 	var cached bool
 	var err error
 	if ctxDialer := contextDialer(ctx); ctxDialer != nil {
-		conn, cached, err = ctxDialer.DialDirect(ctx, address, buildKeyExtra(dOpts), closeCredsFunc, dialOpts...)
+		conn, cached, err = ctxDialer.DialDirect(ctx, address, dOpts.cacheKey(), closeCredsFunc, dialOpts...)
 	} else {
 		conn, err = grpc.DialContext(ctx, address, dialOpts...)
 		if err == nil && closeCredsFunc != nil {
@@ -370,47 +348,74 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts *dialOptions, log
 	return conn, cached, err
 }
 
-// buildKeyExtra hashes options to only cache when authentication material
+func dialExternalAuthEntity(ctx context.Context, logger golog.Logger, dOpts dialOptions) (ClientConn, error) {
+	if dOpts.externalAuthToEntity == "" {
+		return nil, errors.New("external auth address set but no authenticate to option set")
+	}
+	if dOpts.debug {
+		logger.Debugw("will eventually authenticate externally to entity", "entity", dOpts.externalAuthToEntity)
+		logger.Debugw("dialing direct for external auth", "address", dOpts.externalAuthAddr)
+	}
+
+	address := dOpts.externalAuthAddr
+	dOpts.externalAuthAddr = ""
+
+	dOpts.insecure = dOpts.externalAuthInsecure
+	dOpts.externalAuthMaterial = ""
+	dOpts.creds = Credentials{}
+	dOpts.authEntity = ""
+
+	// reset the tls config that is used for the external Auth Service.
+	dOpts.tlsConfig = newDefaultTLSConfig()
+
+	conn, cached, err := dialDirectGRPC(ctx, address, dOpts, logger)
+	if dOpts.debug {
+		logger.Debugw("connected directly for external auth", "address", address, "cached", cached)
+	}
+	return conn, err
+}
+
+// cacheKey hashes options to only cache when authentication material
 // is the same between dials. That means any time a new way that differs
 // authentication based on options is introduced, this function should
 // also be updated.
-func buildKeyExtra(opts *dialOptions) string {
+func (dOpts dialOptions) cacheKey() string {
 	hasher := fnv.New128a()
-	if opts.authEntity != "" {
-		hasher.Write([]byte(opts.authEntity))
+	if dOpts.authEntity != "" {
+		hasher.Write([]byte(dOpts.authEntity))
 	}
-	if opts.creds.Type != "" {
-		hasher.Write([]byte(opts.creds.Type))
+	if dOpts.creds.Type != "" {
+		hasher.Write([]byte(dOpts.creds.Type))
 	}
-	if opts.creds.Payload != "" {
-		hasher.Write([]byte(opts.creds.Payload))
+	if dOpts.creds.Payload != "" {
+		hasher.Write([]byte(dOpts.creds.Payload))
 	}
-	if opts.externalAuthAddr != "" {
-		hasher.Write([]byte(opts.externalAuthAddr))
+	if dOpts.externalAuthAddr != "" {
+		hasher.Write([]byte(dOpts.externalAuthAddr))
 	}
-	if opts.externalAuthToEntity != "" {
-		hasher.Write([]byte(opts.externalAuthToEntity))
+	if dOpts.externalAuthToEntity != "" {
+		hasher.Write([]byte(dOpts.externalAuthToEntity))
 	}
-	if opts.externalAuthMaterial != "" {
-		hasher.Write([]byte(opts.externalAuthMaterial))
+	if dOpts.externalAuthMaterial != "" {
+		hasher.Write([]byte(dOpts.externalAuthMaterial))
 	}
-	if opts.webrtcOpts.SignalingServerAddress != "" {
-		hasher.Write([]byte(opts.webrtcOpts.SignalingServerAddress))
+	if dOpts.webrtcOpts.SignalingServerAddress != "" {
+		hasher.Write([]byte(dOpts.webrtcOpts.SignalingServerAddress))
 	}
-	if opts.webrtcOpts.SignalingExternalAuthAddress != "" {
-		hasher.Write([]byte(opts.webrtcOpts.SignalingExternalAuthAddress))
+	if dOpts.webrtcOpts.SignalingExternalAuthAddress != "" {
+		hasher.Write([]byte(dOpts.webrtcOpts.SignalingExternalAuthAddress))
 	}
-	if opts.webrtcOpts.SignalingExternalAuthToEntity != "" {
-		hasher.Write([]byte(opts.webrtcOpts.SignalingExternalAuthToEntity))
+	if dOpts.webrtcOpts.SignalingExternalAuthToEntity != "" {
+		hasher.Write([]byte(dOpts.webrtcOpts.SignalingExternalAuthToEntity))
 	}
-	if opts.webrtcOpts.SignalingExternalAuthAuthMaterial != "" {
-		hasher.Write([]byte(opts.webrtcOpts.SignalingExternalAuthAuthMaterial))
+	if dOpts.webrtcOpts.SignalingExternalAuthAuthMaterial != "" {
+		hasher.Write([]byte(dOpts.webrtcOpts.SignalingExternalAuthAuthMaterial))
 	}
-	if opts.webrtcOpts.SignalingCreds.Type != "" {
-		hasher.Write([]byte(opts.webrtcOpts.SignalingCreds.Type))
+	if dOpts.webrtcOpts.SignalingCreds.Type != "" {
+		hasher.Write([]byte(dOpts.webrtcOpts.SignalingCreds.Type))
 	}
-	if opts.webrtcOpts.SignalingCreds.Payload != "" {
-		hasher.Write([]byte(opts.webrtcOpts.SignalingCreds.Payload))
+	if dOpts.webrtcOpts.SignalingCreds.Payload != "" {
+		hasher.Write([]byte(dOpts.webrtcOpts.SignalingCreds.Payload))
 	}
 	return hex.EncodeToString(hasher.Sum(nil))
 }

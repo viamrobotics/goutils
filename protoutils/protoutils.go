@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"syscall"
 
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -13,6 +14,10 @@ import (
 // InterfaceToMap attempts to coerce an interface into a form acceptable by structpb.NewStruct.
 // Expects a struct or a map-like object.
 func InterfaceToMap(data interface{}) (map[string]interface{}, error) {
+	return interfaceToMapHelper(data, false)
+}
+
+func interfaceToMapHelper(data interface{}, ignoreOmitEmpty bool) (map[string]interface{}, error) {
 	if data == nil {
 		return nil, errors.New("no data passed in")
 	}
@@ -24,12 +29,12 @@ func InterfaceToMap(data interface{}) (map[string]interface{}, error) {
 	var err error
 	switch t.Kind() {
 	case reflect.Struct:
-		res, err = structToMap(data)
+		res, err = structToMap(data, ignoreOmitEmpty)
 		if err != nil {
 			return nil, err
 		}
 	case reflect.Map:
-		res, err = marshalMap(data)
+		res, err = marshalMap(data, ignoreOmitEmpty)
 		if err != nil {
 			return nil, err
 		}
@@ -59,10 +64,30 @@ func StructToStructPb(i interface{}) (*structpb.Struct, error) {
 	return ret, nil
 }
 
+// StructToStructPbIgnoreOmitEmpty converts an arbitrary Go struct to a *structpb.Struct. Only exported fields are included in the
+// returned proto and any omitempty tag is ignored.
+func StructToStructPbIgnoreOmitEmpty(i interface{}) (*structpb.Struct, error) {
+	encoded, err := interfaceToMapHelper(i, true)
+	if err != nil {
+		return nil, errors.Wrapf(err,
+			"unable to convert interface %v to a form acceptable to structpb.NewStruct", i)
+	}
+	ret, err := structpb.NewStruct(encoded)
+	if err != nil {
+		return nil, errors.Wrap(err, fmt.Sprintf("unable to construct structpb.Struct from map %v", encoded))
+	}
+	return ret, nil
+}
+
 // takes a go type and tries to make it a better type for converting to grpc.
-func toInterface(data interface{}) (interface{}, error) {
+func toInterface(data interface{}, ignoreOmitEmpty bool) (interface{}, error) {
 	if data == nil {
 		return data, nil
+	}
+
+	// handle types that are not supported by reflect here
+	if errno, ok := data.(syscall.Errno); ok {
+		return int(errno), nil
 	}
 
 	t := reflect.TypeOf(data)
@@ -76,17 +101,17 @@ func toInterface(data interface{}) (interface{}, error) {
 	var err error
 	switch t.Kind() {
 	case reflect.Struct:
-		newData, err = structToMap(data)
+		newData, err = structToMap(data, ignoreOmitEmpty)
 		if err != nil {
 			return nil, err
 		}
 	case reflect.Map:
-		newData, err = marshalMap(data)
+		newData, err = marshalMap(data, ignoreOmitEmpty)
 		if err != nil {
 			return nil, err
 		}
 	case reflect.Slice:
-		newData, err = marshalSlice(data)
+		newData, err = marshalSlice(data, ignoreOmitEmpty)
 		if err != nil {
 			return nil, err
 		}
@@ -128,8 +153,9 @@ func isEmptyValue(v reflect.Value) bool {
 	}
 }
 
-// structToMap attempts to coerce a struct into a form acceptable by grpc. Ignores omitempty tags.
-func structToMap(data interface{}) (map[string]interface{}, error) {
+// structToMap attempts to coerce a struct into a form acceptable by grpc.
+// ignoreOmitEmpty specifies whether to ignore the omitEmpty tag.
+func structToMap(data interface{}, ignoreOmitEmpty bool) (map[string]interface{}, error) {
 	t := reflect.TypeOf(data)
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
@@ -165,12 +191,12 @@ func structToMap(data interface{}) (map[string]interface{}, error) {
 
 		field := value.Field(i).Interface()
 
-		// If "omitempty" is specified in the tag, it ignores empty values.
-		if strings.Contains(tag, "omitempty") && isEmptyValue(reflect.ValueOf(field)) {
+		// If "omitempty" is specified in the tag and ignoreOmitEmpty is false, it ignores empty values.
+		if !ignoreOmitEmpty && strings.Contains(tag, "omitempty") && isEmptyValue(reflect.ValueOf(field)) {
 			continue
 		}
 
-		data, err := toInterface(field)
+		data, err := toInterface(field, ignoreOmitEmpty)
 		if err != nil {
 			return nil, err
 		}
@@ -181,7 +207,7 @@ func structToMap(data interface{}) (map[string]interface{}, error) {
 }
 
 // marshalMap attempts to coerce maps of string keys into a form acceptable by grpc.
-func marshalMap(data interface{}) (map[string]interface{}, error) {
+func marshalMap(data interface{}, ignoreOmitEmpty bool) (map[string]interface{}, error) {
 	s := reflect.ValueOf(data)
 	if s.Kind() != reflect.Map {
 		return nil, errors.Errorf("data of type %T is not a map", data)
@@ -192,11 +218,16 @@ func marshalMap(data interface{}) (map[string]interface{}, error) {
 	var err error
 	for iter.Next() {
 		k := iter.Key()
+		key := k.String()
 		if k.Kind() != reflect.String {
-			return nil, errors.Errorf("map keys of type %v are not strings", k.Kind())
+			kstringer, ok := k.Interface().(fmt.Stringer)
+			if !ok {
+				return nil, errors.Errorf("map keys of type %v are not strings and do not implement String", k.Kind())
+			}
+			key = kstringer.String()
 		}
 		v := iter.Value().Interface()
-		result[k.String()], err = toInterface(v)
+		result[key], err = toInterface(v, ignoreOmitEmpty)
 		if err != nil {
 			return nil, err
 		}
@@ -205,7 +236,7 @@ func marshalMap(data interface{}) (map[string]interface{}, error) {
 }
 
 // marshalSlice attempts to coerce list data into a form acceptable by grpc.
-func marshalSlice(data interface{}) ([]interface{}, error) {
+func marshalSlice(data interface{}, ignoreOmitEmpty bool) ([]interface{}, error) {
 	s := reflect.ValueOf(data)
 	if s.Kind() != reflect.Slice {
 		return nil, errors.Errorf("data of type %T is not a slice", data)
@@ -214,7 +245,7 @@ func marshalSlice(data interface{}) ([]interface{}, error) {
 	newList := make([]interface{}, 0, s.Len())
 	for i := 0; i < s.Len(); i++ {
 		value := s.Index(i).Interface()
-		data, err := toInterface(value)
+		data, err := toInterface(value, ignoreOmitEmpty)
 		if err != nil {
 			return nil, err
 		}
