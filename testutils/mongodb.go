@@ -96,6 +96,10 @@ var (
 )
 
 func backingMongoDBClient() (*mongo.Client, error) {
+	return backingMongoDBClientWithOptions(options.Client())
+}
+
+func backingMongoDBClientWithOptions(baseOptions *options.ClientOptions) (*mongo.Client, error) {
 	cacheMu.Lock()
 	defer cacheMu.Unlock()
 	if cachedBackingMongoDBClient != nil && cachedBackingMongoDBClientConnected {
@@ -110,7 +114,7 @@ func backingMongoDBClient() (*mongo.Client, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	client, err := mongo.NewClient(options.Client().ApplyURI(mongoURI))
+	client, err := mongo.NewClient(baseOptions.ApplyURI(mongoURI))
 	if err != nil {
 		errCachedBackingMongoDBClient = err
 		return nil, errCachedBackingMongoDBClient
@@ -137,6 +141,17 @@ func backingMongoDBClient() (*mongo.Client, error) {
 func BackingMongoDBClient(tb testing.TB) *mongo.Client {
 	tb.Helper()
 	client, err := backingMongoDBClient()
+	if err != nil {
+		skipWithError(tb, err)
+		return nil
+	}
+	return client
+}
+
+// BackingMongoDBClientWithOptions returns a backing MongoDB client to use with the provided options.
+func BackingMongoDBClientWithOptions(tb testing.TB, baseOptions *options.ClientOptions) *mongo.Client {
+	tb.Helper()
+	client, err := backingMongoDBClientWithOptions(baseOptions)
 	if err != nil {
 		skipWithError(tb, err)
 		return nil
