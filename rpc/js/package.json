@@ -1,12 +1,18 @@
 {
   "name": "@viamrobotics/rpc",
-  "version": "0.2.3",
+  "version": "1.0.0",
   "license": "Apache-2.0",
   "dependencies": {
     "@improbable-eng/grpc-web": "^0.13.0",
     "google-protobuf": "^3.14.0"
   },
+  "peerDependencies": {
+    "@improbable-eng/grpc-web-react-native-transport": "*",
+    "react-native": "*",
+    "react-native-webrtc": "*"
+  },
   "devDependencies": {
+    "@improbable-eng/grpc-web-react-native-transport": "*",
     "@types/google-protobuf": "^3.7.4",
     "@typescript-eslint/eslint-plugin": "^6.10.0",
     "@typescript-eslint/parser": "^6.10.0",
@@ -18,15 +24,19 @@
     "eslint-plugin-sonarjs": "^0.21.0",
     "eslint-plugin-unicorn": "^48.0.1",
     "prettier": "^3.0.3",
+    "react-native": "*",
+    "react-native-webrtc": "*",
     "set-value": ">=4.0.1",
     "ts-loader": "^9.4.1",
     "ts-protoc-gen": "^0.14.0",
     "tslib": "^2.4.1",
     "typescript": "^5.2.2",
-    "vite": "^4.0.0"
+    "vite": "^4.0.0",
+    "vite-plugin-externals": "^0.6.2"
   },
   "type": "module",
   "types": "./dist/main.d.ts",
+  "main": "./dist/main.js",
   "exports": {
     ".": {
       "types": "./dist/main.d.ts",

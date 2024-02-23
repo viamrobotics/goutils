@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite';
+// import { viteExternalsPlugin } from 'vite-plugin-externals'
 
 import pkg from './package.json';
 
@@ -8,6 +9,11 @@ export default defineConfig({
     'process.env.NODE_ENV': '"production"',
     __VERSION__: JSON.stringify(pkg.version),
   },
+  // plugins: [
+  //   viteExternalsPlugin({
+  //     'react-native': 'ReactNative',
+  //   }),
+  // ],
   build: {
     // This config is necessary to transform libraries on the list into ES modules.
     // This can be removed if protobuf-es or a code generating tool that has good
@@ -33,6 +39,7 @@ export default defineConfig({
         }
         warn(warning);
       },
+      external: [/react-native/u, /react-native-webrtc/u, /@improbable-eng\/grpc-web-react-native-transport/u],
     },
   },
 });

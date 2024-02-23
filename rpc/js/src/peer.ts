@@ -1,3 +1,8 @@
+import { RTCPeerConnection, RTCSessionDescription } from "react-native-webrtc";
+import MessageEvent from "react-native-webrtc/lib/typescript/MessageEvent";
+import RTCDataChannel from "react-native-webrtc/lib/typescript/RTCDataChannel";
+import { atob, btoa } from './polyfills'
+
 interface ReadyPeer {
   pc: RTCPeerConnection;
   dc: RTCDataChannel;
@@ -59,13 +64,13 @@ export async function newPeerConnectionForClient(
   let ignoreOffer = false;
   const polite = true;
   let negOpen = false;
-  negotiationChannel.onopen = () => {
+  negotiationChannel.addEventListener("open", () => {
     negOpen = true;
-  };
-  negotiationChannel.onmessage = async (event: MessageEvent<any>) => {
+  })
+  negotiationChannel.addEventListener("message", async (event: MessageEvent<any>) => {
     try {
       const description = new RTCSessionDescription(
-        JSON.parse(atob(event.data))
+        JSON.parse(atob(event.data.toString()))
       );
 
       const offerCollision =
@@ -89,9 +94,37 @@ export async function newPeerConnectionForClient(
     } catch (e) {
       console.error(e);
     }
-  };
+  })
+  // negotiationChannel.onmessage = async (event: MessageEvent<any>) => {
+  //   try {
+  //     const description = new RTCSessionDescription(
+  //       JSON.parse(atob(event.data))
+  //     );
 
-  peerConnection.onnegotiationneeded = async () => {
+  //     const offerCollision =
+  //       description.type === 'offer' &&
+  //       (description || peerConnection.signalingState !== 'stable');
+  //     ignoreOffer = !polite && offerCollision;
+  //     if (ignoreOffer) {
+  //       return;
+  //     }
+
+  //     await peerConnection.setRemoteDescription(description);
+
+  //     if (description.type === 'offer') {
+  //       await peerConnection.setLocalDescription();
+  //       const newDescription = addSdpFields(
+  //         peerConnection.localDescription,
+  //         additionalSdpFields
+  //       );
+  //       negotiationChannel.send(btoa(JSON.stringify(newDescription)));
+  //     }
+  //   } catch (e) {
+  //     console.error(e);
+  //   }
+  // };
+
+  peerConnection.addEventListener("negotiationneeded", async () => {
     if (!negOpen) {
       return;
     }
@@ -105,25 +138,46 @@ export async function newPeerConnectionForClient(
     } catch (e) {
       console.error(e);
     }
-  };
+  })
+  // peerConnection.onnegotiationneeded = async () => {
+  //   if (!negOpen) {
+  //     return;
+  //   }
+  //   try {
+  //     await peerConnection.setLocalDescription();
+  //     const newDescription = addSdpFields(
+  //       peerConnection.localDescription,
+  //       additionalSdpFields
+  //     );
+  //     negotiationChannel.send(btoa(JSON.stringify(newDescription)));
+  //   } catch (e) {
+  //     console.error(e);
+  //   }
+  // };
 
   if (!disableTrickle) {
     return Promise.resolve({ pc: peerConnection, dc: dataChannel });
   }
   // set up offer
-  const offerDesc = await peerConnection.createOffer();
+  const offerDesc = await peerConnection.createOffer({});
   try {
     await peerConnection.setLocalDescription(offerDesc);
   } catch (e) {
     return Promise.reject(e);
   }
 
-  peerConnection.onicecandidate = async (event) => {
+  peerConnection.addEventListener("icecandidate", async (event) => {
     if (event.candidate !== null) {
       return;
     }
     pResolve({ pc: peerConnection, dc: dataChannel });
-  };
+  })
+  // peerConnection.onicecandidate = async (event) => {
+  //   if (event.candidate !== null) {
+  //     return;
+  //   }
+  //   pResolve({ pc: peerConnection, dc: dataChannel });
+  // };
 
   return result;
 }

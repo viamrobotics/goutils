@@ -1,5 +1,7 @@
 import { grpc } from '@improbable-eng/grpc-web';
+import { ReactNativeTransport } from '@improbable-eng/grpc-web-react-native-transport';
 import type { ProtobufMessage } from '@improbable-eng/grpc-web/dist/typings/message';
+import { RTCPeerConnection, RTCSessionDescription } from 'react-native-webrtc';
 import { ClientChannel } from './ClientChannel';
 import { ConnectionClosedError } from './errors';
 import { Code } from './gen/google/rpc/code_pb';
@@ -21,12 +23,14 @@ import {
   CallUpdateRequest,
   CallUpdateResponse,
   ICECandidate,
-  WebRTCConfig,
   OptionalWebRTCConfigRequest,
   OptionalWebRTCConfigResponse,
+  WebRTCConfig,
 } from './gen/proto/rpc/webrtc/v1/signaling_pb';
 import { SignalingService } from './gen/proto/rpc/webrtc/v1/signaling_pb_service';
 import { addSdpFields, newPeerConnectionForClient } from './peer';
+
+import { atob, btoa } from './polyfills';
 
 export interface DialOptions {
   authEntity?: string | undefined;
@@ -92,9 +96,8 @@ export async function dialDirect(
   opts?: DialOptions
 ): Promise<grpc.TransportFactory> {
   validateDialOptions(opts);
-
   const defaultFactory = (opts: grpc.TransportOptions): grpc.Transport => {
-    return grpc.CrossBrowserHttpTransport({ withCredentials: false })(opts);
+    return ReactNativeTransport({ withCredentials: false })(opts);
   };
 
   // Client already has access token with no external auth, skip Authenticate process.
@@ -400,6 +403,7 @@ export async function dialWebRTC(
     // only send once since exchange may end or ICE may end
     let sentDoneOrErrorOnce = false;
     const sendError = (err: string) => {
+      console.error(`got error ${err}`)
       if (sentDoneOrErrorOnce) {
         return;
       }
@@ -458,10 +462,10 @@ export async function dialWebRTC(
     let exchangeDone = false;
     if (!webrtcOpts?.disableTrickleICE) {
       // set up offer
-      const offerDesc = await pc.createOffer();
+      const offerDesc = await pc.createOffer({});
 
       let iceComplete = false;
-      pc.onicecandidate = async (event) => {
+      pc.addEventListener("icecandidate", async (event) => {
         await remoteDescSet;
         if (exchangeDone) {
           return;
@@ -495,7 +499,42 @@ export async function dialWebRTC(
             console.error('error sending candidate', statusMessage);
           },
         });
-      };
+      })
+      // pc.onicecandidate = async (event) => {
+      //   await remoteDescSet;
+      //   if (exchangeDone) {
+      //     return;
+      //   }
+
+      //   if (event.candidate === null) {
+      //     iceComplete = true;
+      //     sendDone();
+      //     return;
+      //   }
+
+      //   const iProto = iceCandidateToProto(event.candidate);
+      //   const callRequestUpdate = new CallUpdateRequest();
+      //   callRequestUpdate.setUuid(uuid);
+      //   callRequestUpdate.setCandidate(iProto);
+      //   grpc.unary(SignalingService.CallUpdate, {
+      //     request: callRequestUpdate,
+      //     metadata: {
+      //       'rpc-host': host,
+      //     },
+      //     host: signalingAddress,
+      //     transport: directTransport,
+      //     onEnd: (output: grpc.UnaryOutput<CallUpdateResponse>) => {
+      //       const { status, statusMessage, message } = output;
+      //       if (status === grpc.Code.OK && message) {
+      //         return;
+      //       }
+      //       if (exchangeDone || iceComplete) {
+      //         return;
+      //       }
+      //       console.error('error sending candidate', statusMessage);
+      //     },
+      //   });
+      // };
 
       await pc.setLocalDescription(offerDesc);
     }
@@ -559,25 +598,32 @@ export async function dialWebRTC(
     let clientEndResolve: () => void;
     let clientEndReject: (reason?: unknown) => void;
     let clientEnd = new Promise<void>((resolve, reject) => {
-      clientEndResolve = resolve;
-      clientEndReject = reject;
+      clientEndResolve = () => { console.log('clientEndResolve'); resolve(); };
+      clientEndReject = (reason?: any) => { console.log(`clientEndReject: ${reason}`); reject(reason); };
     });
     client.onEnd(
       (status: grpc.Code, statusMessage: string, _trailers: grpc.Metadata) => {
+        console.log(0)
         if (status === grpc.Code.OK) {
+          console.log(1)
           clientEndResolve();
           return;
         }
+        console.log(2)
         if (statusMessage === 'Response closed without headers') {
+          console.log(3)
           clientEndReject(new ConnectionClosedError('failed to dial'));
           return;
         }
+        console.log(4)
         if (cc?.isClosed()) {
+          console.log(5)
           clientEndReject(
             new ConnectionClosedError('client channel is closed')
           );
           return;
         }
+        console.log(6)
         console.error(statusMessage);
         clientEndReject(statusMessage);
       }
@@ -597,23 +643,32 @@ export async function dialWebRTC(
     client.send(callRequest);
 
     cc = new ClientChannel(pc, dc);
+    console.log(7)
 
     // set timeout for dial attempt if a timeout is specified
     if (opts.dialTimeout) {
+      console.log(8)
       setTimeout(() => {
         if (!successful) {
+          console.log(9)
           cc.close();
         }
       }, opts.dialTimeout);
     }
 
+    console.log(10)
     cc.ready
       .then(() => clientEndResolve())
       .catch((err) => clientEndReject(err));
+    console.log(11)
     await clientEnd;
+    console.log(12)
     await cc.ready;
+    console.log(13)
     exchangeDone = true;
+    console.log(14)
     sendDone();
+    console.log(15)
 
     if (opts?.externalAuthAddress) {
       // TODO(GOUT-11): prepare AuthenticateTo here
@@ -623,7 +678,9 @@ export async function dialWebRTC(
       // for client channel
     }
 
+    console.log(16)
     successful = true;
+    console.log(17)
     return { transportFactory: cc.transportFactory(), peerConnection: pc };
   } finally {
     if (!successful) {

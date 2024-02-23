@@ -1,4 +1,6 @@
 import type { grpc } from '@improbable-eng/grpc-web';
+import { RTCPeerConnection } from 'react-native-webrtc';
+import RTCDataChannel from 'react-native-webrtc/lib/typescript/RTCDataChannel';
 import { BaseChannel } from './BaseChannel';
 import { ClientStream } from './ClientStream';
 import { ConnectionClosedError } from './errors';
@@ -9,6 +11,7 @@ import {
   Response,
   Stream,
 } from './gen/proto/rpc/webrtc/v1/grpc_pb';
+import MessageEvent from 'react-native-webrtc/lib/typescript/MessageEvent';
 
 // MaxStreamCount is the max number of streams a channel can have.
 let MaxStreamCount = 256;
@@ -23,8 +26,11 @@ export class ClientChannel extends BaseChannel {
 
   constructor(pc: RTCPeerConnection, dc: RTCDataChannel) {
     super(pc, dc);
-    dc.onmessage = (event: MessageEvent<unknown>) =>
+    dc.addEventListener("message", (event: MessageEvent<"message">) => {
       this.onChannelMessage(event);
+    })
+    // dc.onmessage = (event: MessageEvent<unknown>) =>
+    //   this.onChannelMessage(event);
     pc.addEventListener('iceconnectionstatechange', () => {
       const state = pc.iceConnectionState;
       if (
@@ -56,7 +62,7 @@ export class ClientChannel extends BaseChannel {
   private onChannelMessage(event: MessageEvent<any>) {
     let resp: Response;
     try {
-      resp = Response.deserializeBinary(event.data);
+      resp = Response.deserializeBinary(new TextEncoder().encode(event.data.toString()));
     } catch (e) {
       console.error('error deserializing message', e);
       return;
