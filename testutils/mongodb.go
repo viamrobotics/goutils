@@ -114,7 +114,15 @@ func backingMongoDBClientWithOptions(baseOptions *options.ClientOptions) (*mongo
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	client, err := mongo.NewClient(baseOptions.ApplyURI(mongoURI))
+
+	var clientOptions *options.ClientOptions
+	if baseOptions == nil {
+		clientOptions = options.Client().ApplyURI(mongoURI)
+	} else {
+		clientOptions = baseOptions.ApplyURI(mongoURI)
+	}
+
+	client, err := mongo.NewClient(clientOptions)
 	if err != nil {
 		errCachedBackingMongoDBClient = err
 		return nil, errCachedBackingMongoDBClient
