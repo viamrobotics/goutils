@@ -94,35 +94,7 @@ export async function newPeerConnectionForClient(
     } catch (e) {
       console.error(e);
     }
-  })
-  // negotiationChannel.onmessage = async (event: MessageEvent<any>) => {
-  //   try {
-  //     const description = new RTCSessionDescription(
-  //       JSON.parse(atob(event.data))
-  //     );
-
-  //     const offerCollision =
-  //       description.type === 'offer' &&
-  //       (description || peerConnection.signalingState !== 'stable');
-  //     ignoreOffer = !polite && offerCollision;
-  //     if (ignoreOffer) {
-  //       return;
-  //     }
-
-  //     await peerConnection.setRemoteDescription(description);
-
-  //     if (description.type === 'offer') {
-  //       await peerConnection.setLocalDescription();
-  //       const newDescription = addSdpFields(
-  //         peerConnection.localDescription,
-  //         additionalSdpFields
-  //       );
-  //       negotiationChannel.send(btoa(JSON.stringify(newDescription)));
-  //     }
-  //   } catch (e) {
-  //     console.error(e);
-  //   }
-  // };
+  });
 
   peerConnection.addEventListener("negotiationneeded", async () => {
     if (!negOpen) {
@@ -138,22 +110,7 @@ export async function newPeerConnectionForClient(
     } catch (e) {
       console.error(e);
     }
-  })
-  // peerConnection.onnegotiationneeded = async () => {
-  //   if (!negOpen) {
-  //     return;
-  //   }
-  //   try {
-  //     await peerConnection.setLocalDescription();
-  //     const newDescription = addSdpFields(
-  //       peerConnection.localDescription,
-  //       additionalSdpFields
-  //     );
-  //     negotiationChannel.send(btoa(JSON.stringify(newDescription)));
-  //   } catch (e) {
-  //     console.error(e);
-  //   }
-  // };
+  });
 
   if (!disableTrickle) {
     return Promise.resolve({ pc: peerConnection, dc: dataChannel });
@@ -171,13 +128,7 @@ export async function newPeerConnectionForClient(
       return;
     }
     pResolve({ pc: peerConnection, dc: dataChannel });
-  })
-  // peerConnection.onicecandidate = async (event) => {
-  //   if (event.candidate !== null) {
-  //     return;
-  //   }
-  //   pResolve({ pc: peerConnection, dc: dataChannel });
-  // };
+  });
 
   return result;
 }

@@ -29,8 +29,6 @@ export class ClientChannel extends BaseChannel {
     dc.addEventListener("message", (event: MessageEvent<"message">) => {
       this.onChannelMessage(event);
     })
-    // dc.onmessage = (event: MessageEvent<unknown>) =>
-    //   this.onChannelMessage(event);
     pc.addEventListener('iceconnectionstatechange', () => {
       const state = pc.iceConnectionState;
       if (
@@ -157,9 +155,9 @@ class FailingClientStream implements grpc.Transport {
     }
   }
 
-  public sendMessage() {}
+  public sendMessage() { }
 
-  public finishSend() {}
+  public finishSend() { }
 
-  public cancel() {}
+  public cancel() { }
 }

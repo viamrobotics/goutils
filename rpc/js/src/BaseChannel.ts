@@ -30,10 +30,6 @@ export class BaseChannel {
     dataChannel.addEventListener("error", (ev) => {
       this.onChannelError(ev)
     })
-    // dataChannel.onopen = () => this.onChannelOpen();
-    // dataChannel.onclose = () => this.onChannelClose();
-    // dataChannel.onerror = (ev: Event) =>
-    //   this.onChannelError(ev as RTCErrorEvent);
 
     peerConn.addEventListener('iceconnectionstatechange', () => {
       const state = peerConn.iceConnectionState;

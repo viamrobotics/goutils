@@ -1,5 +1,4 @@
 import { defineConfig } from 'vite';
-// import { viteExternalsPlugin } from 'vite-plugin-externals'
 
 import pkg from './package.json';
 
