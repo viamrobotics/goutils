@@ -1,6 +1,6 @@
 {
   "name": "@viamrobotics/rpc",
-  "version": "1.0.0",
+  "version": "0.2.3",
   "license": "Apache-2.0",
   "dependencies": {
     "google-protobuf": "^3.14.0",
