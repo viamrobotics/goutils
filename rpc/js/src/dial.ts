@@ -95,11 +95,12 @@ export async function dialDirect(
 ): Promise<grpc.TransportFactory> {
   validateDialOptions(opts);
   const defaultFactory = (opts: grpc.TransportOptions): grpc.Transport => {
-    let TransFact = grpc.CrossBrowserHttpTransport
-    import('@improbable-eng/grpc-web-react-native-transport').then(rnTransport => TransFact = rnTransport.ReactNativeTransport).catch(() => {
-      import('@improbable-eng/grpc-web-node-http-transport').then(nodeTransport => TransFact = nodeTransport.NodeHttpTransport)
-    })
-
+    let TransFact;
+    try {
+      TransFact = window.VIAM.GRPC_TRANSPORT_FACTORY;
+    } catch {
+      TransFact = grpc.CrossBrowserHttpTransport;
+    }
     return TransFact({ withCredentials: false })(opts);
   };
 

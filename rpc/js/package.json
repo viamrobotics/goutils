@@ -6,10 +6,6 @@
     "google-protobuf": "^3.14.0",
     "@improbable-eng/grpc-web": "^0.13.0"
   },
-  "peerDependencies": {
-    "@improbable-eng/grpc-web-react-native-transport": "*",
-    "@improbable-eng/grpc-web-node-http-transport": "*"
-  },
   "devDependencies": {
     "@types/google-protobuf": "^3.7.4",
     "@typescript-eslint/eslint-plugin": "^6.10.0",
