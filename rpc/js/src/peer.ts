@@ -1,6 +1,3 @@
-import { RTCPeerConnection, RTCSessionDescription } from "react-native-webrtc";
-import MessageEvent from "react-native-webrtc/lib/typescript/MessageEvent";
-import RTCDataChannel from "react-native-webrtc/lib/typescript/RTCDataChannel";
 import { atob, btoa } from './polyfills';
 
 interface ReadyPeer {

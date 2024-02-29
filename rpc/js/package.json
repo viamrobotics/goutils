@@ -4,12 +4,11 @@
   "license": "Apache-2.0",
   "dependencies": {
     "google-protobuf": "^3.14.0",
-    "@improbable-eng/grpc-web": "^0.13.0",
-    "@improbable-eng/grpc-web-react-native-transport": "^0.15.0"
+    "@improbable-eng/grpc-web": "^0.13.0"
   },
   "peerDependencies": {
-    "react-native": "*",
-    "react-native-webrtc": "*"
+    "@improbable-eng/grpc-web-react-native-transport": "*",
+    "@improbable-eng/grpc-web-node-http-transport": "*"
   },
   "devDependencies": {
     "@types/google-protobuf": "^3.7.4",
@@ -23,8 +22,6 @@
     "eslint-plugin-sonarjs": "^0.21.0",
     "eslint-plugin-unicorn": "^48.0.1",
     "prettier": "^3.0.3",
-    "react-native": "*",
-    "react-native-webrtc": "*",
     "set-value": ">=4.0.1",
     "ts-loader": "^9.4.1",
     "ts-protoc-gen": "^0.14.0",

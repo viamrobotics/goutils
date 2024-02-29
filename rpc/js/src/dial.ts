@@ -1,7 +1,5 @@
 import { grpc } from '@improbable-eng/grpc-web';
-import { ReactNativeTransport } from '@improbable-eng/grpc-web-react-native-transport';
 import type { ProtobufMessage } from '@improbable-eng/grpc-web/dist/typings/message';
-import { RTCPeerConnection, RTCSessionDescription } from 'react-native-webrtc';
 import { ClientChannel } from './ClientChannel';
 import { ConnectionClosedError } from './errors';
 import { Code } from './gen/google/rpc/code_pb';
@@ -97,7 +95,12 @@ export async function dialDirect(
 ): Promise<grpc.TransportFactory> {
   validateDialOptions(opts);
   const defaultFactory = (opts: grpc.TransportOptions): grpc.Transport => {
-    return ReactNativeTransport({ withCredentials: false })(opts);
+    let TransFact = grpc.CrossBrowserHttpTransport
+    import('@improbable-eng/grpc-web-react-native-transport').then(rnTransport => TransFact = rnTransport.ReactNativeTransport).catch(() => {
+      import('@improbable-eng/grpc-web-node-http-transport').then(nodeTransport => TransFact = nodeTransport.NodeHttpTransport)
+    })
+
+    return TransFact({ withCredentials: false })(opts);
   };
 
   // Client already has access token with no external auth, skip Authenticate process.
@@ -464,7 +467,7 @@ export async function dialWebRTC(
       const offerDesc = await pc.createOffer({});
 
       let iceComplete = false;
-      pc.addEventListener("icecandidate", async (event) => {
+      pc.addEventListener("icecandidate", async (event: { candidate: RTCIceCandidateInit | null; }) => {
         await remoteDescSet;
         if (exchangeDone) {
           return;

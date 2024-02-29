@@ -1,6 +1,4 @@
 import type { ProtobufMessage } from '@improbable-eng/grpc-web/dist/typings/message';
-import { RTCPeerConnection } from 'react-native-webrtc';
-import RTCDataChannel from 'react-native-webrtc/lib/typescript/RTCDataChannel';
 import { ConnectionClosedError } from './errors';
 
 export class BaseChannel {

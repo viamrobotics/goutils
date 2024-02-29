@@ -1,7 +1,4 @@
 import type { grpc } from '@improbable-eng/grpc-web';
-import { RTCPeerConnection } from 'react-native-webrtc';
-import MessageEvent from 'react-native-webrtc/lib/typescript/MessageEvent';
-import RTCDataChannel from 'react-native-webrtc/lib/typescript/RTCDataChannel';
 import { BaseChannel } from './BaseChannel';
 import { ClientStream } from './ClientStream';
 import { ConnectionClosedError } from './errors';
