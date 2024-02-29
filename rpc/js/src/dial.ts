@@ -29,6 +29,7 @@ import { SignalingService } from './gen/proto/rpc/webrtc/v1/signaling_pb_service
 import { addSdpFields, newPeerConnectionForClient } from './peer';
 
 import { atob, btoa } from './polyfills';
+import { CrossBrowserHttpTransportInit } from '@improbable-eng/grpc-web/dist/typings/transports/http/http';
 
 export interface DialOptions {
   authEntity?: string | undefined;
@@ -95,7 +96,9 @@ export async function dialDirect(
 ): Promise<grpc.TransportFactory> {
   validateDialOptions(opts);
   const defaultFactory = (opts: grpc.TransportOptions): grpc.Transport => {
-    let TransFact;
+    let TransFact: (
+      init: CrossBrowserHttpTransportInit
+    ) => grpc.TransportFactory;
     try {
       TransFact = window.VIAM.GRPC_TRANSPORT_FACTORY;
     } catch {
@@ -468,41 +471,44 @@ export async function dialWebRTC(
       const offerDesc = await pc.createOffer({});
 
       let iceComplete = false;
-      pc.addEventListener("icecandidate", async (event: { candidate: RTCIceCandidateInit | null; }) => {
-        await remoteDescSet;
-        if (exchangeDone) {
-          return;
-        }
+      pc.addEventListener(
+        'icecandidate',
+        async (event: { candidate: RTCIceCandidateInit | null }) => {
+          await remoteDescSet;
+          if (exchangeDone) {
+            return;
+          }
 
-        if (event.candidate === null) {
-          iceComplete = true;
-          sendDone();
-          return;
-        }
+          if (event.candidate === null) {
+            iceComplete = true;
+            sendDone();
+            return;
+          }
 
-        const iProto = iceCandidateToProto(event.candidate);
-        const callRequestUpdate = new CallUpdateRequest();
-        callRequestUpdate.setUuid(uuid);
-        callRequestUpdate.setCandidate(iProto);
-        grpc.unary(SignalingService.CallUpdate, {
-          request: callRequestUpdate,
-          metadata: {
-            'rpc-host': host,
-          },
-          host: signalingAddress,
-          transport: directTransport,
-          onEnd: (output: grpc.UnaryOutput<CallUpdateResponse>) => {
-            const { status, statusMessage, message } = output;
-            if (status === grpc.Code.OK && message) {
-              return;
-            }
-            if (exchangeDone || iceComplete) {
-              return;
-            }
-            console.error('error sending candidate', statusMessage);
-          },
-        });
-      })
+          const iProto = iceCandidateToProto(event.candidate);
+          const callRequestUpdate = new CallUpdateRequest();
+          callRequestUpdate.setUuid(uuid);
+          callRequestUpdate.setCandidate(iProto);
+          grpc.unary(SignalingService.CallUpdate, {
+            request: callRequestUpdate,
+            metadata: {
+              'rpc-host': host,
+            },
+            host: signalingAddress,
+            transport: directTransport,
+            onEnd: (output: grpc.UnaryOutput<CallUpdateResponse>) => {
+              const { status, statusMessage, message } = output;
+              if (status === grpc.Code.OK && message) {
+                return;
+              }
+              if (exchangeDone || iceComplete) {
+                return;
+              }
+              console.error('error sending candidate', statusMessage);
+            },
+          });
+        }
+      );
 
       await pc.setLocalDescription(offerDesc);
     }

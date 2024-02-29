@@ -1,5 +1,7 @@
 declare global {
-  interface Window { VIAM: any; }
+  interface Window {
+    VIAM: any;
+  }
 }
 
 export {

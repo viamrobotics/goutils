@@ -61,39 +61,42 @@ export async function newPeerConnectionForClient(
   let ignoreOffer = false;
   const polite = true;
   let negOpen = false;
-  negotiationChannel.addEventListener("open", () => {
+  negotiationChannel.addEventListener('open', () => {
     negOpen = true;
-  })
-  negotiationChannel.addEventListener("message", async (event: MessageEvent<any>) => {
-    try {
-      const description = new RTCSessionDescription(
-        JSON.parse(atob(event.data.toString()))
-      );
-
-      const offerCollision =
-        description.type === 'offer' &&
-        (description || peerConnection.signalingState !== 'stable');
-      ignoreOffer = !polite && offerCollision;
-      if (ignoreOffer) {
-        return;
-      }
-
-      await peerConnection.setRemoteDescription(description);
-
-      if (description.type === 'offer') {
-        await peerConnection.setLocalDescription();
-        const newDescription = addSdpFields(
-          peerConnection.localDescription,
-          additionalSdpFields
-        );
-        negotiationChannel.send(btoa(JSON.stringify(newDescription)));
-      }
-    } catch (e) {
-      console.error(e);
-    }
   });
+  negotiationChannel.addEventListener(
+    'message',
+    async (event: MessageEvent<any>) => {
+      try {
+        const description = new RTCSessionDescription(
+          JSON.parse(atob(event.data.toString()))
+        );
 
-  peerConnection.addEventListener("negotiationneeded", async () => {
+        const offerCollision =
+          description.type === 'offer' &&
+          (description || peerConnection.signalingState !== 'stable');
+        ignoreOffer = !polite && offerCollision;
+        if (ignoreOffer) {
+          return;
+        }
+
+        await peerConnection.setRemoteDescription(description);
+
+        if (description.type === 'offer') {
+          await peerConnection.setLocalDescription();
+          const newDescription = addSdpFields(
+            peerConnection.localDescription,
+            additionalSdpFields
+          );
+          negotiationChannel.send(btoa(JSON.stringify(newDescription)));
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  );
+
+  peerConnection.addEventListener('negotiationneeded', async () => {
     if (!negOpen) {
       return;
     }
@@ -120,7 +123,7 @@ export async function newPeerConnectionForClient(
     return Promise.reject(e);
   }
 
-  peerConnection.addEventListener("icecandidate", async (event) => {
+  peerConnection.addEventListener('icecandidate', async (event) => {
     if (event.candidate !== null) {
       return;
     }

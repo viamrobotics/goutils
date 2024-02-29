@@ -23,11 +23,11 @@ export class BaseChannel {
       this.pReject = reject;
     });
 
-    dataChannel.addEventListener("open", () => this.onChannelOpen());
-    dataChannel.addEventListener("close", () => this.onChannelClose());
-    dataChannel.addEventListener("error", (ev) => {
-      this.onChannelError(ev)
-    })
+    dataChannel.addEventListener('open', () => this.onChannelOpen());
+    dataChannel.addEventListener('close', () => this.onChannelClose());
+    dataChannel.addEventListener('error', (ev) => {
+      this.onChannelError(ev);
+    });
 
     peerConn.addEventListener('iceconnectionstatechange', () => {
       const state = peerConn.iceConnectionState;

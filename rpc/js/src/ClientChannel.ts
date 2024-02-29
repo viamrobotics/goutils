@@ -23,9 +23,9 @@ export class ClientChannel extends BaseChannel {
 
   constructor(pc: RTCPeerConnection, dc: RTCDataChannel) {
     super(pc, dc);
-    dc.addEventListener("message", (event: MessageEvent<"message">) => {
+    dc.addEventListener('message', (event: MessageEvent<'message'>) => {
       this.onChannelMessage(event);
-    })
+    });
     pc.addEventListener('iceconnectionstatechange', () => {
       const state = pc.iceConnectionState;
       if (
@@ -57,7 +57,9 @@ export class ClientChannel extends BaseChannel {
   private onChannelMessage(event: MessageEvent<any>) {
     let resp: Response;
     try {
-      resp = Response.deserializeBinary(new Uint8Array(event.data as ArrayBuffer));
+      resp = Response.deserializeBinary(
+        new Uint8Array(event.data as ArrayBuffer)
+      );
     } catch (e) {
       console.error('error deserializing message', e);
       return;
@@ -152,9 +154,9 @@ class FailingClientStream implements grpc.Transport {
     }
   }
 
-  public sendMessage() { }
+  public sendMessage() {}
 
-  public finishSend() { }
+  public finishSend() {}
 
-  public cancel() { }
+  public cancel() {}
 }
