@@ -1,3 +1,9 @@
+declare global {
+  interface Window {
+    VIAM: any;
+  }
+}
+
 export {
   dialDirect,
   dialWebRTC,

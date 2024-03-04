@@ -23,10 +23,11 @@ export class BaseChannel {
       this.pReject = reject;
     });
 
-    dataChannel.onopen = () => this.onChannelOpen();
-    dataChannel.onclose = () => this.onChannelClose();
-    dataChannel.onerror = (ev: Event) =>
-      this.onChannelError(ev as RTCErrorEvent);
+    dataChannel.addEventListener('open', () => this.onChannelOpen());
+    dataChannel.addEventListener('close', () => this.onChannelClose());
+    dataChannel.addEventListener('error', (ev) => {
+      this.onChannelError(ev);
+    });
 
     peerConn.addEventListener('iceconnectionstatechange', () => {
       const state = peerConn.iceConnectionState;
@@ -69,9 +70,9 @@ export class BaseChannel {
     this.closeWithReason(new ConnectionClosedError('data channel closed'));
   }
 
-  private onChannelError(ev: RTCErrorEvent) {
+  private onChannelError(ev: any) {
     console.error('channel error', ev);
-    this.closeWithReason(ev.error);
+    this.closeWithReason(new Error(ev));
   }
 
   protected write(msg: ProtobufMessage) {
