@@ -25,9 +25,11 @@ type webrtcServer struct {
 	services map[string]*serviceInfo
 	logger   golog.Logger
 
-	peerConns               map[*webrtc.PeerConnection]struct{}
-	activeBackgroundWorkers sync.WaitGroup
-	callTickets             chan struct{}
+	peerConns map[*webrtc.PeerConnection]struct{}
+	// processHeadersLock guards calls to webrtcServerStream.processHeaders and
+	// ensures they finish before Stop closes all peerConns.
+	processHeadersLock sync.Mutex
+	callTickets        chan struct{}
 
 	unaryInt          grpc.UnaryServerInterceptor
 	streamInt         grpc.StreamServerInterceptor
@@ -86,7 +88,7 @@ func newWebRTCServerWithInterceptorsAndUnknownStreamHandler(
 func (srv *webrtcServer) Stop() {
 	srv.cancel()
 	srv.logger.Info("waiting for handlers to complete")
-	srv.activeBackgroundWorkers.Wait()
+	srv.processHeadersLock.Lock()
 	srv.logger.Info("handlers complete")
 	srv.mu.Lock()
 	srv.logger.Info("closing lingering peer connections")
@@ -96,6 +98,7 @@ func (srv *webrtcServer) Stop() {
 		}
 	}
 	srv.logger.Info("lingering peer connections closed")
+	srv.processHeadersLock.Unlock()
 	srv.mu.Unlock()
 }
 

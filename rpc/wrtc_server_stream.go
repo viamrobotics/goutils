@@ -293,12 +293,22 @@ func (s *webrtcServerStream) processHeaders(headers *webrtcpb.RequestHeaders) {
 	}
 
 	s.headersReceived = true
-	s.ch.server.activeBackgroundWorkers.Add(1)
+	s.ch.server.processHeadersLock.Lock()
+	// Check once more if underlying webrtcServer was `Stop`ped before lock was
+	// acquired (context was canceled).
+	if err := s.ch.server.ctx.Err(); err != nil {
+		if err := s.closeWithSendError(status.FromContextError(err).Err()); err != nil {
+			s.logger.Errorw("error closing", "error", err)
+		}
+		s.ch.server.processHeadersLock.Unlock()
+		return
+	}
+
 	utils.PanicCapturingGo(func() {
 		defer func() {
 			<-s.ch.server.callTickets // return a ticket
 		}()
-		defer s.ch.server.activeBackgroundWorkers.Done()
+		defer s.ch.server.processHeadersLock.Unlock()
 		if err := handlerFunc(s); err != nil {
 			if errors.Is(err, io.ErrClosedPipe) || isContextCanceled(err) {
 				return
