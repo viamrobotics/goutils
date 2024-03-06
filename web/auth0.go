@@ -119,7 +119,7 @@ func InstallFusionAuth(
 	installAuthProviderRoutes(
 		mux,
 		authProvider,
-		"/logout",
+		"/oauth2/logout",
 		authProvider.redirectURL,
 		authProvider.stateCookieName,
 		authProvider.stateCookieMaxAge,
