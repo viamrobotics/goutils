@@ -221,7 +221,7 @@ func newPeerConnectionForServer(
 }
 
 // configureForRenegotiation sets up PeerConnection callbacks for updating local descriptions and
-// sending offers when a negotation is needed (e.g: adding a video track). As well as listening for
+// sending offers when a negotiation is needed (e.g: adding a video track). As well as listening for
 // offers/answers to update remote descriptions (e.g: when the peer adds a video track).
 //
 // If successful, a Go channel is returned. The Go channel will close when the negotiation
@@ -293,7 +293,7 @@ func configureForRenegotiation(peerConn *webrtc.PeerConnection, logger golog.Log
 		}
 
 		// Encode and send the new local description to the peer over the `negotiation` channel. The
-		// peer will respond over the negotation channel with an answer. That answer will be used to
+		// peer will respond over the negotiation channel with an answer. That answer will be used to
 		// update the remote description.
 		encodedSDP, err := encodeSDP(peerConn.LocalDescription())
 		if err != nil {
@@ -316,7 +316,7 @@ func configureForRenegotiation(peerConn *webrtc.PeerConnection, logger golog.Log
 			return
 		}
 
-		// A new description was received over the negotation channel. Use that to update the remote
+		// A new description was received over the negotiation channel. Use that to update the remote
 		// description.
 		if err := peerConn.SetRemoteDescription(description); err != nil {
 			logger.Errorw("renegotiation: error setting remote description", "error", err)
