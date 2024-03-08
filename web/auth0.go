@@ -76,6 +76,7 @@ func InstallAuth0(
 	config AuthProviderConfig,
 	logger golog.Logger,
 ) (io.Closer, error) {
+	config.PostLogoutRedirectURL = "returnTo"
 	authProvider, err := installAuthProvider(
 		ctx,
 		sessions,
@@ -107,18 +108,11 @@ func InstallFusionAuth(
 	config AuthProviderConfig,
 	logger golog.Logger,
 ) (io.Closer, error) {
-	overwrite := AuthProviderConfig{
-		Domain:                config.Domain,
-		ClientID:              config.ClientID,
-		Secret:                config.Secret,
-		BaseURL:               config.BaseURL,
-		PostLogoutRedirectURL: "post_logout_redirect_uri",
-		EnableTest:            config.EnableTest,
-	}
+	config.PostLogoutRedirectURL = "post_logout_redirect_uri"
 	authProvider, err := installAuthProvider(
 		ctx,
 		sessions,
-		overwrite,
+		config,
 		"/callback",
 		"fa_redirect_state")
 	if err != nil {
