@@ -26,11 +26,12 @@ import (
 // AuthProviderConfig config options with constants that will probably need to be manually configured after
 // retrieval from the auth provider web UI or API (e.g. for Auth0, FusionAuth).
 type AuthProviderConfig struct {
-	Domain     string
-	ClientID   string
-	Secret     string
-	BaseURL    string
-	EnableTest bool
+	Domain                string
+	ClientID              string
+	Secret                string
+	BaseURL               string
+	PostLogoutRedirectURL string
+	EnableTest            bool
 }
 
 // AuthProvider should include all state that we need to share with auth callbacks or to make customizations on the
@@ -106,10 +107,18 @@ func InstallFusionAuth(
 	config AuthProviderConfig,
 	logger golog.Logger,
 ) (io.Closer, error) {
+	overwrite := AuthProviderConfig{
+		Domain:                config.Domain,
+		ClientID:              config.ClientID,
+		Secret:                config.Secret,
+		BaseURL:               config.BaseURL,
+		PostLogoutRedirectURL: "post_logout_redirect_uri",
+		EnableTest:            config.EnableTest,
+	}
 	authProvider, err := installAuthProvider(
 		ctx,
 		sessions,
-		config,
+		overwrite,
 		"/callback",
 		"fa_redirect_state")
 	if err != nil {
@@ -145,6 +154,10 @@ func installAuthProvider(
 
 	if sessions == nil {
 		return nil, errors.New("sessions needed for auth provider")
+	}
+
+	if config.PostLogoutRedirectURL == "" {
+		return nil, errors.New("need a post logout redirect url")
 	}
 
 	state := &AuthProvider{
@@ -598,7 +611,7 @@ func (h *logoutHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	logoutURL.Path = h.providerLogoutURL
 	parameters := url.Values{}
 
-	parameters.Add("returnTo", h.state.config.BaseURL)
+	parameters.Add(h.state.config.PostLogoutRedirectURL, h.state.config.BaseURL)
 	parameters.Add("client_id", h.state.config.ClientID)
 	logoutURL.RawQuery = parameters.Encode()
 
