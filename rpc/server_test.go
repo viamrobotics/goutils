@@ -2,9 +2,10 @@ package rpc
 
 import (
 	"context"
+	"crypto/ed25519"
 	"crypto/rand"
-	"crypto/rsa"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -40,7 +41,7 @@ func TestServer(t *testing.T) {
 	_, certFile, keyFile, certPool, err := testutils.GenerateSelfSignedCertificate("localhost")
 	test.That(t, err, test.ShouldBeNil)
 
-	testPrivKey, err := rsa.GenerateKey(rand.Reader, 512)
+	testPubKey, testPrivKey, err := ed25519.GenerateKey(rand.Reader)
 	test.That(t, err, test.ShouldBeNil)
 
 	hosts := []string{"yeehaw", "woahthere"}
@@ -61,7 +62,7 @@ func TestServer(t *testing.T) {
 									WithAuthHandler("fake", AuthHandlerFunc(func(ctx context.Context, entity, payload string) (map[string]string, error) {
 										return map[string]string{}, nil
 									})),
-									WithAuthRSAPrivateKey(testPrivKey),
+									WithAuthPrivateKey(testPrivKey),
 								)
 							} else {
 								serverOpts = append(serverOpts, WithUnauthenticated())
@@ -141,11 +142,10 @@ func TestServer(t *testing.T) {
 
 								// Validate the JWT token/header from the Authenticate call.
 								token, err := jwt.Parse(authResp.AccessToken, func(token *jwt.Token) (interface{}, error) {
-									return &testPrivKey.PublicKey, nil
+									return testPubKey, nil
 								})
 								test.That(t, err, test.ShouldBeNil)
-								thumbprint, err := RSAPublicKeyThumbprint(&testPrivKey.PublicKey)
-								test.That(t, err, test.ShouldBeNil)
+								thumbprint := base64.RawURLEncoding.EncodeToString(testPubKey)
 								test.That(t, token.Header["kid"], test.ShouldEqual, thumbprint)
 
 								md := make(metadata.MD)

@@ -2,6 +2,7 @@ package rpc
 
 import (
 	"context"
+	"crypto/ed25519"
 	"crypto/rsa"
 	"crypto/tls"
 	"net"
@@ -36,8 +37,8 @@ type serverOptions struct {
 	// publicMethods are api routes that attempt, but do not require, authentication
 	publicMethods []string
 
-	// authRSAPrivateKey is used to sign JWTs for authentication
-	authRSAPrivateKey *rsa.PrivateKey
+	// authPrivateKey is used to sign JWTs for authentication
+	authPrivateKey ed25519.PrivateKey
 
 	// debug is helpful to turn on when the library isn't working quite right.
 	// It will output much more logs.
@@ -219,11 +220,11 @@ func WithUnauthenticated() ServerOption {
 	})
 }
 
-// WithAuthRSAPrivateKey returns a ServerOption which sets the private key to
+// WithAuthPrivateKey returns a ServerOption which sets the private key to
 // use for signed JWTs.
-func WithAuthRSAPrivateKey(authRSAPrivateKey *rsa.PrivateKey) ServerOption {
+func WithAuthPrivateKey(authPrivateKey ed25519.PrivateKey) ServerOption {
 	return newFuncServerOption(func(o *serverOptions) error {
-		o.authRSAPrivateKey = authRSAPrivateKey
+		o.authPrivateKey = authPrivateKey
 		return nil
 	})
 }
@@ -346,10 +347,16 @@ func withCredAuthHandlers(forType CredentialsType, handler credAuthHandlers) Ser
 	})
 }
 
-// WithExternalAuthPublicKeyTokenVerifier returns a ServerOption to verify all externally
+// WithExternalAuthRSAPublicKeyTokenVerifier returns a ServerOption to verify all externally
 // authenticated entity access tokens with the given public key.
-func WithExternalAuthPublicKeyTokenVerifier(pubKey *rsa.PublicKey) ServerOption {
-	return WithTokenVerificationKeyProvider(CredentialsTypeExternal, MakePublicKeyProvider(pubKey))
+func WithExternalAuthRSAPublicKeyTokenVerifier(pubKey *rsa.PublicKey) ServerOption {
+	return WithTokenVerificationKeyProvider(CredentialsTypeExternal, MakeRSAPublicKeyProvider(pubKey))
+}
+
+// WithExternalAuthEd25519PublicKeyTokenVerifier returns a ServerOption to verify all externally
+// authenticated entity access tokens with the given public key.
+func WithExternalAuthEd25519PublicKeyTokenVerifier(pubKey ed25519.PublicKey) ServerOption {
+	return WithTokenVerificationKeyProvider(CredentialsTypeExternal, MakeEd25519PublicKeyProvider(pubKey))
 }
 
 // WithExternalAuthJWKSetTokenVerifier returns a ServerOption to verify all externally

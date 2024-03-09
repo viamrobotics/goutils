@@ -3,8 +3,8 @@ package jwks
 
 import (
 	"context"
-	"crypto/rsa"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -151,7 +151,7 @@ func NewStaticJWKKeyProvider(keyset KeySet) KeyProvider {
 	}
 }
 
-func publicKeyFromKeySet(keyset KeySet, kid, alg string) (*rsa.PublicKey, error) {
+func publicKeyFromKeySet(keyset KeySet, kid, alg string) (interface{}, error) {
 	key, ok := keyset.LookupKeyID(kid)
 	if !ok {
 		return nil, errors.New("kid header does not exist in keyset")
@@ -161,11 +161,9 @@ func publicKeyFromKeySet(keyset KeySet, kid, alg string) (*rsa.PublicKey, error)
 		return nil, errors.New("key from kid has different signing alg")
 	}
 
-	var pubKey rsa.PublicKey
-	err := key.Raw(&pubKey)
-	if err != nil {
-		return nil, errors.New("invalid key type")
+	var pubKey interface{}
+	if err := key.Raw(&pubKey); err != nil {
+		return nil, fmt.Errorf("error getting raw key: %w", err)
 	}
-
-	return &pubKey, nil
+	return pubKey, nil
 }

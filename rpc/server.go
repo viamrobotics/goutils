@@ -2,8 +2,8 @@ package rpc
 
 import (
 	"context"
+	"crypto/ed25519"
 	"crypto/rand"
-	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
@@ -42,10 +42,9 @@ import (
 )
 
 const (
-	generatedRSAKeyBits = 2048
-	mDNSerr             = "mDNS setup failed; continuing with mDNS disabled"
-	healthCheckMethod   = "/grpc.health.v1.Health/Check"
-	healthWatchMethod   = "/grpc.health.v1.Health/Watch"
+	mDNSerr           = "mDNS setup failed; continuing with mDNS disabled"
+	healthCheckMethod = "/grpc.health.v1.Health/Check"
+	healthWatchMethod = "/grpc.health.v1.Health/Watch"
 )
 
 // A Server provides a convenient way to get a gRPC server up and running
@@ -134,8 +133,9 @@ type simpleServer struct {
 	internalUUID         string
 	internalCreds        Credentials
 	tlsAuthHandler       func(ctx context.Context, entities ...string) error
-	authRSAPrivKey       *rsa.PrivateKey
-	authRSAPrivKeyKID    string
+	authPubKey           ed25519.PublicKey
+	authPrivKey          ed25519.PrivateKey
+	authKeyID            string
 	authHandlersForCreds map[CredentialsType]credAuthHandlers
 	authToHandler        AuthenticateToHandler
 
@@ -208,22 +208,14 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 		MaxHeaderBytes: MaxMessageSize,
 	}
 
-	var authRSAPrivKeyThumbprint string
-	authRSAPrivKey := sOpts.authRSAPrivateKey
+	authPrivKey := sOpts.authPrivateKey
 	if !sOpts.unauthenticated {
-		if authRSAPrivKey == nil {
-			privKey, err := rsa.GenerateKey(rand.Reader, generatedRSAKeyBits)
+		if authPrivKey == nil {
+			_, privKey, err := ed25519.GenerateKey(rand.Reader)
 			if err != nil {
 				return nil, err
 			}
-			authRSAPrivKey = privKey
-		}
-
-		// create KID from authRSAPrivKey, this is used as the KID in the JWT header. This KID can be useful when more
-		// than one KID is accepted.
-		authRSAPrivKeyThumbprint, err = RSAPublicKeyThumbprint(&authRSAPrivKey.PublicKey)
-		if err != nil {
-			return nil, err
+			authPrivKey = privKey
 		}
 	}
 
@@ -252,8 +244,7 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 		grpcListener:       grpcListener,
 		httpServer:         httpServer,
 		grpcGatewayHandler: grpcGatewayHandler,
-		authRSAPrivKey:     authRSAPrivKey,
-		authRSAPrivKeyKID:  authRSAPrivKeyThumbprint,
+		authPrivKey:        authPrivKey,
 		internalUUID:       uuid.NewString(),
 		internalCreds: Credentials{
 			Type:    credentialsTypeInternal,
@@ -269,6 +260,10 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 		tlsConfig:            sOpts.tlsConfig,
 		firstSeenTLSCertLeaf: firstSeenTLSCertLeaf,
 		logger:               logger,
+	}
+	if len(authPrivKey) != 0 {
+		server.authPubKey = authPrivKey.Public().(ed25519.PublicKey)
+		server.authKeyID = base64.RawURLEncoding.EncodeToString(server.authPubKey)
 	}
 
 	grpcLogger := logger.Desugar()

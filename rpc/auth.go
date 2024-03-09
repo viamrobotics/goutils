@@ -2,11 +2,12 @@ package rpc
 
 import (
 	"context"
+	"crypto/ed25519"
 	"crypto/rsa"
+
 	//nolint:gosec // using for fingerprint
-	"crypto/sha1"
+
 	"crypto/subtle"
-	"encoding/base64"
 	"errors"
 	"fmt"
 
@@ -117,10 +118,23 @@ func (p TokenVerificationKeyProviderFunc) Close(ctx context.Context) error {
 }
 
 // MakePublicKeyProvider returns a TokenVerificationKeyProvider that provides a public key for JWT verification.
-func MakePublicKeyProvider(pubKey *rsa.PublicKey) TokenVerificationKeyProvider {
+func MakeRSAPublicKeyProvider(pubKey *rsa.PublicKey) TokenVerificationKeyProvider {
 	return TokenVerificationKeyProviderFunc(
 		func(ctx context.Context, token *jwt.Token) (interface{}, error) {
 			if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
+				return nil, fmt.Errorf("unexpected signing method %q", token.Method.Alg())
+			}
+
+			return pubKey, nil
+		},
+	)
+}
+
+// MakeEd25519PublicKeyProvider returns a TokenVerificationKeyProvider that provides a public key for JWT verification.
+func MakeEd25519PublicKeyProvider(pubKey ed25519.PublicKey) TokenVerificationKeyProvider {
+	return TokenVerificationKeyProviderFunc(
+		func(ctx context.Context, token *jwt.Token) (interface{}, error) {
+			if _, ok := token.Method.(*jwt.SigningMethodEd25519); !ok {
 				return nil, fmt.Errorf("unexpected signing method %q", token.Method.Alg())
 			}
 
@@ -254,18 +268,6 @@ const (
 type Credentials struct {
 	Type    CredentialsType `json:"type"`
 	Payload string          `json:"payload"`
-}
-
-// RSAPublicKeyThumbprint returns SHA1 of the public key's modulus Base64 URL encoded without padding.
-func RSAPublicKeyThumbprint(key *rsa.PublicKey) (string, error) {
-	//nolint:gosec // using for fingerprint
-	thumbPrint := sha1.New()
-	_, err := thumbPrint.Write(key.N.Bytes())
-	if err != nil {
-		return "", err
-	}
-
-	return base64.RawURLEncoding.EncodeToString(thumbPrint.Sum(nil)), nil
 }
 
 type credAuthHandlers struct {

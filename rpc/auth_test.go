@@ -2,6 +2,7 @@ package rpc
 
 import (
 	"context"
+	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/rsa"
 	"testing"
@@ -173,11 +174,11 @@ func TestTokenVerificationKeyProviderFunc(t *testing.T) {
 	<-capCtx
 }
 
-func TestWithPublicKeyProvider(t *testing.T) {
-	privKey, err := rsa.GenerateKey(rand.Reader, generatedRSAKeyBits)
+func TestWithRSAPublicKeyProvider(t *testing.T) {
+	privKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	test.That(t, err, test.ShouldBeNil)
 	pubKey := &privKey.PublicKey
-	provider := MakePublicKeyProvider(pubKey)
+	provider := MakeRSAPublicKeyProvider(pubKey)
 
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, JWTClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -212,17 +213,40 @@ func TestWithPublicKeyProvider(t *testing.T) {
 	test.That(t, err, test.ShouldBeNil)
 }
 
-func TestRSAPublicKeyThumbprint(t *testing.T) {
-	privKey1, err := rsa.GenerateKey(rand.Reader, 512)
+func TestWithEd25519PublicKeyProvider(t *testing.T) {
+	pubKey, privKey, err := ed25519.GenerateKey(rand.Reader)
+	test.That(t, err, test.ShouldBeNil)
+	provider := MakeEd25519PublicKeyProvider(pubKey)
+
+	token := jwt.NewWithClaims(jwt.SigningMethodEdDSA, JWTClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:  uuid.NewString(),
+			Audience: jwt.ClaimStrings{"does not matter"},
+		},
+		AuthCredentialsType: CredentialsType("fake"),
+	})
+
+	verificationKey, err := provider.TokenVerificationKey(context.Background(), token)
 	test.That(t, err, test.ShouldBeNil)
 
-	privKey2, err := rsa.GenerateKey(rand.Reader, 512)
+	badToken := jwt.NewWithClaims(jwt.SigningMethodHS256, JWTClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:  uuid.NewString(),
+			Audience: jwt.ClaimStrings{"does not matter"},
+		},
+		AuthCredentialsType: CredentialsType("fake"),
+	})
+
+	_, err = provider.TokenVerificationKey(context.Background(), badToken)
+	test.That(t, err, test.ShouldNotBeNil)
+	test.That(t, err.Error(), test.ShouldContainSubstring, "unexpected signing method")
+
+	tokenString, err := token.SignedString(privKey)
 	test.That(t, err, test.ShouldBeNil)
 
-	thumbPrint1, err := RSAPublicKeyThumbprint(&privKey1.PublicKey)
+	var claims JWTClaims
+	_, err = jwt.ParseWithClaims(tokenString, &claims, func(token *jwt.Token) (interface{}, error) {
+		return verificationKey, nil
+	})
 	test.That(t, err, test.ShouldBeNil)
-	thumbPrint2, err := RSAPublicKeyThumbprint(&privKey2.PublicKey)
-	test.That(t, err, test.ShouldBeNil)
-
-	test.That(t, thumbPrint1, test.ShouldNotResemble, thumbPrint2)
 }

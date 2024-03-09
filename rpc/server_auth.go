@@ -139,7 +139,7 @@ func (ss *simpleServer) signAccessTokenForEntity(
 	// TODO(GOUT-13): expiration
 	// TODO(GOUT-12): refresh token
 	// TODO(GOUT-9): more complete info
-	token := jwt.NewWithClaims(jwt.SigningMethodRS256, JWTClaims{
+	token := jwt.NewWithClaims(jwt.SigningMethodEdDSA, JWTClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:  entity,
 			Audience: audience,
@@ -153,9 +153,9 @@ func (ss *simpleServer) signAccessTokenForEntity(
 
 	// Set the Key ID (kid) to allow the auth handlers to selectively choose which key was used
 	// to sign the token.
-	token.Header["kid"] = ss.authRSAPrivKeyKID
+	token.Header["kid"] = ss.authKeyID
 
-	tokenString, err := token.SignedString(ss.authRSAPrivKey)
+	tokenString, err := token.SignedString(ss.authPrivKey)
 	if err != nil {
 		ss.logger.Errorw("failed to sign JWT", "error", err)
 		return "", status.Error(codes.PermissionDenied, "failed to authenticate")
@@ -338,11 +338,11 @@ func (ss *simpleServer) ensureAuthed(ctx context.Context) (context.Context, erro
 			}
 
 			// signed internally
-			if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
+			if _, ok := token.Method.(*jwt.SigningMethodEd25519); !ok {
 				return nil, fmt.Errorf("unexpected signing method %q", token.Method.Alg())
 			}
 
-			return &ss.authRSAPrivKey.PublicKey, nil
+			return ss.authPubKey, nil
 		},
 		jwt.WithValidMethods(validSigningMethods),
 	); err != nil {
