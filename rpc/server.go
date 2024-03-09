@@ -42,7 +42,7 @@ import (
 )
 
 const (
-	generatedRSAKeyBits = 4096
+	generatedRSAKeyBits = 2048
 	mDNSerr             = "mDNS setup failed; continuing with mDNS disabled"
 	healthCheckMethod   = "/grpc.health.v1.Health/Check"
 	healthWatchMethod   = "/grpc.health.v1.Health/Watch"
