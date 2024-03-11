@@ -109,6 +109,19 @@ func newPeerConnectionForClient(
 	}
 	dataChannel.OnError(initialDataChannelOnError(peerConn, logger))
 
+	// We configure "clients" for renegotation. This helper function does two things:
+	// - Creates the DataChannel and `OnMessage` handlers for communicating offers+answers.
+	// - Sets up an `OnNegotiationNeeded` callback to initiate an SDP change.
+	//
+	// Dan: The existing `OnNegotiationNeeded` algorithm is suitable when one side initiates all of
+	// the renegotiations. But it is not obvious that algorithm is suitable for when both sides can
+	// race on renegotiating. For now we "uninstall" the `OnNegotiationNeeded` callback and only
+	// allow the "server" to start a renegotiation.
+	if _, err = configureForRenegotiation(peerConn, logger); err != nil {
+		return peerConn, dataChannel, err
+	}
+	peerConn.OnNegotiationNeeded(func() {})
+
 	if disableTrickle {
 		offer, err := peerConn.CreateOffer(nil)
 		if err != nil {
@@ -162,41 +175,6 @@ func newPeerConnectionForServer(
 		}
 	}()
 
-	var negOpen bool
-	var negMu sync.Mutex
-	var negotiationChannel *webrtc.DataChannel
-	var makingOffer bool
-	peerConn.OnNegotiationNeeded(func() {
-		negMu.Lock()
-		if !negOpen {
-			negMu.Unlock()
-			return
-		}
-		negMu.Unlock()
-		makingOffer = true
-		defer func() {
-			makingOffer = false
-		}()
-		offer, err := peerConn.CreateOffer(nil)
-		if err != nil {
-			logger.Errorw("renegotiation: error creating offer", "error", err)
-			return
-		}
-		if err := peerConn.SetLocalDescription(offer); err != nil {
-			logger.Errorw("renegotiation: error setting local description", "error", err)
-			return
-		}
-		encodedSDP, err := encodeSDP(peerConn.LocalDescription())
-		if err != nil {
-			logger.Errorw("renegotiation: error encoding SDP", "error", err)
-			return
-		}
-		if err := negotiationChannel.SendText(encodedSDP); err != nil {
-			logger.Errorw("renegotiation: error sending SDP", "error", err)
-			return
-		}
-	})
-
 	negotiated := true
 	ordered := true
 	dataChannelID := uint16(0)
@@ -210,67 +188,9 @@ func newPeerConnectionForServer(
 	}
 	dataChannel.OnError(initialDataChannelOnError(peerConn, logger))
 
-	negotiationChannelID := uint16(1)
-	negotiationChannel, err = peerConn.CreateDataChannel("negotiation", &webrtc.DataChannelInit{
-		ID:         &negotiationChannelID,
-		Negotiated: &negotiated,
-		Ordered:    &ordered,
-	})
-	if err != nil {
+	if _, err = configureForRenegotiation(peerConn, logger); err != nil {
 		return peerConn, dataChannel, err
 	}
-	negotiationChannel.OnError(initialDataChannelOnError(peerConn, logger))
-
-	negotiationChannel.OnOpen(func() {
-		negMu.Lock()
-		negOpen = true
-		negMu.Unlock()
-	})
-
-	const polite = false
-	var ignoreOffer bool
-	negotiationChannel.OnMessage(func(msg webrtc.DataChannelMessage) {
-		negMu.Lock()
-		defer negMu.Unlock()
-
-		description := webrtc.SessionDescription{}
-		if err := decodeSDP(string(msg.Data), &description); err != nil {
-			logger.Errorw("renegotiation: error decoding SDP", "error", err)
-			return
-		}
-		offerCollision := (description.Type == webrtc.SDPTypeOffer) &&
-			(makingOffer || peerConn.SignalingState() != webrtc.SignalingStateStable)
-		ignoreOffer = !polite && offerCollision
-		if ignoreOffer {
-			logger.Debugw("ignoring offer", "polite", polite, "offer_collision", offerCollision)
-		}
-
-		if err := peerConn.SetRemoteDescription(description); err != nil {
-			logger.Errorw("renegotiation: error setting remote description", "error", err)
-			return
-		}
-
-		if description.Type == webrtc.SDPTypeOffer {
-			answer, err := peerConn.CreateAnswer(nil)
-			if err != nil {
-				logger.Errorw("renegotiation: error creating answer", "error", err)
-				return
-			}
-			if err := peerConn.SetLocalDescription(answer); err != nil {
-				logger.Errorw("renegotiation: error setting local description", "error", err)
-				return
-			}
-			encodedSDP, err := encodeSDP(peerConn.LocalDescription())
-			if err != nil {
-				logger.Errorw("renegotiation: error encoding SDP", "error", err)
-				return
-			}
-			if err := negotiationChannel.SendText(encodedSDP); err != nil {
-				logger.Errorw("renegotiation: error sending SDP", "error", err)
-				return
-			}
-		}
-	})
 
 	offer := webrtc.SessionDescription{}
 	if err := decodeSDP(sdp, &offer); err != nil {
@@ -307,6 +227,146 @@ func newPeerConnectionForServer(
 
 	successful = true
 	return peerConn, dataChannel, nil
+}
+
+// configureForRenegotiation sets up PeerConnection callbacks for updating local descriptions and
+// sending offers when a negotiation is needed (e.g: adding a video track). As well as listening for
+// offers/answers to update remote descriptions (e.g: when the peer adds a video track).
+//
+// If successful, a Go channel is returned. The Go channel will close when the negotiation
+// DataChannel is open and available for renegotiation.
+func configureForRenegotiation(peerConn *webrtc.PeerConnection, logger golog.Logger) (<-chan struct{}, error) {
+	var negMu sync.Mutex
+
+	// All of Viam's PeerConnections hard code the `data` channel to be ID 0 and the `negotiation`
+	// channel to be ID 1. Thus these channels are "pre-negotiated".
+	negotiated := true
+	// Packets over this channel must be processed in order (à la TCP).
+	ordered := true
+	negotiationChannelID := uint16(1)
+	negotiationChannel, err := peerConn.CreateDataChannel("negotiation", &webrtc.DataChannelInit{
+		ID:         &negotiationChannelID,
+		Negotiated: &negotiated,
+		Ordered:    &ordered,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	negotiationChannel.OnError(initialDataChannelOnError(peerConn, logger))
+
+	// The pion webrtc library may invoke `OnNegotiationNeeded` prior to the connection being
+	// established. We drop those requests on the floor. The original connection is established with
+	// our signaling and answering machinery.
+	//
+	// Additionally, just because a PeerConnection has moved into the `connected` state, that does
+	// not imply the pre-negotiated `negotiation` DataChannel is available for use. We return this
+	// `negOpened` channel to let tests create a happens-before relationship. Such that these tests
+	// can know when a PeerConnection method that invokes `OnNegotiationNeeded` can utilize this
+	// negotiation channel.
+	negOpened := make(chan struct{})
+	negotiationChannel.OnOpen(func() {
+		close(negOpened)
+	})
+
+	// OnNegotiationNeeded is webrtc callback for when a PeerConnection is mutated in a way such
+	// that its local description should change. Such as when a video track is added that should be
+	// streamed to the peer.
+	peerConn.OnNegotiationNeeded(func() {
+		select {
+		case <-negOpened:
+		default:
+			// Negotiation cannot occur over the negotiation channel until after the channel is in
+			// operation.
+			return
+		}
+
+		negMu.Lock()
+		defer negMu.Unlock()
+		// Creating an offer will generate the desired local description that includes the
+		// modifications responsible for entering the callback. Such as adding a video track.
+		offer, err := peerConn.CreateOffer(nil)
+		if err != nil {
+			logger.Errorw("renegotiation: error creating offer", "error", err)
+			return
+		}
+
+		// Dan: It's not clear to me why an offer is created from a `PeerConnection` just to call
+		// `PeerConnection.SetLocalDescription`. And then when encoding the `Description` ("SDP")
+		// for sending to the peer, we must call `PeerConnection.LocalDescription` rather than using
+		// the `offer`. But it's easy to see that the `offer` and `peerConn.LocalDescription()` are
+		// different (e.g: the latter includes ICE candidates), so it must be done this way.
+		if err := peerConn.SetLocalDescription(offer); err != nil {
+			logger.Errorw("renegotiation: error setting local description", "error", err)
+			return
+		}
+
+		// Encode and send the new local description to the peer over the `negotiation` channel. The
+		// peer will respond over the negotiation channel with an answer. That answer will be used to
+		// update the remote description.
+		encodedSDP, err := encodeSDP(peerConn.LocalDescription())
+		if err != nil {
+			logger.Errorw("renegotiation: error encoding SDP", "error", err)
+			return
+		}
+		if err := negotiationChannel.SendText(encodedSDP); err != nil {
+			logger.Errorw("renegotiation: error sending SDP", "error", err)
+			return
+		}
+	})
+
+	negotiationChannel.OnMessage(func(msg webrtc.DataChannelMessage) {
+		negMu.Lock()
+		defer negMu.Unlock()
+
+		description := webrtc.SessionDescription{}
+		if err := decodeSDP(string(msg.Data), &description); err != nil {
+			logger.Errorw("renegotiation: error decoding SDP", "error", err)
+			return
+		}
+
+		// A new description was received over the negotiation channel. Use that to update the remote
+		// description.
+		if err := peerConn.SetRemoteDescription(description); err != nil {
+			logger.Errorw("renegotiation: error setting remote description", "error", err)
+			return
+		}
+
+		// If the message was an offer, generate an answer, set it as the local description and
+		// respond. Such that the peer can update its remote description.
+		//
+		// If the incoming message was an answer, the peers are now in sync and no further messages
+		// are required.
+		if description.Type != webrtc.SDPTypeOffer {
+			return
+		}
+
+		// Dan: It's unclear to me how error handling should happen here. Receiving an offer implies
+		// the peer's local description is not in sync with our remote description for that
+		// peer. I'm unsure of the long-term consequence of a pair of PeerConnections being in this
+		// inconsistent state.
+		answer, err := peerConn.CreateAnswer(nil)
+		if err != nil {
+			logger.Errorw("renegotiation: error creating answer", "error", err)
+			return
+		}
+		if err := peerConn.SetLocalDescription(answer); err != nil {
+			logger.Errorw("renegotiation: error setting local description", "error", err)
+			return
+		}
+
+		encodedSDP, err := encodeSDP(peerConn.LocalDescription())
+		if err != nil {
+			logger.Errorw("renegotiation: error encoding SDP", "error", err)
+			return
+		}
+		if err := negotiationChannel.SendText(encodedSDP); err != nil {
+			logger.Errorw("renegotiation: error sending SDP", "error", err)
+			return
+		}
+	})
+
+	return negOpened, nil
 }
 
 type webrtcPeerConnectionStats struct {
