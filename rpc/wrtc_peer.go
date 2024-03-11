@@ -109,9 +109,18 @@ func newPeerConnectionForClient(
 	}
 	dataChannel.OnError(initialDataChannelOnError(peerConn, logger))
 
+	// We configure "clients" for renegotation. This helper function does two things:
+	// - Creates the DataChannel and `OnMessage` handlers for communicating offers+answers.
+	// - Sets up an `OnNegotiationNeeded` callback to initiate an SDP change.
+	//
+	// Dan: The existing `OnNegotiationNeeded` algorithm is suitable when one side initiates all of
+	// the renegotiations. But it is not obvious that algorithm is suitable for when both sides can
+	// race on renegotiating. For now we "uninstall" the `OnNegotiationNeeded` callback and only
+	// allow the "server" to start a renegotiation.
 	if _, err = configureForRenegotiation(peerConn, logger); err != nil {
 		return peerConn, dataChannel, err
 	}
+	peerConn.OnNegotiationNeeded(func() {})
 
 	if disableTrickle {
 		offer, err := peerConn.CreateOffer(nil)
