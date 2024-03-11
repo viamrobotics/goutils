@@ -1,6 +1,6 @@
 {
   "name": "@viamrobotics/rpc",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "license": "Apache-2.0",
   "dependencies": {
     "@improbable-eng/grpc-web": "^0.13.0",
@@ -27,6 +27,7 @@
   },
   "type": "module",
   "types": "./dist/main.d.ts",
+  "main": "./dist/main.js",
   "exports": {
     ".": {
       "types": "./dist/main.d.ts",

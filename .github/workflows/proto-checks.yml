@@ -4,23 +4,22 @@ on:
   workflow_dispatch:
   workflow_call:
   pull_request:
-    branches: ['main']
+    branches: ["main"]
   push:
 
 jobs:
   proto-test:
     name: Test For Proto Lint and Breaking Changes
     timeout-minutes: 5
-    runs-on: [self-hosted, x64]
-    container:
-      image: ghcr.io/viamrobotics/canon:amd64-cache
-      options: --platform linux/amd64
+    runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
-    - uses: bufbuild/buf-setup-action@v1
-    # Run all Lint runs
-    - uses: bufbuild/buf-lint-action@v1
-    # Run breaking change detection against the `main` branch
-    - uses: bufbuild/buf-breaking-action@v1
-      with:
-        against: 'https://github.com/viamrobotics/goutils.git#branch=main'
+      - uses: actions/checkout@v4
+      - uses: bufbuild/buf-setup-action@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+      # Run all Lint runs
+      - uses: bufbuild/buf-lint-action@v1
+      # Run breaking change detection against the `main` branch
+      - uses: bufbuild/buf-breaking-action@v1
+        with:
+          against: "https://github.com/viamrobotics/goutils.git#branch=main"
