@@ -182,13 +182,9 @@ func TestManagedProcessStart(t *testing.T) {
 
 			<-watcher.Events
 
-      if runtime.GOOS != "windows" {
-        test.That(t, proc.Status(), test.ShouldBeNil)
-      }
+      test.That(t, proc.Status(), test.ShouldBeNil)
       test.That(t, proc.Stop(), test.ShouldBeNil)
-      if runtime.GOOS != "windows" {
-        test.That(t, proc.Status(), test.ShouldNotBeNil)
-      }
+      test.That(t, proc.Status(), test.ShouldNotBeNil)
 
 			rd, err := os.ReadFile(tempFile.Name())
 			test.That(t, err, test.ShouldBeNil)
@@ -354,17 +350,15 @@ func TestManagedProcessStop(t *testing.T) {
 
 		<-watcher.Events
 
-		if runtime.GOOS != "windows" {
-			test.That(t, proc.Status(), test.ShouldBeNil)
-		}
+    test.That(t, proc.Status(), test.ShouldBeNil)
 		err = proc.Stop()
 		if runtime.GOOS == "windows" {
 			test.That(t, err, test.ShouldBeNil)
 		} else {
 			test.That(t, err, test.ShouldNotBeNil)
 			test.That(t, err.Error(), test.ShouldContainSubstring, "exit status 1")
-			test.That(t, proc.Status(), test.ShouldNotBeNil)
 		}
+		test.That(t, proc.Status(), test.ShouldNotBeNil)
 
 		proc = NewManagedProcess(ProcessConfig{
 			Name: "bash",
@@ -418,15 +412,11 @@ done`, tempFile.Name()))
 		}, logger)
 		test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
 		<-watcher.Events
-    if runtime.GOOS == "windows" {
-      test.That(t, proc.Status(), test.ShouldBeNil)
-    }
+    test.That(t, proc.Status(), test.ShouldBeNil)
     err = proc.Stop()
     test.That(t, err, test.ShouldNotBeNil)
     test.That(t, err.Error(), test.ShouldContainSubstring, "exit status 115")
-    if runtime.GOOS == "windows" {
-      test.That(t, proc.Status(), test.ShouldNotBeNil)
-    }
+    test.That(t, proc.Status(), test.ShouldNotBeNil)
 
 		for _, signal := range knownSignals {
 			t.Run(fmt.Sprintf("sig=%s", sigStr(signal)), func(t *testing.T) {

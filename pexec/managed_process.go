@@ -31,12 +31,11 @@ type ManagedProcess interface {
 
 	// Stop signals and waits for the process to stop. An error is returned if
 	// there's any system level issue stopping the process.
-	Stop() error
+  Stop() error
 
   // Status return nil when the process is both alive and owned.
   // If err is non-nil, process may be a) alive but not owned or b) dead.
-  // Method not supported/implemented on Windows
-	Status() error
+  Status() error 
 }
 
 // NewManagedProcess returns a new, unstarted, from the given configuration.
@@ -110,8 +109,7 @@ func (p *managedProcess) ID() string {
 func (p *managedProcess) Status() error {
 	p.mu.Lock()
   defer p.mu.Unlock()
-  err := p.cmd.Process.Signal(syscall.Signal(0))
-  return err
+  return p.cmd.Process.Signal(syscall.Signal(0))
 }
 
 func (p *managedProcess) Start(ctx context.Context) error {
