@@ -31,11 +31,11 @@ type ManagedProcess interface {
 
 	// Stop signals and waits for the process to stop. An error is returned if
 	// there's any system level issue stopping the process.
-  Stop() error
+	Stop() error
 
-  // Status return nil when the process is both alive and owned.
-  // If err is non-nil, process may be a) alive but not owned or b) dead.
-  Status() error 
+	// Status return nil when the process is both alive and owned.
+	// If err is non-nil, process may be a) alive but not owned or b) dead.
+	Status() error
 }
 
 // NewManagedProcess returns a new, unstarted, from the given configuration.
@@ -90,7 +90,7 @@ type managedProcess struct {
 	shouldLog bool
 	cmd       *exec.Cmd
 
-  stopped          bool
+	stopped          bool
 	onUnexpectedExit func(int) bool
 	managingCh       chan struct{}
 	killCh           chan struct{}
@@ -108,8 +108,8 @@ func (p *managedProcess) ID() string {
 
 func (p *managedProcess) Status() error {
 	p.mu.Lock()
-  defer p.mu.Unlock()
-  return p.cmd.Process.Signal(syscall.Signal(0))
+	defer p.mu.Unlock()
+	return p.cmd.Process.Signal(syscall.Signal(0))
 }
 
 func (p *managedProcess) Start(ctx context.Context) error {
