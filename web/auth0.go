@@ -108,10 +108,9 @@ func InstallFusionAuth(
 	config AuthProviderConfig,
 	logger golog.Logger,
 ) (io.Closer, error) {
-	config.Domain = "acme.com"
 	config.PostLogoutRedirectURL = "post_logout_redirect_uri"
 	authProvider, err := installAuthProvider(
-		ctx,
+		oidc.InsecureIssuerURLContext(ctx, config.Domain),
 		sessions,
 		config,
 		"/callback",
