@@ -277,13 +277,19 @@ func (s *webrtcServerStream) processHeaders(headers *webrtcpb.RequestHeaders) {
 		}
 	}
 
+	s.ch.server.processHeadersMu.RLock()
+	s.ch.server.processHeadersWorkers.Add(1)
+	s.ch.server.processHeadersMu.RUnlock()
+
+	// Check if context has errored: underlying server may have been `Stop`ped,
+	// in which case we mark this processHeaders worker as `Done` and return.
+	if err := s.ch.server.ctx.Err(); err != nil {
+		s.ch.server.processHeadersWorkers.Done()
+		return
+	}
+
 	// take a ticket
 	select {
-	case <-s.ch.server.ctx.Done():
-		if err := s.closeWithSendError(status.FromContextError(s.ch.server.ctx.Err()).Err()); err != nil {
-			s.logger.Errorw("error closing", "error", err)
-		}
-		return
 	case s.ch.server.callTickets <- struct{}{}:
 	default:
 		if err := s.closeWithSendError(status.Error(codes.ResourceExhausted, "too many in-flight requests")); err != nil {
@@ -293,12 +299,11 @@ func (s *webrtcServerStream) processHeaders(headers *webrtcpb.RequestHeaders) {
 	}
 
 	s.headersReceived = true
-	s.ch.server.activeBackgroundWorkers.Add(1)
 	utils.PanicCapturingGo(func() {
 		defer func() {
+			s.ch.server.processHeadersWorkers.Done()
 			<-s.ch.server.callTickets // return a ticket
 		}()
-		defer s.ch.server.activeBackgroundWorkers.Done()
 		if err := handlerFunc(s); err != nil {
 			if errors.Is(err, io.ErrClosedPipe) || isContextCanceled(err) {
 				return

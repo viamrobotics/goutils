@@ -18,16 +18,23 @@ var DefaultWebRTCMaxGRPCCalls = 256
 
 // A webrtcServer translates gRPC frames over WebRTC data channels into gRPC calls.
 type webrtcServer struct {
-	mu       sync.Mutex
 	ctx      context.Context
 	cancel   context.CancelFunc
 	handlers map[string]handlerFunc
 	services map[string]*serviceInfo
 	logger   golog.Logger
 
-	peerConns               map[*webrtc.PeerConnection]struct{}
-	activeBackgroundWorkers sync.WaitGroup
-	callTickets             chan struct{}
+	peerConnsMu sync.Mutex
+	peerConns   map[*webrtc.PeerConnection]struct{}
+
+	// processHeadersMu should be `Lock`ed in `Stop` to `Wait` on ongoing
+	// processHeaders calls (incoming method invocations). processHeaderMu should
+	// be `RLock`ed in processHeaders (allow concurrent processHeaders) to `Add`
+	// to processHeadersWorkers.
+	processHeadersMu      sync.RWMutex
+	processHeadersWorkers sync.WaitGroup
+
+	callTickets chan struct{}
 
 	unaryInt          grpc.UnaryServerInterceptor
 	streamInt         grpc.StreamServerInterceptor
@@ -85,18 +92,20 @@ func newWebRTCServerWithInterceptorsAndUnknownStreamHandler(
 // are done executing.
 func (srv *webrtcServer) Stop() {
 	srv.cancel()
+	srv.processHeadersMu.Lock()
 	srv.logger.Info("waiting for handlers to complete")
-	srv.activeBackgroundWorkers.Wait()
+	srv.processHeadersWorkers.Wait()
+	srv.processHeadersMu.Unlock()
 	srv.logger.Info("handlers complete")
-	srv.mu.Lock()
 	srv.logger.Info("closing lingering peer connections")
+	srv.peerConnsMu.Lock()
+	defer srv.peerConnsMu.Unlock()
 	for pc := range srv.peerConns {
 		if err := pc.Close(); err != nil {
 			srv.logger.Errorw("error closing peer connection", "error", err)
 		}
 	}
 	srv.logger.Info("lingering peer connections closed")
-	srv.mu.Unlock()
 }
 
 // RegisterService registers the given implementation of a service to be handled via
@@ -173,9 +182,9 @@ func (srv *webrtcServer) NewChannel(
 	authAudience []string,
 ) *webrtcServerChannel {
 	serverCh := newWebRTCServerChannel(srv, peerConn, dataChannel, authAudience, srv.logger)
-	srv.mu.Lock()
+	srv.peerConnsMu.Lock()
 	srv.peerConns[peerConn] = struct{}{}
-	srv.mu.Unlock()
+	srv.peerConnsMu.Unlock()
 	if srv.onPeerAdded != nil {
 		srv.onPeerAdded(peerConn)
 	}
@@ -183,8 +192,8 @@ func (srv *webrtcServer) NewChannel(
 }
 
 func (srv *webrtcServer) removePeer(peerConn *webrtc.PeerConnection) {
-	srv.mu.Lock()
-	defer srv.mu.Unlock()
+	srv.peerConnsMu.Lock()
+	defer srv.peerConnsMu.Unlock()
 	delete(srv.peerConns, peerConn)
 	if srv.onPeerRemoved != nil {
 		srv.onPeerRemoved(peerConn)
