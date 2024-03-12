@@ -24,11 +24,14 @@ type webrtcServer struct {
 	services map[string]*serviceInfo
 	logger   golog.Logger
 
-	// processHeadersMu guards the peerConns map and processHeadersWorkers
-	// WaitGroup. processHeaders should only RLock() to allow for multiple
-	// headers to be processed concurrently; writers to peerConns should Lock().
-	peerConns             map[*webrtc.PeerConnection]struct{}
-	peerConnsMu           sync.RWMutex
+	peerConnsMu sync.Mutex
+	peerConns   map[*webrtc.PeerConnection]struct{}
+
+	// processHeadersMu should be `Lock`ed in `Stop` to `Wait` on ongoing
+	// processHeaders calls (incoming method invocations). processHeaderMu should
+	// be `RLock`ed in processHeaders (allow concurrent processHeaders) to `Add`
+	// to processHeadersWorkers.
+	processHeadersMu      sync.RWMutex
 	processHeadersWorkers sync.WaitGroup
 
 	callTickets chan struct{}
@@ -89,12 +92,14 @@ func newWebRTCServerWithInterceptorsAndUnknownStreamHandler(
 // are done executing.
 func (srv *webrtcServer) Stop() {
 	srv.cancel()
-	srv.peerConnsMu.Lock()
-	defer srv.peerConnsMu.Unlock()
+	srv.processHeadersMu.Lock()
 	srv.logger.Info("waiting for handlers to complete")
 	srv.processHeadersWorkers.Wait()
+	srv.processHeadersMu.Unlock()
 	srv.logger.Info("handlers complete")
 	srv.logger.Info("closing lingering peer connections")
+	srv.peerConnsMu.Lock()
+	defer srv.peerConnsMu.Unlock()
 	for pc := range srv.peerConns {
 		if err := pc.Close(); err != nil {
 			srv.logger.Errorw("error closing peer connection", "error", err)
