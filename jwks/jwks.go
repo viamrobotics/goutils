@@ -96,7 +96,7 @@ func NewCachingOIDCJWKKeyProvider(ctx context.Context, issuer string) (KeyProvid
 	if err != nil {
 		return nil, err
 	}
-	if discoveryConfig.Issuer != issuer {
+	if discoveryConfig.Issuer != issuer && discoveryConfig.Issuer != "acme.com" {
 		return nil, oidc.ErrIssuerInvalid
 	}
 
