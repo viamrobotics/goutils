@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rsa"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -87,6 +88,7 @@ func NewCachingOIDCJWKKeyProvider(ctx context.Context, issuer string) (KeyProvid
 	defer httpTransport.CloseIdleConnections()
 
 	wellKnown := strings.TrimSuffix(issuer, "/") + oidc.DiscoveryEndpoint
+	fmt.Printf("\nrequest to wellKnown: %v", wellKnown)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, wellKnown, nil)
 	if err != nil {
 		return nil, err
@@ -96,6 +98,7 @@ func NewCachingOIDCJWKKeyProvider(ctx context.Context, issuer string) (KeyProvid
 	if err != nil {
 		return nil, err
 	}
+	fmt.Printf("\ndiscovery config issuer: %v, issuer: %v", discoveryConfig.Issuer, issuer)
 	if discoveryConfig.Issuer != issuer {
 		return nil, oidc.ErrIssuerInvalid
 	}
