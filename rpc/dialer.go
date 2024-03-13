@@ -12,6 +12,7 @@ import (
 	"github.com/edaniels/golog"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
+	"github.com/pion/webrtc/v3"
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 	"go.uber.org/zap"
@@ -59,6 +60,7 @@ type Dialer interface {
 // there is a way to close the connection.
 type ClientConn interface {
 	grpc.ClientConnInterface
+	PeerConn() *webrtc.PeerConnection
 	Close() error
 }
 
@@ -66,6 +68,14 @@ type ClientConn interface {
 type ClientConnAuthenticator interface {
 	ClientConn
 	Authenticate(ctx context.Context) (string, error)
+}
+
+type GrpcOverHttpClientConn struct {
+	*grpc.ClientConn
+}
+
+func (cc GrpcOverHttpClientConn) PeerConn() *webrtc.PeerConnection {
+	return nil
 }
 
 type cachedDialer struct {
@@ -92,7 +102,7 @@ func (cd *cachedDialer) DialDirect(
 		if err != nil {
 			return nil, nil, err
 		}
-		return conn, onClose, nil
+		return GrpcOverHttpClientConn{conn}, onClose, nil
 	})
 }
 
@@ -328,7 +338,10 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts dialOptions, logg
 	if ctxDialer := contextDialer(ctx); ctxDialer != nil {
 		conn, cached, err = ctxDialer.DialDirect(ctx, address, dOpts.cacheKey(), closeCredsFunc, dialOpts...)
 	} else {
-		conn, err = grpc.DialContext(ctx, address, dialOpts...)
+		grpcConn, err := grpc.DialContext(ctx, address, dialOpts...)
+		if err == nil {
+			conn = GrpcOverHttpClientConn{grpcConn}
+		}
 		if err == nil && closeCredsFunc != nil {
 			conn = wrapClientConnWithCloseFunc(conn, closeCredsFunc)
 		}
