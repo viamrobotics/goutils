@@ -6,8 +6,9 @@ import (
 	"crypto/rsa"
 
 	//nolint:gosec // using for fingerprint
-
+	"crypto/sha1"
 	"crypto/subtle"
+	"encoding/base64"
 	"errors"
 	"fmt"
 
@@ -117,7 +118,7 @@ func (p TokenVerificationKeyProviderFunc) Close(ctx context.Context) error {
 	return nil
 }
 
-// MakePublicKeyProvider returns a TokenVerificationKeyProvider that provides a public key for JWT verification.
+// MakeRSAPublicKeyProvider returns a TokenVerificationKeyProvider that provides a public key for JWT verification.
 func MakeRSAPublicKeyProvider(pubKey *rsa.PublicKey) TokenVerificationKeyProvider {
 	return TokenVerificationKeyProviderFunc(
 		func(ctx context.Context, token *jwt.Token) (interface{}, error) {
@@ -274,4 +275,16 @@ type credAuthHandlers struct {
 	AuthHandler                  AuthHandler
 	EntityDataLoader             EntityDataLoader
 	TokenVerificationKeyProvider TokenVerificationKeyProvider
+}
+
+// RSAPublicKeyThumbprint returns SHA1 of the public key's modulus Base64 URL encoded without padding.
+func RSAPublicKeyThumbprint(key *rsa.PublicKey) (string, error) {
+	//nolint:gosec // using for fingerprint
+	thumbPrint := sha1.New()
+	_, err := thumbPrint.Write(key.N.Bytes())
+	if err != nil {
+		return "", err
+	}
+
+	return base64.RawURLEncoding.EncodeToString(thumbPrint.Sum(nil)), nil
 }
