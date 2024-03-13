@@ -25,6 +25,7 @@ func parseSignal(sigStr, name string) (syscall.Signal, error) {
 	return 0, errors.New("signals not supported on Windows")
 }
 
+
 func (p *managedProcess) sysProcAttr() (*syscall.SysProcAttr, error) {
 	ret := &syscall.SysProcAttr{
 		CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP,
