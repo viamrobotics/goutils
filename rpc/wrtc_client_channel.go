@@ -70,6 +70,10 @@ func newWebRTCClientChannel(
 	return ch
 }
 
+func (ch *webrtcClientChannel) PeerConn() *webrtc.PeerConnection {
+	return ch.webrtcBaseChannel.peerConn
+}
+
 // Close closes all streams and the underlying channel.
 func (ch *webrtcClientChannel) Close() error {
 	ch.mu.Lock()
