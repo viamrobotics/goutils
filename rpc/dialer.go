@@ -60,6 +60,9 @@ type Dialer interface {
 // there is a way to close the connection.
 type ClientConn interface {
 	grpc.ClientConnInterface
+
+	// PeerConn returns the backing PeerConnection object, or nil if the underlying transport is not
+	// a PeerConnection.
 	PeerConn() *webrtc.PeerConnection
 	Close() error
 }
@@ -70,6 +73,7 @@ type ClientConnAuthenticator interface {
 	Authenticate(ctx context.Context) (string, error)
 }
 
+// A GrpcOverHttpClientConn is grpc connection that is not backed by a `webrtc.PeerConnection`.
 type GrpcOverHttpClientConn struct {
 	*grpc.ClientConn
 }
