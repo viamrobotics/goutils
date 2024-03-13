@@ -371,7 +371,7 @@ func TestServerWithExternalListenerAddress(t *testing.T) {
 	)
 
 	test.That(t, err, test.ShouldBeNil)
-	test.That(t, conn.(GrpcOverHttpClientConn).Target(), test.ShouldEqual, listener.Addr().String())
+	test.That(t, conn.(GrpcOverHTTPClientConn).Target(), test.ShouldEqual, listener.Addr().String())
 	test.That(t, conn.Close(), test.ShouldBeNil)
 
 	test.That(t, rpcServer.Stop(), test.ShouldBeNil)
