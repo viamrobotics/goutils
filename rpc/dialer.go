@@ -342,7 +342,8 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts dialOptions, logg
 	if ctxDialer := contextDialer(ctx); ctxDialer != nil {
 		conn, cached, err = ctxDialer.DialDirect(ctx, address, dOpts.cacheKey(), closeCredsFunc, dialOpts...)
 	} else {
-		grpcConn, err := grpc.DialContext(ctx, address, dialOpts...)
+		var grpcConn *grpc.ClientConn
+		grpcConn, err = grpc.DialContext(ctx, address, dialOpts...)
 		if err == nil {
 			conn = GrpcOverHttpClientConn{grpcConn}
 		}
