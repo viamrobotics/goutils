@@ -73,12 +73,13 @@ type ClientConnAuthenticator interface {
 	Authenticate(ctx context.Context) (string, error)
 }
 
-// A GrpcOverHttpClientConn is grpc connection that is not backed by a `webrtc.PeerConnection`.
-type GrpcOverHttpClientConn struct {
+// A GrpcOverHTTPClientConn is grpc connection that is not backed by a `webrtc.PeerConnection`.
+type GrpcOverHTTPClientConn struct {
 	*grpc.ClientConn
 }
 
-func (cc GrpcOverHttpClientConn) PeerConn() *webrtc.PeerConnection {
+// PeerConn returns nil as this is a native gRPC connection.
+func (cc GrpcOverHTTPClientConn) PeerConn() *webrtc.PeerConnection {
 	return nil
 }
 
@@ -106,7 +107,7 @@ func (cd *cachedDialer) DialDirect(
 		if err != nil {
 			return nil, nil, err
 		}
-		return GrpcOverHttpClientConn{conn}, onClose, nil
+		return GrpcOverHTTPClientConn{conn}, onClose, nil
 	})
 }
 
@@ -345,7 +346,7 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts dialOptions, logg
 		var grpcConn *grpc.ClientConn
 		grpcConn, err = grpc.DialContext(ctx, address, dialOpts...)
 		if err == nil {
-			conn = GrpcOverHttpClientConn{grpcConn}
+			conn = GrpcOverHTTPClientConn{grpcConn}
 		}
 		if err == nil && closeCredsFunc != nil {
 			conn = wrapClientConnWithCloseFunc(conn, closeCredsFunc)
