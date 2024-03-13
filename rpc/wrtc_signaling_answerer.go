@@ -29,15 +29,21 @@ const testDelayAnswererNegotiationVar = "TEST_DELAY_ANSWERER_NEGOTIATION"
 type webrtcSignalingAnswerer struct {
 	startStopMu sync.Mutex // startStopMu guards the Start and Stop methods so they do not happen concurrently.
 
-	address                 string
-	hosts                   []string
-	server                  *webrtcServer
-	dialOpts                []DialOption
-	webrtcConfig            webrtc.Configuration
-	activeBackgroundWorkers sync.WaitGroup
-	cancelBackgroundWorkers func()
-	closeCtx                context.Context
-	logger                  golog.Logger
+	address      string
+	hosts        []string
+	server       *webrtcServer
+	dialOpts     []DialOption
+	webrtcConfig webrtc.Configuration
+
+	// answererMu should be `Lock`ed in `Stop` to `Wait` on ongoing answer workers in startAnswerer/answer.
+	// answererMu should be `RLock`ed when starting a new answer worker (allow concurrent answer workers) to
+	// `Add` to answerWorkers.
+	answerMu            sync.RWMutex
+	answerWorkers       sync.WaitGroup
+	cancelAnswerWorkers func()
+
+	closeCtx context.Context
+	logger   golog.Logger
 }
 
 // newWebRTCSignalingAnswerer makes an answerer that will connect to and listen for calls at the given
@@ -57,14 +63,14 @@ func newWebRTCSignalingAnswerer(
 	dialOptsCopy = append(dialOptsCopy, WithWebRTCOptions(DialWebRTCOptions{Disable: true}))
 	closeCtx, cancel := context.WithCancel(context.Background())
 	return &webrtcSignalingAnswerer{
-		address:                 address,
-		hosts:                   hosts,
-		server:                  server,
-		dialOpts:                dialOptsCopy,
-		webrtcConfig:            webrtcConfig,
-		cancelBackgroundWorkers: cancel,
-		closeCtx:                closeCtx,
-		logger:                  logger,
+		address:             address,
+		hosts:               hosts,
+		server:              server,
+		dialOpts:            dialOptsCopy,
+		webrtcConfig:        webrtcConfig,
+		cancelAnswerWorkers: cancel,
+		closeCtx:            closeCtx,
+		logger:              logger,
 	}
 }
 
@@ -145,7 +151,9 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 		}
 		return answerClient, nil
 	}
-	ans.activeBackgroundWorkers.Add(1)
+	ans.answerMu.RLock()
+	ans.answerWorkers.Add(1)
+	ans.answerMu.RUnlock()
 	utils.ManagedGo(func() {
 		var client webrtcpb.SignalingService_AnswerClient
 		defer func() {
@@ -189,7 +197,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 			}
 		}
 	}, func() {
-		defer ans.activeBackgroundWorkers.Done()
+		defer ans.answerWorkers.Done()
 		defer func() {
 			connMu.Lock()
 			conn := connInUse
@@ -210,8 +218,10 @@ func (ans *webrtcSignalingAnswerer) Stop() {
 	ans.startStopMu.Lock()
 	defer ans.startStopMu.Unlock()
 
-	ans.cancelBackgroundWorkers()
-	ans.activeBackgroundWorkers.Wait()
+	ans.cancelAnswerWorkers()
+	ans.answerMu.Lock()
+	ans.answerWorkers.Wait()
+	ans.answerMu.Unlock()
 }
 
 // answer accepts a single call offer, responds with a corresponding SDP, and
@@ -322,9 +332,11 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 				}
 			}
 			// must spin off to unblock the ICE gatherer
-			ans.activeBackgroundWorkers.Add(1)
+			ans.answerMu.RLock()
+			ans.answerWorkers.Add(1)
+			ans.answerMu.RUnlock()
 			utils.PanicCapturingGo(func() {
-				defer ans.activeBackgroundWorkers.Done()
+				defer ans.answerWorkers.Done()
 
 				if icecandidate != nil {
 					defer pendingCandidates.Done()
