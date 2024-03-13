@@ -184,7 +184,7 @@ func TestManagedProcessStart(t *testing.T) {
 
 			test.That(t, proc.Status(), test.ShouldBeNil)
 			test.That(t, proc.Stop(), test.ShouldBeNil)
-			test.That(t, proc.Status(), test.ShouldNotBeNil)
+			test.That(t, proc.Status().Error(), test.ShouldContainSubstring, "process already finished")
 
 			rd, err := os.ReadFile(tempFile.Name())
 			test.That(t, err, test.ShouldBeNil)
