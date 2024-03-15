@@ -34,7 +34,6 @@ type ManagedProcess interface {
 	Stop() error
 
 	// Status return nil when the process is both alive and owned.
-	// If err is non-nil, process may be a) alive but not owned or b) dead.
 	Status() error
 }
 
@@ -109,7 +108,15 @@ func (p *managedProcess) ID() string {
 func (p *managedProcess) Status() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return p.cmd.Process.Signal(syscall.Signal(0))
+  // Success, ErrorCode, Exited
+  hasExited := p.cmd.ProcessState.Exited()
+  code := p.cmd.ProcessState.ExitCode()
+
+  if !hasExited && code == -1 {
+    return nil
+  } 
+
+  return errors.Errorf("process exited with code: %v", code)
 }
 
 func (p *managedProcess) Start(ctx context.Context) error {
