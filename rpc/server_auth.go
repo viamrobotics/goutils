@@ -360,7 +360,18 @@ func (ss *simpleServer) ensureAuthed(ctx context.Context) (context.Context, erro
 		}
 	}
 	if !audVerified {
-		return nil, status.Error(codes.Unauthenticated, "invalid audience")
+		audienceList := strings.Join(ss.authAudience, ", ")
+		var claimAudience []byte
+		err := claims.RegisteredClaims.Audience.UnmarshalJSON(claimAudience)
+		if err != nil {
+			ss.logger.Errorw("invalid audience: cannot unmarshall audience claim",
+				"expected audience list", audienceList)
+			return nil, status.Error(codes.Unauthenticated, "invalid audience")
+		}
+		ss.logger.Errorw("invalid audience",
+			"expected audience list", audienceList,
+			"registered audience", claims.RegisteredClaims.Audience)
+		return nil, status.Error(codes.Unauthenticated, "invalid audience (registered aud claim: "+string(claimAudience)+")")
 	}
 
 	// Note(erd): may want to verify issuers in the future where the claims/scope are
