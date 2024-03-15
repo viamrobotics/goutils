@@ -128,6 +128,7 @@ func TestManagedProcessStart(t *testing.T) {
 			}, logger)
 			err = proc.Start(context.Background())
 			test.That(t, err, test.ShouldNotBeNil)
+      test.That(t, err.Error(), test.ShouldContainSubstring, "exit status 1")
 			test.That(t, proc.Status().Error(), test.ShouldContainSubstring, "ManagedProcess has no cmd set")
 		})
 		t.Run("OnUnexpectedExit is ignored", func(t *testing.T) {
