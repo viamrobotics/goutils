@@ -154,6 +154,15 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 	ans.answerMu.RLock()
 	ans.answerWorkers.Add(1)
 	ans.answerMu.RUnlock()
+
+	// Check if closeCtx has errored: underlying answerer may have been
+	// `Stop`ped, in which case we mark this answer worker as `Done` and
+	// return.
+	if err := ans.closeCtx.Err(); err != nil {
+		ans.answerWorkers.Done()
+		return
+	}
+
 	utils.ManagedGo(func() {
 		var client webrtcpb.SignalingService_AnswerClient
 		defer func() {
@@ -335,6 +344,15 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 			ans.answerMu.RLock()
 			ans.answerWorkers.Add(1)
 			ans.answerMu.RUnlock()
+
+			// Check if closeCtx has errored: underlying answerer may have been
+			// `Stop`ped, in which case we mark this answer worker as `Done` and
+			// return.
+			if err := ans.closeCtx.Err(); err != nil {
+				ans.answerWorkers.Done()
+				return
+			}
+
 			utils.PanicCapturingGo(func() {
 				defer ans.answerWorkers.Done()
 
