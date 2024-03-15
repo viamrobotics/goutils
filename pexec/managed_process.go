@@ -33,7 +33,8 @@ type ManagedProcess interface {
 	// there's any system level issue stopping the process.
 	Stop() error
 
-	// Status return nil when the process is both alive and owned.
+	// Status returns nil when the process is alive,
+	// otherwise returns an error with process's exit info
 	Status() error
 }
 
@@ -108,15 +109,23 @@ func (p *managedProcess) ID() string {
 func (p *managedProcess) Status() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-  // Success, ErrorCode, Exited
-  hasExited := p.cmd.ProcessState.Exited()
-  code := p.cmd.ProcessState.ExitCode()
 
-  if !hasExited && code == -1 {
-    return nil
-  } 
+	if p.cmd == nil {
+		return errors.New("ManagedProcess has no cmd set")
+	}
 
-  return errors.Errorf("process exited with code: %v", code)
+	// should never happen
+	if p.cmd.Process == nil {
+		return errors.New("status not available on unstarted program")
+	}
+
+	pstate := p.cmd.ProcessState
+	if pstate != nil {
+		// process has exited
+		return errors.New(pstate.String())
+	}
+
+	return nil
 }
 
 func (p *managedProcess) Start(ctx context.Context) error {
