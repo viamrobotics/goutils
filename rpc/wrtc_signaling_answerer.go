@@ -229,8 +229,8 @@ func (ans *webrtcSignalingAnswerer) Stop() {
 
 	ans.cancelAnswerWorkers()
 	ans.answerMu.Lock()
+	defer ans.answerMu.Unlock()
 	ans.answerWorkers.Wait()
-	ans.answerMu.Unlock()
 }
 
 // answer accepts a single call offer, responds with a corresponding SDP, and
