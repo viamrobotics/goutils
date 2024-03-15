@@ -68,7 +68,7 @@ func TestManagedProcessStart(t *testing.T) {
 			cancel()
 			err := proc.Start(ctx)
 			test.That(t, err, test.ShouldNotBeNil)
-			// mattjperez test.That(t, proc.Status().Error(), test.ShouldContainSubstring, "arsts")
+			test.That(t, proc.Status().Error(), test.ShouldContainSubstring, "ManagedProcess has no cmd set")
 			test.That(t, errors.Is(err, context.Canceled), test.ShouldBeTrue)
 		})
 		t.Run("starting with an eventually canceled context should fail", func(t *testing.T) {
