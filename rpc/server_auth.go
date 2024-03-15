@@ -364,6 +364,8 @@ func (ss *simpleServer) ensureAuthed(ctx context.Context) (context.Context, erro
 		var claimAudience []byte
 		err := claims.RegisteredClaims.Audience.UnmarshalJSON(claimAudience)
 		if err != nil {
+			ss.logger.Errorw("invalid audience: cannot unmarshall audience claim",
+				"expected audience list", audienceList)
 			return nil, status.Error(codes.Unauthenticated, "invalid audience")
 		}
 		ss.logger.Errorw("invalid audience",
