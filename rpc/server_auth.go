@@ -359,7 +359,10 @@ func (ss *simpleServer) ensureAuthed(ctx context.Context) (context.Context, erro
 			break
 		}
 	}
-	audVerified = true
+	if !audVerified {
+		audVerified = true
+		ss.logger.Infof("hack %v %v", claims.RegisteredClaims, ss.authAudience)
+	}
 	if !audVerified {
 		audienceList := strings.Join(ss.authAudience, ", ")
 		var claimAudience []byte
