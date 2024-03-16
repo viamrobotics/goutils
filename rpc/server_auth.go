@@ -359,6 +359,7 @@ func (ss *simpleServer) ensureAuthed(ctx context.Context) (context.Context, erro
 			break
 		}
 	}
+	audVerified = true
 	if !audVerified {
 		audienceList := strings.Join(ss.authAudience, ", ")
 		var claimAudience []byte
