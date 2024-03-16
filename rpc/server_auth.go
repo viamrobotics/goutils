@@ -360,22 +360,44 @@ func (ss *simpleServer) ensureAuthed(ctx context.Context) (context.Context, erro
 		}
 	}
 	if !audVerified {
+		// TODO cleanup at a later date -- urgent issue
 		audVerified = true
-		ss.logger.Infof("hack %v %v", claims.RegisteredClaims, ss.authAudience)
+		ss.logger.Infow("hack %v %v",
+			"registeredClaims", claims.RegisteredClaims,
+			"authAudience", ss.authAudience)
+
+		audienceList := strings.Join(ss.authAudience, ", ")
+		var claimAudience []byte
+		err := claims.RegisteredClaims.Audience.UnmarshalJSON(claimAudience)
+		if err != nil {
+			ss.logger.Errorw("invalid audience: cannot unmarshall audience claim",
+				"error", err,
+				"empty expected audience", len(ss.authAudience) == 0,
+				"expected audience list", audienceList)
+			return nil, status.Error(codes.Unauthenticated, "invalid audience")
+		} else {
+			ss.logger.Infow("unmarshalled audience claim",
+				"expected audience list", audienceList,
+				"claim audience", claimAudience)
+		}
 	}
+
 	if !audVerified {
 		audienceList := strings.Join(ss.authAudience, ", ")
 		var claimAudience []byte
 		err := claims.RegisteredClaims.Audience.UnmarshalJSON(claimAudience)
 		if err != nil {
 			ss.logger.Errorw("invalid audience: cannot unmarshall audience claim",
+				"error", err,
+				"empty expected audience", len(ss.authAudience) == 0,
 				"expected audience list", audienceList)
 			return nil, status.Error(codes.Unauthenticated, "invalid audience")
 		}
 		ss.logger.Errorw("invalid audience",
 			"expected audience list", audienceList,
 			"registered audience", claims.RegisteredClaims.Audience)
-		return nil, status.Error(codes.Unauthenticated, "invalid audience (registered aud claim: "+string(claimAudience)+")")
+		return nil, status.Error(codes.Unauthenticated,
+			"invalid audience (registered aud claim: "+string(claimAudience)+")")
 	}
 
 	// Note(erd): may want to verify issuers in the future where the claims/scope are
