@@ -110,11 +110,11 @@ func (p *managedProcess) IsRunning() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-  if p.stopped {
-    return false
-  }
+	if p.stopped {
+		return false
+	}
 
-  // is locked! need to check first
+	// is locked! need to check first
 	if p.cmd == nil {
 		// managed has no cmd set
 		return false
