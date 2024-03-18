@@ -110,6 +110,11 @@ func (p *managedProcess) IsRunning() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
+  if p.stopped {
+    return false
+  }
+
+  // is locked! need to check first
 	if p.cmd == nil {
 		// managed has no cmd set
 		return false
@@ -369,7 +374,8 @@ func (p *managedProcess) Stop() error {
 		p.mu.Unlock()
 		return nil
 	}
-	p.mu.Unlock()
+
+	defer p.mu.Unlock()
 
 	// Since p.cmd is mutex guarded and we just signaled the manage
 	// goroutine to stop, no new Start can happen and therefore
