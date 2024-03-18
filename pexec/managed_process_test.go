@@ -68,7 +68,7 @@ func TestManagedProcessStart(t *testing.T) {
 			cancel()
 			err := proc.Start(ctx)
 			test.That(t, err, test.ShouldNotBeNil)
-			test.That(t, proc.Status().Error(), test.ShouldContainSubstring, "ManagedProcess has no cmd set")
+			test.That(t, proc.IsRunning(), test.ShouldBeFalse)
 			test.That(t, errors.Is(err, context.Canceled), test.ShouldBeTrue)
 		})
 		t.Run("starting with an eventually canceled context should fail", func(t *testing.T) {
@@ -100,7 +100,7 @@ func TestManagedProcessStart(t *testing.T) {
 			} else {
 				test.That(t, err.Error(), test.ShouldContainSubstring, "killed")
 			}
-			test.That(t, proc.Status().Error(), test.ShouldContainSubstring, "ManagedProcess has no cmd set")
+			test.That(t, proc.IsRunning(), test.ShouldBeFalse)
 		})
 		t.Run("starting with a normal context", func(t *testing.T) {
 			logger := golog.NewTestLogger(t)
@@ -114,7 +114,7 @@ func TestManagedProcessStart(t *testing.T) {
 				Log:     true,
 			}, logger)
 			test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
-			test.That(t, proc.Status().Error(), test.ShouldContainSubstring, "ManagedProcess has no cmd set")
+			test.That(t, proc.IsRunning(), test.ShouldBeFalse)
 
 			rd, err := os.ReadFile(tempFile.Name())
 			test.That(t, err, test.ShouldBeNil)
@@ -129,7 +129,7 @@ func TestManagedProcessStart(t *testing.T) {
 			err = proc.Start(context.Background())
 			test.That(t, err, test.ShouldNotBeNil)
 			test.That(t, err.Error(), test.ShouldContainSubstring, "exit status 1")
-			test.That(t, proc.Status().Error(), test.ShouldContainSubstring, "ManagedProcess has no cmd set")
+			test.That(t, proc.IsRunning(), test.ShouldBeFalse)
 		})
 		t.Run("OnUnexpectedExit is ignored", func(t *testing.T) {
 			logger := golog.NewTestLogger(t)
@@ -146,7 +146,7 @@ func TestManagedProcessStart(t *testing.T) {
 			err := proc.Start(context.Background())
 			test.That(t, err, test.ShouldNotBeNil)
 			test.That(t, err.Error(), test.ShouldContainSubstring, "exit status 1")
-			test.That(t, proc.Status().Error(), test.ShouldContainSubstring, "ManagedProcess has no cmd set")
+			test.That(t, proc.IsRunning(), test.ShouldBeFalse)
 		})
 	})
 	t.Run("Managed", func(t *testing.T) {
@@ -160,9 +160,9 @@ func TestManagedProcessStart(t *testing.T) {
 			cancel()
 
 			test.That(t, proc.Start(ctx), test.ShouldBeNil)
-			test.That(t, proc.Status(), test.ShouldBeNil)
+			test.That(t, proc.IsRunning(), test.ShouldBeTrue)
 			test.That(t, proc.Stop(), test.ShouldBeNil)
-			test.That(t, proc.Status().Error(), test.ShouldContainSubstring, "signal: terminated")
+			test.That(t, proc.IsRunning(), test.ShouldBeFalse)
 		})
 		t.Run("starting with a normal context should run until stop", func(t *testing.T) {
 			logger := golog.NewTestLogger(t)
@@ -189,9 +189,9 @@ func TestManagedProcessStart(t *testing.T) {
 
 			<-watcher.Events
 
-			test.That(t, proc.Status(), test.ShouldBeNil)
+			test.That(t, proc.IsRunning(), test.ShouldBeTrue)
 			test.That(t, proc.Stop(), test.ShouldBeNil)
-			test.That(t, proc.Status().Error(), test.ShouldContainSubstring, "exit status 0")
+			test.That(t, proc.IsRunning(), test.ShouldBeFalse)
 
 			rd, err := os.ReadFile(tempFile.Name())
 			test.That(t, err, test.ShouldBeNil)
@@ -219,11 +219,11 @@ func TestManagedProcessStart(t *testing.T) {
 				Log:      true,
 			}, golog.NewTestLogger(t))
 			test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
-			test.That(t, proc.Status(), test.ShouldBeNil)
+			test.That(t, proc.IsRunning(), test.ShouldBeTrue)
 			detectedUID, _ := exec.Command("ps", "--no-headers", "-o", "uid", "-p", strconv.Itoa(proc.(*managedProcess).cmd.Process.Pid)).Output()
 			test.That(t, asUser.Uid, test.ShouldEqual, strings.Trim(string(detectedUID), " \n\r"))
 			test.That(t, proc.Stop(), test.ShouldBeNil)
-			test.That(t, proc.Status(), test.ShouldBeNil)
+			test.That(t, proc.IsRunning(), test.ShouldBeTrue)
 		})
 	})
 }
@@ -245,7 +245,7 @@ func TestManagedProcessManage(t *testing.T) {
 			Args: []string{"-c", fmt.Sprintf("echo hello >> '%s'\nexit 1", tempFile.Name())},
 		}, logger)
 		test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
-		test.That(t, proc.Status(), test.ShouldBeNil)
+		test.That(t, proc.IsRunning(), test.ShouldBeTrue)
 
 		<-watcher.Events
 		<-watcher.Events
@@ -256,7 +256,7 @@ func TestManagedProcessManage(t *testing.T) {
 		if err != nil {
 			test.That(t, err.Error(), test.ShouldContainSubstring, "exit status 1")
 		}
-		test.That(t, proc.Status().Error(), test.ShouldContainSubstring, "exit status 1")
+		test.That(t, proc.IsRunning(), test.ShouldBeFalse)
 	})
 	t.Run("OnUnexpectedExit", func(t *testing.T) {
 		logger := golog.NewTestLogger(t)
@@ -283,7 +283,7 @@ func TestManagedProcessManage(t *testing.T) {
 			},
 		}, logger)
 		test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
-		test.That(t, proc.Status(), test.ShouldBeNil)
+		test.That(t, proc.IsRunning(), test.ShouldBeTrue)
 
 		<-onUnexpectedExitCalledEnough
 		test.That(t, onUnexpectedExitCallCount.Load(), test.ShouldEqual, 5)
@@ -310,7 +310,7 @@ func TestManagedProcessStop(t *testing.T) {
 		test.That(t, proc.Stop(), test.ShouldBeNil)
 		test.That(t, proc.Stop(), test.ShouldBeNil)
 		test.That(t, proc.Start(context.Background()), test.ShouldEqual, errAlreadyStopped)
-		test.That(t, proc.Status().Error(), test.ShouldContainSubstring, "ManagedProcess has no cmd set")
+		test.That(t, proc.IsRunning(), test.ShouldBeFalse)
 	})
 	t.Run("stopping a one shot does nothing", func(t *testing.T) {
 		logger := golog.NewTestLogger(t)
@@ -321,11 +321,11 @@ func TestManagedProcessStop(t *testing.T) {
 			Log:     true,
 		}, logger)
 		test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
-		test.That(t, proc.Status().Error(), test.ShouldContainSubstring, "ManagedProcess has no cmd set")
+		test.That(t, proc.IsRunning(), test.ShouldBeFalse)
 
 		test.That(t, proc.Stop(), test.ShouldBeNil)
 		test.That(t, proc.Start(context.Background()), test.ShouldEqual, errAlreadyStopped)
-		test.That(t, proc.Status().Error(), test.ShouldContainSubstring, "ManagedProcess has no cmd set")
+		test.That(t, proc.IsRunning(), test.ShouldBeFalse)
 	})
 	t.Run("stopping a managed process gives it a chance to finish", func(t *testing.T) {
 		logger := golog.NewTestLogger(t)
@@ -348,14 +348,14 @@ func TestManagedProcessStop(t *testing.T) {
 			Log:         true,
 		}, logger)
 		test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
-		test.That(t, proc.Status(), test.ShouldBeNil)
+		test.That(t, proc.IsRunning(), test.ShouldBeTrue)
 
 		<-watcher.Events
 
 		time.Sleep(2 * time.Second)
 		test.That(t, proc.Stop(), test.ShouldBeNil)
 		test.That(t, proc.Start(context.Background()), test.ShouldEqual, errAlreadyStopped)
-		test.That(t, proc.Status().Error(), test.ShouldContainSubstring, "exit status 0")
+		test.That(t, proc.IsRunning(), test.ShouldBeFalse)
 
 		proc = NewManagedProcess(ProcessConfig{
 			Name: "bash",
@@ -365,11 +365,11 @@ func TestManagedProcessStop(t *testing.T) {
 			},
 		}, logger)
 		test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
-		test.That(t, proc.Status(), test.ShouldBeNil)
+		test.That(t, proc.IsRunning(), test.ShouldBeTrue)
 
 		<-watcher.Events
 
-		test.That(t, proc.Status(), test.ShouldBeNil)
+		test.That(t, proc.IsRunning(), test.ShouldBeTrue)
 		err = proc.Stop()
 		if runtime.GOOS == "windows" {
 			test.That(t, err, test.ShouldBeNil)
@@ -377,7 +377,7 @@ func TestManagedProcessStop(t *testing.T) {
 			test.That(t, err, test.ShouldNotBeNil)
 			test.That(t, err.Error(), test.ShouldContainSubstring, "exit status 1")
 		}
-		test.That(t, proc.Status().Error(), test.ShouldContainSubstring, "exit status 1")
+		test.That(t, proc.IsRunning(), test.ShouldBeFalse)
 
 		proc = NewManagedProcess(ProcessConfig{
 			Name: "bash",
@@ -388,7 +388,7 @@ func TestManagedProcessStop(t *testing.T) {
 			StopTimeout: time.Second * 3,
 		}, logger)
 		test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
-		test.That(t, proc.Status(), test.ShouldBeNil)
+		test.That(t, proc.IsRunning(), test.ShouldBeTrue)
 
 		<-watcher.Events
 
@@ -432,11 +432,11 @@ done`, tempFile.Name()))
 		}, logger)
 		test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
 		<-watcher.Events
-		test.That(t, proc.Status(), test.ShouldBeNil)
+		test.That(t, proc.IsRunning(), test.ShouldBeTrue)
 		err = proc.Stop()
 		test.That(t, err, test.ShouldNotBeNil)
 		test.That(t, err.Error(), test.ShouldContainSubstring, "exit status 115")
-		test.That(t, proc.Status().Error(), test.ShouldContainSubstring, "exit status 1")
+		test.That(t, proc.IsRunning(), test.ShouldBeFalse)
 
 		for _, signal := range knownSignals {
 			t.Run(fmt.Sprintf("sig=%s", sigStr(signal)), func(t *testing.T) {
@@ -726,9 +726,9 @@ func (fp *fakeProcess) Stop() error {
 	return nil
 }
 
-func (fp *fakeProcess) Status() error {
+func (fp *fakeProcess) IsRunning() bool {
 	if fp.stopErr || fp.startErr {
-		return errors.New("dead")
+		return false
 	}
-	return nil
+	return true
 }
