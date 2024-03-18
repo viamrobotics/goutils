@@ -374,6 +374,8 @@ func (ss *simpleServer) ensureAuthed(ctx context.Context) (context.Context, erro
 				"error", err,
 				"empty expected audience", len(ss.authAudience) == 0,
 				"expected audience list", audienceList)
+			// TODO: re-enable once auth migration is complete
+			//nolint
 			//return nil, status.Error(codes.Unauthenticated, "invalid audience")
 		}
 
