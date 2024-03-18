@@ -72,7 +72,6 @@ linters-settings:
   govet:
     enable-all: true
     disable:
-      - atomicalign
       - fieldalignment
       - shadow
   lll:
