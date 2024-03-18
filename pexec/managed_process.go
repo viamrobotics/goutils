@@ -115,7 +115,6 @@ func (p *managedProcess) IsRunning() bool {
 		return false
 	}
 
-	// should never happen
 	if p.cmd.Process == nil {
 		// program not started
 		return false
