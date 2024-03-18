@@ -110,7 +110,6 @@ func (p *managedProcess) IsRunning() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-
 	// is locked! need to check first
 	if p.cmd == nil {
 		// managed has no cmd set
@@ -123,10 +122,9 @@ func (p *managedProcess) IsRunning() bool {
 	}
 
 	if p.stopped && p.cmd.ProcessState != nil {
-    return false
+		return false
 	}
 	return true
-
 }
 
 func (p *managedProcess) Start(ctx context.Context) error {
@@ -376,8 +374,6 @@ func (p *managedProcess) Stop() error {
 		return nil
 	}
 
-	defer p.mu.Unlock()
-
 	// Since p.cmd is mutex guarded and we just signaled the manage
 	// goroutine to stop, no new Start can happen and therefore
 	// p.cmd can no longer be modified rendering it safe to read
@@ -385,11 +381,13 @@ func (p *managedProcess) Stop() error {
 
 	forceKilled, err := p.kill()
 	if err != nil {
+		p.mu.Unlock()
 		return err
 	}
 	<-p.managingCh
 
 	if p.lastWaitErr == nil && p.cmd.ProcessState.Success() {
+		p.mu.Unlock()
 		return nil
 	}
 
@@ -408,9 +406,12 @@ func (p *managedProcess) Stop() error {
 		unknownStatus = unknownStatus || isWaitErrUnknown(p.lastWaitErr.Error(), forceKilled)
 		if unknownStatus {
 			p.logger.Debug("unable to check exit status")
+			p.mu.Unlock()
 			return nil
 		}
+		p.mu.Unlock()
 		return p.lastWaitErr
 	}
+	p.mu.Unlock()
 	return errors.Errorf("non-successful exit code: %d", p.cmd.ProcessState.ExitCode())
 }
