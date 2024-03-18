@@ -223,7 +223,7 @@ func TestManagedProcessStart(t *testing.T) {
 			detectedUID, _ := exec.Command("ps", "--no-headers", "-o", "uid", "-p", strconv.Itoa(proc.(*managedProcess).cmd.Process.Pid)).Output()
 			test.That(t, asUser.Uid, test.ShouldEqual, strings.Trim(string(detectedUID), " \n\r"))
 			test.That(t, proc.Stop(), test.ShouldBeNil)
-			test.That(t, proc.IsRunning(), test.ShouldBeTrue)
+			test.That(t, proc.IsRunning(), test.ShouldBeFalse)
 		})
 	})
 }
