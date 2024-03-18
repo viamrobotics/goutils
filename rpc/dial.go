@@ -138,15 +138,10 @@ func dial(
 		go func(dOpts dialOptions) {
 			defer wg.Done()
 			conn, cached, err := dialMulticastDNS(ctxParallel, address, logger, dOpts)
-			switch {
-			case err != nil:
+			if err != nil {
 				dialCh <- dialResult{err: err}
-			case conn != nil:
-				// TODO(RSDK-6490): investigate why we can get a `nil` connection that is
-				// not accompanied with an error.
+			} else {
 				dialCh <- dialResult{conn: conn, cached: cached}
-			default:
-				dialCh <- dialResult{err: errors.New("no connection")}
 			}
 		}(dOpts)
 	}
@@ -278,42 +273,45 @@ func dial(
 	return conn, cached, nil
 }
 
+func lookupMDNSCandidate(ctx context.Context, address string, logger golog.Logger) (*zeroconf.ServiceEntry, error) {
+	candidates := []string{address, strings.ReplaceAll(address, ".", "-")}
+	resolver, err := zeroconf.NewResolver(logger, zeroconf.SelectIPRecordType(zeroconf.IPv4))
+	if err != nil {
+		return nil, err
+	}
+	defer resolver.Shutdown()
+	for _, candidate := range candidates {
+		entries := make(chan *zeroconf.ServiceEntry)
+		lookupCtx, cancel := context.WithTimeout(ctx, 1*time.Second)
+		defer cancel()
+		if err := resolver.Lookup(lookupCtx, candidate, "_rpc._tcp", "local.", entries); err != nil {
+			logger.Errorw("error performing mDNS query", "error", err)
+			return nil, err
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		// entries gets closed after lookupCtx expires or there is a real entry
+		case entry := <-entries:
+			if entry != nil {
+				return entry, nil
+			}
+		}
+	}
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	return nil, errors.New("mDNS query failed to find a candidate")
+}
+
 func dialMulticastDNS(
 	ctx context.Context,
 	address string,
 	logger golog.Logger,
 	dOpts dialOptions,
 ) (ClientConn, bool, error) {
-	candidates := []string{address, strings.ReplaceAll(address, ".", "-")}
-	candidateLookup := func(ctx context.Context, candidates []string) (*zeroconf.ServiceEntry, error) {
-		resolver, err := zeroconf.NewResolver(logger, zeroconf.SelectIPRecordType(zeroconf.IPv4))
-		if err != nil {
-			return nil, err
-		}
-		defer resolver.Shutdown()
-		for _, candidate := range candidates {
-			entries := make(chan *zeroconf.ServiceEntry)
-			lookupCtx, cancel := context.WithTimeout(ctx, 1*time.Second)
-			defer cancel()
-			if err := resolver.Lookup(lookupCtx, candidate, "_rpc._tcp", "local.", entries); err != nil {
-				logger.Errorw("error performing mDNS query", "error", err)
-				return nil, err
-			}
-			select {
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			// entries gets closed after lookupCtx expires or there is a real entry
-			case entry := <-entries:
-				if entry != nil {
-					return entry, nil
-				}
-			}
-		}
-		return nil, ctx.Err()
-	}
-	// lookup for candidates for backward compatibility
-	entry, err := candidateLookup(ctx, candidates)
-	if err != nil || entry == nil {
+	entry, err := lookupMDNSCandidate(ctx, address, logger)
+	if err != nil {
 		return nil, false, err
 	}
 	var hasGRPC, hasWebRTC bool
@@ -329,7 +327,7 @@ func dialMulticastDNS(
 
 	// IPv6 with scope does not work with grpc-go which we would want here.
 	if !(hasGRPC || hasWebRTC) || len(entry.AddrIPv4) == 0 {
-		return nil, false, nil
+		return nil, false, errors.New("mDNS query failed to find an IPv4 candidate")
 	}
 
 	localAddress := fmt.Sprintf("%s:%d", entry.AddrIPv4[0], entry.Port)
