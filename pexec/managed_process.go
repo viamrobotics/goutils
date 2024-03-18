@@ -110,9 +110,6 @@ func (p *managedProcess) IsRunning() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if p.stopped {
-		return false
-	}
 
 	// is locked! need to check first
 	if p.cmd == nil {
@@ -125,7 +122,11 @@ func (p *managedProcess) IsRunning() bool {
 		return false
 	}
 
-	return p.cmd.ProcessState == nil
+	if p.stopped && p.cmd.ProcessState != nil {
+    return false
+	}
+	return true
+
 }
 
 func (p *managedProcess) Start(ctx context.Context) error {
