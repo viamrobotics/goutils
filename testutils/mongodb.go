@@ -97,8 +97,9 @@ var (
 
 // DisconnectWithReconnect closes sockets referenced by cachedBackingMongoDBClient
 // to simulate a db disconnection. The returned callback can be used to reinitialize
-// connection to the same db deployment. Use this function to validating behavior of
-// client shutdown scenarios.
+// connection to the same db deployment. Use this function to validate behavior of
+// client shutdown scenarios. Note: it is up to the caller of this function to call
+// the callback.
 func DisconnectWithReconnect() (func() (*mongo.Client, error), error) {
 	if cachedBackingMongoDBClient == nil {
 		logger.Debug("client is already nil, cannot disconnect")
