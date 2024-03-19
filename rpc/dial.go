@@ -328,7 +328,7 @@ func dialMulticastDNS(
 	// IPv6 with scope does not work with grpc-go which we would want here.
 	if !(hasGRPC || hasWebRTC) || len(entry.AddrIPv4) == 0 {
 		errMsg := `mDNS query found a service without an IPv4 address that does not support grpc or webrtc: %q`
-		return nil, false, fmt.Errorf(errMsg, entry.ServiceName)
+		return nil, false, fmt.Errorf(errMsg, entry.ServiceName())
 	}
 
 	localAddress := fmt.Sprintf("%s:%d", entry.AddrIPv4[0], entry.Port)
