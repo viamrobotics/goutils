@@ -45,8 +45,8 @@ func contextDialer(ctx context.Context) Dialer {
 	return dialer.(Dialer)
 }
 
-// contextWithPeerConnection attaches a peer connection to the given context.
-func contextWithPeerConnection(ctx context.Context, pc *webrtc.PeerConnection) context.Context {
+// SetContextWithPeerConnection attaches a peer connection to the given context.
+func SetContextWithPeerConnection(ctx context.Context, pc *webrtc.PeerConnection) context.Context {
 	return context.WithValue(ctx, ctxKeyPeerConnection, pc)
 }
 

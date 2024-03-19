@@ -126,7 +126,7 @@ func (ch *webrtcServerChannel) onChannelMessage(msg webrtc.DataChannelMessage) {
 		} else {
 			handlerCtx, cancelCtx = context.WithTimeout(handlerCtx, timeout)
 		}
-		handlerCtx = contextWithPeerConnection(handlerCtx, ch.peerConn)
+		handlerCtx = SetContextWithPeerConnection(handlerCtx, ch.peerConn)
 
 		// TODO(GOUT-11): Handle auth; right now we assume successful auth to the signaler
 		// implies that auth should be allowed here, which is not 100% true.

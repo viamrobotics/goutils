@@ -31,7 +31,7 @@ func TestContextDialer(t *testing.T) {
 func TestContextPeerConnection(t *testing.T) {
 	ctx := context.Background()
 	var pc webrtc.PeerConnection
-	ctx = contextWithPeerConnection(ctx, &pc)
+	ctx = ContextWithPeerConnection(ctx, &pc)
 	_, ok := ContextPeerConnection(context.Background())
 	test.That(t, ok, test.ShouldBeFalse)
 	pc2, ok := ContextPeerConnection(ctx)
