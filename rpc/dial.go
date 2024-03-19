@@ -304,6 +304,21 @@ func lookupMDNSCandidate(ctx context.Context, address string, logger golog.Logge
 	return nil, errors.New("mDNS query failed to find a candidate")
 }
 
+// ErrMDNSServiceNotSupported is used when an mDNS query finds a service that we do not
+// support making connections to.
+type ErrMDNSServiceNotSupported struct {
+	entry *zeroconf.ServiceEntry
+}
+
+func newErrMDNSServiceNotSupported(entry *zeroconf.ServiceEntry) error {
+	return &ErrMDNSServiceNotSupported{entry: entry}
+}
+
+func (e *ErrMDNSServiceNotSupported) Error() string {
+	msg := `mDNS query found service that does not have an IPv4 address and does not support grpc or webrtc: %q`
+	return fmt.Sprintf(msg, e.entry.ServiceName)
+}
+
 func dialMulticastDNS(
 	ctx context.Context,
 	address string,
@@ -327,7 +342,7 @@ func dialMulticastDNS(
 
 	// IPv6 with scope does not work with grpc-go which we would want here.
 	if !(hasGRPC || hasWebRTC) || len(entry.AddrIPv4) == 0 {
-		return nil, false, errors.New("mDNS query failed to find an IPv4 candidate")
+		return nil, false, newErrMDNSServiceNotSupported(entry)
 	}
 
 	localAddress := fmt.Sprintf("%s:%d", entry.AddrIPv4[0], entry.Port)
