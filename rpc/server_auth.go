@@ -366,12 +366,12 @@ func (ss *simpleServer) ensureAuthed(ctx context.Context) (context.Context, erro
 		if err != nil {
 			ss.logger.Errorw("invalid audience: cannot unmarshall audience claim",
 				"error", err,
-				"registeredClaims", claims.RegisteredClaims,
+				"registered_claims", claims.RegisteredClaims,
 				"authAudience", ss.authAudience)
 			return nil, status.Error(codes.Unauthenticated, "invalid audience")
 		}
 		ss.logger.Errorw("invalid audience",
-			"registeredClaims", claims.RegisteredClaims,
+			"registered_claims", claims.RegisteredClaims,
 			"authAudience", ss.authAudience)
 		return nil, status.Error(codes.Unauthenticated,
 			"invalid audience (registered aud claim: "+string(claimAudience)+")")
@@ -384,7 +384,7 @@ func (ss *simpleServer) ensureAuthed(ctx context.Context) (context.Context, erro
 	if err != nil {
 		ss.logger.Errorw("invalid claims",
 			"error", err,
-			"registeredClaims", claims.RegisteredClaims)
+			"registered_claims", claims.RegisteredClaims)
 		return nil, status.Errorf(codes.Unauthenticated, "unauthenticated: %s", err)
 	}
 
@@ -392,7 +392,7 @@ func (ss *simpleServer) ensureAuthed(ctx context.Context) (context.Context, erro
 	if claimsEntity == "" {
 		ss.logger.Errorw("invalid claims entity: expected entity (sub) in claims",
 			"error", err,
-			"registeredClaims", claims.RegisteredClaims)
+			"registered_claims", claims.RegisteredClaims)
 		return nil, status.Errorf(codes.Unauthenticated, "expected entity (sub) in claims")
 	}
 
