@@ -35,10 +35,15 @@ type WebRTCSignalingServer struct {
 	webrtcConfigProvider WebRTCConfigProvider
 	forHosts             map[string]struct{}
 
-	activeBackgroundWorkers sync.WaitGroup
-	cancelCtx               context.Context
-	cancelFunc              func()
-	logger                  golog.Logger
+	// callMu should be `Lock`ed in `Close` to `Wait` on ongoing Calls (incoming
+	// callers). callMu should be `RLock`ed in processHeaders (allow concurrent
+	// processHeaders) to `Add` to processHeadersWorkers.
+	callMu      sync.RWMutex
+	callWorkers sync.WaitGroup
+
+	cancelCtx  context.Context
+	cancelFunc func()
+	logger     golog.Logger
 }
 
 // NewWebRTCSignalingServer makes a new signaling server that uses the given
@@ -159,10 +164,20 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 			errToSend = callErr
 		}
 
+		srv.callMu.RLock()
 		// we assume the number of goroutines is bounded by the gRPC server invoking this method.
-		srv.activeBackgroundWorkers.Add(1)
+		srv.callWorkers.Add(1)
+		srv.callMu.RUnlock()
+
+		// Check if cancelCtx has errored: underlying server may have been
+		// `Close`ed, in which case we mark this call worker as `Done` and return.
+		if err := srv.cancelCtx.Err(); err != nil {
+			srv.callWorkers.Done()
+			return
+		}
+
 		utils.PanicCapturingGo(func() {
-			srv.activeBackgroundWorkers.Done()
+			srv.callWorkers.Done()
 
 			// we need a dedicated timeout since even if the server is shutting down,
 			// we want to notify other servers immediately, instead of waiting for a timeout.
@@ -508,5 +523,7 @@ func (srv *WebRTCSignalingServer) OptionalWebRTCConfig(
 // Close cancels all active workers and waits to cleanly close all background workers.
 func (srv *WebRTCSignalingServer) Close() {
 	srv.cancelFunc()
-	srv.activeBackgroundWorkers.Wait()
+	srv.callMu.Lock()
+	defer srv.callMu.Unlock()
+	srv.callWorkers.Wait()
 }
