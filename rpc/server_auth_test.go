@@ -401,7 +401,6 @@ func TestServerAuthJWTExpiration(t *testing.T) {
 }
 
 func TestServerAuthJWTAudienceAndID(t *testing.T) {
-	t.Skip()
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
 
@@ -859,7 +858,6 @@ func TestServerAuthToHandler(t *testing.T) {
 }
 
 func TestServerOptionWithAuthIssuer(t *testing.T) {
-	t.Skip()
 	testutils.SkipUnlessInternet(t)
 
 	privKey, err := rsa.GenerateKey(rand.Reader, 512)
