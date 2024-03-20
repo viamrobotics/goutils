@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
+	"fmt"
 	"net"
 	"net/http"
 	"os"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/edaniels/golog"
 	"github.com/edaniels/zeroconf"
+	"github.com/golang-jwt/jwt/v4"
 	"github.com/google/uuid"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
@@ -129,13 +131,11 @@ type simpleServer struct {
 	logger               golog.Logger
 
 	// auth
-
+	authKeys             map[string]authKeyData
+	authKeyForJWTSigning authKeyData
 	internalUUID         string
 	internalCreds        Credentials
 	tlsAuthHandler       func(ctx context.Context, entities ...string) error
-	authPubKey           ed25519.PublicKey
-	authPrivKey          ed25519.PrivateKey
-	authKeyID            string
 	authHandlersForCreds map[CredentialsType]credAuthHandlers
 	authToHandler        AuthenticateToHandler
 
@@ -208,14 +208,54 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 		MaxHeaderBytes: MaxMessageSize,
 	}
 
-	authPrivKey := sOpts.authPrivateKey
-	if !sOpts.unauthenticated {
-		if authPrivKey == nil {
+	if len(sOpts.authKeys) == 0 {
+		if sOpts.jwtSignerKeyID != "" {
+			return nil, errors.New("cannot use WithJWTSignerKeyID if no auth keys are set")
+		}
+		if !sOpts.unauthenticated {
 			_, privKey, err := ed25519.GenerateKey(rand.Reader)
 			if err != nil {
 				return nil, err
 			}
-			authPrivKey = privKey
+			pubKey := privKey.Public()
+			keyID := ED25519PublicKeyThumbprint(pubKey.(ed25519.PublicKey))
+			data := authKeyData{
+				id:         keyID,
+				method:     jwt.SigningMethodEdDSA,
+				privateKey: privKey,
+				publicKey:  pubKey,
+			}
+			sOpts.authKeys = map[string]authKeyData{
+				keyID: data,
+			}
+			sOpts.jwtSignerKeyID = keyID
+		}
+	} else if sOpts.jwtSignerKeyID == "" {
+		if len(sOpts.authKeys) > 1 {
+			return nil, errors.New("must use WithJWTSignerKeyID if more than one private key in use")
+		}
+		for _, first := range sOpts.authKeys {
+			if first.id == "" {
+				return nil, errors.New("invariant: auth key has no id")
+			}
+			sOpts.jwtSignerKeyID = first.id
+			break
+		}
+	}
+
+	// double check we set everything up correctly via options
+	for _, data := range sOpts.authKeys {
+		if err := data.Validate(); err != nil {
+			return nil, err
+		}
+	}
+
+	var authKeyForJWTSigning authKeyData
+	if !sOpts.unauthenticated {
+		var ok bool
+		authKeyForJWTSigning, ok = sOpts.authKeys[sOpts.jwtSignerKeyID]
+		if !ok {
+			return nil, fmt.Errorf("no auth key data set for key id %q", sOpts.jwtSignerKeyID)
 		}
 	}
 
@@ -241,11 +281,12 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 	)
 
 	server := &simpleServer{
-		grpcListener:       grpcListener,
-		httpServer:         httpServer,
-		grpcGatewayHandler: grpcGatewayHandler,
-		authPrivKey:        authPrivKey,
-		internalUUID:       uuid.NewString(),
+		grpcListener:         grpcListener,
+		httpServer:           httpServer,
+		grpcGatewayHandler:   grpcGatewayHandler,
+		authKeys:             sOpts.authKeys,
+		authKeyForJWTSigning: authKeyForJWTSigning,
+		internalUUID:         uuid.NewString(),
 		internalCreds: Credentials{
 			Type:    credentialsTypeInternal,
 			Payload: base64.StdEncoding.EncodeToString(internalCredsKey),
@@ -260,10 +301,6 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 		tlsConfig:            sOpts.tlsConfig,
 		firstSeenTLSCertLeaf: firstSeenTLSCertLeaf,
 		logger:               logger,
-	}
-	if len(authPrivKey) != 0 {
-		server.authPubKey = authPrivKey.Public().(ed25519.PublicKey)
-		server.authKeyID = base64.RawURLEncoding.EncodeToString(server.authPubKey)
 	}
 
 	grpcLogger := logger.Desugar()

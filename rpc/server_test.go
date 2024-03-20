@@ -58,11 +58,12 @@ func TestServer(t *testing.T) {
 								}),
 							}
 							if withAuthentication {
+								keyOpt, _ := WithAuthED25519PrivateKey(testPrivKey)
 								serverOpts = append(serverOpts,
 									WithAuthHandler("fake", AuthHandlerFunc(func(ctx context.Context, entity, payload string) (map[string]string, error) {
 										return map[string]string{}, nil
 									})),
-									WithAuthPrivateKey(testPrivKey),
+									keyOpt,
 								)
 							} else {
 								serverOpts = append(serverOpts, WithUnauthenticated())

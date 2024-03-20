@@ -287,3 +287,8 @@ func RSAPublicKeyThumbprint(key *rsa.PublicKey) (string, error) {
 
 	return base64.RawURLEncoding.EncodeToString(thumbPrint.Sum(nil)), nil
 }
+
+// ED25519PublicKeyThumbprint the base64 encoded public key.
+func ED25519PublicKeyThumbprint(key ed25519.PublicKey) string {
+	return base64.RawURLEncoding.EncodeToString(key)
+}

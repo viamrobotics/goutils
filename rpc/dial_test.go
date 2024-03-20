@@ -169,6 +169,8 @@ func testDial(t *testing.T, signalingCallQueue WebRTCCallQueue, logger golog.Log
 
 			var authToFail bool
 			acceptedFakeWithKeyEnts := []string{"someotherthing", httpListenerExternal.Addr().String()}
+			keyOpt, keyID := WithAuthED25519PrivateKey(privKeyExternal)
+			test.That(t, keyID, test.ShouldEqual, base64.RawURLEncoding.EncodeToString(privKeyExternal.Public().(ed25519.PublicKey)))
 			rpcServerExternal, err := NewServer(
 				logger,
 				WithAuthHandler("fakeExtWithKey", AuthHandlerFunc(func(ctx context.Context, entity, payload string) (map[string]string, error) {
@@ -187,7 +189,7 @@ func testDial(t *testing.T, signalingCallQueue WebRTCCallQueue, logger golog.Log
 					}
 					return map[string]string{}, nil
 				})),
-				WithAuthPrivateKey(privKeyExternal),
+				keyOpt,
 				WithAuthenticateToHandler(func(ctx context.Context, entity string) (map[string]string, error) {
 					if authToFail {
 						return nil, errors.New("darn")
@@ -501,11 +503,12 @@ func TestDialExternalAuth(t *testing.T) {
 	test.That(t, err, test.ShouldBeNil)
 
 	internalAudience := []string{"int-aud2", "int-aud1", "int-aud3"}
+	keyOpt, _ := WithAuthED25519PrivateKey(privKeyInternal)
 	rpcServerInternal, err := NewServer(
 		logger,
 		// we are both some UUID and somesub as far as an audience goes
 		WithAuthAudience(internalAudience...),
-		WithAuthPrivateKey(privKeyInternal),
+		keyOpt,
 		WithWebRTCServerOptions(WebRTCServerOptions{
 			Enable:                 true,
 			InternalSignalingHosts: []string{"yeehaw", internalAddr},
@@ -542,6 +545,7 @@ func TestDialExternalAuth(t *testing.T) {
 
 	var authToFail bool
 	acceptedFakeWithKeyEnts := []string{"someotherthing", httpListenerExternal.Addr().String()}
+	keyOptExternal, _ := WithAuthED25519PrivateKey(privKeyExternal)
 	rpcServerExternal, err := NewServer(
 		logger,
 		WithWebRTCServerOptions(WebRTCServerOptions{
@@ -567,7 +571,7 @@ func TestDialExternalAuth(t *testing.T) {
 			}
 			return map[string]string{}, nil
 		})),
-		WithAuthPrivateKey(privKeyExternal),
+		keyOptExternal,
 		WithAuthenticateToHandler(func(ctx context.Context, entity string) (map[string]string, error) {
 			if authToFail {
 				return nil, errors.New("darn")
@@ -587,6 +591,7 @@ func TestDialExternalAuth(t *testing.T) {
 	)
 	test.That(t, err, test.ShouldBeNil)
 
+	keyOptExternal2, _ := WithAuthED25519PrivateKey(privKeyExternal2)
 	rpcServerExternal2, err := NewServer(
 		logger,
 		WithAuthHandler("fake", AuthHandlerFunc(func(ctx context.Context, entity, payload string) (map[string]string, error) {
@@ -595,7 +600,7 @@ func TestDialExternalAuth(t *testing.T) {
 		WithAuthHandler("fakeWithKey", AuthHandlerFunc(func(ctx context.Context, entity, payload string) (map[string]string, error) {
 			return map[string]string{}, nil
 		})),
-		WithAuthPrivateKey(privKeyExternal2),
+		keyOptExternal2,
 		WithAuthenticateToHandler(func(ctx context.Context, entity string) (map[string]string, error) {
 			var ok bool
 			for _, ent := range internalAudience {
@@ -923,7 +928,7 @@ func TestDialExternalAuth(t *testing.T) {
 			gStatus, ok := status.FromError(err)
 			test.That(t, ok, test.ShouldBeTrue)
 			test.That(t, gStatus.Code(), test.ShouldEqual, codes.Unauthenticated)
-			test.That(t, gStatus.Message(), test.ShouldContainSubstring, "ed25519: verification erro")
+			test.That(t, gStatus.Message(), test.ShouldContainSubstring, " this server did not sign this JWT")
 		})
 	})
 

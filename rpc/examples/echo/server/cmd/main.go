@@ -124,7 +124,8 @@ func runServer(
 		if !ok {
 			return errors.Errorf("expected private key to be ed25519 but got %T", authPrivateKey)
 		}
-		serverOpts = append(serverOpts, rpc.WithAuthPrivateKey(authPrivKey))
+		keyOpt, _ := rpc.WithAuthED25519PrivateKey(authPrivKey)
+		serverOpts = append(serverOpts, keyOpt)
 	}
 	var authPublicKey ed25519.PublicKey
 	if authPublicKeyFile != "" {

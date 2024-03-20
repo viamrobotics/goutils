@@ -335,12 +335,13 @@ func TestServerAuthJWTExpiration(t *testing.T) {
 	_, privKey, err := ed25519.GenerateKey(rand.Reader)
 	test.That(t, err, test.ShouldBeNil)
 
+	keyOpt, keyID := WithAuthED25519PrivateKey(privKey)
 	rpcServer, err := NewServer(
 		logger,
 		WithAuthHandler("fake", AuthHandlerFunc(func(ctx context.Context, entity, payload string) (map[string]string, error) {
 			return map[string]string{}, nil
 		})),
-		WithAuthPrivateKey(privKey),
+		keyOpt,
 	)
 	test.That(t, err, test.ShouldBeNil)
 
@@ -380,6 +381,7 @@ func TestServerAuthJWTExpiration(t *testing.T) {
 		},
 		AuthCredentialsType: CredentialsType("fake"),
 	})
+	token.Header["kid"] = keyID
 
 	tokenString, err := token.SignedString(privKey)
 	test.That(t, err, test.ShouldBeNil)
@@ -410,6 +412,7 @@ func TestServerAuthJWTAudienceAndID(t *testing.T) {
 
 	expectedEntity := "yeehaw"
 	expectedAudience := "someaud"
+	keyOpt, keyID := WithAuthED25519PrivateKey(privKey)
 	rpcServer, err := NewServer(
 		logger,
 		WithInstanceNames(expectedAudience),
@@ -422,7 +425,7 @@ func TestServerAuthJWTAudienceAndID(t *testing.T) {
 			}
 			return nil, errCannotAuthEntity
 		})),
-		WithAuthPrivateKey(privKey),
+		keyOpt,
 	)
 	test.That(t, err, test.ShouldBeNil)
 
@@ -493,6 +496,7 @@ func TestServerAuthJWTAudienceAndID(t *testing.T) {
 						},
 						AuthCredentialsType: CredentialsType("fake"),
 					})
+					token.Header["kid"] = keyID
 
 					tokenString, err := token.SignedString(privKey)
 					test.That(t, err, test.ShouldBeNil)
@@ -582,6 +586,7 @@ func TestServerPublicMethods(t *testing.T) {
 		testPubKey, testPrivKey, err := ed25519.GenerateKey(rand.Reader)
 		test.That(t, err, test.ShouldBeNil)
 
+		keyOpt, _ := WithAuthED25519PrivateKey(testPrivKey)
 		rpcServer, err := NewServer(logger,
 			// this is the main echo method
 			WithPublicMethods([]string{
@@ -591,7 +596,7 @@ func TestServerPublicMethods(t *testing.T) {
 			WithAuthHandler("fake", AuthHandlerFunc(func(ctx context.Context, entity, payload string) (map[string]string, error) {
 				return map[string]string{}, nil
 			})),
-			WithAuthPrivateKey(testPrivKey),
+			keyOpt,
 		)
 
 		defer rpcServer.Stop()
@@ -664,6 +669,7 @@ func TestServerAuthKeyFunc(t *testing.T) {
 
 	var testMu sync.Mutex
 	var key interface{}
+	keyOpt, _ := WithAuthED25519PrivateKey(privKey)
 	rpcServer, err := NewServer(
 		logger,
 		WithAuthHandler("fake", AuthHandlerFunc(func(ctx context.Context, entity, payload string) (map[string]string, error) {
@@ -679,7 +685,7 @@ func TestServerAuthKeyFunc(t *testing.T) {
 				defer testMu.Unlock()
 				return key, nil
 			})),
-		WithAuthPrivateKey(privKey),
+		keyOpt,
 	)
 	test.That(t, err, test.ShouldBeNil)
 
@@ -758,9 +764,10 @@ func TestServerAuthToHandler(t *testing.T) {
 	test.That(t, err, test.ShouldBeNil)
 	thumbprint := base64.RawURLEncoding.EncodeToString(pubKey)
 
+	keyOpt, _ := WithAuthED25519PrivateKey(privKey)
 	rpcServer, err := NewServer(
 		logger,
-		WithAuthPrivateKey(privKey),
+		keyOpt,
 		WithAuthHandler("fake", MakeSimpleAuthHandler([]string{"entity1", "entity2"}, "mypayload")),
 		// Our audience members are a random name and an extra to test with
 		WithAuthAudience(uuid.NewString(), "entity2"),
@@ -867,9 +874,10 @@ func TestServerOptionWithAuthIssuer(t *testing.T) {
 
 	t.Run("empty issuer", func(t *testing.T) {
 		logger := golog.NewTestLogger(t)
+		keyOpt, _ := WithAuthED25519PrivateKey(privKey)
 		_, err := NewServer(
 			logger,
-			WithAuthPrivateKey(privKey),
+			keyOpt,
 			WithAuthHandler("fake", MakeSimpleAuthHandler([]string{"entity1", "entity2"}, "mypayload")),
 			// Our audience members are a random name and an extra to test with
 			WithAuthAudience(aud1, "entity2"),
@@ -889,8 +897,9 @@ func TestServerOptionWithAuthIssuer(t *testing.T) {
 			for _, issSet := range []bool{false, true} {
 				t.Run(fmt.Sprintf("iss set=%t", issSet), func(t *testing.T) {
 					logger := golog.NewTestLogger(t)
+					keyOpt, _ := WithAuthED25519PrivateKey(privKey)
 					opts := []ServerOption{
-						WithAuthPrivateKey(privKey),
+						keyOpt,
 						WithAuthHandler("fake", MakeSimpleAuthHandler([]string{"entity1", "entity2"}, "mypayload")),
 						WithExternalAuthEd25519PublicKeyTokenVerifier(pubKey),
 						WithAuthenticateToHandler(func(ctx context.Context, entity string) (map[string]string, error) {
@@ -1041,9 +1050,10 @@ func TestServerAuthToHandlerWithJWKSetTokenVerifier(t *testing.T) {
 
 	test.That(t, keyset.Add(jwkKey), test.ShouldBeTrue)
 
+	keyOpt, _ := WithAuthED25519PrivateKey(privKey)
 	rpcServer, err := NewServer(
 		logger,
-		WithAuthPrivateKey(privKey),
+		keyOpt,
 		WithAuthHandler("fake", MakeSimpleAuthHandler([]string{"entity1", "entity2"}, "mypayload")),
 		// Our audience members are a random name and an extra to test with
 		WithAuthAudience(uuid.NewString(), "entity2"),
@@ -1166,9 +1176,10 @@ func TestServerAuthToHandlerWithExternalAuthOIDCTokenVerifier(t *testing.T) {
 	test.That(t, err, test.ShouldBeNil)
 	defer closeVerifier(context.Background())
 
+	keyOpt, _ := WithAuthED25519PrivateKey(privKey)
 	rpcServer, err := NewServer(
 		logger,
-		WithAuthPrivateKey(privKey),
+		keyOpt,
 		WithAuthHandler("fake", MakeSimpleAuthHandler([]string{"entity1", "entity2"}, "mypayload")),
 		// Our audience members are a random name and an extra to test with
 		WithAuthAudience(uuid.NewString(), "entity2"),
