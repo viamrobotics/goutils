@@ -346,7 +346,7 @@ func runServer(
 }
 
 func computeAccessToken(pubKey ed25519.PublicKey, privKey ed25519.PrivateKey, aud, sub string, credType rpc.CredentialsType) (string, error) {
-	token := jwt.NewWithClaims(jwt.SigningMethodRS256, rpc.JWTClaims{
+	token := jwt.NewWithClaims(jwt.SigningMethodEdDSA, rpc.JWTClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:  sub,
 			Audience: jwt.ClaimStrings{aud},
@@ -357,12 +357,7 @@ func computeAccessToken(pubKey ed25519.PublicKey, privKey ed25519.PrivateKey, au
 		},
 	})
 
-	var err error
 	token.Header["kid"] = base64.RawURLEncoding.EncodeToString(pubKey)
-	if err != nil {
-		return "", err
-	}
-
 	tokenString, err := token.SignedString(privKey)
 	if err != nil {
 		return "", err
