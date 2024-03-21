@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rsa"
-
 	//nolint:gosec // using for fingerprint
 	"crypto/sha1"
 	"crypto/subtle"
