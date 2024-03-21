@@ -263,7 +263,7 @@ func WithAuthRSAPrivateKey(authRSAPrivateKey *rsa.PrivateKey) (ServerOption, str
 			id:         thumbprint,
 			method:     jwt.SigningMethodRS256,
 			privateKey: authRSAPrivateKey,
-			publicKey:  authRSAPrivateKey.PublicKey,
+			publicKey:  &authRSAPrivateKey.PublicKey,
 		}
 		return nil
 	}), thumbprint, nil

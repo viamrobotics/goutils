@@ -2,8 +2,10 @@ package rpc
 
 import (
 	"context"
+	"crypto"
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -1270,6 +1272,271 @@ func TestServerAuthToHandlerWithExternalAuthOIDCTokenVerifier(t *testing.T) {
 	client := pb.NewEchoServiceClient(conn)
 	_, err = client.Echo(authCtx, &pb.EchoRequest{Message: "hello"})
 	test.That(t, err, test.ShouldBeNil)
+
+	test.That(t, rpcServer.Stop(), test.ShouldBeNil)
+	err = <-errChan
+	test.That(t, err, test.ShouldBeNil)
+}
+
+func TestServerAuthMultiKey(t *testing.T) {
+	testutils.SkipUnlessInternet(t)
+	logger := golog.NewTestLogger(t)
+
+	_, privKeyED25519, err := ed25519.GenerateKey(rand.Reader)
+	test.That(t, err, test.ShouldBeNil)
+
+	privKeyRSA, err := rsa.GenerateKey(rand.Reader, 2048)
+	test.That(t, err, test.ShouldBeNil)
+
+	keyOptED25519, keyIDED25519 := WithAuthED25519PrivateKey(privKeyED25519)
+	keyOptRSA, keyIDRSA, err := WithAuthRSAPrivateKey(privKeyRSA)
+	test.That(t, err, test.ShouldBeNil)
+
+	for _, useRSA := range []bool{false, true} {
+		t.Run(fmt.Sprintf("use_rsa_for_signing=%t", useRSA), func(t *testing.T) {
+			_, err = NewServer(
+				logger,
+				WithAuthHandler("fake", AuthHandlerFunc(func(ctx context.Context, entity, payload string) (map[string]string, error) {
+					return map[string]string{}, nil
+				})),
+				keyOptED25519,
+				keyOptRSA,
+			)
+			test.That(t, err, test.ShouldNotBeNil)
+			test.That(t, err.Error(), test.ShouldContainSubstring, "must use WithJWTSignerKeyID")
+
+			_, err = NewServer(
+				logger,
+				WithAuthHandler("fake", AuthHandlerFunc(func(ctx context.Context, entity, payload string) (map[string]string, error) {
+					return map[string]string{}, nil
+				})),
+				keyOptED25519,
+				keyOptRSA,
+				WithJWTSignerKeyID("foo"),
+			)
+			test.That(t, err, test.ShouldNotBeNil)
+			test.That(t, err.Error(), test.ShouldContainSubstring, "no auth key data set for key id")
+
+			var keyIDChosen, keyIDNotChosen string
+			var signingMethodChosen, signingMethodNotChosen jwt.SigningMethod
+			var privKeyChosen, privKeyNotChosen crypto.Signer
+			if useRSA {
+				keyIDChosen = keyIDRSA
+				keyIDNotChosen = keyIDED25519
+				signingMethodChosen = jwt.SigningMethodRS256
+				signingMethodNotChosen = jwt.SigningMethodEdDSA
+				privKeyChosen = privKeyRSA
+				privKeyNotChosen = privKeyED25519
+			} else {
+				keyIDChosen = keyIDED25519
+				keyIDNotChosen = keyIDRSA
+				signingMethodChosen = jwt.SigningMethodEdDSA
+				signingMethodNotChosen = jwt.SigningMethodRS256
+				privKeyChosen = privKeyED25519
+				privKeyNotChosen = privKeyRSA
+			}
+			rpcServer, err := NewServer(
+				logger,
+				WithAuthHandler("fake", AuthHandlerFunc(func(ctx context.Context, entity, payload string) (map[string]string, error) {
+					return map[string]string{}, nil
+				})),
+				keyOptED25519,
+				keyOptRSA,
+				WithJWTSignerKeyID(keyIDChosen),
+			)
+			test.That(t, err, test.ShouldBeNil)
+
+			err = rpcServer.RegisterServiceServer(
+				context.Background(),
+				&pb.EchoService_ServiceDesc,
+				&echoserver.Server{},
+				pb.RegisterEchoServiceHandlerFromEndpoint,
+			)
+			test.That(t, err, test.ShouldBeNil)
+
+			httpListener, err := net.Listen("tcp", "localhost:0")
+			test.That(t, err, test.ShouldBeNil)
+
+			errChan := make(chan error)
+			go func() {
+				errChan <- rpcServer.Serve(httpListener)
+			}()
+
+			conn, err := grpc.DialContext(
+				context.Background(),
+				httpListener.Addr().String(),
+				grpc.WithTransportCredentials(insecure.NewCredentials()),
+				grpc.WithBlock(),
+			)
+			test.That(t, err, test.ShouldBeNil)
+			defer func() {
+				test.That(t, conn.Close(), test.ShouldBeNil)
+			}()
+
+			authClient := rpcpb.NewAuthServiceClient(conn)
+			authResp, err := authClient.Authenticate(context.Background(), &rpcpb.AuthenticateRequest{Entity: "foo", Credentials: &rpcpb.Credentials{
+				Type:    "fake",
+				Payload: "something",
+			}})
+			test.That(t, err, test.ShouldBeNil)
+
+			// Verify the resulting claims match the expected values.
+			var claims JWTClaims
+			token, err := jwt.ParseWithClaims(authResp.AccessToken, &claims, func(token *jwt.Token) (interface{}, error) {
+				return privKeyChosen.Public(), nil
+			})
+			test.That(t, err, test.ShouldBeNil)
+			test.That(t, token.Header["kid"], test.ShouldEqual, keyIDChosen)
+			test.That(t, token.Header["kid"], test.ShouldNotEqual, keyIDNotChosen)
+			test.That(t, token.Method.Alg(), test.ShouldEqual, signingMethodChosen.Alg())
+
+			md := make(metadata.MD)
+			bearer := fmt.Sprintf("Bearer %s", authResp.AccessToken)
+			md.Set("authorization", bearer)
+			ctx := metadata.NewOutgoingContext(context.Background(), md)
+
+			client := pb.NewEchoServiceClient(conn)
+			echoResp, err := client.Echo(ctx, &pb.EchoRequest{Message: "hello"})
+			test.That(t, err, test.ShouldBeNil)
+			test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
+
+			t.Log("accept other key even though we do not mint them on this server")
+			token = jwt.NewWithClaims(signingMethodNotChosen, JWTClaims{
+				RegisteredClaims: jwt.RegisteredClaims{
+					Subject:  uuid.NewString(),
+					Audience: rpcServer.InstanceNames(),
+				},
+				AuthCredentialsType: CredentialsType("fake"),
+			})
+			token.Header["kid"] = keyIDNotChosen
+
+			tokenString, err := token.SignedString(privKeyNotChosen)
+			test.That(t, err, test.ShouldBeNil)
+			bearer = fmt.Sprintf("Bearer %s", tokenString)
+			md.Set("authorization", bearer)
+			ctx = metadata.NewOutgoingContext(context.Background(), md)
+
+			echoResp, err = client.Echo(ctx, &pb.EchoRequest{Message: "hello"})
+			test.That(t, err, test.ShouldBeNil)
+			test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
+
+			t.Log("wrong kid")
+			token = jwt.NewWithClaims(signingMethodNotChosen, JWTClaims{
+				RegisteredClaims: jwt.RegisteredClaims{
+					Subject:  uuid.NewString(),
+					Audience: rpcServer.InstanceNames(),
+				},
+				AuthCredentialsType: CredentialsType("fake"),
+			})
+			token.Header["kid"] = keyIDChosen
+
+			tokenString, err = token.SignedString(privKeyNotChosen)
+			test.That(t, err, test.ShouldBeNil)
+			bearer = fmt.Sprintf("Bearer %s", tokenString)
+			md.Set("authorization", bearer)
+			ctx = metadata.NewOutgoingContext(context.Background(), md)
+
+			_, err = client.Echo(ctx, &pb.EchoRequest{Message: "hello"})
+			test.That(t, err, test.ShouldNotBeNil)
+			test.That(t, err.Error(), test.ShouldContainSubstring, "unexpected signing method")
+
+			token = jwt.NewWithClaims(signingMethodNotChosen, JWTClaims{
+				RegisteredClaims: jwt.RegisteredClaims{
+					Subject:  uuid.NewString(),
+					Audience: rpcServer.InstanceNames(),
+				},
+				AuthCredentialsType: CredentialsType("fake"),
+			})
+			token.Header["kid"] = "something"
+
+			tokenString, err = token.SignedString(privKeyNotChosen)
+			test.That(t, err, test.ShouldBeNil)
+			bearer = fmt.Sprintf("Bearer %s", tokenString)
+			md.Set("authorization", bearer)
+			ctx = metadata.NewOutgoingContext(context.Background(), md)
+
+			_, err = client.Echo(ctx, &pb.EchoRequest{Message: "hello"})
+			test.That(t, err, test.ShouldNotBeNil)
+			test.That(t, err.Error(), test.ShouldContainSubstring, "this server did not sign this JWT with kid")
+
+			test.That(t, rpcServer.Stop(), test.ShouldBeNil)
+			err = <-errChan
+			test.That(t, err, test.ShouldBeNil)
+		})
+	}
+}
+
+func TestServerAuthRSA(t *testing.T) {
+	testutils.SkipUnlessInternet(t)
+	logger := golog.NewTestLogger(t)
+
+	privKeyRSA, err := rsa.GenerateKey(rand.Reader, 2048)
+	test.That(t, err, test.ShouldBeNil)
+
+	keyOptRSA, keyIDRSA, err := WithAuthRSAPrivateKey(privKeyRSA)
+	test.That(t, err, test.ShouldBeNil)
+
+	rpcServer, err := NewServer(
+		logger,
+		WithAuthHandler("fake", AuthHandlerFunc(func(ctx context.Context, entity, payload string) (map[string]string, error) {
+			return map[string]string{}, nil
+		})),
+		keyOptRSA,
+	)
+	test.That(t, err, test.ShouldBeNil)
+
+	err = rpcServer.RegisterServiceServer(
+		context.Background(),
+		&pb.EchoService_ServiceDesc,
+		&echoserver.Server{},
+		pb.RegisterEchoServiceHandlerFromEndpoint,
+	)
+	test.That(t, err, test.ShouldBeNil)
+
+	httpListener, err := net.Listen("tcp", "localhost:0")
+	test.That(t, err, test.ShouldBeNil)
+
+	errChan := make(chan error)
+	go func() {
+		errChan <- rpcServer.Serve(httpListener)
+	}()
+
+	conn, err := grpc.DialContext(
+		context.Background(),
+		httpListener.Addr().String(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithBlock(),
+	)
+	test.That(t, err, test.ShouldBeNil)
+	defer func() {
+		test.That(t, conn.Close(), test.ShouldBeNil)
+	}()
+
+	authClient := rpcpb.NewAuthServiceClient(conn)
+	authResp, err := authClient.Authenticate(context.Background(), &rpcpb.AuthenticateRequest{Entity: "foo", Credentials: &rpcpb.Credentials{
+		Type:    "fake",
+		Payload: "something",
+	}})
+	test.That(t, err, test.ShouldBeNil)
+
+	// Verify the resulting claims match the expected values.
+	var claims JWTClaims
+	token, err := jwt.ParseWithClaims(authResp.AccessToken, &claims, func(token *jwt.Token) (interface{}, error) {
+		return privKeyRSA.Public(), nil
+	})
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, token.Header["kid"], test.ShouldEqual, keyIDRSA)
+	test.That(t, token.Method.Alg(), test.ShouldEqual, jwt.SigningMethodRS256.Alg())
+
+	md := make(metadata.MD)
+	bearer := fmt.Sprintf("Bearer %s", authResp.AccessToken)
+	md.Set("authorization", bearer)
+	ctx := metadata.NewOutgoingContext(context.Background(), md)
+
+	client := pb.NewEchoServiceClient(conn)
+	echoResp, err := client.Echo(ctx, &pb.EchoRequest{Message: "hello"})
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
 
 	test.That(t, rpcServer.Stop(), test.ShouldBeNil)
 	err = <-errChan

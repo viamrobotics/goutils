@@ -139,7 +139,7 @@ func (ss *simpleServer) signAccessTokenForEntity(
 	// TODO(GOUT-13): expiration
 	// TODO(GOUT-12): refresh token
 	// TODO(GOUT-9): more complete info
-	token := jwt.NewWithClaims(jwt.SigningMethodEdDSA, JWTClaims{
+	token := jwt.NewWithClaims(ss.authKeyForJWTSigning.method, JWTClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:  entity,
 			Audience: audience,
