@@ -139,7 +139,7 @@ func (ss *simpleServer) signAccessTokenForEntity(
 	// TODO(GOUT-13): expiration
 	// TODO(GOUT-12): refresh token
 	// TODO(GOUT-9): more complete info
-	token := jwt.NewWithClaims(jwt.SigningMethodRS256, JWTClaims{
+	token := jwt.NewWithClaims(ss.authKeyForJWTSigning.method, JWTClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:  entity,
 			Audience: audience,
@@ -153,9 +153,9 @@ func (ss *simpleServer) signAccessTokenForEntity(
 
 	// Set the Key ID (kid) to allow the auth handlers to selectively choose which key was used
 	// to sign the token.
-	token.Header["kid"] = ss.authRSAPrivKeyKID
+	token.Header["kid"] = ss.authKeyForJWTSigning.id
 
-	tokenString, err := token.SignedString(ss.authRSAPrivKey)
+	tokenString, err := token.SignedString(ss.authKeyForJWTSigning.privateKey)
 	if err != nil {
 		ss.logger.Errorw("failed to sign JWT", "error", err)
 		return "", status.Error(codes.PermissionDenied, "failed to authenticate")
@@ -337,12 +337,26 @@ func (ss *simpleServer) ensureAuthed(ctx context.Context) (context.Context, erro
 				return handlers.TokenVerificationKeyProvider.TokenVerificationKey(ctx, token)
 			}
 
-			// signed internally
-			if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
+			// signed by us, so we always have a kid
+			keyID, ok := token.Header["kid"].(string)
+			if !ok {
+				return nil, errors.New("kid header not in token header")
+			}
+
+			keyData, ok := ss.authKeys[keyID]
+			if !ok {
+				return nil, fmt.Errorf("this server did not sign this JWT with kid %q", keyID)
+			}
+
+			if keyData.method == nil {
+				ss.logger.Errorw("invariant: auth key data has no method", "kid", keyID)
+				return "", errors.New("internal server error")
+			}
+			if token.Method != keyData.method {
 				return nil, fmt.Errorf("unexpected signing method %q", token.Method.Alg())
 			}
 
-			return &ss.authRSAPrivKey.PublicKey, nil
+			return keyData.publicKey, nil
 		},
 		jwt.WithValidMethods(validSigningMethods),
 	); err != nil {

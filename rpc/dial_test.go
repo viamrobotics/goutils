@@ -2,10 +2,11 @@ package rpc
 
 import (
 	"context"
+	"crypto/ed25519"
 	"crypto/rand"
-	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"fmt"
 	"net"
 	"net/http"
@@ -103,7 +104,7 @@ func testDial(t *testing.T, signalingCallQueue WebRTCCallQueue, logger golog.Log
 			httpListenerExternal, err := net.Listen("tcp", "localhost:0")
 			test.That(t, err, test.ShouldBeNil)
 
-			privKeyExternal, err := rsa.GenerateKey(rand.Reader, generatedRSAKeyBits)
+			pubKeyExternal, privKeyExternal, err := ed25519.GenerateKey(rand.Reader)
 			test.That(t, err, test.ShouldBeNil)
 
 			externalSignalingHosts := make([]string, len(hosts))
@@ -145,7 +146,7 @@ func testDial(t *testing.T, signalingCallQueue WebRTCCallQueue, logger golog.Log
 					}
 					return nil, errors.New("this auth does not work yet")
 				})),
-				WithExternalAuthPublicKeyTokenVerifier(&privKeyExternal.PublicKey),
+				WithExternalAuthEd25519PublicKeyTokenVerifier(pubKeyExternal),
 			)
 			test.That(t, err, test.ShouldBeNil)
 
@@ -168,6 +169,8 @@ func testDial(t *testing.T, signalingCallQueue WebRTCCallQueue, logger golog.Log
 
 			var authToFail bool
 			acceptedFakeWithKeyEnts := []string{"someotherthing", httpListenerExternal.Addr().String()}
+			keyOpt, keyID := WithAuthED25519PrivateKey(privKeyExternal)
+			test.That(t, keyID, test.ShouldEqual, base64.RawURLEncoding.EncodeToString(privKeyExternal.Public().(ed25519.PublicKey)))
 			rpcServerExternal, err := NewServer(
 				logger,
 				WithAuthHandler("fakeExtWithKey", AuthHandlerFunc(func(ctx context.Context, entity, payload string) (map[string]string, error) {
@@ -186,7 +189,7 @@ func testDial(t *testing.T, signalingCallQueue WebRTCCallQueue, logger golog.Log
 					}
 					return map[string]string{}, nil
 				})),
-				WithAuthRSAPrivateKey(privKeyExternal),
+				keyOpt,
 				WithAuthenticateToHandler(func(ctx context.Context, entity string) (map[string]string, error) {
 					if authToFail {
 						return nil, errors.New("darn")
@@ -492,19 +495,20 @@ func TestDialExternalAuth(t *testing.T) {
 	httpListenerExternal2, err := net.Listen("tcp", "localhost:0")
 	test.That(t, err, test.ShouldBeNil)
 
-	privKeyInternal, err := rsa.GenerateKey(rand.Reader, generatedRSAKeyBits)
+	pubKeyInternal, privKeyInternal, err := ed25519.GenerateKey(rand.Reader)
 	test.That(t, err, test.ShouldBeNil)
-	privKeyExternal, err := rsa.GenerateKey(rand.Reader, generatedRSAKeyBits)
+	pubKeyExternal, privKeyExternal, err := ed25519.GenerateKey(rand.Reader)
 	test.That(t, err, test.ShouldBeNil)
-	privKeyExternal2, err := rsa.GenerateKey(rand.Reader, generatedRSAKeyBits)
+	pubKeyExternal2, privKeyExternal2, err := ed25519.GenerateKey(rand.Reader)
 	test.That(t, err, test.ShouldBeNil)
 
 	internalAudience := []string{"int-aud2", "int-aud1", "int-aud3"}
+	keyOpt, _ := WithAuthED25519PrivateKey(privKeyInternal)
 	rpcServerInternal, err := NewServer(
 		logger,
 		// we are both some UUID and somesub as far as an audience goes
 		WithAuthAudience(internalAudience...),
-		WithAuthRSAPrivateKey(privKeyInternal),
+		keyOpt,
 		WithWebRTCServerOptions(WebRTCServerOptions{
 			Enable:                 true,
 			InternalSignalingHosts: []string{"yeehaw", internalAddr},
@@ -522,7 +526,7 @@ func TestDialExternalAuth(t *testing.T) {
 				return claims.Entity(), nil
 			})),
 		WithTokenVerificationKeyProvider(CredentialsTypeExternal,
-			MakePublicKeyProvider(&privKeyExternal.PublicKey),
+			MakeEd25519PublicKeyProvider(pubKeyExternal),
 		),
 	)
 	test.That(t, err, test.ShouldBeNil)
@@ -541,6 +545,7 @@ func TestDialExternalAuth(t *testing.T) {
 
 	var authToFail bool
 	acceptedFakeWithKeyEnts := []string{"someotherthing", httpListenerExternal.Addr().String()}
+	keyOptExternal, _ := WithAuthED25519PrivateKey(privKeyExternal)
 	rpcServerExternal, err := NewServer(
 		logger,
 		WithWebRTCServerOptions(WebRTCServerOptions{
@@ -566,7 +571,7 @@ func TestDialExternalAuth(t *testing.T) {
 			}
 			return map[string]string{}, nil
 		})),
-		WithAuthRSAPrivateKey(privKeyExternal),
+		keyOptExternal,
 		WithAuthenticateToHandler(func(ctx context.Context, entity string) (map[string]string, error) {
 			if authToFail {
 				return nil, errors.New("darn")
@@ -586,6 +591,7 @@ func TestDialExternalAuth(t *testing.T) {
 	)
 	test.That(t, err, test.ShouldBeNil)
 
+	keyOptExternal2, _ := WithAuthED25519PrivateKey(privKeyExternal2)
 	rpcServerExternal2, err := NewServer(
 		logger,
 		WithAuthHandler("fake", AuthHandlerFunc(func(ctx context.Context, entity, payload string) (map[string]string, error) {
@@ -594,7 +600,7 @@ func TestDialExternalAuth(t *testing.T) {
 		WithAuthHandler("fakeWithKey", AuthHandlerFunc(func(ctx context.Context, entity, payload string) (map[string]string, error) {
 			return map[string]string{}, nil
 		})),
-		WithAuthRSAPrivateKey(privKeyExternal2),
+		keyOptExternal2,
 		WithAuthenticateToHandler(func(ctx context.Context, entity string) (map[string]string, error) {
 			var ok bool
 			for _, ent := range internalAudience {
@@ -873,7 +879,7 @@ func TestDialExternalAuth(t *testing.T) {
 
 	t.Run("with signaling external auth material", func(t *testing.T) {
 		// rpcServerExternal.InstanceNames()[0] is the implicit audience
-		accessToken := signTestAuthToken(t, privKeyExternal, rpcServerExternal.InstanceNames()[0], "sub1", "fake")
+		accessToken := signTestAuthToken(t, pubKeyExternal, privKeyExternal, rpcServerExternal.InstanceNames()[0], "sub1", "fake")
 		opts := []DialOption{
 			WithInsecure(),
 			WithExternalAuthInsecure(),
@@ -897,7 +903,7 @@ func TestDialExternalAuth(t *testing.T) {
 
 	t.Run("with external auth material for external auth and signaler", func(t *testing.T) {
 		internalExternalAuthSrv.fail = false
-		accessToken := signTestAuthToken(t, privKeyInternal, "int-aud1", "sub1", "fake")
+		accessToken := signTestAuthToken(t, pubKeyInternal, privKeyInternal, "int-aud1", "sub1", "fake")
 		opts := []DialOption{
 			WithInsecure(),
 			WithExternalAuthInsecure(),
@@ -910,7 +916,7 @@ func TestDialExternalAuth(t *testing.T) {
 
 	t.Run("with external auth material for external auth and signaler with invalid key", func(t *testing.T) {
 		internalExternalAuthSrv.fail = false
-		accessToken := signTestAuthToken(t, privKeyExternal2, "aud1", "sub1", "fake")
+		accessToken := signTestAuthToken(t, pubKeyExternal2, privKeyExternal2, "aud1", "sub1", "fake")
 		opts := []DialOption{
 			WithInsecure(),
 			WithExternalAuthInsecure(),
@@ -923,7 +929,7 @@ func TestDialExternalAuth(t *testing.T) {
 			gStatus, ok := status.FromError(err)
 			test.That(t, ok, test.ShouldBeTrue)
 			test.That(t, gStatus.Code(), test.ShouldEqual, codes.Unauthenticated)
-			test.That(t, gStatus.Message(), test.ShouldContainSubstring, "crypto/rsa: verification error")
+			test.That(t, gStatus.Message(), test.ShouldContainSubstring, " this server did not sign this JWT")
 		})
 	})
 
@@ -1635,7 +1641,7 @@ type externalAuthServer struct {
 	expectedEnt string
 	expectedAud []string
 	noMetadata  bool
-	privKey     *rsa.PrivateKey
+	privKey     ed25519.PrivateKey
 }
 
 func (svc *externalAuthServer) AuthenticateTo(
@@ -1668,7 +1674,7 @@ func (svc *externalAuthServer) AuthenticateTo(
 
 	entity := MustContextAuthEntity(ctx).Entity
 
-	token := jwt.NewWithClaims(jwt.SigningMethodRS256, JWTClaims{
+	token := jwt.NewWithClaims(jwt.SigningMethodEdDSA, JWTClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:  entity,
 			Audience: jwt.ClaimStrings{req.Entity},
@@ -1687,10 +1693,16 @@ func (svc *externalAuthServer) AuthenticateTo(
 	}, nil
 }
 
-func signTestAuthToken(t *testing.T, privKey *rsa.PrivateKey, aud, ent string, credType CredentialsType) string {
+func signTestAuthToken(
+	t *testing.T,
+	pubKey ed25519.PublicKey,
+	privKey ed25519.PrivateKey,
+	aud, ent string,
+	credType CredentialsType,
+) string {
 	t.Helper()
 
-	token := jwt.NewWithClaims(jwt.SigningMethodRS256, JWTClaims{
+	token := jwt.NewWithClaims(jwt.SigningMethodEdDSA, JWTClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:  ent,
 			Audience: jwt.ClaimStrings{aud},
@@ -1699,9 +1711,7 @@ func signTestAuthToken(t *testing.T, privKey *rsa.PrivateKey, aud, ent string, c
 		AuthMetadata:        map[string]string{},
 	})
 
-	var err error
-	token.Header["kid"], err = RSAPublicKeyThumbprint(&privKey.PublicKey)
-	test.That(t, err, test.ShouldBeNil)
+	token.Header["kid"] = base64.RawURLEncoding.EncodeToString(pubKey)
 
 	tokenString, err := token.SignedString(privKey)
 	test.That(t, err, test.ShouldBeNil)

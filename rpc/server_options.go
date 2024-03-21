@@ -2,10 +2,14 @@ package rpc
 
 import (
 	"context"
+	"crypto"
+	"crypto/ed25519"
 	"crypto/rsa"
 	"crypto/tls"
+	"fmt"
 	"net"
 
+	"github.com/golang-jwt/jwt/v4"
 	"github.com/pion/webrtc/v3"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
@@ -36,8 +40,9 @@ type serverOptions struct {
 	// publicMethods are api routes that attempt, but do not require, authentication
 	publicMethods []string
 
-	// authRSAPrivateKey is used to sign JWTs for authentication
-	authRSAPrivateKey *rsa.PrivateKey
+	// authKeys are used to sign/verify JWTs for authentication
+	authKeys       map[string]authKeyData
+	jwtSignerKeyID string
 
 	// debug is helpful to turn on when the library isn't working quite right.
 	// It will output much more logs.
@@ -63,6 +68,29 @@ type serverOptions struct {
 	statsHandler stats.Handler
 
 	unknownStreamDesc *grpc.StreamDesc
+}
+
+type authKeyData struct {
+	id         string
+	method     jwt.SigningMethod
+	privateKey crypto.Signer
+	publicKey  interface{}
+}
+
+func (d *authKeyData) Validate() error {
+	if d.id == "" {
+		return errors.New("invariant: auth key has no id")
+	}
+	if d.method == nil {
+		return fmt.Errorf("invariant: auth key %q has no signing method", d.id)
+	}
+	if d.privateKey == nil {
+		return fmt.Errorf("invariant: auth key %q has no private key", d.id)
+	}
+	if d.publicKey == nil {
+		return fmt.Errorf("invariant: auth key %q has no public key", d.id)
+	}
+	return nil
 }
 
 // WebRTCServerOptions control how WebRTC is utilized in a server.
@@ -219,11 +247,52 @@ func WithUnauthenticated() ServerOption {
 	})
 }
 
-// WithAuthRSAPrivateKey returns a ServerOption which sets the private key to
+// WithAuthRSAPrivateKey returns a ServerOption which sets the RSA private key to
 // use for signed JWTs.
-func WithAuthRSAPrivateKey(authRSAPrivateKey *rsa.PrivateKey) ServerOption {
+func WithAuthRSAPrivateKey(authRSAPrivateKey *rsa.PrivateKey) (ServerOption, string, error) {
+	thumbprint, err := RSAPublicKeyThumbprint(&authRSAPrivateKey.PublicKey)
+	if err != nil {
+		return nil, "", err
+	}
+
 	return newFuncServerOption(func(o *serverOptions) error {
-		o.authRSAPrivateKey = authRSAPrivateKey
+		if o.authKeys == nil {
+			o.authKeys = map[string]authKeyData{}
+		}
+		o.authKeys[thumbprint] = authKeyData{
+			id:         thumbprint,
+			method:     jwt.SigningMethodRS256,
+			privateKey: authRSAPrivateKey,
+			publicKey:  &authRSAPrivateKey.PublicKey,
+		}
+		return nil
+	}), thumbprint, nil
+}
+
+// WithAuthED25519PrivateKey returns a ServerOption which sets the ed25519 private key to
+// use for signed JWTs.
+func WithAuthED25519PrivateKey(authED25519PrivateKey ed25519.PrivateKey) (ServerOption, string) {
+	pubKey := authED25519PrivateKey.Public()
+	keyID := ED25519PublicKeyThumbprint(pubKey.(ed25519.PublicKey))
+	return newFuncServerOption(func(o *serverOptions) error {
+		if o.authKeys == nil {
+			o.authKeys = map[string]authKeyData{}
+		}
+		o.authKeys[keyID] = authKeyData{
+			id:         keyID,
+			method:     jwt.SigningMethodEdDSA,
+			privateKey: authED25519PrivateKey,
+			publicKey:  pubKey,
+		}
+		return nil
+	}), keyID
+}
+
+// WithJWTSignerKeyID returns a ServerOption which sets the private key to use for signed
+// JWTs by its key ID.
+func WithJWTSignerKeyID(keyID string) ServerOption {
+	return newFuncServerOption(func(o *serverOptions) error {
+		o.jwtSignerKeyID = keyID
 		return nil
 	})
 }
@@ -346,10 +415,16 @@ func withCredAuthHandlers(forType CredentialsType, handler credAuthHandlers) Ser
 	})
 }
 
-// WithExternalAuthPublicKeyTokenVerifier returns a ServerOption to verify all externally
+// WithExternalAuthRSAPublicKeyTokenVerifier returns a ServerOption to verify all externally
 // authenticated entity access tokens with the given public key.
-func WithExternalAuthPublicKeyTokenVerifier(pubKey *rsa.PublicKey) ServerOption {
-	return WithTokenVerificationKeyProvider(CredentialsTypeExternal, MakePublicKeyProvider(pubKey))
+func WithExternalAuthRSAPublicKeyTokenVerifier(pubKey *rsa.PublicKey) ServerOption {
+	return WithTokenVerificationKeyProvider(CredentialsTypeExternal, MakeRSAPublicKeyProvider(pubKey))
+}
+
+// WithExternalAuthEd25519PublicKeyTokenVerifier returns a ServerOption to verify all externally
+// authenticated entity access tokens with the given public key.
+func WithExternalAuthEd25519PublicKeyTokenVerifier(pubKey ed25519.PublicKey) ServerOption {
+	return WithTokenVerificationKeyProvider(CredentialsTypeExternal, MakeEd25519PublicKeyProvider(pubKey))
 }
 
 // WithExternalAuthJWKSetTokenVerifier returns a ServerOption to verify all externally

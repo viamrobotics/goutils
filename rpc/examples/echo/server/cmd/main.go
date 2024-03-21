@@ -5,9 +5,10 @@ package main
 
 import (
 	"context"
-	"crypto/rsa"
+	"crypto/ed25519"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/pem"
 	"fmt"
 	"html/template"
@@ -106,7 +107,7 @@ func runServer(
 	logger golog.Logger,
 ) (err error) {
 	var serverOpts []rpc.ServerOption
-	var authPrivKey *rsa.PrivateKey
+	var authPrivKey ed25519.PrivateKey
 	if authPrivateKeyFile != "" {
 		//nolint:gosec
 		rd, err := os.ReadFile(authPrivateKeyFile)
@@ -119,13 +120,14 @@ func runServer(
 			return err
 		}
 		var ok bool
-		authPrivKey, ok = authPrivateKey.(*rsa.PrivateKey)
+		authPrivKey, ok = authPrivateKey.(ed25519.PrivateKey)
 		if !ok {
-			return errors.Errorf("expected private key to be RSA but got %T", authPrivateKey)
+			return errors.Errorf("expected private key to be ed25519 but got %T", authPrivateKey)
 		}
-		serverOpts = append(serverOpts, rpc.WithAuthRSAPrivateKey(authPrivKey))
+		keyOpt, _ := rpc.WithAuthED25519PrivateKey(authPrivKey)
+		serverOpts = append(serverOpts, keyOpt)
 	}
-	var authPublicKey *rsa.PublicKey
+	var authPublicKey ed25519.PublicKey
 	if authPublicKeyFile != "" {
 		//nolint:gosec
 		rd, err := os.ReadFile(authPublicKeyFile)
@@ -138,9 +140,9 @@ func runServer(
 			return err
 		}
 		var ok bool
-		authPublicKey, ok = key.(*rsa.PublicKey)
+		authPublicKey, ok = key.(ed25519.PublicKey)
 		if !ok {
-			return errors.Errorf("expected *rsa.PublicKey but got %T", key)
+			return errors.Errorf("expected ed25519.PublicKey but got %T", key)
 		}
 	}
 
@@ -201,7 +203,7 @@ func runServer(
 		}
 
 		if authPublicKey != nil {
-			serverOpts = append(serverOpts, rpc.WithExternalAuthPublicKeyTokenVerifier(authPublicKey))
+			serverOpts = append(serverOpts, rpc.WithExternalAuthEd25519PublicKeyTokenVerifier(authPublicKey))
 		}
 	}
 
@@ -271,7 +273,7 @@ func runServer(
 		}
 
 		if useAccesssToken {
-			precomputedToken, err := computeAccessToken(authPrivKey, listenerAddr, "sub1", rpc.CredentialsTypeAPIKey)
+			precomputedToken, err := computeAccessToken(authPublicKey, authPrivKey, listenerAddr, "sub1", rpc.CredentialsTypeAPIKey)
 			if err != nil {
 				panic(err)
 			}
@@ -343,8 +345,8 @@ func runServer(
 	return nil
 }
 
-func computeAccessToken(privKey *rsa.PrivateKey, aud, sub string, credType rpc.CredentialsType) (string, error) {
-	token := jwt.NewWithClaims(jwt.SigningMethodRS256, rpc.JWTClaims{
+func computeAccessToken(pubKey ed25519.PublicKey, privKey ed25519.PrivateKey, aud, sub string, credType rpc.CredentialsType) (string, error) {
+	token := jwt.NewWithClaims(jwt.SigningMethodEdDSA, rpc.JWTClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:  sub,
 			Audience: jwt.ClaimStrings{aud},
@@ -355,12 +357,7 @@ func computeAccessToken(privKey *rsa.PrivateKey, aud, sub string, credType rpc.C
 		},
 	})
 
-	var err error
-	token.Header["kid"], err = rpc.RSAPublicKeyThumbprint(&privKey.PublicKey)
-	if err != nil {
-		return "", err
-	}
-
+	token.Header["kid"] = base64.RawURLEncoding.EncodeToString(pubKey)
 	tokenString, err := token.SignedString(privKey)
 	if err != nil {
 		return "", err
