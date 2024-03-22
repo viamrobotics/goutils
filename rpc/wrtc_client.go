@@ -244,7 +244,7 @@ func dialWebRTC(
 		}
 	}
 
-	encodedSDP, err := encodeSDP(peerConn.LocalDescription())
+	encodedSDP, err := EncodeSDP(peerConn.LocalDescription())
 	if err != nil {
 		return nil, err
 	}
@@ -291,7 +291,7 @@ func dialWebRTC(
 				haveInit = true
 				uuid = callResp.Uuid
 				answer := webrtc.SessionDescription{}
-				if err := decodeSDP(s.Init.Sdp, &answer); err != nil {
+				if err := DecodeSDP(s.Init.Sdp, &answer); err != nil {
 					return err
 				}
 
