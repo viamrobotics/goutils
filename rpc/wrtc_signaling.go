@@ -11,8 +11,8 @@ import (
 
 // Adapted from https://github.com/pion/webrtc/blob/master/examples/internal/signal/signal.go
 
-// encodeSDP encodes the given SDP in base64.
-func encodeSDP(sdp *webrtc.SessionDescription) (string, error) {
+// EncodeSDP encodes the given SDP in base64.
+func EncodeSDP(sdp *webrtc.SessionDescription) (string, error) {
 	b, err := json.Marshal(sdp)
 	if err != nil {
 		return "", err
@@ -21,8 +21,8 @@ func encodeSDP(sdp *webrtc.SessionDescription) (string, error) {
 	return base64.StdEncoding.EncodeToString(b), nil
 }
 
-// decodeSDP decodes the input from base64 into the given SDP.
-func decodeSDP(in string, sdp *webrtc.SessionDescription) error {
+// DecodeSDP decodes the input from base64 into the given SDP.
+func DecodeSDP(in string, sdp *webrtc.SessionDescription) error {
 	b, err := base64.StdEncoding.DecodeString(in)
 	if err != nil {
 		return err

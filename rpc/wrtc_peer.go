@@ -117,7 +117,7 @@ func newPeerConnectionForClient(
 	// the renegotiations. But it is not obvious that algorithm is suitable for when both sides can
 	// race on renegotiating. For now we "uninstall" the `OnNegotiationNeeded` callback and only
 	// allow the "server" to start a renegotiation.
-	if _, err = configureForRenegotiation(peerConn, logger); err != nil {
+	if _, err = ConfigureForRenegotiation(peerConn, logger); err != nil {
 		return peerConn, dataChannel, err
 	}
 	peerConn.OnNegotiationNeeded(func() {})
@@ -188,7 +188,7 @@ func newPeerConnectionForServer(
 	}
 	dataChannel.OnError(initialDataChannelOnError(peerConn, logger))
 
-	if _, err = configureForRenegotiation(peerConn, logger); err != nil {
+	if _, err = ConfigureForRenegotiation(peerConn, logger); err != nil {
 		return peerConn, dataChannel, err
 	}
 
@@ -229,13 +229,13 @@ func newPeerConnectionForServer(
 	return peerConn, dataChannel, nil
 }
 
-// configureForRenegotiation sets up PeerConnection callbacks for updating local descriptions and
+// ConfigureForRenegotiation sets up PeerConnection callbacks for updating local descriptions and
 // sending offers when a negotiation is needed (e.g: adding a video track). As well as listening for
 // offers/answers to update remote descriptions (e.g: when the peer adds a video track).
 //
 // If successful, a Go channel is returned. The Go channel will close when the negotiation
 // DataChannel is open and available for renegotiation.
-func configureForRenegotiation(peerConn *webrtc.PeerConnection, logger golog.Logger) (<-chan struct{}, error) {
+func ConfigureForRenegotiation(peerConn *webrtc.PeerConnection, logger golog.Logger) (<-chan struct{}, error) {
 	var negMu sync.Mutex
 
 	// All of Viam's PeerConnections hard code the `data` channel to be ID 0 and the `negotiation`
