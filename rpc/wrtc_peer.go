@@ -193,7 +193,7 @@ func newPeerConnectionForServer(
 	}
 
 	offer := webrtc.SessionDescription{}
-	if err := decodeSDP(sdp, &offer); err != nil {
+	if err := DecodeSDP(sdp, &offer); err != nil {
 		return peerConn, dataChannel, err
 	}
 
@@ -304,7 +304,7 @@ func ConfigureForRenegotiation(peerConn *webrtc.PeerConnection, logger golog.Log
 		// Encode and send the new local description to the peer over the `negotiation` channel. The
 		// peer will respond over the negotiation channel with an answer. That answer will be used to
 		// update the remote description.
-		encodedSDP, err := encodeSDP(peerConn.LocalDescription())
+		encodedSDP, err := EncodeSDP(peerConn.LocalDescription())
 		if err != nil {
 			logger.Errorw("renegotiation: error encoding SDP", "error", err)
 			return
@@ -320,7 +320,7 @@ func ConfigureForRenegotiation(peerConn *webrtc.PeerConnection, logger golog.Log
 		defer negMu.Unlock()
 
 		description := webrtc.SessionDescription{}
-		if err := decodeSDP(string(msg.Data), &description); err != nil {
+		if err := DecodeSDP(string(msg.Data), &description); err != nil {
 			logger.Errorw("renegotiation: error decoding SDP", "error", err)
 			return
 		}
@@ -355,7 +355,7 @@ func ConfigureForRenegotiation(peerConn *webrtc.PeerConnection, logger golog.Log
 			return
 		}
 
-		encodedSDP, err := encodeSDP(peerConn.LocalDescription())
+		encodedSDP, err := EncodeSDP(peerConn.LocalDescription())
 		if err != nil {
 			logger.Errorw("renegotiation: error encoding SDP", "error", err)
 			return
