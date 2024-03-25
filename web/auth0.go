@@ -473,8 +473,6 @@ func (h *tokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Expiry:       expiry.Value,
 	}
 
-	h.logger.Debugf("response: %v", response)
-
 	w.Header().Set("Content-Type", "application/json")
 	data, err := json.Marshal(response)
 	if err != nil {
