@@ -273,6 +273,7 @@ func ConfigureForRenegotiation(peerConn *webrtc.PeerConnection, logger golog.Log
 	// that its local description should change. Such as when a video track is added that should be
 	// streamed to the peer.
 	peerConn.OnNegotiationNeeded(func() {
+		logger.Infof("pc: %p, OnNegotiationNeeded started", peerConn)
 		select {
 		case <-negOpened:
 		default:
@@ -280,14 +281,17 @@ func ConfigureForRenegotiation(peerConn *webrtc.PeerConnection, logger golog.Log
 			// operation.
 			return
 		}
+		logger.Infof("pc: %p, OnNegotiationNeeded: negOpened", peerConn)
 
 		negMu.Lock()
 		defer negMu.Unlock()
+		logger.Infof("pc: %p, OnNegotiationNeeded after lock ", peerConn)
+		defer logger.Infof("pc: %p, OnNegotiationNeeded done", peerConn)
 		// Creating an offer will generate the desired local description that includes the
 		// modifications responsible for entering the callback. Such as adding a video track.
 		offer, err := peerConn.CreateOffer(nil)
 		if err != nil {
-			logger.Errorw("renegotiation: error creating offer", "error", err)
+			logger.Errorf("pc: %p, renegotiation: error creating offer error: %s", peerConn, err)
 			return
 		}
 
@@ -297,7 +301,7 @@ func ConfigureForRenegotiation(peerConn *webrtc.PeerConnection, logger golog.Log
 		// the `offer`. But it's easy to see that the `offer` and `peerConn.LocalDescription()` are
 		// different (e.g: the latter includes ICE candidates), so it must be done this way.
 		if err := peerConn.SetLocalDescription(offer); err != nil {
-			logger.Errorw("renegotiation: error setting local description", "error", err)
+			logger.Errorf("pc: %p, renegotiation: error setting local description error: %s", peerConn, err)
 			return
 		}
 
@@ -306,11 +310,11 @@ func ConfigureForRenegotiation(peerConn *webrtc.PeerConnection, logger golog.Log
 		// update the remote description.
 		encodedSDP, err := EncodeSDP(peerConn.LocalDescription())
 		if err != nil {
-			logger.Errorw("renegotiation: error encoding SDP", "error", err)
+			logger.Errorf("pc: %p, renegotiation: error encoding SDP, err: %s", peerConn, err)
 			return
 		}
 		if err := negotiationChannel.SendText(encodedSDP); err != nil {
-			logger.Errorw("renegotiation: error sending SDP", "error", err)
+			logger.Errorf("pc: %p, renegotiation: error sending SDP, err: %s", peerConn, err)
 			return
 		}
 	})
@@ -318,17 +322,19 @@ func ConfigureForRenegotiation(peerConn *webrtc.PeerConnection, logger golog.Log
 	negotiationChannel.OnMessage(func(msg webrtc.DataChannelMessage) {
 		negMu.Lock()
 		defer negMu.Unlock()
+		logger.Infof("pc: %p, OnMessage started", peerConn)
+		defer logger.Infof("pc: %p, OnMessage done", peerConn)
 
 		description := webrtc.SessionDescription{}
 		if err := DecodeSDP(string(msg.Data), &description); err != nil {
-			logger.Errorw("renegotiation: error decoding SDP", "error", err)
+			logger.Errorf("pc: %p, renegotiation: error decoding SDP, err: %s", peerConn, err)
 			return
 		}
 
 		// A new description was received over the negotiation channel. Use that to update the remote
 		// description.
 		if err := peerConn.SetRemoteDescription(description); err != nil {
-			logger.Errorw("renegotiation: error setting remote description", "error", err)
+			logger.Errorf("pc: %p, renegotiation: error setting remote description, err: %s", peerConn, err)
 			return
 		}
 
@@ -347,21 +353,21 @@ func ConfigureForRenegotiation(peerConn *webrtc.PeerConnection, logger golog.Log
 		// inconsistent state.
 		answer, err := peerConn.CreateAnswer(nil)
 		if err != nil {
-			logger.Errorw("renegotiation: error creating answer", "error", err)
+			logger.Errorf("pc: %p, renegotiation: error creating answer, err: %s", peerConn, err)
 			return
 		}
 		if err := peerConn.SetLocalDescription(answer); err != nil {
-			logger.Errorw("renegotiation: error setting local description", "error", err)
+			logger.Errorf("pc: %p, renegotiation: error setting local description, err: %s", peerConn, err)
 			return
 		}
 
 		encodedSDP, err := EncodeSDP(peerConn.LocalDescription())
 		if err != nil {
-			logger.Errorw("renegotiation: error encoding SDP", "error", err)
+			logger.Errorf("pc: %p, renegotiation: error encoding SDP, err: %s", peerConn, err)
 			return
 		}
 		if err := negotiationChannel.SendText(encodedSDP); err != nil {
-			logger.Errorw("renegotiation: error sending SDP", "error", err)
+			logger.Errorw("pc: %p, renegotiation: error sending SDP, err: %s", peerConn, err)
 			return
 		}
 	})
@@ -424,6 +430,7 @@ func getWebRTCPeerConnectionStats(peerConnection *webrtc.PeerConnection) webrtcP
 
 func initialDataChannelOnError(pc io.Closer, logger golog.Logger) func(err error) {
 	return func(err error) {
+		logger.Infof("pc  %p, OnError: %s", pc, err.Error())
 		if errors.Is(err, sctp.ErrResetPacketInStateNotExist) ||
 			isUserInitiatedAbortChunkErr(err) {
 			return
