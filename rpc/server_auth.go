@@ -373,42 +373,20 @@ func (ss *simpleServer) ensureAuthed(ctx context.Context) (context.Context, erro
 			break
 		}
 	}
-	if !audVerified {
-		// TODO cleanup at a later date -- urgent issue
-		audVerified = true
-		ss.logger.Infow("hack %v %v",
-			"registeredClaims", claims.RegisteredClaims,
-			"authAudience", ss.authAudience)
 
-		audienceList := strings.Join(ss.authAudience, ", ")
+	if !audVerified {
 		var claimAudience []byte
 		err := claims.RegisteredClaims.Audience.UnmarshalJSON(claimAudience)
 		if err != nil {
 			ss.logger.Errorw("invalid audience: cannot unmarshall audience claim",
 				"error", err,
-				"empty expected audience", len(ss.authAudience) == 0,
-				"expected audience list", audienceList)
-		} else {
-			ss.logger.Infow("unmarshalled audience claim",
-				"expected audience list", audienceList,
-				"claim audience", claimAudience)
-		}
-	}
-
-	if !audVerified {
-		audienceList := strings.Join(ss.authAudience, ", ")
-		var claimAudience []byte
-		err := claims.RegisteredClaims.Audience.UnmarshalJSON(claimAudience)
-		if err != nil {
-			ss.logger.Errorw("invalid audience: cannot unmarshall audience claim",
-				"error", err,
-				"empty expected audience", len(ss.authAudience) == 0,
-				"expected audience list", audienceList)
+				"registered_claims", claims.RegisteredClaims,
+				"authAudience", ss.authAudience)
 			return nil, status.Error(codes.Unauthenticated, "invalid audience")
 		}
 		ss.logger.Errorw("invalid audience",
-			"expected audience list", audienceList,
-			"registered audience", claims.RegisteredClaims.Audience)
+			"registered_claims", claims.RegisteredClaims,
+			"authAudience", ss.authAudience)
 		return nil, status.Error(codes.Unauthenticated,
 			"invalid audience (registered aud claim: "+string(claimAudience)+")")
 	}
@@ -418,11 +396,17 @@ func (ss *simpleServer) ensureAuthed(ctx context.Context) (context.Context, erro
 
 	err = claims.Valid()
 	if err != nil {
+		ss.logger.Errorw("invalid claims",
+			"error", err,
+			"registered_claims", claims.RegisteredClaims)
 		return nil, status.Errorf(codes.Unauthenticated, "unauthenticated: %s", err)
 	}
 
 	claimsEntity := claims.Entity()
 	if claimsEntity == "" {
+		ss.logger.Errorw("invalid claims entity: expected entity (sub) in claims",
+			"error", err,
+			"registered_claims", claims.RegisteredClaims)
 		return nil, status.Errorf(codes.Unauthenticated, "expected entity (sub) in claims")
 	}
 
