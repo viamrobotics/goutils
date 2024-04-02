@@ -212,11 +212,11 @@ func dial(
 					)
 				}
 				dialCh <- dialResult{conn: conn, cached: cached}
-			case !errors.Is(err, ErrNoWebRTCSignaler):
-				logger.Errorw("encountered unexpected error dialing webrtc", "err", err)
-				dialCh <- dialResult{err: err}
 			case ctxParallel.Err() != nil:
 				dialCh <- dialResult{err: ctxParallel.Err(), skipDirect: true}
+			case !errors.Is(err, ErrNoWebRTCSignaler):
+				logger.Errorw("encountered unexpected error dialing webrtc", "err", err)
+				fallthrough
 			default:
 				dialCh <- dialResult{err: err}
 			}
