@@ -213,8 +213,8 @@ func dial(
 				}
 				dialCh <- dialResult{conn: conn, cached: cached}
 			case !errors.Is(err, ErrNoWebRTCSignaler):
-				// TODO(RSDK-6493): Investigate if we must `skipDirect` here.
-				dialCh <- dialResult{err: err, skipDirect: true}
+				logger.Errorw("encountered unexpected error dialing webrtc", "err", err)
+				dialCh <- dialResult{err: err}
 			case ctxParallel.Err() != nil:
 				dialCh <- dialResult{err: ctxParallel.Err(), skipDirect: true}
 			default:
