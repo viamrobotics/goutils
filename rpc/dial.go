@@ -158,7 +158,12 @@ func dial(
 				}
 				target, port, err := getWebRTCTargetFromAddressWithDefaults(signalingAddress)
 				if err != nil {
-					// TODO(RSDK-6493): Investigate if we must `skipDirect` here.
+					// An error here indicates an address parsing issue, which is a sign
+					// of bad configuration. We could still try to dial directly, given
+					// that the direct dialing address might be different from the
+					// signaling address, but it seems better to fail fast and let the
+					// client fix any configuration issues.
+					logger.Errorw("failed to parse signaling address", "address", signalingAddress, "error", err)
 					dialCh <- dialResult{err: err, skipDirect: true}
 					return
 				}
