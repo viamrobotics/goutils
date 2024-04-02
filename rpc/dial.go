@@ -213,6 +213,13 @@ func dial(
 				}
 				dialCh <- dialResult{conn: conn, cached: cached}
 			case ctxParallel.Err() != nil:
+				if dOpts.debug {
+					logger.Debugw(
+						"webrtc dial failed and context finished, will not try to dial directly",
+						"dial error", err,
+						"context error", ctxParallel.Err(),
+					)
+				}
 				dialCh <- dialResult{err: ctxParallel.Err(), skipDirect: true}
 			case !errors.Is(err, ErrNoWebRTCSignaler):
 				logger.Errorw("encountered unexpected error dialing webrtc", "err", err)
