@@ -54,22 +54,13 @@ func TestManagedProcessID(t *testing.T) {
 	test.That(t, p2.ID(), test.ShouldEqual, "2")
 }
 
-func createTempFile(t *testing.T) (*os.File, func()) {
-	t.Helper()
-
-	f := testutils.TempFile(t, "something.txt")
-	return f, func() {
-		test.That(t, f.Close(), test.ShouldBeNil)
-	}
-}
-
 func createWatchedTempFile(t *testing.T) (*fsnotify.Watcher, *os.File, func()) {
 	t.Helper()
 
 	watcher, err := fsnotify.NewWatcher()
 	test.That(t, err, test.ShouldBeNil)
 
-	tempFile, cleanupTF := createTempFile(t)
+	tempFile, cleanupTF := testutils.TempFile(t)
 	watcher.Add(tempFile.Name())
 
 	return watcher, tempFile, func() {
@@ -123,7 +114,7 @@ func TestManagedProcessStart(t *testing.T) {
 		t.Run("starting with a normal context", func(t *testing.T) {
 			logger := golog.NewTestLogger(t)
 
-			tempFile, cleanup := createTempFile(t)
+			tempFile, cleanup := testutils.TempFile(t)
 			defer cleanup()
 
 			proc := NewManagedProcess(ProcessConfig{
@@ -151,7 +142,7 @@ func TestManagedProcessStart(t *testing.T) {
 		t.Run("OnUnexpectedExit is ignored", func(t *testing.T) {
 			logger := golog.NewTestLogger(t)
 
-			_, cleanup := createTempFile(t)
+			_, cleanup := testutils.TempFile(t)
 			defer cleanup()
 
 			proc := NewManagedProcess(ProcessConfig{

@@ -10,6 +10,7 @@ import (
 	"github.com/edaniels/golog"
 	"github.com/fsnotify/fsnotify"
 	"go.viam.com/test"
+	"go.viam.com/utils/testutils"
 
 	"go.viam.com/utils"
 )
@@ -26,7 +27,7 @@ func createNWatchedFiles(t *testing.T, n int) (*fsnotify.Watcher, []*os.File, fu
 	var cleanupTFs []func()
 
 	for i := 0; i < n; i++ {
-		f, cleanup := createTempFile(t)
+		f, cleanup := testutils.TempFile(t)
 		tempFiles = append(tempFiles, f)
 		cleanupTFs = append(cleanupTFs, cleanup)
 
@@ -216,7 +217,7 @@ func TestProcessManagerStart(t *testing.T) {
 		test.That(t, pm.Start(context.Background()), test.ShouldBeNil)
 
 		t.Run("adding a process after starting starts it", func(t *testing.T) {
-			temp, cleanup := createTempFile(t)
+			temp, cleanup := testutils.TempFile(t)
 			defer cleanup()
 
 			_, err := pm.AddProcessFromConfig(context.Background(),
@@ -291,7 +292,7 @@ func TestProcessManagerStart(t *testing.T) {
 			test.That(t, pm.Stop(), test.ShouldBeNil)
 		}()
 
-		temp, cleanup := createTempFile(t)
+		temp, cleanup := testutils.TempFile(t)
 		defer cleanup()
 
 		_, err := pm.AddProcessFromConfig(context.Background(),

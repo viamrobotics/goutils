@@ -30,12 +30,22 @@ func TempDir(dir, pattern string) (string, error) {
 	return dir, err
 }
 
-// TempFile returns a new unique temporary file using the given name.
-func TempFile(tb testing.TB, name string) *os.File {
+// TempFile creates a unique temporary file named "something.txt" or fails the test if it
+// cannot. It returns the file and a clean-up function.
+func TempFile(tb testing.TB) (*os.File, func()) {
+	return tempFileNamed(tb, "something.txt")
+}
+
+// tempFileNamed creates a unique temporary file with the given name or fails the test if
+// it cannot. It returns the file and a clean-up function.
+func tempFileNamed(tb testing.TB, name string) (*os.File, func()) {
 	tb.Helper()
 	tempFile := filepath.Join(tb.TempDir(), name)
 	//nolint:gosec
 	f, err := os.Create(tempFile)
 	test.That(tb, err, test.ShouldBeNil)
-	return f
+
+	return f, func() {
+		test.That(tb, f.Close(), test.ShouldBeNil)
+	}
 }
