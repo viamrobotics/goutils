@@ -190,11 +190,10 @@ func TestProcessManagerStart(t *testing.T) {
 		test.That(t, pm.Start(context.Background()), test.ShouldBeNil)
 
 		t.Run("adding a process after starting starts it", func(t *testing.T) {
-			temp, err := os.CreateTemp("", "*.txt")
-			test.That(t, err, test.ShouldBeNil)
-			defer os.Remove(temp.Name())
+			temp := testutils.TempFile(t, "something.txt")
+			defer temp.Close()
 
-			_, err = pm.AddProcessFromConfig(context.Background(),
+			_, err := pm.AddProcessFromConfig(context.Background(),
 				ProcessConfig{
 					ID:   "1",
 					Name: "bash",
@@ -271,11 +270,10 @@ func TestProcessManagerStart(t *testing.T) {
 			test.That(t, pm.Stop(), test.ShouldBeNil)
 		}()
 
-		temp, err := os.CreateTemp("", "*.txt")
-		test.That(t, err, test.ShouldBeNil)
-		defer os.Remove(temp.Name())
+		temp := testutils.TempFile(t, "something.txt")
+		defer temp.Close()
 
-		_, err = pm.AddProcessFromConfig(context.Background(),
+		_, err := pm.AddProcessFromConfig(context.Background(),
 			ProcessConfig{
 				ID:   "1",
 				Name: "bash",
