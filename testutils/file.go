@@ -39,20 +39,3 @@ func TempFile(tb testing.TB, name string) *os.File {
 	test.That(tb, err, test.ShouldBeNil)
 	return f
 }
-
-// TempFileAndDir created a new unique temporary file in a temporary directory using the
-// given name, and fails the test if it cannot. It returns the file, the temporary
-// directory path, and a cleanup function.
-func TempFileAndDir(tb testing.TB, name string) (*os.File, string, func()) {
-	tb.Helper()
-
-	dir := tb.TempDir()
-	tempFile := filepath.Join(tb.TempDir(), name)
-	//nolint:gosec
-	f, err := os.Create(tempFile)
-	test.That(tb, err, test.ShouldBeNil)
-
-	return f, dir, func() {
-		test.That(tb, f.Close(), test.ShouldBeNil)
-	}
-}
