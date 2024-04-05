@@ -152,6 +152,21 @@ func TestManagedProcessStart(t *testing.T) {
 			test.That(t, err, test.ShouldNotBeNil)
 			test.That(t, err.Error(), test.ShouldContainSubstring, "exit status 1")
 		})
+		t.Run("providing a nonexistent cwd should fail", func(t *testing.T) {
+			logger := golog.NewTestLogger(t)
+			proc := NewManagedProcess(ProcessConfig{
+				Name:    "bash",
+				Args:    []string{"-c", "echo hello"},
+				OneShot: true,
+				Log:     true,
+				CWD:     "idontexist",
+			}, logger)
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			err := proc.Start(ctx)
+			test.That(t, err, test.ShouldNotBeNil)
+			test.That(t, err.Error(), test.ShouldContainSubstring, "error with current working directory")
+		})
 	})
 	t.Run("Managed", func(t *testing.T) {
 		t.Run("starting with a canceled context should have no effect", func(t *testing.T) {
