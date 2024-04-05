@@ -127,8 +127,10 @@ func (p *managedProcess) Start(ctx context.Context) error {
 	default:
 	}
 
-	if _, err := os.Stat(p.cwd); err != nil {
-		return fmt.Errorf("error with current working directory: %w", err)
+	if p.cwd != "" {
+		if _, err := os.Stat(p.cwd); err != nil {
+			return fmt.Errorf("error with current working directory: %w", err)
+		}
 	}
 
 	if _, err := exec.LookPath(p.name); err != nil {
