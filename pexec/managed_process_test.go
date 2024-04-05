@@ -58,11 +58,13 @@ func TestManagedProcessStart(t *testing.T) {
 	t.Run("OneShot", func(t *testing.T) {
 		t.Run("starting with a canceled context should fail", func(t *testing.T) {
 			logger := golog.NewTestLogger(t)
+			cwd := t.TempDir()
 			proc := NewManagedProcess(ProcessConfig{
 				Name:    "bash",
 				Args:    []string{"-c", "echo hello"},
 				OneShot: true,
 				Log:     true,
+				CWD:     cwd,
 			}, logger)
 			ctx, cancel := context.WithCancel(context.Background())
 			cancel()
@@ -72,8 +74,9 @@ func TestManagedProcessStart(t *testing.T) {
 		})
 		t.Run("starting with an eventually canceled context should fail", func(t *testing.T) {
 			logger := golog.NewTestLogger(t)
-			tempFile := testutils.TempFile(t, "something.txt")
-			defer tempFile.Close()
+
+			tempFile, cwd, cleanup := testutils.TempFileAndDir(t, "something.txt")
+			defer cleanup()
 
 			watcher, err := fsnotify.NewWatcher()
 			test.That(t, err, test.ShouldBeNil)
@@ -91,6 +94,7 @@ func TestManagedProcessStart(t *testing.T) {
 				Args:    []string{"-c", fmt.Sprintf("echo hello >> '%s'\nwhile true; do echo hey; sleep 1; done", tempFile.Name())},
 				OneShot: true,
 				Log:     true,
+				CWD:     cwd,
 			}, logger)
 			err = proc.Start(ctx)
 			test.That(t, err, test.ShouldNotBeNil)
@@ -103,13 +107,15 @@ func TestManagedProcessStart(t *testing.T) {
 		t.Run("starting with a normal context", func(t *testing.T) {
 			logger := golog.NewTestLogger(t)
 
-			tempFile := testutils.TempFile(t, "something.txt")
-			defer tempFile.Close()
+			tempFile, cwd, cleanup := testutils.TempFileAndDir(t, "something.txt")
+			defer cleanup()
+
 			proc := NewManagedProcess(ProcessConfig{
 				Name:    "bash",
 				Args:    []string{"-c", fmt.Sprintf(`echo hello >> '%s'`, tempFile.Name())},
 				OneShot: true,
 				Log:     true,
+				CWD:     cwd,
 			}, logger)
 			test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
 
@@ -122,6 +128,7 @@ func TestManagedProcessStart(t *testing.T) {
 				Args:    []string{"-c", "exit 1"},
 				OneShot: true,
 				Log:     true,
+				CWD:     cwd,
 			}, logger)
 			err = proc.Start(context.Background())
 			test.That(t, err, test.ShouldNotBeNil)
@@ -130,13 +137,15 @@ func TestManagedProcessStart(t *testing.T) {
 		t.Run("OnUnexpectedExit is ignored", func(t *testing.T) {
 			logger := golog.NewTestLogger(t)
 
-			tempFile := testutils.TempFile(t, "something.txt")
-			defer tempFile.Close()
+			_, cwd, cleanup := testutils.TempFileAndDir(t, "something.txt")
+			defer cleanup()
+
 			proc := NewManagedProcess(ProcessConfig{
 				Name:             "bash",
 				Args:             []string{"-c", "exit 1"},
 				OneShot:          true,
 				Log:              true,
+				CWD:              cwd,
 				OnUnexpectedExit: func(int) bool { panic("this should not panic") },
 			}, logger)
 			err := proc.Start(context.Background())
