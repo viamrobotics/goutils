@@ -42,6 +42,9 @@ func TempFile(tb testing.TB) (*os.File, func()) {
 
 	return f, func() {
 		test.That(tb, f.Close(), test.ShouldBeNil)
+		// Since the file was placed in a directory that was created via TB.TempDir, it
+		// will automatically be deleted after the test and all its subtests complete, so
+		// we do not need to remove it manually.
 	}
 }
 
