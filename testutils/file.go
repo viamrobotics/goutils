@@ -78,3 +78,20 @@ func WatchedFiles(tb testing.TB, n int) (*fsnotify.Watcher, []*os.File, func()) 
 		}
 	}
 }
+
+// WatchedFile creates a file watcher and a unique temporary file named "something.txt",
+// or fails the test if it cannot. It returns the watcher, the file, and a clean-up
+// function.
+func WatchedFile(tb testing.TB) (*fsnotify.Watcher, *os.File, func()) {
+	tb.Helper()
+
+	watcher, tempFiles, cleanup := WatchedFiles(tb, 1)
+
+	count := len(tempFiles)
+	if count != 1 {
+		defer cleanup()
+		tb.Fatalf("expected to create exactly 1 temporary file but created %d", count)
+	}
+
+	return watcher, tempFiles[0], cleanup
+}

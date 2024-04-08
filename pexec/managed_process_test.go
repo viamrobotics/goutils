@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/edaniels/golog"
-	"github.com/fsnotify/fsnotify"
 	"github.com/pkg/errors"
 	"go.viam.com/test"
 
@@ -54,21 +53,6 @@ func TestManagedProcessID(t *testing.T) {
 	test.That(t, p2.ID(), test.ShouldEqual, "2")
 }
 
-func createWatchedTempFile(t *testing.T) (*fsnotify.Watcher, *os.File, func()) {
-	t.Helper()
-
-	watcher, err := fsnotify.NewWatcher()
-	test.That(t, err, test.ShouldBeNil)
-
-	tempFile, cleanupTF := testutils.TempFile(t)
-	watcher.Add(tempFile.Name())
-
-	return watcher, tempFile, func() {
-		test.That(t, watcher.Close(), test.ShouldBeNil)
-		cleanupTF()
-	}
-}
-
 func TestManagedProcessStart(t *testing.T) {
 	t.Run("OneShot", func(t *testing.T) {
 		t.Run("starting with a canceled context should fail", func(t *testing.T) {
@@ -88,7 +72,7 @@ func TestManagedProcessStart(t *testing.T) {
 		t.Run("starting with an eventually canceled context should fail", func(t *testing.T) {
 			logger := golog.NewTestLogger(t)
 
-			watcher, tempFile, cleanup := createWatchedTempFile(t)
+			watcher, tempFile, cleanup := testutils.WatchedFile(t)
 			defer cleanup()
 
 			ctx, cancel := context.WithCancel(context.Background())
@@ -188,7 +172,7 @@ func TestManagedProcessStart(t *testing.T) {
 		t.Run("starting with a normal context should run until stop", func(t *testing.T) {
 			logger := golog.NewTestLogger(t)
 
-			watcher, tempFile, cleanup := createWatchedTempFile(t)
+			watcher, tempFile, cleanup := testutils.WatchedFile(t)
 			defer cleanup()
 
 			proc := NewManagedProcess(ProcessConfig{
@@ -246,7 +230,7 @@ func TestManagedProcessManage(t *testing.T) {
 	t.Run("a managed process that dies should be restarted", func(t *testing.T) {
 		logger := golog.NewTestLogger(t)
 
-		watcher, tempFile, cleanup := createWatchedTempFile(t)
+		watcher, tempFile, cleanup := testutils.WatchedFile(t)
 		defer cleanup()
 
 		proc := NewManagedProcess(ProcessConfig{
@@ -332,7 +316,7 @@ func TestManagedProcessStop(t *testing.T) {
 	t.Run("stopping a managed process gives it a chance to finish", func(t *testing.T) {
 		logger := golog.NewTestLogger(t)
 
-		watcher, tempFile, cleanup := createWatchedTempFile(t)
+		watcher, tempFile, cleanup := testutils.WatchedFile(t)
 		defer cleanup()
 
 		proc := NewManagedProcess(ProcessConfig{
@@ -394,7 +378,7 @@ func TestManagedProcessStop(t *testing.T) {
 		}
 		logger := golog.NewTestLogger(t)
 
-		watcher, tempFile, cleanup := createWatchedTempFile(t)
+		watcher, tempFile, cleanup := testutils.WatchedFile(t)
 		defer cleanup()
 
 		var bashScriptBuilder strings.Builder
@@ -447,7 +431,7 @@ done`, tempFile.Name()))
 		}
 		logger := golog.NewTestLogger(t)
 
-		watcher1, tempFile, cleanup := createWatchedTempFile(t)
+		watcher1, tempFile, cleanup := testutils.WatchedFile(t)
 		defer cleanup()
 
 		bashScript1 := fmt.Sprintf(`
@@ -487,11 +471,11 @@ done`, tempFile.Name()))
 		}
 		logger := golog.NewTestLogger(t)
 
-		watcher1, tempFile1, cleanup1 := createWatchedTempFile(t)
+		watcher1, tempFile1, cleanup1 := testutils.WatchedFile(t)
 		defer cleanup1()
-		watcher2, tempFile2, cleanup2 := createWatchedTempFile(t)
+		watcher2, tempFile2, cleanup2 := testutils.WatchedFile(t)
 		defer cleanup2()
-		watcher3, tempFile3, cleanup3 := createWatchedTempFile(t)
+		watcher3, tempFile3, cleanup3 := testutils.WatchedFile(t)
 		defer cleanup3()
 
 		trapScript := `
@@ -553,7 +537,7 @@ done`, tempFile.Name()))
 		}
 		logger := golog.NewTestLogger(t)
 
-		watcher1, tempFile, cleanup := createWatchedTempFile(t)
+		watcher1, tempFile, cleanup := testutils.WatchedFile(t)
 		defer cleanup()
 
 		proc := NewManagedProcess(ProcessConfig{
