@@ -8,39 +8,11 @@ import (
 	"testing"
 
 	"github.com/edaniels/golog"
-	"github.com/fsnotify/fsnotify"
 	"go.viam.com/test"
 	"go.viam.com/utils/testutils"
 
 	"go.viam.com/utils"
 )
-
-func createNWatchedFiles(t *testing.T, n int) (*fsnotify.Watcher, []*os.File, func()) {
-	t.Helper()
-
-	// TODO: add limit?
-
-	watcher, err := fsnotify.NewWatcher()
-	test.That(t, err, test.ShouldBeNil)
-
-	var tempFiles []*os.File
-	var cleanupTFs []func()
-
-	for i := 0; i < n; i++ {
-		f, cleanup := testutils.TempFile(t)
-		tempFiles = append(tempFiles, f)
-		cleanupTFs = append(cleanupTFs, cleanup)
-
-		watcher.Add(f.Name())
-	}
-
-	return watcher, tempFiles, func() {
-		test.That(t, watcher.Close(), test.ShouldBeNil)
-		for _, cleanup := range cleanupTFs {
-			cleanup()
-		}
-	}
-}
 
 func TestProcessManagerProcessIDs(t *testing.T) {
 	logger := golog.NewTestLogger(t)
@@ -258,7 +230,7 @@ func TestProcessManagerStart(t *testing.T) {
 			// a "timed" ctx should only have an effect on one shots
 			ctx, cancel = context.WithCancel(context.Background())
 
-			watcher, tempFiles, cleanup := createNWatchedFiles(t, 2)
+			watcher, tempFiles, cleanup := testutils.WatchedFiles(t, 2)
 			defer cleanup()
 			tempFile1 := tempFiles[0]
 			tempFile2 := tempFiles[1]
@@ -362,7 +334,7 @@ func TestProcessManagerStop(t *testing.T) {
 		logger := golog.NewTestLogger(t)
 		pm := NewProcessManager(logger)
 
-		watcher, tempFiles, cleanup := createNWatchedFiles(t, 3)
+		watcher, tempFiles, cleanup := testutils.WatchedFiles(t, 3)
 		defer cleanup()
 		tempFile1 := tempFiles[0]
 		tempFile2 := tempFiles[1]
@@ -408,7 +380,7 @@ func TestProcessManagerStop(t *testing.T) {
 		pm := NewProcessManager(logger)
 		test.That(t, pm.Start(context.Background()), test.ShouldBeNil)
 
-		watcher, tempFiles, cleanup := createNWatchedFiles(t, 2)
+		watcher, tempFiles, cleanup := testutils.WatchedFiles(t, 2)
 		defer cleanup()
 		tempFile1 := tempFiles[0]
 		tempFile2 := tempFiles[1]
