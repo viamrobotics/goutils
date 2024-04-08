@@ -123,10 +123,6 @@ func TestManagedProcessStart(t *testing.T) {
 		})
 		t.Run("OnUnexpectedExit is ignored", func(t *testing.T) {
 			logger := golog.NewTestLogger(t)
-
-			// TODO do we need this?
-			testutils.TempFile(t)
-
 			proc := NewManagedProcess(ProcessConfig{
 				Name:             "bash",
 				Args:             []string{"-c", "exit 1"},

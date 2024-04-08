@@ -67,18 +67,14 @@ func WatchedFiles(tb testing.TB, n int) (*fsnotify.Watcher, []*os.File) {
 	watcher, err := fsnotify.NewWatcher()
 	test.That(tb, err, test.ShouldBeNil)
 	tb.Cleanup(func() {
-		if err := watcher.Close(); err != nil {
-			tb.Errorf("error closing watcher: %s", err.Error())
-		}
+		test.That(tb, watcher.Close(), test.ShouldBeNil)
 	})
 
 	var tempFiles []*os.File
 	for i := 0; i < n; i++ {
 		f := TempFile(tb)
 		tempFiles = append(tempFiles, f)
-		if err := watcher.Add(f.Name()); err != nil {
-			tb.Errorf("error adding file %q to watch: %s", f.Name(), err.Error())
-		}
+		test.That(tb, watcher.Add(f.Name()), test.ShouldBeNil)
 	}
 
 	return watcher, tempFiles
@@ -92,11 +88,7 @@ func WatchedFile(tb testing.TB) (*fsnotify.Watcher, *os.File) {
 	tb.Helper()
 
 	watcher, tempFiles := WatchedFiles(tb, 1)
-
-	count := len(tempFiles)
-	if count != 1 {
-		tb.Fatalf("expected to create exactly 1 temporary file but created %d", count)
-	}
+	test.That(tb, len(tempFiles), test.ShouldEqual, 1)
 
 	return watcher, tempFiles[0]
 }
