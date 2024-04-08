@@ -128,7 +128,7 @@ func (p *managedProcess) Start(ctx context.Context) error {
 	}
 
 	if p.cwd != "" {
-		if _, err := os.Stat(p.cwd); err != nil {
+		if _, err := os.Lstat(p.cwd); err != nil {
 			return fmt.Errorf("error with current working directory: %w", err)
 		}
 	}
