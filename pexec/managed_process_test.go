@@ -156,7 +156,7 @@ func TestManagedProcessStart(t *testing.T) {
 			cancel()
 			err := proc.Start(ctx)
 			test.That(t, err, test.ShouldNotBeNil)
-			test.That(t, err.Error(), test.ShouldContainSubstring, "error with current working directory")
+			test.That(t, err.Error(), test.ShouldContainSubstring, `error setting process working directory to "idontexist"`)
 		})
 	})
 	t.Run("Managed", func(t *testing.T) {
