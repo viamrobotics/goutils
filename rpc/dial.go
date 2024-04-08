@@ -248,7 +248,10 @@ func dial(
 			if conn != nil {
 				errClose := conn.Close()
 				if errClose != nil {
-					logger.Warnw("unable to close redundant connection", "error", err)
+					logger.Warnw(
+						"unable to close redundant connection",
+						"error", errClose,
+					)
 				}
 			}
 			conn, cached = result.conn, result.cached
