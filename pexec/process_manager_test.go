@@ -9,9 +9,9 @@ import (
 
 	"github.com/edaniels/golog"
 	"go.viam.com/test"
-	"go.viam.com/utils/testutils"
 
 	"go.viam.com/utils"
+	"go.viam.com/utils/testutils"
 )
 
 func TestProcessManagerProcessIDs(t *testing.T) {
