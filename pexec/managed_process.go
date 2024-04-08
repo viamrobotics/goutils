@@ -112,6 +112,30 @@ func (p *managedProcess) Status() error {
 	return p.cmd.Process.Signal(syscall.Signal(0))
 }
 
+func (p *managedProcess) validateCWD() error {
+	if p.cwd == "" {
+		return nil
+	}
+
+	_, lstaterr := os.Lstat(p.cwd)
+	if lstaterr == nil {
+		return nil
+	}
+
+	cwd, cwdErr := os.Getwd()
+	if cwdErr != nil {
+		return fmt.Errorf(
+			`error setting process working directory to %q: %w; also error getting current working directory: %w`,
+			p.cwd, lstaterr, cwdErr,
+		)
+	} else {
+		return fmt.Errorf(
+			`error setting process working directory to %q from current working directory %q: %w`,
+			p.cwd, cwd, lstaterr,
+		)
+	}
+}
+
 func (p *managedProcess) Start(ctx context.Context) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -127,10 +151,8 @@ func (p *managedProcess) Start(ctx context.Context) error {
 	default:
 	}
 
-	if p.cwd != "" {
-		if _, err := os.Lstat(p.cwd); err != nil {
-			return fmt.Errorf("error with current working directory: %w", err)
-		}
+	if err := p.validateCWD(); err != nil {
+		return err
 	}
 
 	if _, err := exec.LookPath(p.name); err != nil {
