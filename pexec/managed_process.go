@@ -128,12 +128,12 @@ func (p *managedProcess) validateCWD() error {
 			`error setting process working directory to %q: %w; also error getting current working directory: %w`,
 			p.cwd, lstaterr, cwdErr,
 		)
-	} else {
-		return fmt.Errorf(
-			`error setting process working directory to %q from current working directory %q: %w`,
-			p.cwd, cwd, lstaterr,
-		)
 	}
+
+	return fmt.Errorf(
+		`error setting process working directory to %q from current working directory %q: %w`,
+		p.cwd, cwd, lstaterr,
+	)
 }
 
 func (p *managedProcess) Start(ctx context.Context) error {
