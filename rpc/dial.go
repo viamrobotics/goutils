@@ -284,6 +284,7 @@ func dial(
 	if dOpts.debug {
 		logger.Debugw("trying direct", "address", address)
 	}
+	// TODO: set shorter timeout if previous dial methods failed?
 	conn, cached, err = dialDirectGRPC(ctx, address, dOpts, logger)
 	if err != nil {
 		return nil, false, err
