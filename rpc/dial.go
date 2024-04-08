@@ -14,6 +14,8 @@ import (
 	"github.com/edaniels/zeroconf"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // Dial attempts to make the most convenient connection to the given address. It attempts to connect
@@ -221,10 +223,18 @@ func dial(
 					)
 				}
 				dialCh <- dialResult{err: ctxParallel.Err(), skipDirect: true}
-			case !errors.Is(err, ErrNoWebRTCSignaler):
-				logger.Errorw("encountered unexpected error dialing webrtc", "err", err)
-				fallthrough
+			case errors.Is(err, ErrNoWebRTCSignaler):
+				// There is no WebRTC signaler, so dialing WebRTC is expected to fail.
+				// We should still try to dial directly as a fallback.
+				dialCh <- dialResult{err: err}
+			case isUnauthenticatedError(err):
+				// We are our not authenticated to dial the host, so we should not
+				// attempt to dial directly either.
+				dialCh <- dialResult{err: err, skipDirect: true}
 			default:
+				// We encountered some other error dialing WebRTC. We can still try to
+				// dial directly as a fallback.
+				logger.Errorw("encountered unexpected error dialing webrtc", "err", err)
 				dialCh <- dialResult{err: err}
 			}
 		}(dOpts)
@@ -286,6 +296,11 @@ func dial(
 		)
 	}
 	return conn, cached, nil
+}
+
+func isUnauthenticatedError(err error) bool {
+	gStatus, ok := status.FromError(err)
+	return ok && gStatus.Code() == codes.Unauthenticated
 }
 
 func lookupMDNSCandidate(ctx context.Context, address string, logger golog.Logger) (*zeroconf.ServiceEntry, error) {
