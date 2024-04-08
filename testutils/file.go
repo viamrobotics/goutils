@@ -31,29 +31,33 @@ func TempDir(dir, pattern string) (string, error) {
 	return dir, err
 }
 
-// TempFile creates a unique temporary file named "something.txt" or fails the test if it
-// cannot. It returns the file and a clean-up function.
-func TempFile(tb testing.TB) (*os.File, func()) {
+// TempFile returns a unique temporary file named "something.txt" or fails the test if it
+// cannot. It automatically closes and removes the file after the test and all its
+// subtests complete.
+func TempFile(tb testing.TB) *os.File {
 	tb.Helper()
 	tempFile := filepath.Join(tb.TempDir(), "something.txt")
 	//nolint:gosec
 	f, err := os.Create(tempFile)
 	test.That(tb, err, test.ShouldBeNil)
 
-	return f, func() {
+	tb.Cleanup(func() {
 		test.That(tb, f.Close(), test.ShouldBeNil)
 		// Since the file was placed in a directory that was created via TB.TempDir, it
 		// will automatically be deleted after the test and all its subtests complete, so
 		// we do not need to remove it manually.
-	}
+	})
+
+	return f
 }
 
 // WatchedFiles creates a file watcher and n unique temporary files all named
-// "something.txt", or fails the test if it cannot. It returns the watcher, a slice of
-// files, and a clean-up function.
+// "something.txt", or fails the test if it cannot. It returns the watcher and a slice of
+// files. It automatically closes the watcher, and closes and removes all files after the
+// test and all its subtests complete.
 //
 // For safety, this function will not create more than 50 files.
-func WatchedFiles(tb testing.TB, n int) (*fsnotify.Watcher, []*os.File, func()) {
+func WatchedFiles(tb testing.TB, n int) (*fsnotify.Watcher, []*os.File) {
 	tb.Helper()
 
 	if n > 50 {
@@ -62,39 +66,37 @@ func WatchedFiles(tb testing.TB, n int) (*fsnotify.Watcher, []*os.File, func()) 
 
 	watcher, err := fsnotify.NewWatcher()
 	test.That(tb, err, test.ShouldBeNil)
+	tb.Cleanup(func() {
+		if err := watcher.Close(); err != nil {
+			tb.Errorf("error closing watcher: %s", err.Error())
+		}
+	})
 
 	var tempFiles []*os.File
-	var cleanupTFs []func()
-
 	for i := 0; i < n; i++ {
-		f, cleanup := TempFile(tb)
+		f := TempFile(tb)
 		tempFiles = append(tempFiles, f)
-		cleanupTFs = append(cleanupTFs, cleanup)
-
-		watcher.Add(f.Name())
-	}
-
-	return watcher, tempFiles, func() {
-		test.That(tb, watcher.Close(), test.ShouldBeNil)
-		for _, cleanup := range cleanupTFs {
-			cleanup()
+		if err := watcher.Add(f.Name()); err != nil {
+			tb.Errorf("error adding file %q to watch: %s", f.Name(), err.Error())
 		}
 	}
+
+	return watcher, tempFiles
 }
 
 // WatchedFile creates a file watcher and a unique temporary file named "something.txt",
-// or fails the test if it cannot. It returns the watcher, the file, and a clean-up
-// function.
-func WatchedFile(tb testing.TB) (*fsnotify.Watcher, *os.File, func()) {
+// or fails the test if it cannot. It returns the watcher and the file. It automatically
+// closes the watcher, and closes and removes the file after the test and all its
+// subtests complete.
+func WatchedFile(tb testing.TB) (*fsnotify.Watcher, *os.File) {
 	tb.Helper()
 
-	watcher, tempFiles, cleanup := WatchedFiles(tb, 1)
+	watcher, tempFiles := WatchedFiles(tb, 1)
 
 	count := len(tempFiles)
 	if count != 1 {
-		defer cleanup()
 		tb.Fatalf("expected to create exactly 1 temporary file but created %d", count)
 	}
 
-	return watcher, tempFiles[0], cleanup
+	return watcher, tempFiles[0]
 }

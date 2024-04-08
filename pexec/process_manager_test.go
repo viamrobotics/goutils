@@ -189,8 +189,7 @@ func TestProcessManagerStart(t *testing.T) {
 		test.That(t, pm.Start(context.Background()), test.ShouldBeNil)
 
 		t.Run("adding a process after starting starts it", func(t *testing.T) {
-			temp, cleanup := testutils.TempFile(t)
-			defer cleanup()
+			temp := testutils.TempFile(t)
 
 			_, err := pm.AddProcessFromConfig(context.Background(),
 				ProcessConfig{
@@ -230,8 +229,7 @@ func TestProcessManagerStart(t *testing.T) {
 			// a "timed" ctx should only have an effect on one shots
 			ctx, cancel = context.WithCancel(context.Background())
 
-			watcher, tempFiles, cleanup := testutils.WatchedFiles(t, 2)
-			defer cleanup()
+			watcher, tempFiles := testutils.WatchedFiles(t, 2)
 			tempFile1 := tempFiles[0]
 			tempFile2 := tempFiles[1]
 
@@ -264,8 +262,7 @@ func TestProcessManagerStart(t *testing.T) {
 			test.That(t, pm.Stop(), test.ShouldBeNil)
 		}()
 
-		temp, cleanup := testutils.TempFile(t)
-		defer cleanup()
+		temp := testutils.TempFile(t)
 
 		_, err := pm.AddProcessFromConfig(context.Background(),
 			ProcessConfig{
@@ -334,8 +331,7 @@ func TestProcessManagerStop(t *testing.T) {
 		logger := golog.NewTestLogger(t)
 		pm := NewProcessManager(logger)
 
-		watcher, tempFiles, cleanup := testutils.WatchedFiles(t, 3)
-		defer cleanup()
+		watcher, tempFiles := testutils.WatchedFiles(t, 3)
 		tempFile1 := tempFiles[0]
 		tempFile2 := tempFiles[1]
 		tempFile3 := tempFiles[2]
@@ -380,8 +376,7 @@ func TestProcessManagerStop(t *testing.T) {
 		pm := NewProcessManager(logger)
 		test.That(t, pm.Start(context.Background()), test.ShouldBeNil)
 
-		watcher, tempFiles, cleanup := testutils.WatchedFiles(t, 2)
-		defer cleanup()
+		watcher, tempFiles := testutils.WatchedFiles(t, 2)
 		tempFile1 := tempFiles[0]
 		tempFile2 := tempFiles[1]
 
