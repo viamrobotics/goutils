@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -18,8 +19,6 @@ import (
 	"time"
 
 	"github.com/edaniels/golog"
-	"github.com/fsnotify/fsnotify"
-	"github.com/pkg/errors"
 	"go.viam.com/test"
 
 	"go.viam.com/utils"
@@ -72,13 +71,8 @@ func TestManagedProcessStart(t *testing.T) {
 		})
 		t.Run("starting with an eventually canceled context should fail", func(t *testing.T) {
 			logger := golog.NewTestLogger(t)
-			tempFile := testutils.TempFile(t, "something.txt")
-			defer tempFile.Close()
 
-			watcher, err := fsnotify.NewWatcher()
-			test.That(t, err, test.ShouldBeNil)
-			defer watcher.Close()
-			watcher.Add(tempFile.Name())
+			watcher, tempFile := testutils.WatchedFile(t)
 
 			ctx, cancel := context.WithCancel(context.Background())
 			go func() {
@@ -92,7 +86,7 @@ func TestManagedProcessStart(t *testing.T) {
 				OneShot: true,
 				Log:     true,
 			}, logger)
-			err = proc.Start(ctx)
+			err := proc.Start(ctx)
 			test.That(t, err, test.ShouldNotBeNil)
 			if runtime.GOOS == "windows" {
 				test.That(t, err.Error(), test.ShouldContainSubstring, "exit status 1")
@@ -103,8 +97,8 @@ func TestManagedProcessStart(t *testing.T) {
 		t.Run("starting with a normal context", func(t *testing.T) {
 			logger := golog.NewTestLogger(t)
 
-			tempFile := testutils.TempFile(t, "something.txt")
-			defer tempFile.Close()
+			tempFile := testutils.TempFile(t)
+
 			proc := NewManagedProcess(ProcessConfig{
 				Name:    "bash",
 				Args:    []string{"-c", fmt.Sprintf(`echo hello >> '%s'`, tempFile.Name())},
@@ -129,9 +123,6 @@ func TestManagedProcessStart(t *testing.T) {
 		})
 		t.Run("OnUnexpectedExit is ignored", func(t *testing.T) {
 			logger := golog.NewTestLogger(t)
-
-			tempFile := testutils.TempFile(t, "something.txt")
-			defer tempFile.Close()
 			proc := NewManagedProcess(ProcessConfig{
 				Name:             "bash",
 				Args:             []string{"-c", "exit 1"},
@@ -175,13 +166,7 @@ func TestManagedProcessStart(t *testing.T) {
 		t.Run("starting with a normal context should run until stop", func(t *testing.T) {
 			logger := golog.NewTestLogger(t)
 
-			tempFile := testutils.TempFile(t, "something.txt")
-			defer tempFile.Close()
-
-			watcher, err := fsnotify.NewWatcher()
-			test.That(t, err, test.ShouldBeNil)
-			defer watcher.Close()
-			watcher.Add(tempFile.Name())
+			watcher, tempFile := testutils.WatchedFile(t)
 
 			proc := NewManagedProcess(ProcessConfig{
 				Name: "bash",
@@ -238,13 +223,7 @@ func TestManagedProcessManage(t *testing.T) {
 	t.Run("a managed process that dies should be restarted", func(t *testing.T) {
 		logger := golog.NewTestLogger(t)
 
-		tempFile := testutils.TempFile(t, "something.txt")
-		defer tempFile.Close()
-
-		watcher, err := fsnotify.NewWatcher()
-		test.That(t, err, test.ShouldBeNil)
-		defer watcher.Close()
-		watcher.Add(tempFile.Name())
+		watcher, tempFile := testutils.WatchedFile(t)
 
 		proc := NewManagedProcess(ProcessConfig{
 			Name: "bash",
@@ -256,7 +235,7 @@ func TestManagedProcessManage(t *testing.T) {
 		<-watcher.Events
 		<-watcher.Events
 
-		err = proc.Stop()
+		err := proc.Stop()
 		// sometimes we simply cannot get the status
 		if err != nil {
 			test.That(t, err.Error(), test.ShouldContainSubstring, "exit status 1")
@@ -329,13 +308,7 @@ func TestManagedProcessStop(t *testing.T) {
 	t.Run("stopping a managed process gives it a chance to finish", func(t *testing.T) {
 		logger := golog.NewTestLogger(t)
 
-		tempFile := testutils.TempFile(t, "something.txt")
-		defer tempFile.Close()
-
-		watcher, err := fsnotify.NewWatcher()
-		test.That(t, err, test.ShouldBeNil)
-		defer watcher.Close()
-		watcher.Add(tempFile.Name())
+		watcher, tempFile := testutils.WatchedFile(t)
 
 		proc := NewManagedProcess(ProcessConfig{
 			Name: "bash",
@@ -366,7 +339,7 @@ func TestManagedProcessStop(t *testing.T) {
 		<-watcher.Events
 
 		test.That(t, proc.Status(), test.ShouldBeNil)
-		err = proc.Stop()
+		err := proc.Stop()
 		if runtime.GOOS == "windows" {
 			test.That(t, err, test.ShouldBeNil)
 		} else {
@@ -396,13 +369,7 @@ func TestManagedProcessStop(t *testing.T) {
 		}
 		logger := golog.NewTestLogger(t)
 
-		tempFile := testutils.TempFile(t, "something.txt")
-		defer tempFile.Close()
-
-		watcher, err := fsnotify.NewWatcher()
-		test.That(t, err, test.ShouldBeNil)
-		defer watcher.Close()
-		watcher.Add(tempFile.Name())
+		watcher, tempFile := testutils.WatchedFile(t)
 
 		var bashScriptBuilder strings.Builder
 		for _, sig := range knownSignals {
@@ -428,7 +395,7 @@ done`, tempFile.Name()))
 		test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
 		<-watcher.Events
 		test.That(t, proc.Status(), test.ShouldBeNil)
-		err = proc.Stop()
+		err := proc.Stop()
 		test.That(t, err, test.ShouldNotBeNil)
 		test.That(t, err.Error(), test.ShouldContainSubstring, "exit status 115")
 		test.That(t, proc.Status(), test.ShouldNotBeNil)
@@ -454,13 +421,7 @@ done`, tempFile.Name()))
 		}
 		logger := golog.NewTestLogger(t)
 
-		tempFile := testutils.TempFile(t, "something.txt")
-		defer tempFile.Close()
-
-		watcher1, err := fsnotify.NewWatcher()
-		test.That(t, err, test.ShouldBeNil)
-		defer watcher1.Close()
-		watcher1.Add(tempFile.Name())
+		watcher1, tempFile := testutils.WatchedFile(t)
 
 		bashScript1 := fmt.Sprintf(`
 			trap "echo SIGTERM >> '%s'" SIGTERM
@@ -499,27 +460,9 @@ done`, tempFile.Name()))
 		}
 		logger := golog.NewTestLogger(t)
 
-		tempFile1 := testutils.TempFile(t, "something.txt")
-		defer tempFile1.Close()
-		tempFile2 := testutils.TempFile(t, "something.txt")
-		defer tempFile2.Close()
-		tempFile3 := testutils.TempFile(t, "something.txt")
-		defer tempFile3.Close()
-
-		watcher1, err := fsnotify.NewWatcher()
-		test.That(t, err, test.ShouldBeNil)
-		defer watcher1.Close()
-		watcher1.Add(tempFile1.Name())
-
-		watcher2, err := fsnotify.NewWatcher()
-		test.That(t, err, test.ShouldBeNil)
-		defer watcher2.Close()
-		watcher2.Add(tempFile2.Name())
-
-		watcher3, err := fsnotify.NewWatcher()
-		test.That(t, err, test.ShouldBeNil)
-		defer watcher3.Close()
-		watcher3.Add(tempFile3.Name())
+		watcher1, tempFile1 := testutils.WatchedFile(t)
+		watcher2, tempFile2 := testutils.WatchedFile(t)
+		watcher3, tempFile3 := testutils.WatchedFile(t)
 
 		trapScript := `
 			trap "echo SIGTERM >> '%s'" SIGTERM
@@ -580,13 +523,7 @@ done`, tempFile.Name()))
 		}
 		logger := golog.NewTestLogger(t)
 
-		tempFile := testutils.TempFile(t, "something.txt")
-		defer tempFile.Close()
-
-		watcher1, err := fsnotify.NewWatcher()
-		test.That(t, err, test.ShouldBeNil)
-		defer watcher1.Close()
-		watcher1.Add(tempFile.Name())
+		watcher1, tempFile := testutils.WatchedFile(t)
 
 		proc := NewManagedProcess(ProcessConfig{
 			Name: "bash",

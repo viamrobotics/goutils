@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/edaniels/golog"
-	"github.com/fsnotify/fsnotify"
 	"go.viam.com/test"
 
 	"go.viam.com/utils"
@@ -190,11 +189,9 @@ func TestProcessManagerStart(t *testing.T) {
 		test.That(t, pm.Start(context.Background()), test.ShouldBeNil)
 
 		t.Run("adding a process after starting starts it", func(t *testing.T) {
-			temp, err := os.CreateTemp("", "*.txt")
-			test.That(t, err, test.ShouldBeNil)
-			defer os.Remove(temp.Name())
+			temp := testutils.TempFile(t)
 
-			_, err = pm.AddProcessFromConfig(context.Background(),
+			_, err := pm.AddProcessFromConfig(context.Background(),
 				ProcessConfig{
 					ID:   "1",
 					Name: "bash",
@@ -232,16 +229,10 @@ func TestProcessManagerStart(t *testing.T) {
 			// a "timed" ctx should only have an effect on one shots
 			ctx, cancel = context.WithCancel(context.Background())
 
-			tempFile1 := testutils.TempFile(t, "something.txt")
-			defer tempFile1.Close()
-			tempFile2 := testutils.TempFile(t, "something.txt")
-			defer tempFile2.Close()
+			watcher, tempFiles := testutils.WatchedFiles(t, 2)
+			tempFile1 := tempFiles[0]
+			tempFile2 := tempFiles[1]
 
-			watcher, err := fsnotify.NewWatcher()
-			test.That(t, err, test.ShouldBeNil)
-			defer watcher.Close()
-			watcher.Add(tempFile1.Name())
-			watcher.Add(tempFile2.Name())
 			go func() {
 				<-watcher.Events
 				<-watcher.Events
@@ -271,11 +262,9 @@ func TestProcessManagerStart(t *testing.T) {
 			test.That(t, pm.Stop(), test.ShouldBeNil)
 		}()
 
-		temp, err := os.CreateTemp("", "*.txt")
-		test.That(t, err, test.ShouldBeNil)
-		defer os.Remove(temp.Name())
+		temp := testutils.TempFile(t)
 
-		_, err = pm.AddProcessFromConfig(context.Background(),
+		_, err := pm.AddProcessFromConfig(context.Background(),
 			ProcessConfig{
 				ID:   "1",
 				Name: "bash",
@@ -342,21 +331,12 @@ func TestProcessManagerStop(t *testing.T) {
 		logger := golog.NewTestLogger(t)
 		pm := NewProcessManager(logger)
 
-		tempFile1 := testutils.TempFile(t, "something.txt")
-		defer tempFile1.Close()
-		tempFile2 := testutils.TempFile(t, "something.txt")
-		defer tempFile2.Close()
-		tempFile3 := testutils.TempFile(t, "something.txt")
-		defer tempFile3.Close()
+		watcher, tempFiles := testutils.WatchedFiles(t, 3)
+		tempFile1 := tempFiles[0]
+		tempFile2 := tempFiles[1]
+		tempFile3 := tempFiles[2]
 
-		watcher, err := fsnotify.NewWatcher()
-		test.That(t, err, test.ShouldBeNil)
-		defer watcher.Close()
-		watcher.Add(tempFile1.Name())
-		watcher.Add(tempFile2.Name())
-		watcher.Add(tempFile3.Name())
-
-		_, err = pm.AddProcessFromConfig(context.Background(), ProcessConfig{ID: "1", Name: "bash", Args: []string{
+		_, err := pm.AddProcessFromConfig(context.Background(), ProcessConfig{ID: "1", Name: "bash", Args: []string{
 			"-c", fmt.Sprintf("trap \"exit 0\" SIGTERM; echo one >> '%s'\nwhile true; do echo hey1; sleep 1; done", tempFile1.Name()),
 		}})
 		test.That(t, err, test.ShouldBeNil)
@@ -396,18 +376,11 @@ func TestProcessManagerStop(t *testing.T) {
 		pm := NewProcessManager(logger)
 		test.That(t, pm.Start(context.Background()), test.ShouldBeNil)
 
-		tempFile1 := testutils.TempFile(t, "something.txt")
-		defer tempFile1.Close()
-		tempFile2 := testutils.TempFile(t, "something.txt")
-		defer tempFile2.Close()
+		watcher, tempFiles := testutils.WatchedFiles(t, 2)
+		tempFile1 := tempFiles[0]
+		tempFile2 := tempFiles[1]
 
-		watcher, err := fsnotify.NewWatcher()
-		test.That(t, err, test.ShouldBeNil)
-		defer watcher.Close()
-		watcher.Add(tempFile1.Name())
-		watcher.Add(tempFile2.Name())
-
-		_, err = pm.AddProcessFromConfig(context.Background(), ProcessConfig{ID: "1", Name: "bash", Args: []string{
+		_, err := pm.AddProcessFromConfig(context.Background(), ProcessConfig{ID: "1", Name: "bash", Args: []string{
 			"-c",
 			fmt.Sprintf(
 				"trap \"echo done >> '%[1]s';exit 0\" SIGTERM; echo one >> '%[1]s'\nwhile true; do echo hey1; sleep 1; done",
