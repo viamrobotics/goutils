@@ -13,6 +13,7 @@ import (
 	"github.com/edaniels/golog"
 	"github.com/edaniels/zeroconf"
 	"github.com/pkg/errors"
+	"go.uber.org/multierr"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -248,9 +249,10 @@ func dial(
 	}()
 
 	var (
-		conn   ClientConn
-		cached bool
-		err    error
+		conn        ClientConn
+		cached      bool
+		fatalErr    error
+		nonFatalErr error
 	)
 	for result := range dialCh {
 		switch {
@@ -266,16 +268,21 @@ func dial(
 			}
 			conn, cached = result.conn, result.cached
 			cancelParallel(errors.New("using another established connection"))
-		case result.err != nil && result.skipDirect:
-			err = result.err
+		case result.err != nil:
+			if result.skipDirect {
+				fatalErr = multierr.Combine(fatalErr, result.err)
+			} else {
+				nonFatalErr = multierr.Combine(nonFatalErr, result.err)
+			}
+
 		}
 	}
 
 	if conn != nil {
 		return conn, cached, nil
 	}
-	if err != nil {
-		return nil, false, err
+	if fatalErr != nil {
+		return nil, false, fatalErr
 	}
 
 	if dOpts.disableDirect {
@@ -284,10 +291,20 @@ func dial(
 	if dOpts.debug {
 		logger.Debugw("trying direct", "address", address)
 	}
-	// TODO: set shorter timeout if previous dial methods failed?
-	conn, cached, err = dialDirectGRPC(ctx, address, dOpts, logger)
-	if err != nil {
-		return nil, false, err
+
+	var directCtx context.Context
+	if _, hasDeadline := ctx.Deadline(); nonFatalErr != nil && !hasDeadline {
+		var cancelDirect func()
+		// TODO: set shorter timeout if previous dial methods failed?
+		directCtx, cancelDirect = context.WithTimeout(ctx, 2*time.Second)
+		defer cancelDirect()
+	} else {
+		directCtx = ctx
+	}
+
+	conn, cached, directErr := dialDirectGRPC(directCtx, address, dOpts, logger)
+	if directErr != nil {
+		return nil, false, multierr.Combine(directErr, nonFatalErr)
 	}
 	if dOpts.debug {
 		logger.Debugw("connected via gRPC",
