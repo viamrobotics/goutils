@@ -543,7 +543,7 @@ func TestWithStreamInterceptor(t *testing.T) {
 	test.That(t, interceptedCount, test.ShouldEqual, 1)
 }
 
-func TestReauth(t *testing.T) {
+func TestInvalidAuth(t *testing.T) {
 	logger := golog.NewTestLogger(t)
 
 	var timesAuthed, timesAuthEnsured int
