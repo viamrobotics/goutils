@@ -563,7 +563,7 @@ func TestReauth(t *testing.T) {
 	rpcServer, err := NewServer(
 		logger,
 		WithAuthHandler(CredentialsTypeAPIKey, fakeAuthHandler),
-		WithEnsureAuthedHander(fakeEnsureAuthedHandler),
+		WithEnsureAuthedHandler(fakeEnsureAuthedHandler),
 	)
 	test.That(t, err, test.ShouldBeNil)
 

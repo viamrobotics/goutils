@@ -364,7 +364,7 @@ func WithAuthHandler(forType CredentialsType, handler AuthHandler) ServerOption 
 
 // WithEnsureAuthedHandler returns a ServerOptions which adds custom logic for
 // the ensuring of authentication on each incoming request.
-func WithEnsureAuthedHander(eah func(ctx context.Context) (context.Context, error)) ServerOption {
+func WithEnsureAuthedHandler(eah func(ctx context.Context) (context.Context, error)) ServerOption {
 	return newFuncServerOption(func(o *serverOptions) error {
 		o.ensureAuthedHandler = eah
 		return nil
