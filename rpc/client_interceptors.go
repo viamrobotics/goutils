@@ -60,6 +60,7 @@ func UnaryClientReauthInterceptor(creds *perRPCJWTCredentials) grpc.UnaryClientI
 			if creds != nil {
 				creds.accessToken = ""
 			}
+		default:
 		}
 		return err
 	}
