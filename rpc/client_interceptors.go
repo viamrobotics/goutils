@@ -56,12 +56,9 @@ func UnaryClientInvalidAuthInterceptor(creds *perRPCJWTCredentials) grpc.UnaryCl
 		cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption,
 	) error {
 		err := invoker(ctx, method, req, reply, cc, opts...)
-		switch status.Code(err) {
-		case codes.Unauthenticated, codes.PermissionDenied:
-			if creds != nil {
-				creds.accessToken = ""
-			}
-		default:
+		if c := status.Code(err); c == codes.Unauthenticated || c == codes.PermissionDenied &&
+			creds != nil {
+			creds.accessToken = ""
 		}
 		return err
 	}
