@@ -2,6 +2,7 @@ package rpc
 
 import (
 	"context"
+	"errors"
 	"net"
 	"testing"
 
@@ -541,4 +542,79 @@ func TestWithStreamInterceptor(t *testing.T) {
 		[]string{"/proto.rpc.examples.echo.v1.EchoService/EchoMultiple"},
 	)
 	test.That(t, interceptedCount, test.ShouldEqual, 1)
+}
+
+func TestReauth(t *testing.T) {
+	logger := golog.NewTestLogger(t)
+
+	var timesAuthed, timesAuthEnsured int
+	fakeAuthHandler := AuthHandlerFunc(func(ctx context.Context, entity, payload string) (map[string]string, error) {
+		timesAuthed++
+		return map[string]string{}, nil
+	})
+	fakeEnsureAuthedHandler := func(ctx context.Context) (context.Context, error) {
+		timesAuthEnsured++
+		// Fail until client has reauthenticated (timesAuthed > 1).
+		if timesAuthed <= 1 {
+			return nil, errors.New("Unauthenticated")
+		}
+		return context.Background(), nil
+	}
+	rpcServer, err := NewServer(
+		logger,
+		WithAuthHandler(CredentialsTypeAPIKey, fakeAuthHandler),
+		WithEnsureAuthedHander(fakeEnsureAuthedHandler),
+	)
+	test.That(t, err, test.ShouldBeNil)
+
+	err = rpcServer.RegisterServiceServer(
+		context.Background(),
+		&pb.EchoService_ServiceDesc,
+		&echoserver.Server{},
+		pb.RegisterEchoServiceHandlerFromEndpoint,
+	)
+	test.That(t, err, test.ShouldBeNil)
+
+	httpListener, err := net.Listen("tcp", "localhost:0")
+	test.That(t, err, test.ShouldBeNil)
+
+	errChan := make(chan error, 1)
+	go func() {
+		errChan <- rpcServer.Serve(httpListener)
+	}()
+	defer func() {
+		test.That(t, rpcServer.Stop(), test.ShouldBeNil)
+		err = <-errChan
+		test.That(t, err, test.ShouldBeNil)
+	}()
+
+	conn, err := Dial(
+		context.Background(),
+		httpListener.Addr().String(),
+		logger,
+		WithForceDirectGRPC(),
+		WithInsecure(),
+		WithDialDebug(),
+		// Have to pass some creds to pass "authentication required" check.
+		WithEntityCredentials("foo", Credentials{Type: CredentialsTypeAPIKey, Payload: "bar"}),
+	)
+	test.That(t, err, test.ShouldBeNil)
+	defer func() {
+		test.That(t, conn.Close(), test.ShouldBeNil)
+	}()
+
+	// Test that first echo fails and server's `Authenticate` is called once.
+	client := pb.NewEchoServiceClient(conn)
+	_, err = client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
+	test.That(t, err, test.ShouldNotBeNil)
+	test.That(t, err.Error(), test.ShouldContainSubstring, "Unauthenticated")
+	test.That(t, timesAuthed, test.ShouldEqual, 1)
+	test.That(t, timesAuthEnsured, test.ShouldEqual, 1)
+
+	// Test that second echo succeeds and `Authenticate` is called again (reauth).
+	echoResp, err := client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
+	test.That(t, timesAuthed, test.ShouldEqual, 2)
+	test.That(t, timesAuthEnsured, test.ShouldEqual, 2)
 }

@@ -284,6 +284,11 @@ func (ss *simpleServer) tryAuth(ctx context.Context) (context.Context, error) {
 }
 
 func (ss *simpleServer) ensureAuthed(ctx context.Context) (context.Context, error) {
+	// Use handler if set (only used for testing).
+	if ss.ensureAuthedHandler != nil {
+		return ss.ensureAuthedHandler(ctx)
+	}
+
 	tokenString, err := tokenFromContext(ctx)
 	if err != nil {
 		// check TLS state

@@ -3,6 +3,7 @@ package rpc
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"go.opencensus.io/trace"
 	"google.golang.org/grpc"
@@ -44,4 +45,20 @@ func contextWithSpanMetadata(ctx context.Context) context.Context {
 		"trace-options", fmt.Sprint(span.SpanContext().TraceOptions),
 	)
 	return ctx
+}
+
+// UnaryClientReauthInterceptor clears the access token stored on creds in the
+// event of an "Unauthenticated" gRPC error to force re-auth.
+func UnaryClientReauthInterceptor(creds *perRPCJWTCredentials) grpc.UnaryClientInterceptor {
+	return func(ctx context.Context, method string, req, reply interface{},
+		cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption,
+	) error {
+		err := invoker(ctx, method, req, reply, cc, opts...)
+		if err != nil && strings.Contains(err.Error(), "Unauthenticated") {
+			if creds != nil {
+				creds.accessToken = ""
+			}
+		}
+		return err
+	}
 }

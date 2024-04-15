@@ -67,6 +67,10 @@ type serverOptions struct {
 	// stats monitoring on the connections.
 	statsHandler stats.Handler
 
+	// ensureAuthedHandler is the callback used to ensure that the context of an
+	// incoming RPC request is properly authenticated.
+	ensureAuthedHandler func(ctx context.Context) (context.Context, error)
+
 	unknownStreamDesc *grpc.StreamDesc
 }
 
@@ -355,6 +359,15 @@ func WithTLSAuthHandler(entities []string) ServerOption {
 func WithAuthHandler(forType CredentialsType, handler AuthHandler) ServerOption {
 	return withCredAuthHandlers(forType, credAuthHandlers{
 		AuthHandler: handler,
+	})
+}
+
+// WithEnsureAuthedHandler returns a ServerOptions which adds custom logic for
+// the ensuring of authentication on each incoming request.
+func WithEnsureAuthedHander(eah func(ctx context.Context) (context.Context, error)) ServerOption {
+	return newFuncServerOption(func(o *serverOptions) error {
+		o.ensureAuthedHandler = eah
+		return nil
 	})
 }
 
