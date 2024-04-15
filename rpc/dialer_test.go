@@ -2,7 +2,6 @@ package rpc
 
 import (
 	"context"
-	"errors"
 	"net"
 	"testing"
 
@@ -556,7 +555,7 @@ func TestReauth(t *testing.T) {
 		timesAuthEnsured++
 		// Fail until client has reauthenticated (timesAuthed > 1).
 		if timesAuthed <= 1 {
-			return nil, errors.New("Unauthenticated")
+			return nil, status.Error(codes.Unauthenticated, "bad")
 		}
 		return context.Background(), nil
 	}

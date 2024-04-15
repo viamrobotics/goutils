@@ -3,11 +3,12 @@ package rpc
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"go.opencensus.io/trace"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 )
 
 // UnaryClientTracingInterceptor adds the current Span's metadata to the context.
@@ -48,13 +49,14 @@ func contextWithSpanMetadata(ctx context.Context) context.Context {
 }
 
 // UnaryClientReauthInterceptor clears the access token stored on creds in the
-// event of an "Unauthenticated" gRPC error to force re-auth.
+// event of an "Unauthenticated" or "PermissionDenied" gRPC error to force re-auth.
 func UnaryClientReauthInterceptor(creds *perRPCJWTCredentials) grpc.UnaryClientInterceptor {
 	return func(ctx context.Context, method string, req, reply interface{},
 		cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption,
 	) error {
 		err := invoker(ctx, method, req, reply, cc, opts...)
-		if err != nil && strings.Contains(err.Error(), "Unauthenticated") {
+		switch status.Code(err) {
+		case codes.Unauthenticated, codes.PermissionDenied:
 			if creds != nil {
 				creds.accessToken = ""
 			}
