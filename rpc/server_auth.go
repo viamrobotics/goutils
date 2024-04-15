@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"fmt"
 	"strings"
+	"testing"
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
@@ -286,6 +287,10 @@ func (ss *simpleServer) tryAuth(ctx context.Context) (context.Context, error) {
 func (ss *simpleServer) ensureAuthed(ctx context.Context) (context.Context, error) {
 	// Use handler if set (only used for testing).
 	if ss.ensureAuthedHandler != nil {
+		// If not in a testing environment, return an error.
+		if !testing.Testing() {
+			return nil, errors.New("cannot use custom ensureAuthed handler in production")
+		}
 		return ss.ensureAuthedHandler(ctx)
 	}
 

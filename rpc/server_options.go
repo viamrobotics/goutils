@@ -363,7 +363,9 @@ func WithAuthHandler(forType CredentialsType, handler AuthHandler) ServerOption 
 }
 
 // WithEnsureAuthedHandler returns a ServerOptions which adds custom logic for
-// the ensuring of authentication on each incoming request.
+// the ensuring of authentication on each incoming request. Can only be used
+// in testing environments (will produce an error when ensuring authentication
+// otherwise).
 func WithEnsureAuthedHandler(eah func(ctx context.Context) (context.Context, error)) ServerOption {
 	return newFuncServerOption(func(o *serverOptions) error {
 		o.ensureAuthedHandler = eah

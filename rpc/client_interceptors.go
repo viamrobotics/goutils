@@ -48,9 +48,10 @@ func contextWithSpanMetadata(ctx context.Context) context.Context {
 	return ctx
 }
 
-// UnaryClientReauthInterceptor clears the access token stored on creds in the
-// event of an "Unauthenticated" or "PermissionDenied" gRPC error to force re-auth.
-func UnaryClientReauthInterceptor(creds *perRPCJWTCredentials) grpc.UnaryClientInterceptor {
+// UnaryClientInvalidAuthInterceptor clears the access token stored on creds in
+// the event of an "Unauthenticated" or "PermissionDenied" gRPC error to force
+// re-auth.
+func UnaryClientInvalidAuthInterceptor(creds *perRPCJWTCredentials) grpc.UnaryClientInterceptor {
 	return func(ctx context.Context, method string, req, reply interface{},
 		cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption,
 	) error {
