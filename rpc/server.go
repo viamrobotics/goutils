@@ -138,6 +138,7 @@ type simpleServer struct {
 	tlsAuthHandler       func(ctx context.Context, entities ...string) error
 	authHandlersForCreds map[CredentialsType]credAuthHandlers
 	authToHandler        AuthenticateToHandler
+	ensureAuthedHandler  func(ctx context.Context) (context.Context, error)
 
 	// authAudience is the JWT audience (aud) that will be used/expected
 	// for our service.
@@ -296,6 +297,7 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 		authToHandler:        sOpts.authToHandler,
 		authAudience:         sOpts.authAudience,
 		authIssuer:           sOpts.authIssuer,
+		ensureAuthedHandler:  sOpts.ensureAuthedHandler,
 		exemptMethods:        make(map[string]bool),
 		publicMethods:        make(map[string]bool),
 		tlsConfig:            sOpts.tlsConfig,

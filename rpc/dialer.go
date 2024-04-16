@@ -290,8 +290,6 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts dialOptions, logg
 	if dOpts.unaryInterceptor != nil {
 		unaryInterceptors = append(unaryInterceptors, dOpts.unaryInterceptor)
 	}
-	unaryInterceptor := grpc_middleware.ChainUnaryClient(unaryInterceptors...)
-	dialOpts = append(dialOpts, grpc.WithUnaryInterceptor(unaryInterceptor))
 
 	var streamInterceptors []grpc.StreamClientInterceptor
 	streamInterceptors = append(streamInterceptors, grpc_zap.StreamClientInterceptor(grpcLogger))
@@ -299,8 +297,6 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts dialOptions, logg
 	if dOpts.streamInterceptor != nil {
 		streamInterceptors = append(streamInterceptors, dOpts.streamInterceptor)
 	}
-	streamInterceptor := grpc_middleware.ChainStreamClient(streamInterceptors...)
-	dialOpts = append(dialOpts, grpc.WithStreamInterceptor(streamInterceptor))
 
 	var connPtr *ClientConn
 	var closeCredsFunc func() error
@@ -335,7 +331,16 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts dialOptions, logg
 			connPtr = &rpcCreds.conn
 		}
 		dialOpts = append(dialOpts, grpc.WithPerRPCCredentials(rpcCreds))
+		unaryInterceptors = append(unaryInterceptors, UnaryClientInvalidAuthInterceptor(rpcCreds))
+		// InvalidAuthInterceptor will not work for streaming calls; we can only
+		// intercept the creation of a stream, and the ensuring of authentication
+		// server-side happens per RPC request (per usage of the stream).
 	}
+
+	unaryInterceptor := grpc_middleware.ChainUnaryClient(unaryInterceptors...)
+	dialOpts = append(dialOpts, grpc.WithUnaryInterceptor(unaryInterceptor))
+	streamInterceptor := grpc_middleware.ChainStreamClient(streamInterceptors...)
+	dialOpts = append(dialOpts, grpc.WithStreamInterceptor(streamInterceptor))
 
 	var conn ClientConn
 	var cached bool
