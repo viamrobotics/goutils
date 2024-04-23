@@ -10,7 +10,7 @@ func checkProductDeviceIDs(vendorID, productID int) Type {
 	}
 	if vendorID == 0x2a19 {
 		// Numato device, different gpio counts have different product IDs
-		if productID == 0x0802 || productID == 0x0805 {
+		if productID == 0x0802 || productID == 0x0805 || productID == 0x800 || productID == 0xC05 {
 			return TypeNumatoGPIO
 		}
 	}
