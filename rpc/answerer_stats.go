@@ -3,12 +3,12 @@ package rpc
 import "time"
 
 // answererStats is a collection of measurements/information gathered during
-// the the course of a single connection establishment attempt from a signaling
+// the course of a single connection establishment attempt from a signaling
 // answerer. We convert the stats to JSON and log the JSON representation of
 // the struct as a single INFO log message upon successful or failed connection
-// establishment to avoid emitting dozens of during the answering process and
-// cluttering robot logs. Answerer stats are only logged in production for
-// external signalers.
+// establishment to avoid emitting dozens of logs during the answering process
+// and cluttering regular robot logs. Answerer stats are only logged in
+// production for external signalers.
 type answererStats struct {
 	// AnswerRequestInitReceived represents when the `AnswerRequest_Init` was
 	// received for this connection establishment attempt. nil if none was ever
