@@ -599,6 +599,7 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 				sOpts.webrtcOpts.ExternalSignalingDialOpts,
 				config,
 				logger.Named("external_signaler"),
+				true, // logStats == true
 			))
 		} else {
 			sOpts.webrtcOpts.EnableInternalSignaling = true
@@ -642,6 +643,7 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 				answererDialOpts,
 				config,
 				logger.Named("internal_signaler"),
+				false, // logStats == false
 			))
 		}
 	}

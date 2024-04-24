@@ -2,6 +2,7 @@ package rpc
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -44,6 +45,11 @@ type webrtcSignalingAnswerer struct {
 
 	closeCtx context.Context
 	logger   golog.Logger
+
+	// When logStats is true, an INFO level log message containing metrics gathered during connection
+	// establishment will be output at the end of every connection establishment attempt. See comments on
+	// `answererStats` for more info.
+	logStats bool
 }
 
 // newWebRTCSignalingAnswerer makes an answerer that will connect to and listen for calls at the given
@@ -57,6 +63,7 @@ func newWebRTCSignalingAnswerer(
 	dialOpts []DialOption,
 	webrtcConfig webrtc.Configuration,
 	logger golog.Logger,
+	logStats bool,
 ) *webrtcSignalingAnswerer {
 	dialOptsCopy := make([]DialOption, len(dialOpts))
 	copy(dialOptsCopy, dialOpts)
@@ -71,6 +78,7 @@ func newWebRTCSignalingAnswerer(
 		cancelAnswerWorkers: cancel,
 		closeCtx:            closeCtx,
 		logger:              logger,
+		logStats:            logStats,
 	}
 }
 
@@ -238,6 +246,23 @@ func (ans *webrtcSignalingAnswerer) Stop() {
 // the designated WebRTC data channel is passed off to the underlying Server which
 // is then used as the server end of a gRPC connection.
 func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_AnswerClient) (err error) {
+	// Maintain and eventually log a collection of stats for each answering attempt.
+	stats := &answererStats{}
+	defer func() {
+		if ans.logStats {
+			statsJSON, err := json.Marshal(stats)
+			if err != nil {
+				ans.logger.Errorf("Error converting answerer stats to JSON: %w", err)
+				return
+			}
+			if stats.success {
+				ans.logger.Infow("Connection establishment success", "stats", string(statsJSON))
+			} else if stats.AnswerRequestInitReceived != nil { // If no success and init was received, conn establishment failed.
+				ans.logger.Infow("Connection establishment failure", "stats", string(statsJSON))
+			}
+		}
+	}()
+
 	resp, err := client.Recv()
 	if err != nil {
 		return err
@@ -256,6 +281,8 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 			},
 		})
 	}
+	answerRequestInitReceived := time.Now()
+	stats.AnswerRequestInitReceived = &answerRequestInitReceived
 	init := initStage.Init
 
 	disableTrickle := false
@@ -283,6 +310,8 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 	defer func() {
 		if !(successful && err == nil) {
 			err = multierr.Combine(err, pc.Close())
+		} else {
+			stats.success = true
 		}
 	}()
 
@@ -333,6 +362,8 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 				return
 			}
 			if icecandidate != nil {
+				localCand := &localICECandidate{GatheredAt: time.Now(), Candidate: icecandidate.String()}
+				stats.LocalICECandidates = append(stats.LocalICECandidates, localCand)
 				pendingCandidates.Add(1)
 				if icecandidate.Typ == webrtc.ICECandidateTypeHost {
 					waitOneHostOnce.Do(func() {
@@ -380,6 +411,7 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 					return
 				}
 				iProto := iceCandidateToProto(icecandidate)
+				answerUpdateStart := time.Now()
 				if err := client.Send(&webrtcpb.AnswerResponse{
 					Uuid: uuid,
 					Stage: &webrtcpb.AnswerResponse_Update{
@@ -389,6 +421,15 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 					},
 				}); err != nil {
 					sendErr(err)
+				}
+
+				answerUpdateDuration := time.Since(answerUpdateStart)
+				stats.NumAnswerUpdates++
+				stats.totalAnswerUpdate += answerUpdateDuration
+				// Keep running average.
+				stats.AverageAnswerUpdate = stats.totalAnswerUpdate / time.Duration(stats.NumAnswerUpdates)
+				if answerUpdateDuration > stats.MaxAnswerUpdate {
+					stats.MaxAnswerUpdate = answerUpdateDuration
 				}
 			})
 		})
@@ -456,6 +497,8 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 						return errors.Errorf("uuid mismatch; have=%q want=%q", ansResp.Uuid, uuid)
 					}
 					cand := iceCandidateFromProto(s.Update.Candidate)
+					remoteCand := &remoteICECandidate{ReceivedAt: time.Now(), Candidate: cand.Candidate}
+					stats.RemoteICECandidates = append(stats.RemoteICECandidates, remoteCand)
 					if err := pc.AddICECandidate(cand); err != nil {
 						return err
 					}
