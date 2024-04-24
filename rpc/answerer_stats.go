@@ -3,13 +3,14 @@ package rpc
 import "time"
 
 // answererStats is a collection of measurements/information gathered during
-// the lifetime of a single answerer within a webrtcSignalingAnswerer. We
-// convert the stats to JSON and log the JSON representation of the struct as a
-// single log message upon successful or failed connection establishment to
-// avoid emitting dozens of during the answering process and cluttering robot
-// logs. Answerer stats are only logged in production for external signalers.
+// the the course of a single connection establishment attempt from a signaling
+// answerer. We convert the stats to JSON and log the JSON representation of
+// the struct as a single INFO log message upon successful or failed connection
+// establishment to avoid emitting dozens of during the answering process and
+// cluttering robot logs. Answerer stats are only logged in production for
+// external signalers.
 type answererStats struct {
-	// AnswerRquestInitReceived represents when the `AnswerRequest_Init` was
+	// AnswerRequestInitReceived represents when the `AnswerRequest_Init` was
 	// received for this connection establishment attempt. nil if none was ever
 	// received (another answerer picked up the attempt, or there was an error in
 	// signaling before an answerer received an init).
