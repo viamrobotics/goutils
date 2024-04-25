@@ -1,6 +1,9 @@
 package rpc
 
-import "time"
+import (
+	"sync"
+	"time"
+)
 
 // answererStats is a collection of measurements/information gathered during
 // the course of a single connection establishment attempt from a signaling
@@ -10,6 +13,12 @@ import "time"
 // and cluttering regular robot logs. Answerer stats are only logged in
 // production for external signalers.
 type answererStats struct {
+	// mu guards all fields on answererStats.
+	mu sync.Mutex
+
+	success           bool
+	totalAnswerUpdate time.Duration
+
 	// AnswerRequestInitReceived represents when the `AnswerRequest_Init` was
 	// received for this connection establishment attempt. nil if none was ever
 	// received (another answerer picked up the attempt, or there was an error in
@@ -27,9 +36,6 @@ type answererStats struct {
 	LocalICECandidates []*localICECandidate `json:"local_ice_candidates,omitempty"`
 	// RemoteICECandidates is a slice of all received remote ICE candidates.
 	RemoteICECandidates []*remoteICECandidate `json:"remote_ice_candidates,omitempty"`
-
-	success           bool
-	totalAnswerUpdate time.Duration
 }
 
 type localICECandidate struct {

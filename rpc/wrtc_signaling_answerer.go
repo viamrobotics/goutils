@@ -250,6 +250,8 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 	stats := &answererStats{}
 	defer func() {
 		if ans.logStats {
+			stats.mu.Lock()
+			defer stats.mu.Unlock()
 			statsJSON, err := json.Marshal(stats)
 			if err != nil {
 				ans.logger.Errorf("Error converting answerer stats to JSON: %w", err)
@@ -282,7 +284,9 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 		})
 	}
 	answerRequestInitReceived := time.Now()
+	stats.mu.Lock()
 	stats.AnswerRequestInitReceived = &answerRequestInitReceived
+	stats.mu.Unlock()
 	init := initStage.Init
 
 	disableTrickle := false
@@ -311,7 +315,9 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 		if !(successful && err == nil) {
 			err = multierr.Combine(err, pc.Close())
 		} else {
+			stats.mu.Lock()
 			stats.success = true
+			stats.mu.Unlock()
 		}
 	}()
 
@@ -363,7 +369,9 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 			}
 			if icecandidate != nil {
 				localCand := &localICECandidate{GatheredAt: time.Now(), Candidate: icecandidate.String()}
+				stats.mu.Lock()
 				stats.LocalICECandidates = append(stats.LocalICECandidates, localCand)
+				stats.mu.Unlock()
 				pendingCandidates.Add(1)
 				if icecandidate.Typ == webrtc.ICECandidateTypeHost {
 					waitOneHostOnce.Do(func() {
@@ -424,6 +432,7 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 				}
 
 				answerUpdateDuration := time.Since(answerUpdateStart)
+				stats.mu.Lock()
 				stats.NumAnswerUpdates++
 				stats.totalAnswerUpdate += answerUpdateDuration
 				// Keep running average.
@@ -431,6 +440,7 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 				if answerUpdateDuration > stats.MaxAnswerUpdate {
 					stats.MaxAnswerUpdate = answerUpdateDuration
 				}
+				stats.mu.Unlock()
 			})
 		})
 
@@ -498,7 +508,9 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 					}
 					cand := iceCandidateFromProto(s.Update.Candidate)
 					remoteCand := &remoteICECandidate{ReceivedAt: time.Now(), Candidate: cand.Candidate}
+					stats.mu.Lock()
 					stats.RemoteICECandidates = append(stats.RemoteICECandidates, remoteCand)
+					stats.mu.Unlock()
 					if err := pc.AddICECandidate(cand); err != nil {
 						return err
 					}
