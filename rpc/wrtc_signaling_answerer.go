@@ -2,7 +2,6 @@ package rpc
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -250,18 +249,7 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 	stats := &answererStats{}
 	defer func() {
 		if ans.logStats {
-			stats.mu.Lock()
-			defer stats.mu.Unlock()
-			statsJSON, err := json.Marshal(stats)
-			if err != nil {
-				ans.logger.Errorf("Error converting answerer stats to JSON: %w", err)
-				return
-			}
-			if stats.success {
-				ans.logger.Infow("Connection establishment success", "stats", string(statsJSON))
-			} else if stats.AnswerRequestInitReceived != nil { // If no success and init was received, conn establishment failed.
-				ans.logger.Infow("Connection establishment failure", "stats", string(statsJSON))
-			}
+			stats.log(ans.logger)
 		}
 	}()
 
@@ -285,7 +273,7 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 	}
 	answerRequestInitReceived := time.Now()
 	stats.mu.Lock()
-	stats.AnswerRequestInitReceived = &answerRequestInitReceived
+	stats.answerRequestInitReceived = &answerRequestInitReceived
 	stats.mu.Unlock()
 	init := initStage.Init
 
@@ -368,9 +356,9 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 				return
 			}
 			if icecandidate != nil {
-				localCand := &localICECandidate{GatheredAt: time.Now(), Candidate: icecandidate.String()}
+				localCand := &localICECandidate{time.Now(), icecandidate}
 				stats.mu.Lock()
-				stats.LocalICECandidates = append(stats.LocalICECandidates, localCand)
+				stats.localICECandidates = append(stats.localICECandidates, localCand)
 				stats.mu.Unlock()
 				pendingCandidates.Add(1)
 				if icecandidate.Typ == webrtc.ICECandidateTypeHost {
@@ -433,12 +421,12 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 
 				answerUpdateDuration := time.Since(answerUpdateStart)
 				stats.mu.Lock()
-				stats.NumAnswerUpdates++
+				stats.numAnswerUpdates++
 				stats.totalAnswerUpdate += answerUpdateDuration
 				// Keep running average.
-				stats.AverageAnswerUpdate = stats.totalAnswerUpdate / time.Duration(stats.NumAnswerUpdates)
-				if answerUpdateDuration > stats.MaxAnswerUpdate {
-					stats.MaxAnswerUpdate = answerUpdateDuration
+				stats.averageAnswerUpdate = stats.totalAnswerUpdate / time.Duration(stats.numAnswerUpdates)
+				if answerUpdateDuration > stats.maxAnswerUpdate {
+					stats.maxAnswerUpdate = answerUpdateDuration
 				}
 				stats.mu.Unlock()
 			})
@@ -507,9 +495,9 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 						return errors.Errorf("uuid mismatch; have=%q want=%q", ansResp.Uuid, uuid)
 					}
 					cand := iceCandidateFromProto(s.Update.Candidate)
-					remoteCand := &remoteICECandidate{ReceivedAt: time.Now(), Candidate: cand.Candidate}
+					remoteCand := &remoteICECandidate{time.Now(), &cand}
 					stats.mu.Lock()
-					stats.RemoteICECandidates = append(stats.RemoteICECandidates, remoteCand)
+					stats.remoteICECandidates = append(stats.remoteICECandidates, remoteCand)
 					stats.mu.Unlock()
 					if err := pc.AddICECandidate(cand); err != nil {
 						return err
