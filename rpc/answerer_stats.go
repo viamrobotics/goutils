@@ -52,7 +52,7 @@ func (as *answererStats) log(logger golog.Logger) {
 
 	var fields []any
 	if as.answerRequestInitReceived != nil {
-		fAnswerRequestInitReceived := (*as.answerRequestInitReceived).Format(timeFormatStr)
+		fAnswerRequestInitReceived := as.answerRequestInitReceived.Format(timeFormatStr)
 		fields = append(fields, "answerRequestInitReceieved", fAnswerRequestInitReceived)
 	}
 	fields = append(fields, "numAnswerUpdates", as.numAnswerUpdates)
