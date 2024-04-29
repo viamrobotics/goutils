@@ -407,7 +407,6 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 					return
 				}
 				iProto := iceCandidateToProto(icecandidate)
-				answerUpdateStart := time.Now()
 				if err := client.Send(&webrtcpb.AnswerResponse{
 					Uuid: uuid,
 					Stage: &webrtcpb.AnswerResponse_Update{
@@ -419,15 +418,8 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 					sendErr(err)
 				}
 
-				answerUpdateDuration := time.Since(answerUpdateStart)
 				stats.mu.Lock()
 				stats.numAnswerUpdates++
-				stats.totalAnswerUpdate += answerUpdateDuration
-				// Keep running average.
-				stats.averageAnswerUpdate = stats.totalAnswerUpdate / time.Duration(stats.numAnswerUpdates)
-				if answerUpdateDuration > stats.maxAnswerUpdate {
-					stats.maxAnswerUpdate = answerUpdateDuration
-				}
 				stats.mu.Unlock()
 			})
 		})

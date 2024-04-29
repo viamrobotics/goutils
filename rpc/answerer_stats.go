@@ -22,14 +22,11 @@ type answererStats struct {
 	// mu guards all fields on answererStats.
 	mu sync.Mutex
 
-	success           bool
-	totalAnswerUpdate time.Duration
+	success bool
 
 	// Stats below will be logged.
 	answerRequestInitReceived *time.Time
 	numAnswerUpdates          int
-	averageAnswerUpdate       time.Duration
-	maxAnswerUpdate           time.Duration
 	localICECandidates        []*localICECandidate
 	remoteICECandidates       []*remoteICECandidate
 }
@@ -56,8 +53,6 @@ func (as *answererStats) log(logger golog.Logger) {
 		fields = append(fields, "answerRequestInitReceieved", fAnswerRequestInitReceived)
 	}
 	fields = append(fields, "numAnswerUpdates", as.numAnswerUpdates)
-	fields = append(fields, "averageAnswerUpdate", as.averageAnswerUpdate)
-	fields = append(fields, "maxAnswerUpdate", as.maxAnswerUpdate)
 
 	var lics, rics []string
 	for _, lic := range as.localICECandidates {
