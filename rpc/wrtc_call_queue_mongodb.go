@@ -1119,6 +1119,7 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 						recvOfferCtx,
 						bson.D{
 							{webrtcCallIDField, callReq.ID},
+							{webrtcCallAnsweredField, false},
 						},
 						bson.D{
 							{"$set", bson.D{
