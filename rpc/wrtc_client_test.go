@@ -75,6 +75,7 @@ func testWebRTCClientServer(t *testing.T, signalingCallQueue WebRTCCallQueue, lo
 		[]DialOption{WithInsecure()},
 		webrtc.Configuration{},
 		logger,
+		false, // `logStats == false` to quiet logs
 	)
 	answerer.Start()
 
@@ -488,6 +489,7 @@ func testWebRTCClientAnswerConcurrent(t *testing.T, signalingCallQueue WebRTCCal
 		[]DialOption{WithInsecure()},
 		webrtc.Configuration{},
 		logger,
+		false, // `logStats == false` to quiet logs
 	)
 	answerer.Start()
 
