@@ -238,7 +238,8 @@ func (h *callbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer span.End()
 
 	stateCookie, err := r.Cookie(h.redirectStateCookieName)
-	if HandleError(w, err, h.logger, "getting redirect cookie") {
+	if err != nil {
+		http.Redirect(w, r, "/login", http.StatusTemporaryRedirect)
 		return
 	}
 
