@@ -41,21 +41,34 @@ func signalPair(t *testing.T, left, right *webrtc.PeerConnection) {
 func TestRenegotation(t *testing.T) {
 	logger := golog.NewTestLogger(t)
 
+	var (
+		clientNegChannelOpened <-chan struct{}
+		clientNegChannelClosed <-chan struct{}
+		serverNegChannelOpened <-chan struct{}
+		serverNegChannelClosed <-chan struct{}
+	)
+
 	// A raw `webrtc.PeerConnection` is suitable for this test. As opposed to our helper
 	// constructors.
 	client, err := webrtc.NewPeerConnection(webrtc.Configuration{})
 	test.That(t, err, test.ShouldBeNil)
-	defer client.Close()
+	defer func() {
+		client.Close()
+		<-clientNegChannelClosed
+	}()
 
 	server, err := webrtc.NewPeerConnection(webrtc.Configuration{})
 	test.That(t, err, test.ShouldBeNil)
-	defer server.Close()
+	defer func() {
+		server.Close()
+		<-serverNegChannelClosed
+	}()
 
 	// Add a renegotation channel. Set these channels up before signaling/answering.
-	clientNegChannelOpened, err := ConfigureForRenegotiation(client, logger)
+	clientNegChannelOpened, clientNegChannelClosed, err = ConfigureForRenegotiation(client, logger)
 	test.That(t, err, test.ShouldBeNil)
 
-	serverNegChannelOpened, err := ConfigureForRenegotiation(server, logger)
+	serverNegChannelOpened, serverNegChannelClosed, err = ConfigureForRenegotiation(server, logger)
 	test.That(t, err, test.ShouldBeNil)
 
 	// Run signaling/answering such that the client + server can connect to each other.

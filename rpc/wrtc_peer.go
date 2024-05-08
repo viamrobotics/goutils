@@ -117,7 +117,11 @@ func newPeerConnectionForClient(
 	// the renegotiations. But it is not obvious that algorithm is suitable for when both sides can
 	// race on renegotiating. For now we "uninstall" the `OnNegotiationNeeded` callback and only
 	// allow the "server" to start a renegotiation.
-	if _, err = ConfigureForRenegotiation(peerConn, logger); err != nil {
+	//
+	// Dan: We ignore the open/close channels for the renegotiation DataChannel. We expect (but are
+	// not sure) that Viam client shutdown happens before PeerConnection shutdown. And we expect
+	// that client shutdown guarantees there are no in-flight DataChannel messages being processed.
+	if _, _, err = ConfigureForRenegotiation(peerConn, logger); err != nil {
 		return peerConn, dataChannel, err
 	}
 	peerConn.OnNegotiationNeeded(func() {})
@@ -188,7 +192,10 @@ func newPeerConnectionForServer(
 	}
 	dataChannel.OnError(initialDataChannelOnError(peerConn, logger))
 
-	if _, err = ConfigureForRenegotiation(peerConn, logger); err != nil {
+	// Dan: We ignore the open/close channels for the renegotiation DataChannel. We expect (but are
+	// not sure) that server shutdown happens before PeerConnection shutdown. And we expect that
+	// server shutdown guarantees there are no in-flight DataChannel messages being processed.
+	if _, _, err = ConfigureForRenegotiation(peerConn, logger); err != nil {
 		return peerConn, dataChannel, err
 	}
 
@@ -233,9 +240,11 @@ func newPeerConnectionForServer(
 // sending offers when a negotiation is needed (e.g: adding a video track). As well as listening for
 // offers/answers to update remote descriptions (e.g: when the peer adds a video track).
 //
-// If successful, a Go channel is returned. The Go channel will close when the negotiation
-// DataChannel is open and available for renegotiation.
-func ConfigureForRenegotiation(peerConn *webrtc.PeerConnection, logger golog.Logger) (<-chan struct{}, error) {
+// If successful, two Go channels are returned. The first Go channel will close when the negotiation
+// DataChannel is open and available for renegotiation. The second Go channel will close when the
+// negotiation DataChannel is closed. PeerConnection.Close does not wait on DataChannel's to finish
+// their work. Thus waiting on this can be helpful to guarantee background goroutines have exitted.
+func ConfigureForRenegotiation(peerConn *webrtc.PeerConnection, logger golog.Logger) (<-chan struct{}, <-chan struct{}, error) {
 	var negMu sync.Mutex
 
 	// All of Viam's PeerConnections hard code the `data` channel to be ID 0 and the `negotiation`
@@ -250,7 +259,7 @@ func ConfigureForRenegotiation(peerConn *webrtc.PeerConnection, logger golog.Log
 		Ordered:    &ordered,
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	negotiationChannel.OnError(initialDataChannelOnError(peerConn, logger))
@@ -267,6 +276,11 @@ func ConfigureForRenegotiation(peerConn *webrtc.PeerConnection, logger golog.Log
 	negOpened := make(chan struct{})
 	negotiationChannel.OnOpen(func() {
 		close(negOpened)
+	})
+
+	negClosed := make(chan struct{})
+	negotiationChannel.OnClose(func() {
+		close(negClosed)
 	})
 
 	// OnNegotiationNeeded is webrtc callback for when a PeerConnection is mutated in a way such
@@ -366,7 +380,7 @@ func ConfigureForRenegotiation(peerConn *webrtc.PeerConnection, logger golog.Log
 		}
 	})
 
-	return negOpened, nil
+	return negOpened, negClosed, nil
 }
 
 type webrtcPeerConnectionStats struct {
