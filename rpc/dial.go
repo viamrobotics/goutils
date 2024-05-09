@@ -13,6 +13,7 @@ import (
 	"github.com/edaniels/golog"
 	"github.com/edaniels/zeroconf"
 	"github.com/pkg/errors"
+	"go.uber.org/multierr"
 	"go.uber.org/zap"
 )
 
@@ -158,7 +159,12 @@ func dial(
 				}
 				target, port, err := getWebRTCTargetFromAddressWithDefaults(signalingAddress)
 				if err != nil {
-					// TODO(RSDK-6493): Investigate if we must `skipDirect` here.
+					// An error here indicates an address parsing issue, which is a sign
+					// of bad configuration. We could still try to dial directly, given
+					// that the direct dialing address might be different from the
+					// signaling address, but it seems better to fail fast and let the
+					// client fix any configuration issues.
+					logger.Errorw("failed to parse signaling address", "address", signalingAddress, "error", err)
 					dialCh <- dialResult{err: err, skipDirect: true}
 					return
 				}
@@ -208,9 +214,14 @@ func dial(
 				}
 				dialCh <- dialResult{conn: conn, cached: cached}
 			case !errors.Is(err, ErrNoWebRTCSignaler):
-				// TODO(RSDK-6493): Investigate if we must `skipDirect` here.
+				// Not detecting a signaling server is the only WebRTC dialing failure
+				// scenario where we know falling back to dialing directly is desirable
+				// and safe. However, There may be other kinds of WebRTC dialing failures
+				// where we also want to make fallback dial attempt, but for now we are
+				// choosing to abort dialing those scenarios.
 				dialCh <- dialResult{err: err, skipDirect: true}
 			case ctxParallel.Err() != nil:
+				// Always abort dialing if there is an error and the context is finished.
 				dialCh <- dialResult{err: ctxParallel.Err(), skipDirect: true}
 			default:
 				dialCh <- dialResult{err: err}
@@ -226,9 +237,10 @@ func dial(
 	}()
 
 	var (
-		conn   ClientConn
-		cached bool
-		err    error
+		conn        ClientConn
+		cached      bool
+		fatalErr    error
+		nonFatalErr error
 	)
 	for result := range dialCh {
 		switch {
@@ -236,21 +248,28 @@ func dial(
 			if conn != nil {
 				errClose := conn.Close()
 				if errClose != nil {
-					logger.Warnw("unable to close redundant connection", "error", err)
+					logger.Warnw(
+						"unable to close redundant connection",
+						"error", errClose,
+					)
 				}
 			}
 			conn, cached = result.conn, result.cached
 			cancelParallel(errors.New("using another established connection"))
-		case result.err != nil && result.skipDirect:
-			err = result.err
+		case result.err != nil:
+			if result.skipDirect {
+				fatalErr = multierr.Combine(fatalErr, result.err)
+			} else {
+				nonFatalErr = multierr.Combine(nonFatalErr, result.err)
+			}
 		}
 	}
 
 	if conn != nil {
 		return conn, cached, nil
 	}
-	if err != nil {
-		return nil, false, err
+	if fatalErr != nil {
+		return nil, false, fatalErr
 	}
 
 	if dOpts.disableDirect {
@@ -259,9 +278,11 @@ func dial(
 	if dOpts.debug {
 		logger.Debugw("trying direct", "address", address)
 	}
-	conn, cached, err = dialDirectGRPC(ctx, address, dOpts, logger)
-	if err != nil {
-		return nil, false, err
+
+	var directErr error
+	conn, cached, directErr = dialDirectGRPC(ctx, address, dOpts, logger)
+	if directErr != nil {
+		return nil, false, multierr.Combine(directErr, nonFatalErr)
 	}
 	if dOpts.debug {
 		logger.Debugw("connected via gRPC",
