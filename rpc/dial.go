@@ -262,7 +262,6 @@ func dial(
 			} else {
 				nonFatalErr = multierr.Combine(nonFatalErr, result.err)
 			}
-
 		}
 	}
 
