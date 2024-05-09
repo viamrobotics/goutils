@@ -265,6 +265,7 @@ class authenticatedTransport implements grpc.Transport {
 export interface WebRTCConnection {
   transportFactory: grpc.TransportFactory;
   peerConnection: RTCPeerConnection;
+  dataChannel: RTCDataChannel;
 }
 
 async function getOptionalWebRTCConfig(
@@ -319,6 +320,8 @@ async function getOptionalWebRTCConfig(
 // PeerConnection itself. Care should be taken with the PeerConnection and is currently returned for experimental
 // use.
 // TODO(GOUT-7): figure out decent way to handle reconnect on connection termination
+// eslint-disable-next-line sonarjs/cognitive-complexity
+// eslint-disable-next-line func-style
 export async function dialWebRTC(
   signalingAddress: string,
   host: string,
@@ -637,7 +640,7 @@ export async function dialWebRTC(
     }
 
     successful = true;
-    return { transportFactory: cc.transportFactory(), peerConnection: pc };
+    return { transportFactory: cc.transportFactory(), peerConnection: pc, dataChannel: dc };
   } finally {
     if (!successful) {
       pc.close();
