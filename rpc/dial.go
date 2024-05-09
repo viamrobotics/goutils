@@ -280,17 +280,8 @@ func dial(
 		logger.Debugw("trying direct", "address", address)
 	}
 
-	var directCtx context.Context
-	if _, hasDeadline := ctx.Deadline(); nonFatalErr != nil && !hasDeadline {
-		var cancelDirect func()
-		// TODO: set shorter timeout if previous dial methods failed?
-		directCtx, cancelDirect = context.WithTimeout(ctx, 2*time.Second)
-		defer cancelDirect()
-	} else {
-		directCtx = ctx
-	}
-
-	conn, cached, directErr := dialDirectGRPC(directCtx, address, dOpts, logger)
+	var directErr error
+	conn, cached, directErr = dialDirectGRPC(ctx, address, dOpts, logger)
 	if directErr != nil {
 		return nil, false, multierr.Combine(directErr, nonFatalErr)
 	}
