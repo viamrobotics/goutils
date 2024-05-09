@@ -15,8 +15,6 @@ import (
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 	"go.uber.org/zap"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 // Dial attempts to make the most convenient connection to the given address. It attempts to connect
@@ -215,27 +213,17 @@ func dial(
 					)
 				}
 				dialCh <- dialResult{conn: conn, cached: cached}
-			case ctxParallel.Err() != nil:
-				if dOpts.debug {
-					logger.Debugw(
-						"webrtc dial failed and context finished, will not try to dial directly",
-						"dial error", err,
-						"context error", ctxParallel.Err(),
-					)
-				}
-				dialCh <- dialResult{err: ctxParallel.Err(), skipDirect: true}
-			case errors.Is(err, ErrNoWebRTCSignaler):
-				// There is no WebRTC signaler, so dialing WebRTC is expected to fail.
-				// We should still try to dial directly as a fallback.
-				dialCh <- dialResult{err: err}
-			case isUnauthenticatedError(err):
-				// We are our not authenticated to dial the host, so we should not
-				// attempt to dial directly either.
+			case !errors.Is(err, ErrNoWebRTCSignaler):
+				// Not detecting a signaling server is the only WebRTC dialing failure
+				// scenario where we know falling back to dialing directly is desirable
+				// and safe. However, There may be other kinds of WebRTC dialing failures
+				// where we also want to make fallback dial attempt, but for now we are
+				// choosing to abort dialing those scenarios.
 				dialCh <- dialResult{err: err, skipDirect: true}
+			case ctxParallel.Err() != nil:
+				// Always abort dialing if there is an error and the context is finished.
+				dialCh <- dialResult{err: ctxParallel.Err(), skipDirect: true}
 			default:
-				// We encountered some other error dialing WebRTC. We can still try to
-				// dial directly as a fallback.
-				logger.Errorw("encountered unexpected error dialing webrtc", "err", err)
 				dialCh <- dialResult{err: err}
 			}
 		}(dOpts)
@@ -314,11 +302,6 @@ func dial(
 		)
 	}
 	return conn, cached, nil
-}
-
-func isUnauthenticatedError(err error) bool {
-	gStatus, ok := status.FromError(err)
-	return ok && gStatus.Code() == codes.Unauthenticated
 }
 
 func lookupMDNSCandidate(ctx context.Context, address string, logger golog.Logger) (*zeroconf.ServiceEntry, error) {
