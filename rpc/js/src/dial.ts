@@ -640,7 +640,11 @@ export async function dialWebRTC(
     }
 
     successful = true;
-    return { transportFactory: cc.transportFactory(), peerConnection: pc, dataChannel: dc };
+    return {
+      transportFactory: cc.transportFactory(),
+      peerConnection: pc,
+      dataChannel: dc,
+    };
   } finally {
     if (!successful) {
       pc.close();
