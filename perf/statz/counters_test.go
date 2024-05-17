@@ -27,6 +27,19 @@ func TestCounter(t *testing.T) {
 		},
 	})
 
+	counter5 := NewCounter5[string, string, string, string, string]("statz/test/counter5",
+		MetricConfig{
+			Description: "The number of requests",
+			Unit:        units.Dimensionless,
+			Labels: []Label{
+				{Name: "label1", Description: "Label1"},
+				{Name: "label2", Description: "Other label2"},
+				{Name: "label3", Description: "Other label3"},
+				{Name: "label4", Description: "Other label4"},
+				{Name: "label5", Description: "Other label5"},
+			},
+		})
+
 	t.Run("counter1", func(t *testing.T) {
 		recorder := statztest.NewCounterRecorder("statz/test/counter1")
 
@@ -61,5 +74,18 @@ func TestCounter(t *testing.T) {
 
 		test.That(t, recorder.Value("label", "v1", "bool", "true"), test.ShouldEqual, 10)
 		test.That(t, recorder.Value("label", "v1", "bool", "false"), test.ShouldEqual, 1)
+	})
+
+	t.Run("counter5", func(t *testing.T) {
+		recorder := statztest.NewCounterRecorder("statz/test/counter5")
+
+		test.That(t, recorder.Value("label1", "a", "label2", "a", "label3", "a", "label4", "a", "label5", "a"), test.ShouldEqual, 0)
+		test.That(t, recorder.Value("label1", "a", "label2", "a", "label3", "a", "label4", "a", "label5", "z"), test.ShouldEqual, 0)
+
+		counter5.IncBy("a", "a", "a", "a", "a", 10)
+		counter5.Inc("a", "a", "a", "a", "z")
+
+		test.That(t, recorder.Value("label1", "a", "label2", "a", "label3", "a", "label4", "a", "label5", "a"), test.ShouldEqual, 10)
+		test.That(t, recorder.Value("label1", "a", "label2", "a", "label3", "a", "label4", "a", "label5", "z"), test.ShouldEqual, 1)
 	})
 }
