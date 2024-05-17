@@ -83,6 +83,21 @@ func (c *Counter4[T1, T2, T3, T4]) IncBy(v1 T1, v2 T2, v3 T3, v4 T4, by int64) {
 	c.wrapper.incBy(context.Background(), labelsToStringSlice(v1, v2, v3, v4), by)
 }
 
+// Counter5 is a incremental int64 counter type with 5 metric label.
+type Counter5[T1 labelContraint, T2 labelContraint, T3 labelContraint, T4 labelContraint, T5 labelContraint] struct {
+	wrapper *ocCounterWrapper
+}
+
+// Inc increments counter by 1.
+func (c *Counter5[T1, T2, T3, T4, T5]) Inc(v1 T1, v2 T2, v3 T3, v4 T4, v5 T5) {
+	c.IncBy(v1, v2, v3, v4, v5, 1)
+}
+
+// IncBy increments counter by X.
+func (c *Counter5[T1, T2, T3, T4, T5]) IncBy(v1 T1, v2 T2, v3 T3, v4 T4, v5 T5, by int64) {
+	c.wrapper.incBy(context.Background(), labelsToStringSlice(v1, v2, v3, v4, v5), by)
+}
+
 ///// internal
 
 type ocCounterWrapper struct {

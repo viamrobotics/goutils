@@ -73,10 +73,17 @@ func NewCounter3[T1, T2, T3 labelContraint](name string, cfg MetricConfig) Count
 }
 
 // NewCounter4 creates a new counter metric with 4 labels.
-func NewCounter4[T1, T2 labelContraint,
-	T3, T4 labelContraint](name string, cfg MetricConfig,
+func NewCounter4[T1, T2, T3, T4 labelContraint](name string, cfg MetricConfig,
 ) Counter4[T1, T2, T3, T4] {
 	return Counter4[T1, T2, T3, T4]{
+		wrapper: createCounterWrapper(name, cfg),
+	}
+}
+
+// NewCounter5 creates a new counter metric with 5 labels.
+func NewCounter5[T1, T2, T3, T4, T5 labelContraint](name string, cfg MetricConfig,
+) Counter5[T1, T2, T3, T4, T5] {
+	return Counter5[T1, T2, T3, T4, T5]{
 		wrapper: createCounterWrapper(name, cfg),
 	}
 }
