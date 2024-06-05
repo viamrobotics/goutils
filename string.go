@@ -68,6 +68,17 @@ func (ss StringSet) Remove(value string) {
 	delete(ss, value)
 }
 
+// ToList converts the set into a list of strings.
+func (ss StringSet) ToList() []string {
+	list := make([]string, len(ss))
+	i := 0
+	for key := range ss {
+		list[i] = key
+		i++
+	}
+	return list
+}
+
 // StringSliceRemove removes an element from the slice at the given position.
 func StringSliceRemove(from []string, at int) []string {
 	if at >= len(from) {

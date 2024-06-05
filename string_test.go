@@ -44,6 +44,16 @@ func TestStringSet(t *testing.T) {
 	ss.Remove("no-op")
 	_, ok = ss["foo"]
 	test.That(t, ok, test.ShouldBeTrue)
+
+	ss.Remove("foo")
+	test.That(t, len(ss), test.ShouldEqual, 0)
+
+	ss.Add("hello")
+	ss.Add("bye")
+
+	listView := ss.ToList()
+	test.That(t, len(listView), test.ShouldEqual, 2)
+	test.That(t, listView, test.ShouldResemble, []string{"hello", "bye"})
 }
 
 func TestStringSliceRemove(t *testing.T) {
