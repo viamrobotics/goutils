@@ -31,7 +31,10 @@ type webrtcClientStream struct {
 	userCtx          context.Context
 	headersReceived  chan struct{}
 	trailersReceived bool
-	sendClosed       bool
+
+	// sendClose represents whether the send direction of the stream is closed. However,
+	// control flow signals such as RST_STREAM will still be sent.
+	sendClosed bool
 }
 
 // newWebRTCClientStream creates a gRPC stream from the given client channel with a
