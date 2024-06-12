@@ -599,3 +599,89 @@ func TestWebRTCClientChannelCanStopStreamRecvMsg(t *testing.T) {
 
 	<-serverFinished
 }
+
+func TestClientStreamCancel(t *testing.T) {
+	// Tests that clients can cancel server streams over WebRTC.
+	// 1. We set up a server with a stream endpoint and call it with a client.
+	// 2. After the initial request, the client closes its send side of the stream (replicating what happens in a server-side streaming scenario).
+	// 2. 3 messages are sent from the server. After the 3rd message, the client stream is cancelled.
+	// 3. The server should receive a RST_STREAM message and cancel the server context.
+
+	testutils.SkipUnlessInternet(t)
+	logger := golog.NewTestLogger(t)
+	pc1, pc2, dc1, dc2 := setupWebRTCPeers(t)
+
+	clientCh := newWebRTCClientChannel(pc1, dc1, logger, nil, nil)
+	defer func() {
+		test.That(t, clientCh.Close(), test.ShouldBeNil)
+	}()
+
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+
+	server := newWebRTCServer(logger)
+	server.RegisterService(&grpc.ServiceDesc{
+		ServiceName: "service_name",
+		Streams: []grpc.StreamDesc{
+			{
+				StreamName: "stream_name",
+				Handler: grpc.StreamHandler(func(srv any, stream grpc.ServerStream) error {
+					defer wg.Done()
+					pongStatus, _ := status.FromError(errors.New("pong"))
+
+					for i := 0; i < 10; i++ {
+						// Using channels is not enough ensure that the client reset
+						// went through in time.
+						// Sleep here to let client process messages and send reset.
+						time.Sleep(10 * time.Millisecond)
+
+						if stream.Context().Err() != nil {
+							return nil
+						}
+						stream.SendMsg(pongStatus.Proto())
+					}
+					// Failure as this means the context was never cancelled.
+					t.Fail()
+					return nil
+				}),
+				ServerStreams: true,
+				ClientStreams: false,
+			},
+		},
+	}, nil)
+
+	serverCh := newWebRTCServerChannel(server, pc2, dc2, nil, logger)
+	defer func() {
+		test.That(t, serverCh.Close(), test.ShouldBeNil)
+	}()
+
+	<-clientCh.Ready()
+	<-serverCh.Ready()
+
+	streamCtx, cancelStream := context.WithCancel(context.Background())
+	clientStream, err := clientCh.NewStream(
+		streamCtx,
+		&grpc.StreamDesc{
+			StreamName:    "client_stream",
+			ServerStreams: true,
+			ClientStreams: false,
+		},
+		"/service_name/stream_name",
+	)
+	test.That(t, err, test.ShouldBeNil)
+
+	someStatus, _ := status.FromError(errors.New("wowza"))
+	err = clientStream.SendMsg(someStatus.Proto())
+	test.That(t, err, test.ShouldBeNil)
+
+	err = clientStream.CloseSend()
+	test.That(t, err, test.ShouldBeNil)
+
+	for i := 0; i < 3; i++ {
+		var respStatus pbstatus.Status
+		err = clientStream.RecvMsg(&respStatus)
+		test.That(t, err, test.ShouldBeNil)
+	}
+	cancelStream()
+	wg.Wait()
+}

@@ -144,16 +144,12 @@ func checkWriteErrForStreamClose(err error) error {
 	return err
 }
 
-// resetStream cancels the stream and sends a reset signal.
+// resetStream cancels the stream and should always send a reset signal.
 // It is also not safe to call concurrently with SendMsg.
 func (s *webrtcClientStream) resetStream() (err error) {
 	s.webrtcBaseStream.mu.Lock()
 	defer s.webrtcBaseStream.mu.Unlock()
 
-	if s.sendClosed {
-		// no need to reset an already closed stream
-		return nil
-	}
 	s.sendClosed = true
 
 	defer func() {
