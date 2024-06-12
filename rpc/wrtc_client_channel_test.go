@@ -603,9 +603,10 @@ func TestWebRTCClientChannelCanStopStreamRecvMsg(t *testing.T) {
 func TestClientStreamCancel(t *testing.T) {
 	// Tests that clients can cancel server streams over WebRTC.
 	// 1. We set up a server with a stream endpoint and call it with a client.
-	// 2. After the initial request, the client closes its send side of the stream (replicating what happens in a server-side streaming scenario).
-	// 2. 3 messages are sent from the server. After the 3rd message, the client stream is cancelled.
-	// 3. The server should receive a RST_STREAM message and cancel the server context.
+	// 2. After the initial request, the client closes its send side of the stream
+	//    (replicating what happens in a server-side streaming scenario).
+	// 3. 3 messages are sent from the server. After the 3rd message, the client stream is cancelled.
+	// 4. The server should receive a RST_STREAM message and cancel the server context.
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
 	pc1, pc2, dc1, dc2 := setupWebRTCPeers(t)
@@ -630,7 +631,7 @@ func TestClientStreamCancel(t *testing.T) {
 
 					for i := 0; i < 10; i++ {
 						if stream.Context().Err() != nil {
-							return nil
+							return stream.Context().Err()
 						}
 						stream.SendMsg(pongStatus.Proto())
 
