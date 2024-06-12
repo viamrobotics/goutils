@@ -606,7 +606,6 @@ func TestClientStreamCancel(t *testing.T) {
 	// 2. After the initial request, the client closes its send side of the stream (replicating what happens in a server-side streaming scenario).
 	// 2. 3 messages are sent from the server. After the 3rd message, the client stream is cancelled.
 	// 3. The server should receive a RST_STREAM message and cancel the server context.
-
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
 	pc1, pc2, dc1, dc2 := setupWebRTCPeers(t)
@@ -630,15 +629,15 @@ func TestClientStreamCancel(t *testing.T) {
 					pongStatus, _ := status.FromError(errors.New("pong"))
 
 					for i := 0; i < 10; i++ {
-						// Using channels is not enough ensure that the client reset
-						// went through in time.
-						// Sleep here to let client process messages and send reset.
-						time.Sleep(10 * time.Millisecond)
-
 						if stream.Context().Err() != nil {
 							return nil
 						}
 						stream.SendMsg(pongStatus.Proto())
+
+						// Using channels is not enough ensure that the client reset
+						// went through in time.
+						// Sleep here to let client process messages and send reset.
+						time.Sleep(10 * time.Millisecond)
 					}
 					// Failure as this means the context was never cancelled.
 					t.Fail()
