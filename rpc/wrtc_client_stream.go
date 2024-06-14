@@ -31,7 +31,10 @@ type webrtcClientStream struct {
 	userCtx          context.Context
 	headersReceived  chan struct{}
 	trailersReceived bool
-	sendClosed       bool
+
+	// sendClose represents whether the send direction of the stream is closed. However,
+	// control flow signals such as RST_STREAM will still be sent.
+	sendClosed bool
 }
 
 // newWebRTCClientStream creates a gRPC stream from the given client channel with a
@@ -144,16 +147,12 @@ func checkWriteErrForStreamClose(err error) error {
 	return err
 }
 
-// resetStream cancels the stream and sends a reset signal.
+// resetStream cancels the stream and should always send a reset signal.
 // It is also not safe to call concurrently with SendMsg.
 func (s *webrtcClientStream) resetStream() (err error) {
 	s.webrtcBaseStream.mu.Lock()
 	defer s.webrtcBaseStream.mu.Unlock()
 
-	if s.sendClosed {
-		// no need to reset an already closed stream
-		return nil
-	}
 	s.sendClosed = true
 
 	defer func() {
