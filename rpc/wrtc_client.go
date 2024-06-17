@@ -6,6 +6,7 @@ import (
 	"io"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/edaniels/golog"
 	"github.com/pion/webrtc/v3"
@@ -102,6 +103,8 @@ func dialWebRTC(
 	dOpts dialOptions,
 	logger golog.Logger,
 ) (ch *webrtcClientChannel, err error) {
+	dialStart := time.Now()
+
 	logger = logger.Named("webrtc")
 	dialCtx, timeoutCancel := context.WithTimeout(ctx, getDefaultOfferDeadline())
 	defer timeoutCancel()
@@ -152,6 +155,15 @@ func dialWebRTC(
 		}
 	}()
 
+	var callUpdates int
+	var maxCallUpdateDuration, totalCallUpdateDuration time.Duration
+	onICEConnected := func() {
+		averageCallUpdateDuration := totalCallUpdateDuration / time.Duration(callUpdates)
+		// TODO: Potentially report these stats to sentry/some central location at some point.
+		logger.Debugw("ICE connected", "time_since_dial_start", time.Since(dialStart), "num_call_updates",
+			callUpdates, "average_duration", averageCallUpdateDuration, "max_call_update_duration", maxCallUpdateDuration)
+	}
+
 	exchangeCtx, exchangeCancel := context.WithCancel(signalCtx)
 	defer exchangeCancel()
 
@@ -196,6 +208,7 @@ func dialWebRTC(
 				return
 			}
 			if icecandidate != nil {
+				logger.Debugw("gathered local ICE candidate", "candidate", icecandidate.String())
 				pendingCandidates.Add(1)
 				if icecandidate.Typ == webrtc.ICECandidateTypeHost {
 					waitOneHostOnce.Do(func() {
@@ -221,6 +234,7 @@ func dialWebRTC(
 					return
 				}
 				iProto := iceCandidateToProto(icecandidate)
+				callUpdateStart := time.Now()
 				if _, err := signalingClient.CallUpdate(exchangeCtx, &webrtcpb.CallUpdateRequest{
 					Uuid: uuid,
 					Update: &webrtcpb.CallUpdateRequest_Candidate{
@@ -228,7 +242,14 @@ func dialWebRTC(
 					},
 				}); err != nil {
 					sendErr(err)
+					return
 				}
+				callUpdates++
+				callUpdateDuration := time.Since(callUpdateStart)
+				if callUpdateDuration > maxCallUpdateDuration {
+					maxCallUpdateDuration = callUpdateDuration
+				}
+				totalCallUpdateDuration += time.Since(callUpdateStart)
 			})
 		})
 
@@ -264,7 +285,7 @@ func dialWebRTC(
 	}
 
 	//nolint:contextcheck
-	clientCh := newWebRTCClientChannel(peerConn, dataChannel, logger, dOpts.unaryInterceptor, dOpts.streamInterceptor)
+	clientCh := newWebRTCClientChannel(peerConn, dataChannel, onICEConnected, logger, dOpts.unaryInterceptor, dOpts.streamInterceptor)
 
 	exchangeCandidates := func() error {
 		haveInit := false
@@ -312,6 +333,7 @@ func dialWebRTC(
 					return errors.Errorf("uuid mismatch; have=%q want=%q", callResp.Uuid, uuid)
 				}
 				cand := iceCandidateFromProto(s.Update.Candidate)
+				logger.Debugw("received remote ICE candidate", "candidate", cand.Candidate)
 				if err := peerConn.AddICECandidate(cand); err != nil {
 					return err
 				}

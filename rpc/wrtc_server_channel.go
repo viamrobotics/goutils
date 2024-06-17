@@ -41,6 +41,7 @@ func newWebRTCServerChannel(
 		peerConn,
 		dataChannel,
 		func() { server.removePeer(peerConn) },
+		nil,
 		logger,
 	)
 	ch := &webrtcServerChannel{

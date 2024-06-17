@@ -44,8 +44,8 @@ func setupWebRTCBaseChannels(t *testing.T) (
 
 	peer1Done := make(chan struct{})
 	peer2Done := make(chan struct{})
-	bc1 := newBaseChannel(context.Background(), pc1, dc1, func() { close(peer1Done) }, logger)
-	bc2 := newBaseChannel(context.Background(), pc2, dc2, func() { close(peer2Done) }, logger)
+	bc1 := newBaseChannel(context.Background(), pc1, dc1, func() { close(peer1Done) }, nil, logger)
+	bc2 := newBaseChannel(context.Background(), pc2, dc2, func() { close(peer2Done) }, nil, logger)
 
 	<-bc1.Ready()
 	<-bc2.Ready()
