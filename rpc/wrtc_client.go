@@ -162,9 +162,8 @@ func dialWebRTC(
 	)
 	onICEConnected := func() {
 		// Delay by up to 5s to allow more caller updates/better stats.
-		timer := time.NewTimer(5 * time.Second)
 		select {
-		case <-timer.C:
+		case <-time.After(5 * time.Second):
 		case <-ctx.Done():
 		}
 
