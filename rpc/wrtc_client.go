@@ -155,10 +155,19 @@ func dialWebRTC(
 		}
 	}()
 
-	var statsMu sync.Mutex
-	var callUpdates int
-	var maxCallUpdateDuration, totalCallUpdateDuration time.Duration
+	var (
+		statsMu                                        sync.Mutex
+		callUpdates                                    int
+		maxCallUpdateDuration, totalCallUpdateDuration time.Duration
+	)
 	onICEConnected := func() {
+		// Delay by up to 5s to allow more caller updates/better stats.
+		timer := time.NewTimer(5 * time.Second)
+		select {
+		case <-timer.C:
+		case <-ctx.Done():
+		}
+
 		statsMu.Lock()
 		defer statsMu.Unlock()
 		averageCallUpdateDuration := totalCallUpdateDuration / time.Duration(callUpdates)
