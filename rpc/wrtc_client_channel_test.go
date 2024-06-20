@@ -28,11 +28,11 @@ func TestWebRTCClientChannel(t *testing.T) {
 	logger := golog.NewTestLogger(t)
 	pc1, pc2, dc1, dc2 := setupWebRTCPeers(t)
 
-	clientCh := newWebRTCClientChannel(pc1, dc1, logger, nil, nil)
+	clientCh := newWebRTCClientChannel(pc1, dc1, nil, logger, nil, nil)
 	defer func() {
 		test.That(t, clientCh.Close(), test.ShouldBeNil)
 	}()
-	serverCh := newBaseChannel(context.Background(), pc2, dc2, nil, logger)
+	serverCh := newBaseChannel(context.Background(), pc2, dc2, nil, nil, logger)
 	defer func() {
 		test.That(t, serverCh.Close(), test.ShouldBeNil)
 	}()
@@ -339,11 +339,11 @@ func TestWebRTCClientChannelResetStream(t *testing.T) {
 	logger := golog.NewTestLogger(t)
 	pc1, pc2, dc1, dc2 := setupWebRTCPeers(t)
 
-	clientCh := newWebRTCClientChannel(pc1, dc1, logger, nil, nil)
+	clientCh := newWebRTCClientChannel(pc1, dc1, nil, logger, nil, nil)
 	defer func() {
 		test.That(t, clientCh.Close(), test.ShouldBeNil)
 	}()
-	serverCh := newBaseChannel(context.Background(), pc2, dc2, nil, logger)
+	serverCh := newBaseChannel(context.Background(), pc2, dc2, nil, nil, logger)
 	defer func() {
 		test.That(t, serverCh.Close(), test.ShouldBeNil)
 	}()
@@ -463,11 +463,11 @@ func TestWebRTCClientChannelWithInterceptor(t *testing.T) {
 		return streamer(ctx, desc, cc, method, opts...)
 	}
 
-	clientCh := newWebRTCClientChannel(pc1, dc1, logger, unaryInterceptor, streamInterceptor)
+	clientCh := newWebRTCClientChannel(pc1, dc1, nil, logger, unaryInterceptor, streamInterceptor)
 	defer func() {
 		test.That(t, clientCh.Close(), test.ShouldBeNil)
 	}()
-	serverCh := newBaseChannel(context.Background(), pc2, dc2, nil, logger)
+	serverCh := newBaseChannel(context.Background(), pc2, dc2, nil, nil, logger)
 	defer func() {
 		test.That(t, serverCh.Close(), test.ShouldBeNil)
 	}()
@@ -546,11 +546,11 @@ func TestWebRTCClientChannelCanStopStreamRecvMsg(t *testing.T) {
 	logger := golog.NewTestLogger(t)
 	pc1, pc2, dc1, dc2 := setupWebRTCPeers(t)
 
-	clientCh := newWebRTCClientChannel(pc1, dc1, logger, nil, nil)
+	clientCh := newWebRTCClientChannel(pc1, dc1, nil, logger, nil, nil)
 	defer func() {
 		test.That(t, clientCh.Close(), test.ShouldBeNil)
 	}()
-	serverCh := newBaseChannel(context.Background(), pc2, dc2, nil, logger)
+	serverCh := newBaseChannel(context.Background(), pc2, dc2, nil, nil, logger)
 	defer func() {
 		test.That(t, serverCh.Close(), test.ShouldBeNil)
 	}()
@@ -611,7 +611,7 @@ func TestClientStreamCancel(t *testing.T) {
 	logger := golog.NewTestLogger(t)
 	pc1, pc2, dc1, dc2 := setupWebRTCPeers(t)
 
-	clientCh := newWebRTCClientChannel(pc1, dc1, logger, nil, nil)
+	clientCh := newWebRTCClientChannel(pc1, dc1, nil, logger, nil, nil)
 	defer func() {
 		test.That(t, clientCh.Close(), test.ShouldBeNil)
 	}()

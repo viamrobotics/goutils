@@ -49,6 +49,7 @@ type activeWebRTCClientStream struct {
 func newWebRTCClientChannel(
 	peerConn *webrtc.PeerConnection,
 	dataChannel *webrtc.DataChannel,
+	onICEConnected func(),
 	logger golog.Logger,
 	unaryInterceptor grpc.UnaryClientInterceptor,
 	streamInterceptor grpc.StreamClientInterceptor,
@@ -58,6 +59,7 @@ func newWebRTCClientChannel(
 		peerConn,
 		dataChannel,
 		nil,
+		onICEConnected,
 		logger,
 	)
 	ch := &webrtcClientChannel{

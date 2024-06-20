@@ -23,7 +23,7 @@ func TestWebRTCServerChannel(t *testing.T) {
 	logger := golog.NewTestLogger(t)
 	pc1, pc2, dc1, dc2 := setupWebRTCPeers(t)
 
-	clientCh := newWebRTCClientChannel(pc1, dc1, logger, nil, nil)
+	clientCh := newWebRTCClientChannel(pc1, dc1, nil, logger, nil, nil)
 	defer func() {
 		test.That(t, clientCh.Close(), test.ShouldBeNil)
 	}()
@@ -255,7 +255,7 @@ func TestWebRTCServerChannelResetStream(t *testing.T) {
 	logger := golog.NewTestLogger(t)
 	pc1, pc2, dc1, dc2 := setupWebRTCPeers(t)
 
-	clientCh := newWebRTCClientChannel(pc1, dc1, logger, nil, nil)
+	clientCh := newWebRTCClientChannel(pc1, dc1, nil, logger, nil, nil)
 	defer func() {
 		test.That(t, clientCh.Close(), test.ShouldBeNil)
 	}()

@@ -38,6 +38,7 @@ func newBaseChannel(
 	peerConn *webrtc.PeerConnection,
 	dataChannel *webrtc.DataChannel,
 	onPeerDone func(),
+	onICEConnected func(),
 	logger golog.Logger,
 ) *webrtcBaseChannel {
 	ctx, cancel := context.WithCancel(ctx)
@@ -108,8 +109,13 @@ func newBaseChannel(
 					"conn_state", connectionState.String(),
 				)
 				doPeerDone()
+			case webrtc.ICEConnectionStateConnected:
+				if onICEConnected != nil {
+					onICEConnected()
+				}
+				fallthrough
 			case webrtc.ICEConnectionStateChecking, webrtc.ICEConnectionStateCompleted,
-				webrtc.ICEConnectionStateConnected, webrtc.ICEConnectionStateNew:
+				webrtc.ICEConnectionStateNew:
 				fallthrough
 			default:
 				candPair, hasCandPair := webrtcPeerConnCandPair(peerConn)
