@@ -53,7 +53,8 @@ func TestStringSet(t *testing.T) {
 
 	listView := ss.ToList()
 	test.That(t, len(listView), test.ShouldEqual, 2)
-	test.That(t, listView, test.ShouldResemble, []string{"hello", "bye"})
+	test.That(t, listView, test.ShouldContain, "hello")
+	test.That(t, listView, test.ShouldContain, "bye")
 }
 
 func TestStringSliceRemove(t *testing.T) {
