@@ -474,6 +474,23 @@ export async function dialWebRTC(
       const offerDesc = await pc.createOffer({});
 
       let iceComplete = false;
+      let numCallUpdates = 0;
+      let maxCallUpdateDuration = 0;
+      let totalCallUpdateDuration = 0;
+
+      pc.addEventListener(
+        'iceconnectionstatechange',
+        () => {
+          if (pc.iceConnectionState !== 'completed') {
+            return;
+          }
+          let averageCallUpdateDuration = totalCallUpdateDuration / numCallUpdates;
+          console.debug(`caller update statistics: ` +
+                        `num_updates: ${numCallUpdates}` +
+                        `average_duration: ${averageCallUpdateDuration}ms` +
+                        `max_duration: ${maxCallUpdateDuration}ms`);
+        }
+      );
       pc.addEventListener(
         'icecandidate',
         async (event: { candidate: RTCIceCandidateInit | null }) => {
@@ -488,10 +505,12 @@ export async function dialWebRTC(
             return;
           }
 
+          console.debug(`gathered local ICE candidate of ${event.candidate}`)
           const iProto = iceCandidateToProto(event.candidate);
           const callRequestUpdate = new CallUpdateRequest();
           callRequestUpdate.setUuid(uuid);
           callRequestUpdate.setCandidate(iProto);
+          const callUpdateStart = new Date();
           grpc.unary(SignalingService.CallUpdate, {
             request: callRequestUpdate,
             metadata: {
@@ -502,6 +521,14 @@ export async function dialWebRTC(
             onEnd: (output: grpc.UnaryOutput<CallUpdateResponse>) => {
               const { status, statusMessage, message } = output;
               if (status === grpc.Code.OK && message) {
+                numCallUpdates++;
+                let callUpdateEnd = new Date();
+                let callUpdateDuration = callUpdateEnd.getTime() -
+                  callUpdateStart.getTime();
+                if (callUpdateDuration > maxCallUpdateDuration) {
+                  maxCallUpdateDuration = callUpdateDuration;
+                }
+                totalCallUpdateDuration += callUpdateDuration;
                 return;
               }
               if (exchangeDone || iceComplete) {
@@ -560,6 +587,7 @@ export async function dialWebRTC(
         }
         const update = response.getUpdate()!;
         const cand = iceCandidateFromProto(update.getCandidate()!);
+        console.debug(`received remote ICE candidate of ${cand}`)
         try {
           await pc.addIceCandidate(cand);
         } catch (error) {
