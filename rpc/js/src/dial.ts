@@ -481,13 +481,13 @@ export async function dialWebRTC(
       pc.addEventListener(
         'iceconnectionstatechange',
         () => {
-          if (pc.iceConnectionState !== 'completed') {
+          if (pc.iceConnectionState !== 'completed' || numCallUpdates === 0) {
             return;
           }
           let averageCallUpdateDuration = totalCallUpdateDuration / numCallUpdates;
           console.debug(`caller update statistics: ` +
-                        `num_updates: ${numCallUpdates}` +
-                        `average_duration: ${averageCallUpdateDuration}ms` +
+                        `num_updates: ${numCallUpdates}, ` +
+                        `average_duration: ${averageCallUpdateDuration}ms, ` +
                         `max_duration: ${maxCallUpdateDuration}ms`);
         }
       );
@@ -505,7 +505,9 @@ export async function dialWebRTC(
             return;
           }
 
-          console.debug(`gathered local ICE candidate of ${event.candidate}`)
+          if (event.candidate.candidate !== null) {
+            console.debug(`gathered local ICE ${event.candidate.candidate}`)
+          }
           const iProto = iceCandidateToProto(event.candidate);
           const callRequestUpdate = new CallUpdateRequest();
           callRequestUpdate.setUuid(uuid);
@@ -587,7 +589,9 @@ export async function dialWebRTC(
         }
         const update = response.getUpdate()!;
         const cand = iceCandidateFromProto(update.getCandidate()!);
-        console.debug(`received remote ICE candidate of ${cand}`)
+        if (cand.candidate !== null) {
+          console.debug(`received remote ICE ${cand.candidate}`)
+        }
         try {
           await pc.addIceCandidate(cand);
         } catch (error) {
