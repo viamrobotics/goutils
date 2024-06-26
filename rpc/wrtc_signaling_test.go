@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"sync"
 	"testing"
 	"time"
 
@@ -186,6 +187,16 @@ func TestWebRTCAnswererImmediateStop(t *testing.T) {
 
 	// Running both asynchronously means Stop will potentially happen before Start,
 	// but this setup still ensures that the two methods do not race each other.
-	go answerer.Start()
-	go answerer.Stop()
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		answerer.Start()
+	}()
+	go func() {
+		defer wg.Done()
+		answerer.Stop()
+	}()
+	wg.Wait()
 }
