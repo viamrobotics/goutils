@@ -484,12 +484,13 @@ export async function dialWebRTC(
         }
         let averageCallUpdateDuration =
           totalCallUpdateDuration / numCallUpdates;
-        console.debug(
-          `caller update statistics: ` +
-            `num_updates: ${numCallUpdates}, ` +
-            `average_duration: ${averageCallUpdateDuration}ms, ` +
-            `max_duration: ${maxCallUpdateDuration}ms`
-        );
+        console.groupCollapsed('Caller update statistics');
+        console.table({
+          num_updates: numCallUpdates,
+          average_duration: `${averageCallUpdateDuration}ms`,
+          max_duration: `${maxCallUpdateDuration}ms`,
+        });
+        console.groupEnd();
       });
       pc.addEventListener(
         'icecandidate',
