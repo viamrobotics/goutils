@@ -169,6 +169,9 @@ func dialWebRTC(
 
 		statsMu.Lock()
 		defer statsMu.Unlock()
+		if callUpdates == 0 {
+			return
+		}
 		averageCallUpdateDuration := totalCallUpdateDuration / time.Duration(callUpdates)
 		// TODO: Potentially report these stats to sentry/some central location at some point.
 		logger.Debugw("ICE connected", "time_since_dial_start", time.Since(dialStart), "num_call_updates",
