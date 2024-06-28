@@ -49,6 +49,9 @@ func newWebRTCAPI(isClient bool, logger golog.Logger) (*webrtc.API, error) {
 	} else {
 		settingEngine.SetICEMulticastDNSMode(ice.MulticastDNSModeQueryOnly)
 	}
+	settingEngine.DisableSRTPReplayProtection(true)
+	settingEngine.DisableSRTCPReplayProtection(true)
+
 	// by including the loopback candidate, we allow an offline mode such that the
 	// server/client (controlled/controlling) can include 127.0.0.1 as a candidate
 	// while the client (controlling) provides an mDNS candidate that may resolve to 127.0.0.1.
