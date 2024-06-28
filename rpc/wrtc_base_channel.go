@@ -110,7 +110,13 @@ func newBaseChannel(
 				//
 				// We chose here to call close for all cases of `Disconnected`, `Failed` and
 				// `Closed`. We rely on pion's `PeerConnection.Close` method being idempotent.
-				peerConn.Close()
+				if err := peerConn.Close(); err != nil {
+					logger.Debugw("Error closing peer connection",
+						"conn_id", currConnID,
+						"conn_state", connectionState.String(),
+						"err", err,
+					)
+				}
 			case webrtc.ICEConnectionStateConnected:
 				if onICEConnected != nil {
 					onICEConnected()
