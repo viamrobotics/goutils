@@ -65,10 +65,10 @@ func TestRenegotation(t *testing.T) {
 	}()
 
 	// Add a renegotation channel. Set these channels up before signaling/answering.
-	clientNegChannelOpened, clientNegChannelClosed, err = ConfigureForRenegotiation(client, logger)
+	clientNegChannelOpened, clientNegChannelClosed, err = ConfigureForRenegotiation(client, PeerRoleClient, logger)
 	test.That(t, err, test.ShouldBeNil)
 
-	serverNegChannelOpened, serverNegChannelClosed, err = ConfigureForRenegotiation(server, logger)
+	serverNegChannelOpened, serverNegChannelClosed, err = ConfigureForRenegotiation(server, PeerRoleServer, logger)
 	test.That(t, err, test.ShouldBeNil)
 
 	// Run signaling/answering such that the client + server can connect to each other.
