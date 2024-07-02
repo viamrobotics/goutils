@@ -75,15 +75,7 @@ func newBaseChannel(
 		}
 	}
 	connStateChanged := func(connectionState webrtc.ICEConnectionState) {
-		ch.mu.Lock()
-		if ch.closed {
-			doPeerDone()
-			ch.mu.Unlock()
-			return
-		}
 		ch.activeBackgroundWorkers.Add(1)
-		ch.mu.Unlock()
-
 		utils.PanicCapturingGo(func() {
 			defer ch.activeBackgroundWorkers.Done()
 
