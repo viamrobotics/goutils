@@ -395,7 +395,10 @@ func (s *webrtcServerStream) writeHeaders() error {
 	if !s.headersWritten.CompareAndSwap(false, true) {
 		return nil
 	}
+	// Grab the RLock to prevent headers from being set while written.
+	s.mu.RLock()
 	protoHeaders := metadataToProto(s.header)
+	s.mu.RUnlock()
 	return s.ch.writeHeaders(s.stream, &webrtcpb.ResponseHeaders{
 		Metadata: protoHeaders,
 	})
