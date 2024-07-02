@@ -30,11 +30,11 @@ require (
 	github.com/lestrrat-go/jwx v1.2.25
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/pion/dtls/v2 v2.2.7
-	github.com/pion/ice/v2 v2.3.13
+	github.com/pion/ice/v2 v2.3.27
 	github.com/pion/interceptor v0.1.25
 	github.com/pion/logging v0.2.2
-	github.com/pion/sctp v1.8.14
-	github.com/pion/webrtc/v3 v3.2.36
+	github.com/pion/sctp v1.8.16
+	github.com/pion/webrtc/v3 v3.2.44
 	github.com/pkg/errors v0.9.1
 	github.com/pseudomuto/protoc-gen-doc v1.3.2
 	github.com/rs/cors v1.8.3
