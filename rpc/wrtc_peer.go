@@ -96,12 +96,8 @@ func newPeerConnectionForClient(
 		}
 	}()
 
-	// We configure "clients" for renegotation. This helper function does two things:
-	// - Creates the DataChannel and `OnMessage` handlers for communicating offers+answers.
-	//
-	// Dan: We ignore the open/close channels for the renegotiation DataChannel. We expect (but are
-	// not sure) that Viam client shutdown happens before PeerConnection shutdown. And we expect
-	// that client shutdown guarantees there are no in-flight DataChannel messages being processed.
+	// We configure "clients" for renegotiation. This creates the renegotiation DataChannel
+	// and `OnMessage` handlers for communicating offers+answers.
 	if _, _, err = ConfigureForRenegotiation(peerConn, PeerRoleClient, logger); err != nil {
 		return nil, nil, err
 	}
@@ -273,7 +269,7 @@ func ConfigureForRenegotiation(
 	// negotiation channel.
 	negOpened := make(chan struct{})
 
-	// negotiationChannel being set to a non-nil value is synchronized *after* negOpened is closed.
+	// negotiationChannel being set to a non-nil value is synchronized *before* negOpened is closed.
 	var negotiationChannel *webrtc.DataChannel
 
 	// OnNegotiationNeeded is webrtc callback for when a PeerConnection is mutated in a way such
