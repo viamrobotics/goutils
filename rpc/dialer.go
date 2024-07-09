@@ -8,6 +8,7 @@ import (
 	"hash/fnv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/edaniels/golog"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
@@ -21,6 +22,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
@@ -241,6 +243,10 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts dialOptions, logg
 	dialOpts := []grpc.DialOption{
 		grpc.WithBlock(),
 		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(MaxMessageSize)),
+		grpc.WithKeepaliveParams(keepalive.ClientParameters{
+			Time:                15 * time.Second, // a little extra buffer to try to avoid ENHANCE_YOUR_CALM
+			PermitWithoutStream: true,
+		}),
 	}
 	if dOpts.insecure {
 		dialOpts = append(dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
