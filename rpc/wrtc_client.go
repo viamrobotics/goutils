@@ -10,7 +10,6 @@ import (
 
 	"github.com/edaniels/golog"
 	"github.com/pkg/errors"
-	"github.com/pkg/errors"
 	"github.com/viamrobotics/webrtc/v3"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc/codes"

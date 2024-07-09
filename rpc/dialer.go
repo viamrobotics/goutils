@@ -13,7 +13,6 @@ import (
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
 	"github.com/pkg/errors"
-	"github.com/pkg/errors"
 	"github.com/viamrobotics/webrtc/v3"
 	"go.uber.org/multierr"
 	"go.uber.org/zap"
