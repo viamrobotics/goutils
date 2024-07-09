@@ -9,8 +9,9 @@ import (
 
 	"github.com/edaniels/golog"
 	"github.com/google/uuid"
-	"github.com/viamrobotics/webrtc/v3"
 	"github.com/pkg/errors"
+	"github.com/pkg/errors"
+	"github.com/viamrobotics/webrtc/v3"
 
 	"go.viam.com/utils"
 )
