@@ -10,7 +10,7 @@ import (
 	"net"
 
 	"github.com/golang-jwt/jwt/v4"
-	"github.com/pion/webrtc/v3"
+	"github.com/viamrobotics/webrtc/v3"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/stats"

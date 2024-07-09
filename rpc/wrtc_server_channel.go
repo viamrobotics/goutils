@@ -6,7 +6,7 @@ import (
 	"sync"
 
 	"github.com/edaniels/golog"
-	"github.com/pion/webrtc/v3"
+	"github.com/viamrobotics/webrtc/v3"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/proto"
 

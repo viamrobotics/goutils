@@ -12,7 +12,7 @@ import (
 	"github.com/pion/ice/v2"
 	"github.com/pion/interceptor"
 	"github.com/pion/sctp"
-	"github.com/pion/webrtc/v3"
+	"github.com/viamrobotics/webrtc/v3"
 	"go.uber.org/multierr"
 
 	"go.viam.com/utils"

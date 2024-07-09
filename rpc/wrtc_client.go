@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/edaniels/golog"
-	"github.com/pion/webrtc/v3"
+	"github.com/viamrobotics/webrtc/v3"
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc/codes"
