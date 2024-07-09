@@ -101,6 +101,22 @@ func newBaseChannel(
 					"conn_state", connectionState.String(),
 				)
 				doPeerDone()
+				// The `Disconnected` state change implies the other side has closed the peer
+				// connection. Despite learning the other side has gone away, pion does not close
+				// its internal resources. Notably, things like `TrackRemote.ReadRTP` can hang. We'd
+				// instead prefer for that to receive an EOF, so it can close normally. Therefore
+				// upon reaching the `Disconnected` state, we explicitly call `Close` on our side of
+				// the `PeerConnection`.
+				//
+				// We chose here to call close for all cases of `Disconnected`, `Failed` and
+				// `Closed`. We rely on pion's `PeerConnection.Close` method being idempotent.
+				if err := peerConn.Close(); err != nil {
+					logger.Debugw("Error closing peer connection",
+						"conn_id", currConnID,
+						"conn_state", connectionState.String(),
+						"err", err,
+					)
+				}
 			case webrtc.ICEConnectionStateConnected:
 				if onICEConnected != nil {
 					onICEConnected()
