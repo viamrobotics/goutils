@@ -171,11 +171,7 @@ func (s *webrtcServerStream) SendMsg(m interface{}) (err error) {
 		return io.ErrClosedPipe
 	}
 
-	s.webrtcBaseStream.mu.RLock()
 	defer func() {
-		// `closeWithSendError` takes locks the `webrtcBaseStream.mu` RWLock in writer mode. Release
-		// the lock before proceeding.
-		s.webrtcBaseStream.mu.RUnlock()
 		if err != nil {
 			err = multierr.Combine(err, s.closeWithSendError(err))
 		}
@@ -184,6 +180,10 @@ func (s *webrtcServerStream) SendMsg(m interface{}) (err error) {
 	if err := s.writeHeaders(); err != nil {
 		return err
 	}
+
+	s.webrtcBaseStream.mu.RLock()
+	defer s.webrtcBaseStream.mu.RUnlock()
+
 	if v1Msg, ok := m.(protov1.Message); ok {
 		m = protov1.MessageV2(v1Msg)
 	}
