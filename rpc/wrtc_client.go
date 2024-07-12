@@ -390,7 +390,12 @@ func dialWebRTC(
 		return nil, multierr.Combine(callErr, err)
 	}
 	if err := sendDone(); err != nil {
-		return nil, err
+		// Errors from sendDone (such as EOF) are sometimes caused by the signaling
+		// server "ending" the exchange process earlier than the caller due to the
+		// answerer being able to establish a connection without all the caller's
+		// ICE candidates (trickle ICE). Only Warn the error here to avoid
+		// accidentally Closing a healthy, established peer connection.
+		logger.Warnw("error ending signaling exchange from caller client", "error", err)
 	}
 	successful = true
 	return clientCh, nil
