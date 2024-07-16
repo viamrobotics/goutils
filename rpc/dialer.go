@@ -8,7 +8,6 @@ import (
 	"hash/fnv"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/edaniels/golog"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
@@ -244,7 +243,7 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts dialOptions, logg
 		grpc.WithBlock(),
 		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(MaxMessageSize)),
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{
-			Time:                15 * time.Second, // a little extra buffer to try to avoid ENHANCE_YOUR_CALM
+			Time:                keepAliveTime * 2, // a little extra buffer to try to avoid ENHANCE_YOUR_CALM
 			PermitWithoutStream: true,
 		}),
 	}
