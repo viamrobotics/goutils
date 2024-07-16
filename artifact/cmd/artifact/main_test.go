@@ -9,8 +9,8 @@ import (
 
 	"go.uber.org/zap/zaptest/observer"
 	"go.viam.com/test"
-	"go.viam.com/utils"
 
+	"go.viam.com/utils"
 	"go.viam.com/utils/artifact"
 	"go.viam.com/utils/artifact/tools"
 	"go.viam.com/utils/testutils"
@@ -313,25 +313,27 @@ func TestMainMain(t *testing.T) {
 				test.That(t, err, test.ShouldBeNil)
 			},
 		},
-		{"remove root does nothing", []string{"rm", "/"}, "", func(t *testing.T, logger utils.ZapCompatibleLogger, exec *testutils.ContextualMainExecution) {
-			removeBefore(t, logger, exec)
-		}, nil, func(t *testing.T, _ *observer.ObservedLogs) {
-			defer unsetup()
-			filePath := artifact.MustNewPath("some/file")
-			otherFilePath := artifact.MustNewPath("some/other_file")
+		{"remove root does nothing", []string{"rm", "/"}, "",
+			func(t *testing.T, logger utils.ZapCompatibleLogger, exec *testutils.ContextualMainExecution) {
+				removeBefore(t, logger, exec)
+			},
+			nil, func(t *testing.T, _ *observer.ObservedLogs) {
+				defer unsetup()
+				filePath := artifact.MustNewPath("some/file")
+				otherFilePath := artifact.MustNewPath("some/other_file")
 
-			test.That(t, os.RemoveAll(artifact.MustNewPath("/")), test.ShouldBeNil)
-			_, err := os.Stat(filePath)
-			test.That(t, err, test.ShouldNotBeNil)
-			_, err = os.Stat(otherFilePath)
-			test.That(t, err, test.ShouldNotBeNil)
+				test.That(t, os.RemoveAll(artifact.MustNewPath("/")), test.ShouldBeNil)
+				_, err := os.Stat(filePath)
+				test.That(t, err, test.ShouldNotBeNil)
+				_, err = os.Stat(otherFilePath)
+				test.That(t, err, test.ShouldNotBeNil)
 
-			test.That(t, tools.Pull("/", true), test.ShouldBeNil)
-			_, err = os.Stat(filePath)
-			test.That(t, err, test.ShouldBeNil)
-			_, err = os.Stat(otherFilePath)
-			test.That(t, err, test.ShouldBeNil)
-		}},
+				test.That(t, tools.Pull("/", true), test.ShouldBeNil)
+				_, err = os.Stat(filePath)
+				test.That(t, err, test.ShouldBeNil)
+				_, err = os.Stat(otherFilePath)
+				test.That(t, err, test.ShouldBeNil)
+			}},
 		{"status", []string{"status"}, "", before, nil, func(t *testing.T, logs *observer.ObservedLogs) {
 			defer unsetup()
 			test.That(t, len(logs.FilterMessageSnippet("").All()), test.ShouldEqual, 0)
@@ -348,24 +350,26 @@ func TestMainMain(t *testing.T) {
 			test.That(t, messages[0].Message, test.ShouldContainSubstring, filePath)
 			test.That(t, messages[0].Message, test.ShouldContainSubstring, otherFilePath)
 		}},
-		{"status modified", []string{"status"}, "", func(t *testing.T, logger utils.ZapCompatibleLogger, exec *testutils.ContextualMainExecution) {
-			defer unsetup()
-			statusBefore(t, logger, exec)
-			test.That(t, tools.Push(), test.ShouldBeNil)
-			otherFilePath := artifact.MustNewPath("some/other_file")
-			test.That(t, os.WriteFile(otherFilePath, []byte("changes"), 0o644), test.ShouldBeNil)
-		}, nil, func(t *testing.T, logs *observer.ObservedLogs) {
-			defer unsetup()
-			filePath := artifact.MustNewPath("some/file")
-			otherFilePath := artifact.MustNewPath("some/other_file")
+		{"status modified", []string{"status"}, "",
+			func(t *testing.T, logger utils.ZapCompatibleLogger, exec *testutils.ContextualMainExecution) {
+				defer unsetup()
+				statusBefore(t, logger, exec)
+				test.That(t, tools.Push(), test.ShouldBeNil)
+				otherFilePath := artifact.MustNewPath("some/other_file")
+				test.That(t, os.WriteFile(otherFilePath, []byte("changes"), 0o644), test.ShouldBeNil)
+			},
+			nil, func(t *testing.T, logs *observer.ObservedLogs) {
+				defer unsetup()
+				filePath := artifact.MustNewPath("some/file")
+				otherFilePath := artifact.MustNewPath("some/other_file")
 
-			messages := logs.FilterMessageSnippet("").All()
-			test.That(t, messages, test.ShouldHaveLength, 1)
-			test.That(t, messages[0].Message, test.ShouldNotContainSubstring, "Unstored")
-			test.That(t, messages[0].Message, test.ShouldContainSubstring, "Modified")
-			test.That(t, messages[0].Message, test.ShouldNotContainSubstring, filePath)
-			test.That(t, messages[0].Message, test.ShouldContainSubstring, otherFilePath)
-		}},
+				messages := logs.FilterMessageSnippet("").All()
+				test.That(t, messages, test.ShouldHaveLength, 1)
+				test.That(t, messages[0].Message, test.ShouldNotContainSubstring, "Unstored")
+				test.That(t, messages[0].Message, test.ShouldContainSubstring, "Modified")
+				test.That(t, messages[0].Message, test.ShouldNotContainSubstring, filePath)
+				test.That(t, messages[0].Message, test.ShouldContainSubstring, otherFilePath)
+			}},
 		{
 			"status unstored and modified",
 			[]string{"status"},

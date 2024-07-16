@@ -178,7 +178,10 @@ var (
 )
 
 // TestMain tests a main function with a series of test cases in serial.
-func TestMain(t *testing.T, mainWithArgs func(ctx context.Context, args []string, logger utils.ZapCompatibleLogger) error, tcs []MainTestCase) {
+func TestMain(
+	t *testing.T,
+	mainWithArgs func(ctx context.Context, args []string, logger utils.ZapCompatibleLogger) error,
+	tcs []MainTestCase) {
 	for i, tc := range tcs {
 		testCaseName := tc.Name
 		if testCaseName == "" {
