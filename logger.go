@@ -12,20 +12,10 @@ var Logger = golog.Global()
 var Debug = false
 
 // ZapCompatibleLogger is a basic logging interface.
-// type ZapCompatibleLogger interface {
-// 	Debug(...interface{})
-// 	Info(...interface{})
-// 	Warn(...interface{})
-// 	Fatal(...interface{})
-// }
-
 type ZapCompatibleLogger interface {
 	Desugar() *zap.Logger
-	// Level() zapcore.Level
 	Named(name string) *zap.SugaredLogger
-	Sync() error
 	With(args ...interface{}) *zap.SugaredLogger
-	WithOptions(opts ...zap.Option) *zap.SugaredLogger
 
 	Debug(args ...interface{})
 	Debugf(template string, args ...interface{})
