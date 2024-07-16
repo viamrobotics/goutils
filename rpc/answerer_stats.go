@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/viamrobotics/webrtc/v3"
-
 	"go.viam.com/utils"
 )
 
