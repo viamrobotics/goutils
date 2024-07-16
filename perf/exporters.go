@@ -8,8 +8,8 @@ import (
 
 	"cloud.google.com/go/compute/metadata"
 	"contrib.go.opencensus.io/exporter/stackdriver"
-	"github.com/edaniels/golog"
 	"go.opencensus.io/trace"
+	"go.viam.com/utils"
 )
 
 const (
@@ -27,7 +27,7 @@ type Exporter interface {
 // CloudOptions are options for the production cloud exporter to Stackdriver (Cloud Monitoring).
 type CloudOptions struct {
 	Context      context.Context
-	Logger       golog.Logger
+	Logger       utils.ZapCompatibleLogger
 	MetricPrefix string // Optional metric prefix.
 }
 

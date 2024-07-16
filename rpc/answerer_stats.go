@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/edaniels/golog"
 	"github.com/viamrobotics/webrtc/v3"
+	"go.viam.com/utils"
 )
 
 // timeFormatStr copied from DefaultTimeFormatStr in RDK.
@@ -39,7 +39,7 @@ type answererStats struct {
 // was a clear failure: !success && as.AnswerRequestInitReceived != nil. If
 // !success && as.AnswerRequestInitReceived == nil, another answerer picked up
 // the connection establishment attempt. Cannot be called while holding mutex.
-func (as *answererStats) log(logger golog.Logger) {
+func (as *answererStats) log(logger utils.ZapCompatibleLogger) {
 	as.mu.Lock()
 	defer as.mu.Unlock()
 

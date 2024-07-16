@@ -4,9 +4,9 @@ import (
 	"context"
 	"sync"
 
-	"github.com/edaniels/golog"
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
+	"go.viam.com/utils"
 )
 
 // A ProcessManager is responsible for controlling the lifecycle of processes
@@ -50,13 +50,13 @@ type ProcessManager interface {
 type processManager struct {
 	mu            sync.Mutex
 	processesByID map[string]ManagedProcess
-	logger        golog.Logger
+	logger        utils.ZapCompatibleLogger
 	started       bool
 	stopped       bool
 }
 
 // NewProcessManager returns a new ProcessManager.
-func NewProcessManager(logger golog.Logger) ProcessManager {
+func NewProcessManager(logger utils.ZapCompatibleLogger) ProcessManager {
 	return &processManager{
 		logger:        logger,
 		processesByID: map[string]ManagedProcess{},

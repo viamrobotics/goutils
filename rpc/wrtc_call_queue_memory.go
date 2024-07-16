@@ -7,7 +7,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/edaniels/golog"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/viamrobotics/webrtc/v3"
@@ -27,21 +26,21 @@ type memoryWebRTCCallQueue struct {
 
 	uuidDeterministic        bool
 	uuidDeterministicCounter int64
-	logger                   golog.Logger
+	logger                   utils.ZapCompatibleLogger
 }
 
 // NewMemoryWebRTCCallQueue returns a new, empty in-memory call queue.
-func NewMemoryWebRTCCallQueue(logger golog.Logger) WebRTCCallQueue {
+func NewMemoryWebRTCCallQueue(logger utils.ZapCompatibleLogger) WebRTCCallQueue {
 	return newMemoryWebRTCCallQueue(false, logger)
 }
 
 // newMemoryWebRTCCallQueueTest returns a new, empty in-memory call queue for testing.
 // It uses predictable UUIDs.
-func newMemoryWebRTCCallQueueTest(logger golog.Logger) *memoryWebRTCCallQueue {
+func newMemoryWebRTCCallQueueTest(logger utils.ZapCompatibleLogger) *memoryWebRTCCallQueue {
 	return newMemoryWebRTCCallQueue(true, logger)
 }
 
-func newMemoryWebRTCCallQueue(uuidDeterministic bool, logger golog.Logger) *memoryWebRTCCallQueue {
+func newMemoryWebRTCCallQueue(uuidDeterministic bool, logger utils.ZapCompatibleLogger) *memoryWebRTCCallQueue {
 	cancelCtx, cancelFunc := context.WithCancel(context.Background())
 	queue := &memoryWebRTCCallQueue{
 		hostQueues:        map[string]*singleWebRTCHostQueue{},

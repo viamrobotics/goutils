@@ -15,7 +15,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/edaniels/golog"
 	"github.com/edaniels/zeroconf"
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/google/uuid"
@@ -128,7 +127,7 @@ type simpleServer struct {
 	tlsConfig            *tls.Config
 	firstSeenTLSCertLeaf *x509.Certificate
 	stopped              bool
-	logger               golog.Logger
+	logger               utils.ZapCompatibleLogger
 
 	// auth
 	authKeys             map[string]authKeyData
@@ -154,7 +153,7 @@ var errMixedUnauthAndAuth = errors.New("cannot use unauthenticated and auth hand
 // will listen on localhost on a random port unless TLS is turned
 // on and authentication is enabled in which case the server will
 // listen on all interfaces.
-func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
+func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, error) {
 	var sOpts serverOptions
 	for _, opt := range opts {
 		if err := opt.apply(&sOpts); err != nil {
@@ -495,7 +494,7 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 						[]string{"127.0.0.1"},
 						supportedServices,
 						loopbackIfaces,
-						logger,
+						logger.(*zap.SugaredLogger),
 					)
 					if err != nil {
 						logger.Warnw(mDNSerr, "error", err)
@@ -516,7 +515,7 @@ func NewServer(logger golog.Logger, opts ...ServerOption) (Server, error) {
 						mDNSAddress.Port,
 						supportedServices,
 						nil,
-						logger,
+						logger.(*zap.SugaredLogger),
 					)
 					if err != nil {
 						logger.Warnw(mDNSerr, "error", err)

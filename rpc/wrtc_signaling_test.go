@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/viamrobotics/webrtc/v3"
 	"go.viam.com/test"
+	"go.viam.com/utils"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
@@ -47,7 +48,7 @@ func TestWebRTCSignalingWithMongoDBQueue(t *testing.T) {
 }
 
 //nolint:thelper
-func testWebRTCSignaling(t *testing.T, signalingCallQueue WebRTCCallQueue, logger golog.Logger) {
+func testWebRTCSignaling(t *testing.T, signalingCallQueue WebRTCCallQueue, logger utils.ZapCompatibleLogger) {
 	hosts := []string{"yeehaw", "woahthere"}
 	for _, host := range hosts {
 		t.Run(host, func(t *testing.T) {

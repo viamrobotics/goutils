@@ -33,13 +33,13 @@ import (
 	"go.viam.com/utils"
 )
 
-var logger = golog.NewDebugLogger("analyzetests")
+var logger utils.ZapCompatibleLogger = golog.NewDebugLogger("analyzetests")
 
 func main() {
 	utils.ContextualMain(mainWithArgs, logger)
 }
 
-func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) error {
+func mainWithArgs(ctx context.Context, args []string, logger utils.ZapCompatibleLogger) error {
 	profileDataAll, err := io.ReadAll(os.Stdin)
 	if err != nil {
 		return err

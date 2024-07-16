@@ -7,7 +7,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/edaniels/golog"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/viamrobotics/webrtc/v3"
@@ -16,7 +15,6 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.uber.org/multierr"
-	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -75,7 +73,7 @@ type mongoDBWebRTCCallQueue struct {
 	activeBackgroundWorkers            sync.WaitGroup
 	callsColl                          *mongo.Collection
 	operatorsColl                      *mongo.Collection
-	logger                             golog.Logger
+	logger                             utils.ZapCompatibleLogger
 
 	cancelCtx  context.Context
 	cancelFunc func()
@@ -130,7 +128,7 @@ func NewMongoDBWebRTCCallQueue(
 	operatorID string,
 	maxHostCallers uint64,
 	client *mongo.Client,
-	logger golog.Logger,
+	logger utils.ZapCompatibleLogger,
 	activeAnswerersfunc func(hostnames []string, atTime time.Time),
 ) (WebRTCCallQueue, error) {
 	if operatorID == "" {
@@ -304,7 +302,7 @@ type mongodbNewCallEventHandler struct {
 	receiveOnce sync.Once
 }
 
-func (newCall *mongodbNewCallEventHandler) Send(event mongodbCallEvent, logger *zap.SugaredLogger) bool {
+func (newCall *mongodbNewCallEventHandler) Send(event mongodbCallEvent, logger utils.ZapCompatibleLogger) bool {
 	var sent bool
 	newCall.receiveOnce.Do(func() {
 		// should always work

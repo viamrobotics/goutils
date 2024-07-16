@@ -3,13 +3,13 @@ package web
 import (
 	"net/http"
 
-	"github.com/edaniels/golog"
+	"go.viam.com/utils"
 )
 
 // PanicCapture allows recovery during a request handler from panics. It prints a
 // formatted log to the underlying logger.
 type PanicCapture struct {
-	Logger golog.Logger
+	Logger utils.ZapCompatibleLogger
 }
 
 // Recover captures and prints the error if recover() has an error.

@@ -5,11 +5,11 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/edaniels/golog"
 	"github.com/viamrobotics/webrtc/v3"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/proto"
 
+	"go.viam.com/utils"
 	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
 )
 
@@ -34,7 +34,7 @@ func newWebRTCServerChannel(
 	peerConn *webrtc.PeerConnection,
 	dataChannel *webrtc.DataChannel,
 	authAudience []string,
-	logger golog.Logger,
+	logger utils.ZapCompatibleLogger,
 ) *webrtcServerChannel {
 	base := newBaseChannel(
 		server.ctx,

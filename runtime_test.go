@@ -15,23 +15,23 @@ import (
 //nolint:dupl
 func TestContextualMain(t *testing.T) {
 	var captured []interface{}
-	fatal = func(logger ILogger, args ...interface{}) {
+	fatal = func(logger ZapCompatibleLogger, args ...interface{}) {
 		captured = args
 	}
 	err1 := errors.New("whoops")
-	mainWithArgs := func(ctx context.Context, args []string, logger golog.Logger) error {
+	mainWithArgs := func(ctx context.Context, args []string, logger ZapCompatibleLogger) error {
 		return err1
 	}
-	logger := golog.NewTestLogger(t)
+	var logger ZapCompatibleLogger = golog.NewTestLogger(t)
 	ContextualMain(mainWithArgs, logger)
 	test.That(t, captured, test.ShouldResemble, []interface{}{err1})
 	captured = nil
-	mainWithArgs = func(ctx context.Context, args []string, logger golog.Logger) error {
+	mainWithArgs = func(ctx context.Context, args []string, logger ZapCompatibleLogger) error {
 		return context.Canceled
 	}
 	ContextualMain(mainWithArgs, logger)
 	test.That(t, captured, test.ShouldBeNil)
-	mainWithArgs = func(ctx context.Context, args []string, logger golog.Logger) error {
+	mainWithArgs = func(ctx context.Context, args []string, logger ZapCompatibleLogger) error {
 		return multierr.Combine(context.Canceled, err1)
 	}
 	ContextualMain(mainWithArgs, logger)
@@ -41,23 +41,23 @@ func TestContextualMain(t *testing.T) {
 //nolint:dupl
 func TestContextualMainQuit(t *testing.T) {
 	var captured []interface{}
-	fatal = func(logger ILogger, args ...interface{}) {
+	fatal = func(logger ZapCompatibleLogger, args ...interface{}) {
 		captured = args
 	}
 	err1 := errors.New("whoops")
-	mainWithArgs := func(ctx context.Context, args []string, logger golog.Logger) error {
+	mainWithArgs := func(ctx context.Context, args []string, logger ZapCompatibleLogger) error {
 		return err1
 	}
-	logger := golog.NewTestLogger(t)
+	var logger ZapCompatibleLogger = golog.NewTestLogger(t)
 	ContextualMainQuit(mainWithArgs, logger)
 	test.That(t, captured, test.ShouldResemble, []interface{}{err1})
 	captured = nil
-	mainWithArgs = func(ctx context.Context, args []string, logger golog.Logger) error {
+	mainWithArgs = func(ctx context.Context, args []string, logger ZapCompatibleLogger) error {
 		return context.Canceled
 	}
 	ContextualMainQuit(mainWithArgs, logger)
 	test.That(t, captured, test.ShouldBeNil)
-	mainWithArgs = func(ctx context.Context, args []string, logger golog.Logger) error {
+	mainWithArgs = func(ctx context.Context, args []string, logger ZapCompatibleLogger) error {
 		return multierr.Combine(context.Canceled, err1)
 	}
 	ContextualMainQuit(mainWithArgs, logger)

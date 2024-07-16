@@ -14,6 +14,7 @@ import (
 	"github.com/viamrobotics/webrtc/v3"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.viam.com/test"
+	"go.viam.com/utils"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -50,7 +51,7 @@ func TestWebRTCClientServerWithMongoDBQueue(t *testing.T) {
 }
 
 //nolint:thelper
-func testWebRTCClientServer(t *testing.T, signalingCallQueue WebRTCCallQueue, logger golog.Logger) {
+func testWebRTCClientServer(t *testing.T, signalingCallQueue WebRTCCallQueue, logger utils.ZapCompatibleLogger) {
 	signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, logger)
 	defer signalingServer.Close()
 
@@ -144,7 +145,7 @@ func TestWebRTCClientDialCancelWithMongoDBQueue(t *testing.T) {
 }
 
 //nolint:thelper
-func testWebRTCClientDialCancel(t *testing.T, signalingCallQueue WebRTCCallQueue, logger golog.Logger) {
+func testWebRTCClientDialCancel(t *testing.T, signalingCallQueue WebRTCCallQueue, logger utils.ZapCompatibleLogger) {
 	signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, logger)
 	defer signalingServer.Close()
 
@@ -231,7 +232,7 @@ func TestWebRTCClientDialReflectAnswererErrorWithMongoDBQueue(t *testing.T) {
 }
 
 //nolint:thelper
-func testWebRTCClientDialReflectAnswererError(t *testing.T, signalingCallQueue WebRTCCallQueue, logger golog.Logger) {
+func testWebRTCClientDialReflectAnswererError(t *testing.T, signalingCallQueue WebRTCCallQueue, logger utils.ZapCompatibleLogger) {
 	signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, logger)
 	defer signalingServer.Close()
 
@@ -325,7 +326,7 @@ func TestWebRTCClientDialConcurrentWithMongoDBQueue(t *testing.T) {
 // this is a good integration test against mongoDBWebRTCCallQueue
 //
 //nolint:thelper
-func testWebRTCClientDialConcurrent(t *testing.T, signalingCallQueue WebRTCCallQueue, logger golog.Logger) {
+func testWebRTCClientDialConcurrent(t *testing.T, signalingCallQueue WebRTCCallQueue, logger utils.ZapCompatibleLogger) {
 	signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, logger)
 	defer signalingServer.Close()
 
@@ -463,7 +464,7 @@ func TestWebRTCClientAnswerConcurrentWithMongoDBQueue(t *testing.T) {
 }
 
 //nolint:thelper
-func testWebRTCClientAnswerConcurrent(t *testing.T, signalingCallQueue WebRTCCallQueue, logger golog.Logger) {
+func testWebRTCClientAnswerConcurrent(t *testing.T, signalingCallQueue WebRTCCallQueue, logger utils.ZapCompatibleLogger) {
 	signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, logger)
 	defer signalingServer.Close()
 

@@ -8,7 +8,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/edaniels/golog"
 	grpc_logging "github.com/grpc-ecosystem/go-grpc-middleware/logging"
 	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
@@ -20,6 +19,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 
+	"go.viam.com/utils"
 	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
 )
 
@@ -50,7 +50,7 @@ func newWebRTCClientChannel(
 	peerConn *webrtc.PeerConnection,
 	dataChannel *webrtc.DataChannel,
 	onICEConnected func(),
-	logger golog.Logger,
+	logger utils.ZapCompatibleLogger,
 	unaryInterceptor grpc.UnaryClientInterceptor,
 	streamInterceptor grpc.StreamClientInterceptor,
 ) *webrtcClientChannel {

@@ -7,8 +7,8 @@ import (
 	"io"
 	"sync"
 
-	"github.com/edaniels/golog"
 	"github.com/viamrobotics/webrtc/v3"
+	"go.viam.com/utils"
 	"google.golang.org/grpc"
 )
 
@@ -22,7 +22,7 @@ type webrtcServer struct {
 	cancel   context.CancelFunc
 	handlers map[string]handlerFunc
 	services map[string]*serviceInfo
-	logger   golog.Logger
+	logger   utils.ZapCompatibleLogger
 
 	peerConnsMu sync.Mutex
 	peerConns   map[*webrtc.PeerConnection]struct{}
@@ -52,14 +52,14 @@ type serviceInfo struct {
 }
 
 // newWebRTCServer makes a new server with no registered services.
-func newWebRTCServer(logger golog.Logger) *webrtcServer {
+func newWebRTCServer(logger utils.ZapCompatibleLogger) *webrtcServer {
 	return newWebRTCServerWithInterceptors(logger, nil, nil)
 }
 
 // newWebRTCServerWithInterceptors makes a new server with no registered services that will
 // use the given interceptors.
 func newWebRTCServerWithInterceptors(
-	logger golog.Logger,
+	logger utils.ZapCompatibleLogger,
 	unaryInt grpc.UnaryServerInterceptor,
 	streamInt grpc.StreamServerInterceptor,
 ) *webrtcServer {
@@ -69,7 +69,7 @@ func newWebRTCServerWithInterceptors(
 // newWebRTCServerWithInterceptorsAndUnknownStreamHandler makes a new server with no registered services that will
 // use the given interceptors and unknown stream handler.
 func newWebRTCServerWithInterceptorsAndUnknownStreamHandler(
-	logger golog.Logger,
+	logger utils.ZapCompatibleLogger,
 	unaryInt grpc.UnaryServerInterceptor,
 	streamInt grpc.StreamServerInterceptor,
 	unknownStreamDesc *grpc.StreamDesc,

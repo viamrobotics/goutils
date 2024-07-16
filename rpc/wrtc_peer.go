@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/edaniels/golog"
 	"github.com/pion/ice/v2"
 	"github.com/pion/interceptor"
 	"github.com/pion/sctp"
@@ -33,7 +32,7 @@ var DefaultWebRTCConfiguration = webrtc.Configuration{
 	ICEServers: DefaultICEServers,
 }
 
-func newWebRTCAPI(isClient bool, logger golog.Logger) (*webrtc.API, error) {
+func newWebRTCAPI(isClient bool, logger utils.ZapCompatibleLogger) (*webrtc.API, error) {
 	m := webrtc.MediaEngine{}
 	if err := m.RegisterDefaultCodecs(); err != nil {
 		return nil, err
@@ -78,7 +77,7 @@ func newPeerConnectionForClient(
 	ctx context.Context,
 	config webrtc.Configuration,
 	disableTrickle bool,
-	logger golog.Logger,
+	logger utils.ZapCompatibleLogger,
 ) (*webrtc.PeerConnection, *webrtc.DataChannel, error) {
 	webAPI, err := newWebRTCAPI(true, logger)
 	if err != nil {
@@ -150,7 +149,7 @@ func newPeerConnectionForServer(
 	sdp string,
 	config webrtc.Configuration,
 	disableTrickle bool,
-	logger golog.Logger,
+	logger utils.ZapCompatibleLogger,
 ) (*webrtc.PeerConnection, *webrtc.DataChannel, error) {
 	webAPI, err := newWebRTCAPI(false, logger)
 	if err != nil {
@@ -250,7 +249,7 @@ const (
 func ConfigureForRenegotiation(
 	peerConn *webrtc.PeerConnection,
 	role PeerRole,
-	logger golog.Logger,
+	logger utils.ZapCompatibleLogger,
 ) (<-chan struct{}, <-chan struct{}, error) {
 	var negMu sync.Mutex
 
@@ -455,7 +454,7 @@ func getWebRTCPeerConnectionStats(peerConnection *webrtc.PeerConnection) webrtcP
 	return webrtcPeerConnectionStats{connID, connInfo}
 }
 
-func initialDataChannelOnError(pc io.Closer, logger golog.Logger) func(err error) {
+func initialDataChannelOnError(pc io.Closer, logger utils.ZapCompatibleLogger) func(err error) {
 	return func(err error) {
 		if errors.Is(err, sctp.ErrResetPacketInStateNotExist) ||
 			isUserInitiatedAbortChunkErr(err) {

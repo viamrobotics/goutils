@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
-	"github.com/edaniels/golog"
 	"go.opencensus.io/trace"
 	"goji.io"
 	"goji.io/pat"
@@ -74,7 +73,7 @@ func InstallAuth0(
 	mux *goji.Mux,
 	sessions *SessionManager,
 	config AuthProviderConfig,
-	logger golog.Logger,
+	logger utils.ZapCompatibleLogger,
 ) (io.Closer, error) {
 	config.PostLogoutRedirectURL = "returnTo"
 	authProvider, err := installAuthProvider(
@@ -106,7 +105,7 @@ func InstallFusionAuth(
 	mux *goji.Mux,
 	sessions *SessionManager,
 	config AuthProviderConfig,
-	logger golog.Logger,
+	logger utils.ZapCompatibleLogger,
 ) (io.Closer, error) {
 	config.PostLogoutRedirectURL = "post_logout_redirect_uri"
 	authProvider, err := installAuthProvider(
@@ -194,7 +193,7 @@ func installAuthProviderRoutes(
 	redirectURL string,
 	redirectStateCookieName string,
 	redirectStateCookieMaxAge time.Duration,
-	logger golog.Logger,
+	logger utils.ZapCompatibleLogger,
 ) {
 	mux.Handle(pat.New("/login"), &loginHandler{
 		authProvider,
@@ -226,7 +225,7 @@ func installAuthProviderRoutes(
 
 type callbackHandler struct {
 	state                   *AuthProvider
-	logger                  golog.Logger
+	logger                  utils.ZapCompatibleLogger
 	redirectStateCookieName string
 }
 
@@ -337,7 +336,7 @@ func (h *callbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // Currently used only in testing.
 type tokenCallbackHandler struct {
 	state  *AuthProvider
-	logger golog.Logger
+	logger utils.ZapCompatibleLogger
 }
 
 func (h *tokenCallbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -435,7 +434,7 @@ func verifyAndSaveToken(ctx context.Context, state *AuthProvider, session *Sessi
 // --------------------------------.
 type tokenHandler struct {
 	state                     *AuthProvider
-	logger                    golog.Logger
+	logger                    utils.ZapCompatibleLogger
 	redirectStateCookieName   string
 	redirectStateCookieMaxAge time.Duration
 }
@@ -525,7 +524,7 @@ func (h *tokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 type loginHandler struct {
 	state                     *AuthProvider
-	logger                    golog.Logger
+	logger                    utils.ZapCompatibleLogger
 	redirectStateCookieName   string
 	redirectStateCookieMaxAge time.Duration
 }
@@ -585,7 +584,7 @@ func (h *loginHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 type logoutHandler struct {
 	state             *AuthProvider
-	logger            golog.Logger
+	logger            utils.ZapCompatibleLogger
 	providerLogoutURL string
 }
 

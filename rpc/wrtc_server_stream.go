@@ -7,7 +7,6 @@ import (
 	"math"
 	"sync/atomic"
 
-	"github.com/edaniels/golog"
 	protov1 "github.com/golang/protobuf/proto" //nolint:staticcheck
 	"github.com/pion/sctp"
 	"github.com/pkg/errors"
@@ -51,7 +50,7 @@ func newWebRTCServerStream(
 	channel *webrtcServerChannel,
 	stream *webrtcpb.Stream,
 	onDone func(id uint64),
-	logger golog.Logger,
+	logger utils.ZapCompatibleLogger,
 ) *webrtcServerStream {
 	bs := newWebRTCBaseStream(ctx, cancelCtx, stream, onDone, logger)
 	s := &webrtcServerStream{

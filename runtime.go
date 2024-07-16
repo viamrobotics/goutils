@@ -18,7 +18,7 @@ import (
 // ContextualMain calls a main entry point function with a cancellable
 // context via SIGTERM. This should be called once per process so as
 // to not clobber the signals from Notify.
-func ContextualMain[L ILogger](main func(ctx context.Context, args []string, logger L) error, logger L) {
+func ContextualMain[L ZapCompatibleLogger](main func(ctx context.Context, args []string, logger L) error, logger L) {
 	// This will only run on a successful exit due to the fatal error
 	// logic in contextualMain.
 	defer func() {
@@ -31,11 +31,11 @@ func ContextualMain[L ILogger](main func(ctx context.Context, args []string, log
 
 // ContextualMainQuit is the same as ContextualMain but catches quit signals into the provided
 // context accessed via ContextMainQuitSignal.
-func ContextualMainQuit[L ILogger](main func(ctx context.Context, args []string, logger L) error, logger L) {
+func ContextualMainQuit[L ZapCompatibleLogger](main func(ctx context.Context, args []string, logger L) error, logger L) {
 	contextualMain(main, true, logger)
 }
 
-func contextualMain[L ILogger](main func(ctx context.Context, args []string, logger L) error, quitSignal bool, logger L) {
+func contextualMain[L ZapCompatibleLogger](main func(ctx context.Context, args []string, logger L) error, quitSignal bool, logger L) {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	if quitSignal {
 		quitC := make(chan os.Signal, 1)
@@ -74,7 +74,7 @@ func contextualMain[L ILogger](main func(ctx context.Context, args []string, log
 	}
 }
 
-var fatal = func(logger ILogger, args ...interface{}) {
+var fatal = func(logger ZapCompatibleLogger, args ...interface{}) {
 	logger.Fatal(args...)
 }
 
@@ -217,7 +217,7 @@ func SlowGoroutineWatcherAfterContext(
 	ctx context.Context,
 	dur time.Duration,
 	slowMsg string,
-	logger golog.Logger,
+	logger ZapCompatibleLogger,
 ) (<-chan struct{}, func()) {
 	return slowGoroutineWatcher(ctx, dur, slowMsg, logger)
 }
@@ -229,7 +229,7 @@ func SlowGoroutineWatcherAfterContext(
 func SlowGoroutineWatcher(
 	dur time.Duration,
 	slowMsg string,
-	logger golog.Logger,
+	logger ZapCompatibleLogger,
 ) (<-chan struct{}, func()) {
 	//nolint:staticcheck
 	return slowGoroutineWatcher(nil, dur, slowMsg, logger)
@@ -239,7 +239,7 @@ func slowGoroutineWatcher(
 	ctx context.Context,
 	dur time.Duration,
 	slowMsg string,
-	logger golog.Logger,
+	logger ZapCompatibleLogger,
 ) (<-chan struct{}, func()) {
 	slowWatcher := make(chan struct{})
 	slowWatcherCtx, slowWatcherCancel := context.WithCancel(context.Background())

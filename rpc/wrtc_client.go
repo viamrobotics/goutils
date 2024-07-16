@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/edaniels/golog"
 	"github.com/pkg/errors"
 	"github.com/viamrobotics/webrtc/v3"
 	"go.uber.org/multierr"
@@ -84,7 +83,7 @@ func DialWebRTC(
 	ctx context.Context,
 	signalingServer string,
 	host string,
-	logger golog.Logger,
+	logger utils.ZapCompatibleLogger,
 	opts ...DialOption,
 ) (conn ClientConn, err error) {
 	var dOpts dialOptions
@@ -101,7 +100,7 @@ func dialWebRTC(
 	signalingServer string,
 	host string,
 	dOpts dialOptions,
-	logger golog.Logger,
+	logger utils.ZapCompatibleLogger,
 ) (ch *webrtcClientChannel, err error) {
 	dialStart := time.Now()
 
@@ -401,7 +400,7 @@ func dialSignalingServer(
 	ctx context.Context,
 	signalingServer string,
 	host string,
-	logger golog.Logger,
+	logger utils.ZapCompatibleLogger,
 	dOpts dialOptions,
 ) (ClientConn, error) {
 	dOpts.insecure = dOpts.webrtcOpts.SignalingInsecure

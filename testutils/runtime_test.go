@@ -28,7 +28,7 @@ func TestContextualMain(t *testing.T) {
 	tError = fatal
 
 	err1 := errors.New("whoops")
-	mainWithArgs := func(ctx context.Context, args []string, logger golog.Logger) error {
+	mainWithArgs := func(ctx context.Context, args []string, logger utils.ZapCompatibleLogger) error {
 		return err1
 	}
 	logger := golog.NewTestLogger(t)
@@ -50,7 +50,7 @@ func TestContextualMain(t *testing.T) {
 	test.That(t, captured[0], test.ShouldContainSubstring, "whoops")
 	captured = nil
 
-	mainWithArgs = func(ctx context.Context, args []string, logger golog.Logger) error {
+	mainWithArgs = func(ctx context.Context, args []string, logger utils.ZapCompatibleLogger) error {
 		return nil
 	}
 	exec = ContextualMain(mainWithArgs, nil, logger)
@@ -72,7 +72,7 @@ func TestContextualMain(t *testing.T) {
 	captured = nil
 
 	var capturedArgs []string
-	mainWithArgs = func(ctx context.Context, args []string, logger golog.Logger) error {
+	mainWithArgs = func(ctx context.Context, args []string, logger utils.ZapCompatibleLogger) error {
 		capturedArgs = args
 		utils.ContextMainReadyFunc(ctx)()
 		<-utils.ContextMainQuitSignal(ctx)
@@ -89,7 +89,7 @@ func TestContextualMain(t *testing.T) {
 	test.That(t, capturedArgs, test.ShouldResemble, []string{"main", "1", "2", "3"})
 	captured = nil
 
-	mainWithArgs = func(ctx context.Context, args []string, logger golog.Logger) error {
+	mainWithArgs = func(ctx context.Context, args []string, logger utils.ZapCompatibleLogger) error {
 		capturedArgs = args
 		utils.ContextMainReadyFunc(ctx)()
 		utils.ContextMainIterFunc(ctx)()
@@ -130,7 +130,7 @@ func TestTestMain(t *testing.T) {
 
 	err1 := errors.New("whoops")
 	var capturedArgs []string
-	mainWithArgs := func(ctx context.Context, args []string, logger golog.Logger) error {
+	mainWithArgs := func(ctx context.Context, args []string, logger utils.ZapCompatibleLogger) error {
 		capturedArgs = args
 		return err1
 	}
@@ -140,7 +140,7 @@ func TestTestMain(t *testing.T) {
 			Name: "",
 			Args: []string{"1", "2", "3"},
 			Err:  err1.Error(),
-			Before: func(t *testing.T, logger golog.Logger, exec *ContextualMainExecution) {
+			Before: func(t *testing.T, logger utils.ZapCompatibleLogger, exec *ContextualMainExecution) {
 				t.Helper()
 				captured = nil
 				test.That(t, logger, test.ShouldNotBeNil)
@@ -156,7 +156,7 @@ func TestTestMain(t *testing.T) {
 			Name: "next",
 			Args: []string{"1", "2", "3"},
 			Err:  err1.Error(),
-			Before: func(t *testing.T, logger golog.Logger, exec *ContextualMainExecution) {
+			Before: func(t *testing.T, logger utils.ZapCompatibleLogger, exec *ContextualMainExecution) {
 				t.Helper()
 				captured = nil
 				test.That(t, logger, test.ShouldNotBeNil)
@@ -181,7 +181,7 @@ func TestTestMain(t *testing.T) {
 		},
 	})
 
-	mainWithArgs = func(ctx context.Context, args []string, logger golog.Logger) error {
+	mainWithArgs = func(ctx context.Context, args []string, logger utils.ZapCompatibleLogger) error {
 		capturedArgs = args
 		utils.ContextMainReadyFunc(ctx)()
 		<-utils.ContextMainQuitSignal(ctx)
@@ -193,7 +193,7 @@ func TestTestMain(t *testing.T) {
 			Name: "",
 			Args: []string{"1", "2", "3"},
 			Err:  err1.Error(),
-			Before: func(t *testing.T, logger golog.Logger, exec *ContextualMainExecution) {
+			Before: func(t *testing.T, logger utils.ZapCompatibleLogger, exec *ContextualMainExecution) {
 				t.Helper()
 				captured = nil
 				test.That(t, logger, test.ShouldNotBeNil)
@@ -215,7 +215,7 @@ func TestTestMain(t *testing.T) {
 			Name: "next",
 			Args: []string{"1", "2", "3"},
 			Err:  err1.Error(),
-			Before: func(t *testing.T, logger golog.Logger, exec *ContextualMainExecution) {
+			Before: func(t *testing.T, logger utils.ZapCompatibleLogger, exec *ContextualMainExecution) {
 				t.Helper()
 				captured = nil
 				test.That(t, logger, test.ShouldNotBeNil)
@@ -237,7 +237,7 @@ func TestTestMain(t *testing.T) {
 		},
 	})
 
-	mainWithArgs = func(ctx context.Context, args []string, logger golog.Logger) error {
+	mainWithArgs = func(ctx context.Context, args []string, logger utils.ZapCompatibleLogger) error {
 		capturedArgs = args
 		utils.ContextMainReadyFunc(ctx)()
 		utils.ContextMainIterFunc(ctx)()
@@ -251,7 +251,7 @@ func TestTestMain(t *testing.T) {
 			Name: "",
 			Args: []string{"1", "2", "3"},
 			Err:  "",
-			Before: func(t *testing.T, logger golog.Logger, exec *ContextualMainExecution) {
+			Before: func(t *testing.T, logger utils.ZapCompatibleLogger, exec *ContextualMainExecution) {
 				t.Helper()
 				captured = nil
 				test.That(t, logger, test.ShouldNotBeNil)
@@ -275,7 +275,7 @@ func TestTestMain(t *testing.T) {
 			Name: "next",
 			Args: []string{"1", "2", "3"},
 			Err:  "",
-			Before: func(t *testing.T, logger golog.Logger, exec *ContextualMainExecution) {
+			Before: func(t *testing.T, logger utils.ZapCompatibleLogger, exec *ContextualMainExecution) {
 				t.Helper()
 				captured = nil
 				test.That(t, logger, test.ShouldNotBeNil)

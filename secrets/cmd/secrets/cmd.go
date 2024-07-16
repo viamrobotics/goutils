@@ -14,7 +14,7 @@ func main() {
 	utils.ContextualMain(mainWithArgs, logger)
 }
 
-var logger = golog.NewDevelopmentLogger("secrets")
+var logger utils.ZapCompatibleLogger = golog.NewDevelopmentLogger("secrets")
 
 // Arguments for the command.
 type Arguments struct {
@@ -22,7 +22,7 @@ type Arguments struct {
 	SecretName string `flag:"1,required,usage=secret name"`
 }
 
-func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) error {
+func mainWithArgs(ctx context.Context, args []string, logger utils.ZapCompatibleLogger) error {
 	var argsParsed Arguments
 	if err := utils.ParseFlags(args, &argsParsed); err != nil {
 		return err

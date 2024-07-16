@@ -6,7 +6,6 @@ import (
 	"io"
 	"math"
 
-	"github.com/edaniels/golog"
 	protov1 "github.com/golang/protobuf/proto" //nolint:staticcheck
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
@@ -45,7 +44,7 @@ func newWebRTCClientStream(
 	channel *webrtcClientChannel,
 	stream *webrtcpb.Stream,
 	onDone func(id uint64),
-	logger golog.Logger,
+	logger utils.ZapCompatibleLogger,
 ) *webrtcClientStream {
 	ctx, cancel := utils.MergeContext(channel.ctx, ctx)
 	bs := newWebRTCBaseStream(ctx, cancel, stream, onDone, logger)

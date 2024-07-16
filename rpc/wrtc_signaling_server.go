@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/edaniels/golog"
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc/codes"
@@ -43,7 +42,7 @@ type WebRTCSignalingServer struct {
 
 	cancelCtx  context.Context
 	cancelFunc func()
-	logger     golog.Logger
+	logger     utils.ZapCompatibleLogger
 }
 
 // NewWebRTCSignalingServer makes a new signaling server that uses the given
@@ -53,7 +52,7 @@ type WebRTCSignalingServer struct {
 func NewWebRTCSignalingServer(
 	callQueue WebRTCCallQueue,
 	webrtcConfigProvider WebRTCConfigProvider,
-	logger golog.Logger,
+	logger utils.ZapCompatibleLogger,
 	forHosts ...string,
 ) *WebRTCSignalingServer {
 	forHostsSet := make(map[string]struct{}, len(forHosts))
