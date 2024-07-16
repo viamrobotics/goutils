@@ -3,6 +3,7 @@ package rpc
 import (
 	"github.com/pion/logging"
 	"go.uber.org/zap"
+
 	"go.viam.com/utils"
 )
 

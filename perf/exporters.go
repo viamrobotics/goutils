@@ -9,6 +9,7 @@ import (
 	"cloud.google.com/go/compute/metadata"
 	"contrib.go.opencensus.io/exporter/stackdriver"
 	"go.opencensus.io/trace"
+
 	"go.viam.com/utils"
 )
 

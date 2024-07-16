@@ -25,10 +25,10 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.uber.org/multierr"
 	"go.viam.com/test"
-	"go.viam.com/utils"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"go.viam.com/utils"
 	pb "go.viam.com/utils/proto/rpc/examples/echo/v1"
 	rpcpb "go.viam.com/utils/proto/rpc/v1"
 	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"

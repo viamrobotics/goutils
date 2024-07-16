@@ -313,7 +313,10 @@ func TestMainMain(t *testing.T) {
 				test.That(t, err, test.ShouldBeNil)
 			},
 		},
-		{"remove root does nothing", []string{"rm", "/"}, "",
+		{
+			"remove root does nothing",
+			[]string{"rm", "/"},
+			"",
 			func(t *testing.T, logger utils.ZapCompatibleLogger, exec *testutils.ContextualMainExecution) {
 				removeBefore(t, logger, exec)
 			},
@@ -333,7 +336,8 @@ func TestMainMain(t *testing.T) {
 				test.That(t, err, test.ShouldBeNil)
 				_, err = os.Stat(otherFilePath)
 				test.That(t, err, test.ShouldBeNil)
-			}},
+			},
+		},
 		{"status", []string{"status"}, "", before, nil, func(t *testing.T, logs *observer.ObservedLogs) {
 			defer unsetup()
 			test.That(t, len(logs.FilterMessageSnippet("").All()), test.ShouldEqual, 0)
@@ -350,7 +354,10 @@ func TestMainMain(t *testing.T) {
 			test.That(t, messages[0].Message, test.ShouldContainSubstring, filePath)
 			test.That(t, messages[0].Message, test.ShouldContainSubstring, otherFilePath)
 		}},
-		{"status modified", []string{"status"}, "",
+		{
+			"status modified",
+			[]string{"status"},
+			"",
 			func(t *testing.T, logger utils.ZapCompatibleLogger, exec *testutils.ContextualMainExecution) {
 				defer unsetup()
 				statusBefore(t, logger, exec)
@@ -369,7 +376,8 @@ func TestMainMain(t *testing.T) {
 				test.That(t, messages[0].Message, test.ShouldContainSubstring, "Modified")
 				test.That(t, messages[0].Message, test.ShouldNotContainSubstring, filePath)
 				test.That(t, messages[0].Message, test.ShouldContainSubstring, otherFilePath)
-			}},
+			},
+		},
 		{
 			"status unstored and modified",
 			[]string{"status"},

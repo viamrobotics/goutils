@@ -8,8 +8,9 @@ import (
 	"sync"
 
 	"github.com/viamrobotics/webrtc/v3"
-	"go.viam.com/utils"
 	"google.golang.org/grpc"
+
+	"go.viam.com/utils"
 )
 
 // DefaultWebRTCMaxGRPCCalls is the maximum number of concurrent gRPC calls to allow
