@@ -297,7 +297,7 @@ func dial(
 
 func lookupMDNSCandidate(ctx context.Context, address string, logger utils.ZapCompatibleLogger) (*zeroconf.ServiceEntry, error) {
 	candidates := []string{address, strings.ReplaceAll(address, ".", "-")}
-	resolver, err := zeroconf.NewResolver(utils.AsZap(logger), zeroconf.SelectIPRecordType(zeroconf.IPv4))
+	resolver, err := zeroconf.NewResolver(logger.Desugar().Sugar(), zeroconf.SelectIPRecordType(zeroconf.IPv4))
 	if err != nil {
 		return nil, err
 	}

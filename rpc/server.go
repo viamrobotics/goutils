@@ -494,7 +494,7 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 						[]string{"127.0.0.1"},
 						supportedServices,
 						loopbackIfaces,
-						utils.AsZap(logger),
+						logger.Desugar().Sugar(),
 					)
 					if err != nil {
 						logger.Warnw(mDNSerr, "error", err)
@@ -515,7 +515,7 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 						mDNSAddress.Port,
 						supportedServices,
 						nil,
-						utils.AsZap(logger),
+						logger.Desugar().Sugar(),
 					)
 					if err != nil {
 						logger.Warnw(mDNSerr, "error", err)
