@@ -301,6 +301,9 @@ async function getOptionalWebRTCConfig(
           return;
         }
         pResolve(result);
+      } else if (status === grpc.Code.Unimplemented) {
+        pResolve(new WebRTCConfig());
+        return;
       } else {
         pReject(statusMessage);
       }
