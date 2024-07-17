@@ -301,6 +301,12 @@ async function getOptionalWebRTCConfig(
           return;
         }
         pResolve(result);
+        // In some cases the `OptionalWebRTCConfig` method seems to be unimplemented, even
+        // when building `viam-server` from latest. Falling back to a default config seems
+        // harmless in these cases, and allows connection to continue.
+      } else if (status === grpc.Code.Unimplemented) {
+        pResolve(new WebRTCConfig());
+        return;
       } else {
         pReject(statusMessage);
       }
