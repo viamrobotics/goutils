@@ -297,6 +297,8 @@ func dial(
 
 func lookupMDNSCandidate(ctx context.Context, address string, logger utils.ZapCompatibleLogger) (*zeroconf.ServiceEntry, error) {
 	candidates := []string{address, strings.ReplaceAll(address, ".", "-")}
+	// RSDK-8205: logger.Desugar().Sugar() is necessary to massage a ZapCompatibleLogger into a
+	// *zap.SugaredLogger to match zeroconf function signatures.
 	resolver, err := zeroconf.NewResolver(logger.Desugar().Sugar(), zeroconf.SelectIPRecordType(zeroconf.IPv4))
 	if err != nil {
 		return nil, err

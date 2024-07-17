@@ -15,7 +15,7 @@ import (
 //nolint:dupl
 func TestContextualMain(t *testing.T) {
 	var captured []interface{}
-	fatal = func(logger ZapCompatibleLogger, args ...interface{}) {
+	fatal = func(logger ILogger, args ...interface{}) {
 		captured = args
 	}
 	err1 := errors.New("whoops")
@@ -41,7 +41,7 @@ func TestContextualMain(t *testing.T) {
 //nolint:dupl
 func TestContextualMainQuit(t *testing.T) {
 	var captured []interface{}
-	fatal = func(logger ZapCompatibleLogger, args ...interface{}) {
+	fatal = func(logger ILogger, args ...interface{}) {
 		captured = args
 	}
 	err1 := errors.New("whoops")

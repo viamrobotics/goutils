@@ -18,7 +18,7 @@ import (
 // ContextualMain calls a main entry point function with a cancellable
 // context via SIGTERM. This should be called once per process so as
 // to not clobber the signals from Notify.
-func ContextualMain[L ZapCompatibleLogger](main func(ctx context.Context, args []string, logger L) error, logger L) {
+func ContextualMain[L ILogger](main func(ctx context.Context, args []string, logger L) error, logger L) {
 	// This will only run on a successful exit due to the fatal error
 	// logic in contextualMain.
 	defer func() {
@@ -31,11 +31,11 @@ func ContextualMain[L ZapCompatibleLogger](main func(ctx context.Context, args [
 
 // ContextualMainQuit is the same as ContextualMain but catches quit signals into the provided
 // context accessed via ContextMainQuitSignal.
-func ContextualMainQuit[L ZapCompatibleLogger](main func(ctx context.Context, args []string, logger L) error, logger L) {
+func ContextualMainQuit[L ILogger](main func(ctx context.Context, args []string, logger L) error, logger L) {
 	contextualMain(main, true, logger)
 }
 
-func contextualMain[L ZapCompatibleLogger](main func(ctx context.Context, args []string, logger L) error, quitSignal bool, logger L) {
+func contextualMain[L ILogger](main func(ctx context.Context, args []string, logger L) error, quitSignal bool, logger L) {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	if quitSignal {
 		quitC := make(chan os.Signal, 1)
@@ -74,7 +74,7 @@ func contextualMain[L ZapCompatibleLogger](main func(ctx context.Context, args [
 	}
 }
 
-var fatal = func(logger ZapCompatibleLogger, args ...interface{}) {
+var fatal = func(logger ILogger, args ...interface{}) {
 	logger.Fatal(args...)
 }
 

@@ -11,6 +11,14 @@ var Logger = golog.Global()
 // Debug is helpful to turn on when the library isn't working quite right.
 var Debug = false
 
+// ILogger is a basic logging interface for ContextualMain.
+type ILogger interface {
+	Debug(...interface{})
+	Info(...interface{})
+	Warn(...interface{})
+	Fatal(...interface{})
+}
+
 // ZapCompatibleLogger is a basic logging interface for golog.Logger (alias for *zap.SugaredLogger) and RDK loggers.
 type ZapCompatibleLogger interface {
 	Desugar() *zap.Logger

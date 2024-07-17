@@ -494,6 +494,8 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 						[]string{"127.0.0.1"},
 						supportedServices,
 						loopbackIfaces,
+						// RSDK-8205: logger.Desugar().Sugar() is necessary to massage a ZapCompatibleLogger into a
+						// *zap.SugaredLogger to match zeroconf function signatures.
 						logger.Desugar().Sugar(),
 					)
 					if err != nil {
@@ -515,6 +517,8 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 						mDNSAddress.Port,
 						supportedServices,
 						nil,
+						// RSDK-8205: logger.Desugar().Sugar() is necessary to massage a ZapCompatibleLogger into a
+						// *zap.SugaredLogger to match zeroconf function signatures.
 						logger.Desugar().Sugar(),
 					)
 					if err != nil {
