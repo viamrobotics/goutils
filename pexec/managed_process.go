@@ -11,7 +11,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/edaniels/golog"
 	"github.com/pkg/errors"
 
 	"go.viam.com/utils"
@@ -39,7 +38,7 @@ type ManagedProcess interface {
 }
 
 // NewManagedProcess returns a new, unstarted, from the given configuration.
-func NewManagedProcess(config ProcessConfig, logger golog.Logger) ManagedProcess {
+func NewManagedProcess(config ProcessConfig, logger utils.ZapCompatibleLogger) ManagedProcess {
 	logger = logger.Named(fmt.Sprintf("process.%s_%s", config.ID, config.Name))
 
 	if config.StopSignal == 0 {
@@ -98,7 +97,7 @@ type managedProcess struct {
 	stopWaitInterval time.Duration
 	lastWaitErr      error
 
-	logger    golog.Logger
+	logger    utils.ZapCompatibleLogger
 	logWriter io.Writer
 }
 

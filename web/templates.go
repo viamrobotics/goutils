@@ -14,6 +14,7 @@ import (
 	"github.com/Masterminds/sprig"
 	"github.com/edaniels/golog"
 
+	"go.viam.com/utils"
 	"go.viam.com/utils/web/protojson"
 )
 
@@ -128,14 +129,14 @@ func DirectTemplate(t *template.Template) *Template {
 type TemplateMiddleware struct {
 	Templates TemplateManager
 	Handler   TemplateHandler
-	Logger    golog.Logger
+	Logger    utils.ZapCompatibleLogger
 
 	// Recover from panics with a proper error logs.
 	PanicCapture
 }
 
 // NewTemplateMiddleware returns a configured TemplateMiddleWare with a panic capture configured.
-func NewTemplateMiddleware(template TemplateManager, h TemplateHandler, logger golog.Logger) *TemplateMiddleware {
+func NewTemplateMiddleware(template TemplateManager, h TemplateHandler, logger utils.ZapCompatibleLogger) *TemplateMiddleware {
 	return &TemplateMiddleware{
 		Templates: template,
 		Handler:   h,

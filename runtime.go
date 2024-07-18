@@ -217,7 +217,7 @@ func SlowGoroutineWatcherAfterContext(
 	ctx context.Context,
 	dur time.Duration,
 	slowMsg string,
-	logger golog.Logger,
+	logger ZapCompatibleLogger,
 ) (<-chan struct{}, func()) {
 	return slowGoroutineWatcher(ctx, dur, slowMsg, logger)
 }
@@ -229,7 +229,7 @@ func SlowGoroutineWatcherAfterContext(
 func SlowGoroutineWatcher(
 	dur time.Duration,
 	slowMsg string,
-	logger golog.Logger,
+	logger ZapCompatibleLogger,
 ) (<-chan struct{}, func()) {
 	//nolint:staticcheck
 	return slowGoroutineWatcher(nil, dur, slowMsg, logger)
@@ -239,7 +239,7 @@ func slowGoroutineWatcher(
 	ctx context.Context,
 	dur time.Duration,
 	slowMsg string,
-	logger golog.Logger,
+	logger ZapCompatibleLogger,
 ) (<-chan struct{}, func()) {
 	slowWatcher := make(chan struct{})
 	slowWatcherCtx, slowWatcherCancel := context.WithCancel(context.Background())

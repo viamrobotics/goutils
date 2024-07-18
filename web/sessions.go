@@ -8,13 +8,13 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/edaniels/golog"
 	"github.com/pkg/errors"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.opencensus.io/trace"
 
+	"go.viam.com/utils"
 	mongoutils "go.viam.com/utils/mongo"
 )
 
@@ -31,7 +31,7 @@ var webSessionsIndex = []mongo.IndexModel{
 type SessionManager struct {
 	store      Store
 	cookieName string
-	logger     golog.Logger
+	logger     utils.ZapCompatibleLogger
 }
 
 // Session representation of a session.
@@ -56,7 +56,7 @@ type Store interface {
 // ----
 
 // NewSessionManager creates a new SessionManager.
-func NewSessionManager(theStore Store, logger golog.Logger) *SessionManager {
+func NewSessionManager(theStore Store, logger utils.ZapCompatibleLogger) *SessionManager {
 	sm := &SessionManager{store: theStore, cookieName: "session-id", logger: logger}
 	theStore.SetSessionManager(sm)
 	return sm

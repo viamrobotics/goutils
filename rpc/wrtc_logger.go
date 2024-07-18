@@ -1,21 +1,22 @@
 package rpc
 
 import (
-	"github.com/edaniels/golog"
 	"github.com/pion/logging"
 	"go.uber.org/zap"
+
+	"go.viam.com/utils"
 )
 
-// WebRTCLoggerFactory wraps a golog.Logger for use with pion's webrtc logging system.
+// WebRTCLoggerFactory wraps a utils.ZapCompatibleLogger for use with pion's webrtc logging system.
 type WebRTCLoggerFactory struct {
-	Logger golog.Logger
+	Logger utils.ZapCompatibleLogger
 }
 
 type webrtcLogger struct {
-	logger golog.Logger
+	logger utils.ZapCompatibleLogger
 }
 
-func (l webrtcLogger) loggerWithSkip() golog.Logger {
+func (l webrtcLogger) loggerWithSkip() utils.ZapCompatibleLogger {
 	return l.logger.Desugar().WithOptions(zap.AddCallerSkip(1)).Sugar()
 }
 

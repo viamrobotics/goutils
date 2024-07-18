@@ -34,17 +34,17 @@ type ContextualMainExecution struct {
 // context via the returned execution struct. The main function is run
 // in a separate goroutine.
 func ContextualMain(
-	main func(ctx context.Context, args []string, logger golog.Logger) error,
+	main func(ctx context.Context, args []string, logger utils.ZapCompatibleLogger) error,
 	args []string,
-	logger golog.Logger,
+	logger utils.ZapCompatibleLogger,
 ) ContextualMainExecution {
 	return contextualMain(main, args, logger)
 }
 
 func contextualMain(
-	main func(ctx context.Context, args []string, logger golog.Logger) error,
+	main func(ctx context.Context, args []string, logger utils.ZapCompatibleLogger) error,
 	args []string,
-	logger golog.Logger,
+	logger utils.ZapCompatibleLogger,
 ) ContextualMainExecution {
 	ctx, stop := context.WithCancel(context.Background())
 	quitC := make(chan os.Signal)
@@ -167,7 +167,7 @@ type MainTestCase struct {
 	Name   string
 	Args   []string
 	Err    string
-	Before func(t *testing.T, logger golog.Logger, exec *ContextualMainExecution)
+	Before func(t *testing.T, logger utils.ZapCompatibleLogger, exec *ContextualMainExecution)
 	During func(ctx context.Context, t *testing.T, exec *ContextualMainExecution)
 	After  func(t *testing.T, logs *observer.ObservedLogs)
 }
@@ -178,7 +178,11 @@ var (
 )
 
 // TestMain tests a main function with a series of test cases in serial.
-func TestMain(t *testing.T, mainWithArgs func(ctx context.Context, args []string, logger golog.Logger) error, tcs []MainTestCase) {
+func TestMain(
+	t *testing.T,
+	mainWithArgs func(ctx context.Context, args []string, logger utils.ZapCompatibleLogger) error,
+	tcs []MainTestCase,
+) {
 	for i, tc := range tcs {
 		testCaseName := tc.Name
 		if testCaseName == "" {

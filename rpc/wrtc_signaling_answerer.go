@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/edaniels/golog"
 	"github.com/pkg/errors"
 	"github.com/viamrobotics/webrtc/v3"
 	"go.uber.org/multierr"
@@ -43,7 +42,7 @@ type webrtcSignalingAnswerer struct {
 	cancelAnswerWorkers func()
 
 	closeCtx context.Context
-	logger   golog.Logger
+	logger   utils.ZapCompatibleLogger
 
 	// When logStats is true, an INFO level log message containing metrics gathered during connection
 	// establishment will be output at the end of every connection establishment attempt. See comments on
@@ -61,7 +60,7 @@ func newWebRTCSignalingAnswerer(
 	server *webrtcServer,
 	dialOpts []DialOption,
 	webrtcConfig webrtc.Configuration,
-	logger golog.Logger,
+	logger utils.ZapCompatibleLogger,
 	logStats bool,
 ) *webrtcSignalingAnswerer {
 	dialOptsCopy := make([]DialOption, len(dialOpts))

@@ -28,6 +28,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"go.viam.com/utils"
 	pb "go.viam.com/utils/proto/rpc/examples/echo/v1"
 	rpcpb "go.viam.com/utils/proto/rpc/v1"
 	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
@@ -60,7 +61,7 @@ func TestDialWithMongoDBQueue(t *testing.T) {
 }
 
 //nolint:thelper
-func testDial(t *testing.T, signalingCallQueue WebRTCCallQueue, logger golog.Logger) {
+func testDial(t *testing.T, signalingCallQueue WebRTCCallQueue, logger utils.ZapCompatibleLogger) {
 	ctx1, cancel1 := context.WithTimeout(context.Background(), time.Second*2)
 	defer cancel1()
 	_, err := Dial(ctx1, "127.0.0.1:1", logger, WithInsecure())
@@ -640,7 +641,7 @@ func TestDialExternalAuth(t *testing.T) {
 		t *testing.T,
 		addr string,
 		opts []DialOption,
-		logger golog.Logger,
+		logger utils.ZapCompatibleLogger,
 		errFunc func(t *testing.T, err error),
 	) {
 		// t.Helper()

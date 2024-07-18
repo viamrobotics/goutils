@@ -19,7 +19,7 @@ func main() {
 	utils.ContextualMain(mainWithArgs, logger)
 }
 
-var logger = golog.Global().Named("client")
+var logger utils.ZapCompatibleLogger = golog.Global().Named("client")
 
 // Arguments for the command.
 type Arguments struct {
@@ -32,7 +32,7 @@ type Arguments struct {
 	Debug               bool   `flag:"debug"`
 }
 
-func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) (err error) {
+func mainWithArgs(ctx context.Context, args []string, logger utils.ZapCompatibleLogger) (err error) {
 	var argsParsed Arguments
 	if err := utils.ParseFlags(args, &argsParsed); err != nil {
 		return err

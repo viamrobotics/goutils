@@ -16,6 +16,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 
+	"go.viam.com/utils"
 	echopb "go.viam.com/utils/proto/rpc/examples/echo/v1"
 	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
 	echoserver "go.viam.com/utils/rpc/examples/echo/server"
@@ -47,7 +48,7 @@ func TestWebRTCSignalingWithMongoDBQueue(t *testing.T) {
 }
 
 //nolint:thelper
-func testWebRTCSignaling(t *testing.T, signalingCallQueue WebRTCCallQueue, logger golog.Logger) {
+func testWebRTCSignaling(t *testing.T, signalingCallQueue WebRTCCallQueue, logger utils.ZapCompatibleLogger) {
 	hosts := []string{"yeehaw", "woahthere"}
 	for _, host := range hosts {
 		t.Run(host, func(t *testing.T) {

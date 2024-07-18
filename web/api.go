@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/edaniels/golog"
 	"go.opencensus.io/trace"
 
 	"go.viam.com/utils"
@@ -28,14 +27,14 @@ type APIMiddleware struct {
 	protojson.MarshalingOptions
 
 	Handler APIHandler
-	Logger  golog.Logger
+	Logger  utils.ZapCompatibleLogger
 
 	// Recover from panics with a proper error logs.
 	PanicCapture
 }
 
 // NewAPIMiddleware returns a configured APIMiddleware with a panic capture configured.
-func NewAPIMiddleware(h APIHandler, logger golog.Logger) *APIMiddleware {
+func NewAPIMiddleware(h APIHandler, logger utils.ZapCompatibleLogger) *APIMiddleware {
 	return &APIMiddleware{
 		Handler: h,
 		Logger:  logger,
@@ -45,7 +44,7 @@ func NewAPIMiddleware(h APIHandler, logger golog.Logger) *APIMiddleware {
 	}
 }
 
-func handleAPIError(w http.ResponseWriter, err error, logger golog.Logger, extra interface{}) bool {
+func handleAPIError(w http.ResponseWriter, err error, logger utils.ZapCompatibleLogger, extra interface{}) bool {
 	if err == nil {
 		return false
 	}

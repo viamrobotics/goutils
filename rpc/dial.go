@@ -10,17 +10,18 @@ import (
 	"sync"
 	"time"
 
-	"github.com/edaniels/golog"
 	"github.com/edaniels/zeroconf"
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 	"go.uber.org/zap"
+
+	"go.viam.com/utils"
 )
 
 // Dial attempts to make the most convenient connection to the given address. It attempts to connect
 // via WebRTC if a signaling server is detected or provided. Otherwise it attempts to connect directly.
 // TODO(GOUT-7): figure out decent way to handle reconnect on connection termination.
-func Dial(ctx context.Context, address string, logger golog.Logger, opts ...DialOption) (ClientConn, error) {
+func Dial(ctx context.Context, address string, logger utils.ZapCompatibleLogger, opts ...DialOption) (ClientConn, error) {
 	var dOpts dialOptions
 	for _, opt := range opts {
 		opt.apply(&dOpts)
@@ -36,7 +37,7 @@ func Dial(ctx context.Context, address string, logger golog.Logger, opts ...Dial
 func dialInner(
 	ctx context.Context,
 	address string,
-	logger golog.Logger,
+	logger utils.ZapCompatibleLogger,
 	dOpts dialOptions,
 ) (ClientConn, error) {
 	if address == "" {
@@ -103,7 +104,7 @@ func dial(
 	ctx context.Context,
 	address string,
 	originalAddress string,
-	logger golog.Logger,
+	logger utils.ZapCompatibleLogger,
 	dOpts dialOptions,
 	tryLocal bool,
 ) (ClientConn, bool, error) {
@@ -294,9 +295,11 @@ func dial(
 	return conn, cached, nil
 }
 
-func lookupMDNSCandidate(ctx context.Context, address string, logger golog.Logger) (*zeroconf.ServiceEntry, error) {
+func lookupMDNSCandidate(ctx context.Context, address string, logger utils.ZapCompatibleLogger) (*zeroconf.ServiceEntry, error) {
 	candidates := []string{address, strings.ReplaceAll(address, ".", "-")}
-	resolver, err := zeroconf.NewResolver(logger, zeroconf.SelectIPRecordType(zeroconf.IPv4))
+	// RSDK-8205: logger.Desugar().Sugar() is necessary to massage a ZapCompatibleLogger into a
+	// *zap.SugaredLogger to match zeroconf function signatures.
+	resolver, err := zeroconf.NewResolver(logger.Desugar().Sugar(), zeroconf.SelectIPRecordType(zeroconf.IPv4))
 	if err != nil {
 		return nil, err
 	}
@@ -328,7 +331,7 @@ func lookupMDNSCandidate(ctx context.Context, address string, logger golog.Logge
 func dialMulticastDNS(
 	ctx context.Context,
 	address string,
-	logger golog.Logger,
+	logger utils.ZapCompatibleLogger,
 	dOpts dialOptions,
 ) (ClientConn, bool, error) {
 	entry, err := lookupMDNSCandidate(ctx, address, logger)

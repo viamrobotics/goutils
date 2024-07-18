@@ -34,8 +34,8 @@ func main() {
 }
 
 var (
-	defaultPort = 8080
-	logger      = golog.Global().Named("server")
+	defaultPort                           = 8080
+	logger      utils.ZapCompatibleLogger = golog.Global().Named("server")
 )
 
 // Arguments for the command.
@@ -53,7 +53,7 @@ type Arguments struct {
 	ExternalAuth       bool              `flag:"external-auth"`
 }
 
-func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) error {
+func mainWithArgs(ctx context.Context, args []string, logger utils.ZapCompatibleLogger) error {
 	var argsParsed Arguments
 	if err := utils.ParseFlags(args, &argsParsed); err != nil {
 		return err
@@ -95,7 +95,7 @@ func runServer(
 	apiKey string,
 	externalAuthAddr string,
 	externalAuth bool,
-	logger golog.Logger,
+	logger utils.ZapCompatibleLogger,
 ) (err error) {
 	var serverOpts []rpc.ServerOption
 	var authPrivKey ed25519.PrivateKey

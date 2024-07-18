@@ -7,7 +7,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/edaniels/golog"
 	"github.com/pion/dtls/v2"
 	"github.com/pion/sctp"
 	"github.com/viamrobotics/webrtc/v3"
@@ -26,7 +25,7 @@ type webrtcBaseChannel struct {
 	closed                  bool
 	closedReason            error
 	activeBackgroundWorkers sync.WaitGroup
-	logger                  golog.Logger
+	logger                  utils.ZapCompatibleLogger
 	bufferWriteMu           sync.RWMutex
 	bufferWriteCond         *sync.Cond
 }
@@ -39,7 +38,7 @@ func newBaseChannel(
 	dataChannel *webrtc.DataChannel,
 	onPeerDone func(),
 	onICEConnected func(),
-	logger golog.Logger,
+	logger utils.ZapCompatibleLogger,
 ) *webrtcBaseChannel {
 	ctx, cancel := context.WithCancel(ctx)
 	ch := &webrtcBaseChannel{

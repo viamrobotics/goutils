@@ -17,7 +17,7 @@ func main() {
 	utils.ContextualMain(mainWithArgs, logger)
 }
 
-var logger = golog.NewDevelopmentLogger("artifact")
+var logger utils.ZapCompatibleLogger = golog.NewDevelopmentLogger("artifact")
 
 type topArguments struct {
 	Command string   `flag:"0,required,usage=<clean|pull|push|rm|status>"`
@@ -41,7 +41,7 @@ const (
 	commandNameStatus = "status"
 )
 
-func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) (err error) {
+func mainWithArgs(ctx context.Context, args []string, logger utils.ZapCompatibleLogger) (err error) {
 	var topArgsParsed topArguments
 	if err := utils.ParseFlags(args, &topArgsParsed); err != nil {
 		return err

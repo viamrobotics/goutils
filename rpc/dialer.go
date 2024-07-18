@@ -222,7 +222,7 @@ func (rc *reffedConn) Close() error {
 var ErrInsecureWithCredentials = errors.New("requested address is insecure and will not send credentials")
 
 // DialDirectGRPC dials a gRPC server directly.
-func DialDirectGRPC(ctx context.Context, address string, logger golog.Logger, opts ...DialOption) (ClientConn, error) {
+func DialDirectGRPC(ctx context.Context, address string, logger utils.ZapCompatibleLogger, opts ...DialOption) (ClientConn, error) {
 	var dOpts dialOptions
 	for _, opt := range opts {
 		opt.apply(&dOpts)
@@ -238,7 +238,7 @@ func DialDirectGRPC(ctx context.Context, address string, logger golog.Logger, op
 }
 
 // dialDirectGRPC dials a gRPC server directly.
-func dialDirectGRPC(ctx context.Context, address string, dOpts dialOptions, logger golog.Logger) (ClientConn, bool, error) {
+func dialDirectGRPC(ctx context.Context, address string, dOpts dialOptions, logger utils.ZapCompatibleLogger) (ClientConn, bool, error) {
 	dialOpts := []grpc.DialOption{
 		grpc.WithBlock(),
 		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(MaxMessageSize)),
@@ -377,7 +377,7 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts dialOptions, logg
 	return conn, cached, err
 }
 
-func dialExternalAuthEntity(ctx context.Context, logger golog.Logger, dOpts dialOptions) (ClientConn, error) {
+func dialExternalAuthEntity(ctx context.Context, logger utils.ZapCompatibleLogger, dOpts dialOptions) (ClientConn, error) {
 	if dOpts.externalAuthToEntity == "" {
 		return nil, errors.New("external auth address set but no authenticate to option set")
 	}
@@ -525,7 +525,7 @@ type perRPCJWTCredentials struct {
 	externalAuthMaterial string
 
 	debug  bool
-	logger golog.Logger
+	logger utils.ZapCompatibleLogger
 }
 
 // TODO(GOUT-10): handle expiration.

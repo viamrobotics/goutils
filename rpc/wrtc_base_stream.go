@@ -8,11 +8,11 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/edaniels/golog"
 	protov1 "github.com/golang/protobuf/proto" //nolint:staticcheck
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/proto"
 
+	"go.viam.com/utils"
 	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
 )
 
@@ -26,7 +26,7 @@ type webrtcBaseStream struct {
 	err           error
 	recvClosed    atomic.Bool
 	closed        atomic.Bool
-	logger        golog.Logger
+	logger        utils.ZapCompatibleLogger
 	packetBuf     bytes.Buffer
 	activeSenders sync.WaitGroup
 }
@@ -40,7 +40,7 @@ func newWebRTCBaseStream(
 	cancelCtx func(),
 	stream *webrtcpb.Stream,
 	onDone func(id uint64),
-	logger golog.Logger,
+	logger utils.ZapCompatibleLogger,
 ) *webrtcBaseStream {
 	bs := webrtcBaseStream{
 		ctx:    ctx,

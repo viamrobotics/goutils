@@ -5,8 +5,6 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/edaniels/golog"
-
 	"go.viam.com/utils"
 )
 
@@ -32,7 +30,7 @@ func (s responseStatusError) Status() int {
 }
 
 // HandleError returns true if there was an error and you should stop.
-func HandleError(w http.ResponseWriter, err error, logger golog.Logger, context ...string) bool {
+func HandleError(w http.ResponseWriter, err error, logger utils.ZapCompatibleLogger, context ...string) bool {
 	if err == nil {
 		return false
 	}
