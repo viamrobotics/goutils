@@ -242,7 +242,12 @@ func dialWebRTC(
 				if icecandidate == nil {
 					pendingCandidates.Wait()
 					if err := sendDone(); err != nil {
-						sendErr(err)
+						// Errors from sendDone (such as EOF) are sometimes caused by the signaling
+						// server "ending" the exchange process earlier than the caller due to the
+						// answerer being able to establish a connection without all the caller's
+						// ICE candidates (trickle ICE). Only Warn the error here to avoid
+						// accidentally Closing a healthy, established peer connection.
+						logger.Warnw("error ending signaling exchange from caller client after no more candidates", "error", err)
 					}
 					return
 				}
@@ -338,7 +343,14 @@ func dialWebRTC(
 				close(remoteDescSet)
 
 				if dOpts.webrtcOpts.DisableTrickleICE {
-					return sendDone()
+					if err := sendDone(); err != nil {
+						// Errors from sendDone (such as EOF) are sometimes caused by the signaling
+						// server "ending" the exchange process earlier than the caller due to the
+						// answerer being able to establish a connection without all the caller's
+						// ICE candidates (trickle ICE). Only Warn the error here to avoid
+						// accidentally Closing a healthy, established peer connection.
+						logger.Warnw("error ending signaling exchange from caller client in no trickle logic", "error", err)
+					}
 				}
 			case *webrtcpb.CallResponse_Update:
 				if !haveInit {

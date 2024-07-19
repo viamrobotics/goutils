@@ -401,7 +401,12 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 					}
 					pendingCandidates.Wait()
 					if err := sendDone(); err != nil {
-						sendErr(err)
+						// Errors from sendDone (such as EOF) are sometimes caused by the signaling
+						// server "ending" the exchange process earlier than the answerer due to
+						// the caller being able to establish a connection without all the
+						// answerer's ICE candidates (trickle ICE). Only Warn the error here to
+						// avoid accidentally Closing a healthy, established peer connection.
+						ans.logger.Warnw("error ending signaling exchange from answer client after no more candidates", "error", err)
 					}
 					return
 				}
