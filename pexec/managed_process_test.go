@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -148,6 +149,43 @@ func TestManagedProcessStart(t *testing.T) {
 			err := proc.Start(ctx)
 			test.That(t, err, test.ShouldNotBeNil)
 			test.That(t, err.Error(), test.ShouldContainSubstring, `error setting process working directory to "idontexist"`)
+		})
+		t.Run("resolves relative path with different cwd", func(t *testing.T) {
+			logger := golog.NewTestLogger(t)
+			cwd := t.TempDir()
+			// change to this tempdir and create a new sub folder called newWD
+			err := os.Chdir(cwd)
+			test.That(t, err, test.ShouldBeNil)
+			newWD := "newWD"
+			err = os.Mkdir(filepath.Join(cwd, newWD), 0o700)
+			test.That(t, err, test.ShouldBeNil)
+
+			// create an executable file in there that we will refence as a just "./exec.sh"
+			executablePath := filepath.Join(newWD, "exec.sh")
+			err = os.WriteFile(executablePath, []byte("#!/bin/sh\necho hi\n"), 0o700)
+			test.That(t, err, test.ShouldBeNil)
+
+			logReader, logWriter := io.Pipe()
+			proc := NewManagedProcess(ProcessConfig{
+				Name:      "./exec.sh",
+				OneShot:   true,
+				Log:       true,
+				CWD:       newWD,
+				LogWriter: logWriter,
+			}, logger)
+
+			var activeReaders sync.WaitGroup
+			activeReaders.Add(1)
+			utils.PanicCapturingGo(func() {
+				defer activeReaders.Done()
+				bufferedLogReader := bufio.NewReader(logReader)
+				line, err := bufferedLogReader.ReadString('\n')
+				test.That(t, err, test.ShouldBeNil)
+				test.That(t, line, test.ShouldEqual, "hi\n")
+			})
+			err = proc.Start(context.Background())
+			test.That(t, err, test.ShouldBeNil)
+			activeReaders.Wait()
 		})
 	})
 	t.Run("Managed", func(t *testing.T) {

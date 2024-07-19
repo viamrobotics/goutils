@@ -154,10 +154,6 @@ func (p *managedProcess) Start(ctx context.Context) error {
 		return err
 	}
 
-	if _, err := exec.LookPath(p.name); err != nil {
-		return err
-	}
-
 	if p.oneShot {
 		// Here we use the context since we block on waiting for the command
 		// to finish running.
