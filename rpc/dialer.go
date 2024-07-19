@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"hash/fnv"
+	"net"
+	"os"
 	"strings"
 	"sync"
 
@@ -17,6 +19,7 @@ import (
 	"go.uber.org/multierr"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"golang.org/x/net/proxy"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -247,6 +250,23 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts dialOptions, logg
 			PermitWithoutStream: true,
 		}),
 	}
+
+	// Use SOCKS proxy from environment as gRPC proxy dialer. Do not use
+	// if trying to connect to a local address.
+	if proxyAddr := os.Getenv(socksProxyEnvVar); proxyAddr != "" &&
+		!(strings.HasPrefix(address, "[::]") || strings.HasPrefix(address, "localhost")) {
+		dialer, err := proxy.SOCKS5("tcp", proxyAddr, nil, proxy.Direct)
+		if err != nil {
+			return nil, false, fmt.Errorf("error creating SOCKS proxy dialer to address %q from environment: %w",
+				proxyAddr, err)
+		}
+
+		dialOpts = append(dialOpts, grpc.WithContextDialer(func(_ context.Context, addr string) (net.Conn, error) {
+			logger.Info("Behind SOCKS proxy; routing direct dial through proxy")
+			return dialer.Dial("tcp", addr)
+		}))
+	}
+
 	if dOpts.insecure {
 		dialOpts = append(dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	} else {

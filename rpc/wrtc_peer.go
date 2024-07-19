@@ -3,19 +3,33 @@ package rpc
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
+	"os"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/pion/ice/v2"
 	"github.com/pion/interceptor"
 	"github.com/pion/sctp"
+	"github.com/pion/transport/v2"
+	"github.com/pion/transport/v2/stdnet"
 	"github.com/viamrobotics/webrtc/v3"
 	"go.uber.org/multierr"
+	"golang.org/x/net/proxy"
 
 	"go.viam.com/utils"
 	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
+)
+
+const (
+	// Timeout for querying DNS through proxy.
+	externalDNSLookupTimeoutForProxy = 5 * time.Second
+	// Address for external DNS server.
+	externalDNSServerForProxy = "1.1.1.1:53"
+	networkTypeTCP4           = "tcp4"
 )
 
 // DefaultICEServers is the default set of ICE servers to use for WebRTC session negotiation.
@@ -71,12 +85,106 @@ func newWebRTCAPI(isClient bool, logger utils.ZapCompatibleLogger) (*webrtc.API,
 		return false
 	})
 
+	// Use SOCKS proxy from environment as ICE proxy dialer and net transport.
+	if proxyAddr := os.Getenv(socksProxyEnvVar); proxyAddr != "" {
+		logger.Info("Behind SOCKS proxy; setting ICE proxy dialer")
+		dialer, err := proxy.SOCKS5(networkTypeTCP4, proxyAddr, nil, proxy.Direct)
+		if err != nil {
+			return nil, fmt.Errorf("error creating SOCKS proxy dialer to address %q from environment: %w",
+				proxyAddr, err)
+		}
+		settingEngine.SetICEProxyDialer(dialer)
+
+		pn, err := newProxyNet(dialer)
+		if err != nil {
+			return nil, fmt.Errorf("error creating SOCKS proxy net transport for address %q from environment: %w",
+				proxyAddr, err)
+		}
+		settingEngine.SetNet(pn)
+	}
+
 	options := []func(a *webrtc.API){webrtc.WithMediaEngine(&m), webrtc.WithInterceptorRegistry(&i)}
 	if utils.Debug {
 		settingEngine.LoggerFactory = WebRTCLoggerFactory{logger}
 	}
 	options = append(options, webrtc.WithSettingEngine(settingEngine))
 	return webrtc.NewAPI(options...), nil
+}
+
+// proxyNet wraps a standard pion `transport.Net` but implements IP resolution
+// using a proxy.
+type proxyNet struct {
+	transport.Net
+	proxyDialer proxy.Dialer
+}
+
+func newProxyNet(proxyDialer proxy.Dialer) (*proxyNet, error) {
+	net, err := stdnet.NewNet()
+	if err != nil {
+		return nil, err
+	}
+	return &proxyNet{net, proxyDialer}, nil
+}
+
+// ResolveIPAddr resolves addresses through the proxy dialer. It leverages a
+// hardcoded external DNS server. Attempting to use a local DNS server when
+// behind a proxy may not work if the device has no internet access. The
+// implementation of `ResolveTCPAddr` and `ResolveUDPAddr` for `proxyNet`
+// fall back to this method. For the purposes of resolution, the difference
+// between TCP and UDP is not important here, and we must use TCP for any
+// `Dial` to the SOCKS proxy (only protocol supported).
+func (pd *proxyNet) ResolveIPAddr(network, address string) (*net.IPAddr, error) {
+	// Custom resolver to contact an external DNS server via the proxy dialer.
+	resolver := &net.Resolver{
+		PreferGo: false,
+		Dial: func(_ context.Context, _, _ string) (net.Conn, error) {
+			// Ignore all passed in values. Dial via tcp4 (only protocol supported by
+			// golang SOCKS) to an external DNS server.
+			return pd.proxyDialer.Dial(networkTypeTCP4, externalDNSServerForProxy)
+		},
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), externalDNSLookupTimeoutForProxy)
+	defer cancel()
+
+	// Remove any trailing port when looking up host. `errNoSuchHost` occurs otherwise
+	// due to presence of ":" creating an invalid domain name.
+	splitAddress := strings.Split(address, ":")
+	if len(splitAddress) > 0 {
+		address = splitAddress[0]
+	}
+
+	ips, err := resolver.LookupHost(ctx, address)
+	if err != nil {
+		return nil, err
+	}
+
+	// Take only first IP returned.
+	if len(ips) > 0 {
+		ip := ips[0]
+		ipAddr := &net.IPAddr{IP: net.ParseIP(ip)}
+		return ipAddr, nil
+	}
+
+	return nil, fmt.Errorf("no IPs resolved for address %q", address)
+}
+
+// ResolveTCPAddr falls back to ResolveIPAddr.
+func (pd *proxyNet) ResolveTCPAddr(network, address string) (*net.TCPAddr, error) {
+	ipAddr, err := pd.ResolveIPAddr(network, address)
+	if err != nil {
+		return nil, err
+	}
+	return &net.TCPAddr{IP: ipAddr.IP}, nil
+}
+
+// ResolveUDPAddr falls back to ResolveIPAddr.
+func (pd *proxyNet) ResolveUDPAddr(network, address string) (*net.UDPAddr, error) {
+	ipAddr, err := pd.ResolveIPAddr(network, address)
+	if err != nil {
+		return nil, err
+	}
+	return &net.UDPAddr{IP: ipAddr.IP}, nil
 }
 
 func newPeerConnectionForClient(

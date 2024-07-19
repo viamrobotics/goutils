@@ -3,6 +3,7 @@ package rpc
 import (
 	"encoding/base64"
 	"encoding/json"
+	"strings"
 
 	"github.com/viamrobotics/webrtc/v3"
 
@@ -35,7 +36,9 @@ func DecodeSDP(in string, sdp *webrtc.SessionDescription) error {
 	return err
 }
 
-func extendWebRTCConfig(original *webrtc.Configuration, optional *webrtcpb.WebRTCConfig) webrtc.Configuration {
+func extendWebRTCConfig(original *webrtc.Configuration, optional *webrtcpb.WebRTCConfig,
+	replaceUDPWithTCP bool,
+) webrtc.Configuration {
 	configCopy := *original
 	if optional == nil {
 		return configCopy
@@ -44,8 +47,23 @@ func extendWebRTCConfig(original *webrtc.Configuration, optional *webrtcpb.WebRT
 		iceServers := make([]webrtc.ICEServer, len(original.ICEServers)+len(optional.AdditionalIceServers))
 		copy(iceServers, original.ICEServers)
 		for _, server := range optional.AdditionalIceServers {
+			urls := server.Urls
+			if replaceUDPWithTCP {
+				urls = nil
+				for _, url := range server.Urls {
+					// TODO(benji): Check if this is necessary.
+					// Modify URLs that end with "transport=udp" to say "transport=tcp".
+					if strings.HasSuffix(url, "udp") {
+						newURL := url[:len(url)-len("udp")] + "tcp"
+						urls = append(urls, newURL)
+						continue
+					}
+					urls = append(urls, url)
+				}
+			}
+
 			iceServers = append(iceServers, webrtc.ICEServer{
-				URLs:       server.Urls,
+				URLs:       urls,
 				Username:   server.Username,
 				Credential: server.Credential,
 			})
