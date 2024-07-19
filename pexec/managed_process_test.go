@@ -152,17 +152,10 @@ func TestManagedProcessStart(t *testing.T) {
 		})
 		t.Run("resolves relative path with different cwd", func(t *testing.T) {
 			logger := golog.NewTestLogger(t)
-			cwd := t.TempDir()
-			// change to this tempdir and create a new sub folder called newWD
-			err := os.Chdir(cwd)
-			test.That(t, err, test.ShouldBeNil)
-			newWD := "newWD"
-			err = os.Mkdir(filepath.Join(cwd, newWD), 0o700)
-			test.That(t, err, test.ShouldBeNil)
-
+			newWD := t.TempDir()
 			// create an executable file in there that we will refence as a just "./exec.sh"
 			executablePath := filepath.Join(newWD, "exec.sh")
-			err = os.WriteFile(executablePath, []byte("#!/bin/sh\necho hi\n"), 0o700)
+			err := os.WriteFile(executablePath, []byte("#!/bin/sh\necho hi\n"), 0o700)
 			test.That(t, err, test.ShouldBeNil)
 
 			logReader, logWriter := io.Pipe()
