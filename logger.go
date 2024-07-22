@@ -47,6 +47,10 @@ type ZapCompatibleLogger interface {
 	Fatalw(msg string, keysAndValues ...interface{})
 }
 
+// Sublogger creates a sublogger from the given ZapCompatibleLogger instance.
+// This function uses reflection to dynamically create a sublogger from the provided logger by
+// calling its `Sublogger` method if it is an RDK logger, or its `Named` method if it is a Zap logger.
+// If neither method is available, it logs a debug message and returns the original logger.
 func Sublogger(inp ZapCompatibleLogger, subname string) ZapCompatibleLogger {
 	typ := reflect.TypeOf(inp)
 	sublogger, ok := typ.MethodByName("Sublogger")
