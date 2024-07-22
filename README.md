@@ -52,6 +52,6 @@ Support is not well tested yet.
 See https://github.com/viamrobotics/rdk#license-check for instructions on how update our license policy.
 
 ## License 
-Copyright 2021-2022 Viam Inc.
+Copyright 2021-2024 Viam Inc.
 
 Apache 2.0 - See [LICENSE](https://github.com/viamrobotics/goutils/blob/main/LICENSE) file
