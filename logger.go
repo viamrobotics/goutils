@@ -58,7 +58,6 @@ func Sublogger(inp ZapCompatibleLogger, subname string) (loggerRet ZapCompatible
 		if r := recover(); r != nil {
 			inp.Debugf("panic occurred while creating sublogger: %v, returning self", r)
 		}
-
 	}()
 
 	typ := reflect.TypeOf(inp)
