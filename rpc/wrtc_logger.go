@@ -62,5 +62,5 @@ func (l webrtcLogger) Errorf(format string, args ...interface{}) {
 
 // NewLogger returns a new webrtc logger under the given scope.
 func (lf WebRTCLoggerFactory) NewLogger(scope string) logging.LeveledLogger {
-	return webrtcLogger{lf.Logger.Named(scope)}
+	return webrtcLogger{utils.Sublogger(lf.Logger, scope)}
 }

@@ -39,7 +39,7 @@ type ManagedProcess interface {
 
 // NewManagedProcess returns a new, unstarted, from the given configuration.
 func NewManagedProcess(config ProcessConfig, logger utils.ZapCompatibleLogger) ManagedProcess {
-	logger = logger.Named(fmt.Sprintf("process.%s_%s", config.ID, config.Name))
+	logger = utils.Sublogger(logger, fmt.Sprintf("process.%s_%s", config.ID, config.Name))
 
 	if config.StopSignal == 0 {
 		config.StopSignal = syscall.SIGTERM
@@ -257,7 +257,7 @@ func (p *managedProcess) manage(stdOut, stdErr io.ReadCloser) {
 	var activeLoggers sync.WaitGroup
 	if p.shouldLog || p.logWriter != nil {
 		logPipe := func(name string, pipe io.ReadCloser, isErr bool) {
-			logger := p.logger.Named(name)
+			logger := utils.Sublogger(p.logger, name)
 			defer activeLoggers.Done()
 			pipeR := bufio.NewReader(pipe)
 			logWriterError := false

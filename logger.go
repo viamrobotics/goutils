@@ -1,6 +1,8 @@
 package utils
 
 import (
+	"reflect"
+
 	"github.com/edaniels/golog"
 	"go.uber.org/zap"
 )
@@ -22,7 +24,6 @@ type ILogger interface {
 // ZapCompatibleLogger is a basic logging interface for golog.Logger (alias for *zap.SugaredLogger) and RDK loggers.
 type ZapCompatibleLogger interface {
 	Desugar() *zap.Logger
-	Named(name string) *zap.SugaredLogger
 	With(args ...interface{}) *zap.SugaredLogger
 
 	Debug(args ...interface{})
@@ -44,4 +45,25 @@ type ZapCompatibleLogger interface {
 	Fatal(args ...interface{})
 	Fatalf(template string, args ...interface{})
 	Fatalw(msg string, keysAndValues ...interface{})
+}
+
+func Sublogger(inp ZapCompatibleLogger, subname string) ZapCompatibleLogger {
+	typ := reflect.TypeOf(inp)
+	sublogger, ok := typ.MethodByName("Sublogger")
+	if !ok {
+		sublogger, ok = typ.MethodByName("Named")
+		if !ok {
+			inp.Debugf("could not create sublogger from logger of type %s, returning self", typ.String())
+			return inp
+		}
+	}
+
+	ret := sublogger.Func.Call([]reflect.Value{reflect.ValueOf(inp), reflect.ValueOf(subname)})
+	loggerRet, ok := ret[0].Interface().(ZapCompatibleLogger)
+	if !ok {
+		inp.Debug("sublogger func returned an unexpected type, returning self")
+		return inp
+	}
+
+	return loggerRet
 }
