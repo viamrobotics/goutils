@@ -34,12 +34,18 @@ type webrtcSignalingAnswerer struct {
 	dialOpts     []DialOption
 	webrtcConfig webrtc.Configuration
 
-	// answererMu should be `Lock`ed in `Stop` to `Wait` on ongoing answer workers in startAnswerer/answer.
-	// answererMu should be `RLock`ed when starting a new answer worker (allow concurrent answer workers) to
+	// answerMu should be `Lock`ed in `Stop` to `Wait` on ongoing answer workers in startAnswerer/answer.
+	// answerMu should be `RLock`ed when starting a new answer worker (allow concurrent answer workers) to
 	// `Add` to answerWorkers.
 	answerMu            sync.RWMutex
 	answerWorkers       sync.WaitGroup
 	cancelAnswerWorkers func()
+
+	// conn is used to share the direct gRPC connection used by the answerer workers. As direct gRPC connections
+	// reconnect on their own, custom reconnect logic is not needed. However, keepalives are necessary for the connection
+	// to realize it's been disconnected quickly and start reconnecting.
+	connMu sync.Mutex
+	conn   ClientConn
 
 	closeCtx context.Context
 	logger   utils.ZapCompatibleLogger
@@ -91,9 +97,40 @@ func (ans *webrtcSignalingAnswerer) Start() {
 	ans.startStopMu.Lock()
 	defer ans.startStopMu.Unlock()
 
-	for i := 0; i < defaultMaxAnswerers; i++ {
-		ans.startAnswerer()
-	}
+	ans.answerMu.RLock()
+	ans.answerWorkers.Add(1)
+	ans.answerMu.RUnlock()
+
+	// attempt to make connection in a loop
+	utils.ManagedGo(func() {
+		for ans.conn == nil {
+			select {
+			case <-ans.closeCtx.Done():
+				return
+			default:
+			}
+
+			setupCtx, timeoutCancel := context.WithTimeout(ans.closeCtx, 10*time.Second)
+			defer timeoutCancel()
+			conn, err := Dial(setupCtx, ans.address, ans.logger, ans.dialOpts...)
+			if err != nil {
+				ans.logger.Errorw("error connecting answer client", "error", err)
+				if !utils.SelectContextOrWait(ans.closeCtx, answererReconnectWait) {
+					return
+				}
+				continue
+			}
+			ans.connMu.Lock()
+			ans.conn = conn
+			ans.connMu.Unlock()
+		}
+		// spin off the actual answerer workers
+		for i := 0; i < defaultMaxAnswerers; i++ {
+			ans.startAnswerer()
+		}
+	}, func() {
+		defer ans.answerWorkers.Done()
+	})
 }
 
 func checkExceptionalError(err error) error {
@@ -113,47 +150,14 @@ func checkExceptionalError(err error) error {
 }
 
 func (ans *webrtcSignalingAnswerer) startAnswerer() {
-	var connInUse ClientConn
-	var connMu sync.Mutex
-	reconnect := func() error {
-		connMu.Lock()
-		conn := connInUse
-		connMu.Unlock()
-		if conn != nil {
-			if err := checkExceptionalError(conn.Close()); err != nil {
-				ans.logger.Errorw("error closing existing signaling connection", "error", err)
-			}
-		}
-		setupCtx, timeoutCancel := context.WithTimeout(ans.closeCtx, 10*time.Second)
-		defer timeoutCancel()
-		conn, err := Dial(setupCtx, ans.address, ans.logger, ans.dialOpts...)
-		if err != nil {
-			return err
-		}
-		connMu.Lock()
-		connInUse = conn
-		connMu.Unlock()
-		return nil
-	}
 	newAnswer := func() (webrtcpb.SignalingService_AnswerClient, error) {
-		connMu.Lock()
-		conn := connInUse
-		connMu.Unlock()
-		if conn == nil {
-			if err := reconnect(); err != nil {
-				return nil, err
-			}
-		}
-		connMu.Lock()
-		conn = connInUse
-		connMu.Unlock()
-		client := webrtcpb.NewSignalingServiceClient(conn)
+		client := webrtcpb.NewSignalingServiceClient(ans.conn)
 		md := metadata.New(nil)
 		md.Append(RPCHostMetadataField, ans.hosts...)
 		answerCtx := metadata.NewOutgoingContext(ans.closeCtx, md)
 		answerClient, err := client.Answer(answerCtx)
 		if err != nil {
-			return nil, multierr.Combine(err, conn.Close())
+			return nil, err
 		}
 		return answerClient, nil
 	}
@@ -190,41 +194,19 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 			if err == nil {
 				err = ans.answer(client)
 			}
-			// Exceptional errors represent a broken connection and require reconnecting. Common
+			// Exceptional errors represent a broken connection. While direct gRPC connections will reconnect
+			// on their own, we should wait a little before trying to call again. Common
 			// errors represent that an operation has failed, but can be safely retried over the
 			// existing connection.
-			if checkExceptionalError(err) == nil {
-				continue
-			}
-
-			ans.logger.Errorw("error answering", "error", err)
-			for {
-				ans.logger.Debugw("reconnecting answer client", "in", answererReconnectWait.String())
+			if checkExceptionalError(err) != nil {
+				ans.logger.Errorw("error answering", "error", err)
 				if !utils.SelectContextOrWait(ans.closeCtx, answererReconnectWait) {
 					return
 				}
-				if connectErr := reconnect(); connectErr != nil {
-					ans.logger.Errorw("error reconnecting answer client", "error", err, "reconnect_err", connectErr)
-					continue
-				}
-				ans.logger.Debug("reconnected answer client")
-				break
 			}
 		}
 	}, func() {
 		defer ans.answerWorkers.Done()
-		defer func() {
-			connMu.Lock()
-			conn := connInUse
-			connMu.Unlock()
-			if conn == nil {
-				return
-			}
-
-			if err := checkExceptionalError(conn.Close()); err != nil {
-				ans.logger.Errorw("error closing signaling connection", "error", err)
-			}
-		}()
 	})
 }
 
@@ -235,8 +217,17 @@ func (ans *webrtcSignalingAnswerer) Stop() {
 
 	ans.cancelAnswerWorkers()
 	ans.answerMu.Lock()
-	defer ans.answerMu.Unlock()
 	ans.answerWorkers.Wait()
+	ans.answerMu.Unlock()
+
+	ans.connMu.Lock()
+	defer ans.connMu.Unlock()
+	if ans.conn != nil {
+		if err := checkExceptionalError(ans.conn.Close()); err != nil {
+			ans.logger.Errorw("error closing signaling connection", "error", err)
+		}
+		ans.conn = nil
+	}
 }
 
 // answer accepts a single call offer, responds with a corresponding SDP, and
