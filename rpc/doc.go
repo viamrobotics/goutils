@@ -74,8 +74,7 @@ client certificate match that of the entities checked in WithTLSAuthHandler, the
 allowed to proceed.
 
 For WebRTC, we assume that signaling is implemented as an authenticated/authorized service and for now,
-do not pass any JWTs over the WebRTC data channels that are established. For more info,
-see https://github.com/viamrobotics/goutils/issues/12.
+do not pass any JWTs over the WebRTC data channels that are established.
 
 There is an additional feature, called AuthenticateTo provided by the ExternalAuthService which allows
 for external authentication on another server to "authenticate to" an entity on the target being
@@ -85,10 +84,7 @@ for that server, and then it will call AuthenticateTo to get a JWT destined for 
 connected to. AuthenticateTo requires an entity to authenticate as. You can think of this feature as
 the ability to assume the role of another entity.
 
-Expiration of JWTs is not yet handled/support; see:
-- https://github.com/viamrobotics/goutils/issues/10
-- https://github.com/viamrobotics/goutils/issues/11
-- https://github.com/viamrobotics/goutils/issues/13
+Expiration of JWTs is not yet handled/support.
 
 # Authorization Modes
 
