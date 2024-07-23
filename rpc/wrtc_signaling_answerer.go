@@ -513,7 +513,7 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 			defer close(done)
 			if err := exchangeCandidates(); err != nil {
 				if haveInit && filterEOF(err, ans.logger) == nil {
-					ans.logger.Warnf("caller swallowed err: %v while exchanging ICE candidates", err)
+					ans.logger.Warn("caller swallowed EOF err while exchanging ICE candidates")
 				} else {
 					sendErr(err)
 				}

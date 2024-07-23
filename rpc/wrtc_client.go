@@ -362,7 +362,7 @@ func dialWebRTC(
 	utils.PanicCapturingGoWithCallback(func() {
 		if err := exchangeCandidates(); err != nil {
 			if haveInit && filterEOF(err, logger) == nil {
-				logger.Warnf("caller swallowed err: %v while exchanging ICE candidates", err)
+				logger.Warn("caller swallowed EOF err while exchanging ICE candidates")
 			} else {
 				sendErr(err)
 			}
