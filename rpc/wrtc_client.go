@@ -104,7 +104,7 @@ func dialWebRTC(
 ) (ch *webrtcClientChannel, err error) {
 	dialStart := time.Now()
 
-	logger = logger.Named("webrtc")
+	logger = utils.Sublogger(logger, "webrtc")
 	dialCtx, timeoutCancel := context.WithTimeout(ctx, getDefaultOfferDeadline())
 	defer timeoutCancel()
 
