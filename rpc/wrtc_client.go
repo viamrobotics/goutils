@@ -203,7 +203,7 @@ func dialWebRTC(
 				},
 			})
 		})
-		return err
+		return filterEOF(err, logger)
 	}
 
 	remoteDescSet := make(chan struct{})
@@ -302,8 +302,9 @@ func dialWebRTC(
 	//nolint:contextcheck
 	clientCh := newWebRTCClientChannel(peerConn, dataChannel, onICEConnected, logger, dOpts.unaryInterceptor, dOpts.streamInterceptor)
 
+	haveInit := false // initial sdp exchange
+
 	exchangeCandidates := func() error {
-		haveInit := false
 		for {
 			if err := exchangeCtx.Err(); err != nil {
 				if errors.Is(err, context.Canceled) {
@@ -360,7 +361,11 @@ func dialWebRTC(
 
 	utils.PanicCapturingGoWithCallback(func() {
 		if err := exchangeCandidates(); err != nil {
-			sendErr(err)
+			if haveInit && filterEOF(err, logger) == nil {
+				logger.Warnf("caller swallowed err: %v while exchanging ICE candidates", err)
+			} else {
+				sendErr(err)
+			}
 		}
 	}, func(err interface{}) {
 		sendErr(fmt.Errorf("%v", err))
@@ -432,4 +437,13 @@ func dialSignalingServer(
 
 	conn, _, err := dialDirectGRPC(ctx, signalingServer, dOpts, logger)
 	return conn, err
+}
+
+func filterEOF(err error, logger utils.ZapCompatibleLogger) error {
+	s, isGRPCErr := status.FromError(err)
+	if errors.Is(err, io.EOF) || (isGRPCErr && (s.Code() == codes.Internal && strings.Contains(s.Message(), "EOF"))) {
+		logger.Warnf("swallowing err %v", err)
+		return nil
+	}
+	return err
 }

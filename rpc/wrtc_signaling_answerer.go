@@ -320,7 +320,7 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 				},
 			})
 		})
-		return err
+		return filterEOF(err, ans.logger)
 	}
 
 	var exchangeCtx context.Context
@@ -461,6 +461,8 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 
 	serverChannel := ans.server.NewChannel(pc, dc, ans.hosts)
 
+	haveInit := false
+
 	if !init.OptionalConfig.DisableTrickle {
 		exchangeCandidates := func() error {
 			for {
@@ -481,6 +483,7 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 
 				switch s := ansResp.Stage.(type) {
 				case *webrtcpb.AnswerRequest_Init:
+					haveInit = true
 				case *webrtcpb.AnswerRequest_Update:
 					if ansResp.Uuid != uuid {
 						return errors.Errorf("uuid mismatch; have=%q want=%q", ansResp.Uuid, uuid)
@@ -509,7 +512,11 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 		utils.PanicCapturingGoWithCallback(func() {
 			defer close(done)
 			if err := exchangeCandidates(); err != nil {
-				sendErr(err)
+				if haveInit && filterEOF(err, ans.logger) == nil {
+					ans.logger.Warnf("caller swallowed err: %v while exchanging ICE candidates", err)
+				} else {
+					sendErr(err)
+				}
 			}
 		}, func(err interface{}) {
 			sendErr(err)
