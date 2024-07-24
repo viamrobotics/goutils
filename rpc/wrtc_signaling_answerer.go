@@ -320,7 +320,7 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 				},
 			})
 		})
-		return filterEOF(err, ans.logger)
+		return err
 	}
 
 	var exchangeCtx context.Context
@@ -331,12 +331,12 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 		exchangeCtx, exchangeCancel = context.WithTimeout(ans.closeCtx, getDefaultOfferDeadline())
 	}
 
-	errCh := make(chan interface{})
+	errCh := make(chan error)
 	defer exchangeCancel()
-	sendErr := func(err interface{}) {
+	sendErr := func(err error) {
 		select {
 		case <-exchangeCtx.Done():
-		case errCh <- err:
+		case errCh <- filterEOF(err, ans.logger):
 		}
 	}
 
@@ -509,14 +509,10 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 		utils.PanicCapturingGoWithCallback(func() {
 			defer close(done)
 			if err := exchangeCandidates(); err != nil {
-				if filterEOF(err, ans.logger) == nil {
-					ans.logger.Warn("answerer swallowed EOF err while exchanging ICE candidates")
-				} else {
-					sendErr(err)
-				}
+				sendErr(err)
 			}
 		}, func(err interface{}) {
-			sendErr(err)
+			sendErr(fmt.Errorf("%v", err))
 		})
 	}
 

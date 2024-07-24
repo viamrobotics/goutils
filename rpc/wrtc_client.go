@@ -6,6 +6,7 @@ import (
 	"io"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/pkg/errors"
@@ -180,8 +181,15 @@ func dialWebRTC(
 	exchangeCtx, exchangeCancel := context.WithCancel(signalCtx)
 	defer exchangeCancel()
 
+	// atomic "bool" representing whether initial sdp exchange has occured
+	var haveInit int32
+	atomic.StoreInt32(&haveInit, 0)
+
 	errCh := make(chan error)
 	sendErr := func(err error) {
+		if atomic.LoadInt32(&haveInit) == 1 {
+			err = filterEOF(err, logger)
+		}
 		if s, ok := status.FromError(err); ok && strings.Contains(s.Message(), noActiveOfferStr) {
 			return
 		}
@@ -203,7 +211,7 @@ func dialWebRTC(
 				},
 			})
 		})
-		return filterEOF(err, logger)
+		return err
 	}
 
 	remoteDescSet := make(chan struct{})
@@ -302,8 +310,6 @@ func dialWebRTC(
 	//nolint:contextcheck
 	clientCh := newWebRTCClientChannel(peerConn, dataChannel, onICEConnected, logger, dOpts.unaryInterceptor, dOpts.streamInterceptor)
 
-	haveInit := false // initial sdp exchange
-
 	exchangeCandidates := func() error {
 		for {
 			if err := exchangeCtx.Err(); err != nil {
@@ -322,10 +328,10 @@ func dialWebRTC(
 			}
 			switch s := callResp.Stage.(type) {
 			case *webrtcpb.CallResponse_Init:
-				if haveInit {
+				if atomic.LoadInt32(&haveInit) == 1 {
 					return errors.New("got init stage more than once")
 				}
-				haveInit = true
+				atomic.StoreInt32(&haveInit, 1)
 				uuid = callResp.Uuid
 				answer := webrtc.SessionDescription{}
 				if err := DecodeSDP(s.Init.Sdp, &answer); err != nil {
@@ -342,7 +348,7 @@ func dialWebRTC(
 					return sendDone()
 				}
 			case *webrtcpb.CallResponse_Update:
-				if !haveInit {
+				if atomic.LoadInt32(&haveInit) == 0 {
 					return errors.New("got update stage before init stage")
 				}
 				if callResp.Uuid != uuid {
@@ -361,11 +367,7 @@ func dialWebRTC(
 
 	utils.PanicCapturingGoWithCallback(func() {
 		if err := exchangeCandidates(); err != nil {
-			if haveInit && filterEOF(err, logger) == nil {
-				logger.Warn("caller swallowed EOF err while exchanging ICE candidates")
-			} else {
-				sendErr(err)
-			}
+			sendErr(err)
 		}
 	}, func(err interface{}) {
 		sendErr(fmt.Errorf("%v", err))
