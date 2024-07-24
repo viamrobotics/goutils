@@ -129,7 +129,7 @@ func (ans *webrtcSignalingAnswerer) Start() {
 			ans.startAnswerer()
 		}
 	}, func() {
-		defer ans.answerWorkers.Done()
+		ans.answerWorkers.Done()
 	})
 }
 
@@ -151,7 +151,10 @@ func checkExceptionalError(err error) error {
 
 func (ans *webrtcSignalingAnswerer) startAnswerer() {
 	newAnswer := func() (webrtcpb.SignalingService_AnswerClient, error) {
-		client := webrtcpb.NewSignalingServiceClient(ans.conn)
+		ans.connMu.Lock()
+		conn := ans.conn
+		ans.connMu.Unlock()
+		client := webrtcpb.NewSignalingServiceClient(conn)
 		md := metadata.New(nil)
 		md.Append(RPCHostMetadataField, ans.hosts...)
 		answerCtx := metadata.NewOutgoingContext(ans.closeCtx, md)
@@ -206,7 +209,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 			}
 		}
 	}, func() {
-		defer ans.answerWorkers.Done()
+		ans.answerWorkers.Done()
 	})
 }
 
