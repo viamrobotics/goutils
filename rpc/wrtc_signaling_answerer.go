@@ -111,8 +111,8 @@ func (ans *webrtcSignalingAnswerer) Start() {
 			}
 
 			setupCtx, timeoutCancel := context.WithTimeout(ans.closeCtx, 10*time.Second)
-			defer timeoutCancel()
 			conn, err := Dial(setupCtx, ans.address, ans.logger, ans.dialOpts...)
+			timeoutCancel()
 			if err != nil {
 				ans.logger.Errorw("error connecting answer client", "error", err)
 				if !utils.SelectContextOrWait(ans.closeCtx, answererReconnectWait) {
