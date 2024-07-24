@@ -182,12 +182,12 @@ func dialWebRTC(
 	defer exchangeCancel()
 
 	// atomic "bool" representing whether initial sdp exchange has occured
-	var haveInit int32
-	atomic.StoreInt32(&haveInit, 0)
+	var haveInit atomic.Bool
+	haveInit.Store(false)
 
 	errCh := make(chan error)
 	sendErr := func(err error) {
-		if atomic.LoadInt32(&haveInit) == 1 {
+		if haveInit.Load() {
 			err = filterEOF(err, logger)
 		}
 		if s, ok := status.FromError(err); ok && strings.Contains(s.Message(), noActiveOfferStr) {
@@ -328,10 +328,10 @@ func dialWebRTC(
 			}
 			switch s := callResp.Stage.(type) {
 			case *webrtcpb.CallResponse_Init:
-				if atomic.LoadInt32(&haveInit) == 1 {
+				if haveInit.Load() {
 					return errors.New("got init stage more than once")
 				}
-				atomic.StoreInt32(&haveInit, 1)
+				haveInit.Store(true)
 				uuid = callResp.Uuid
 				answer := webrtc.SessionDescription{}
 				if err := DecodeSDP(s.Init.Sdp, &answer); err != nil {
@@ -348,7 +348,7 @@ func dialWebRTC(
 					return sendDone()
 				}
 			case *webrtcpb.CallResponse_Update:
-				if atomic.LoadInt32(&haveInit) == 0 {
+				if !haveInit.Load() {
 					return errors.New("got update stage before init stage")
 				}
 				if callResp.Uuid != uuid {
