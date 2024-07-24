@@ -187,8 +187,9 @@ func dialWebRTC(
 
 	errCh := make(chan error)
 	sendErr := func(err error) {
-		if haveInit.Load() {
-			err = filterEOF(err, logger)
+		if haveInit.Load() && isEOF(err) {
+			logger.Warnf("caller swallowing err %v", err)
+			return
 		}
 		if s, ok := status.FromError(err); ok && strings.Contains(s.Message(), noActiveOfferStr) {
 			return
@@ -441,11 +442,10 @@ func dialSignalingServer(
 	return conn, err
 }
 
-func filterEOF(err error, logger utils.ZapCompatibleLogger) error {
+func isEOF(err error) bool {
 	s, isGRPCErr := status.FromError(err)
 	if errors.Is(err, io.EOF) || (isGRPCErr && (s.Code() == codes.Internal && strings.Contains(s.Message(), "EOF"))) {
-		logger.Warnf("swallowing err %v", err)
-		return nil
+		return true
 	}
-	return err
+	return false
 }

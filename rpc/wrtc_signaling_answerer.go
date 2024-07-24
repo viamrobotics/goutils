@@ -334,9 +334,13 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 	errCh := make(chan error)
 	defer exchangeCancel()
 	sendErr := func(err error) {
+		if isEOF(err) {
+			ans.logger.Warnf("answerer swallowing err %v", err)
+			return
+		}
 		select {
 		case <-exchangeCtx.Done():
-		case errCh <- filterEOF(err, ans.logger):
+		case errCh <- err:
 		}
 	}
 
