@@ -6,7 +6,6 @@ import (
 	"io"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/pkg/errors"
@@ -182,12 +181,11 @@ func dialWebRTC(
 	defer exchangeCancel()
 
 	// atomic bool representing whether initial sdp exchange has occurred
-	var haveInit atomic.Bool
-	haveInit.Store(false)
+	haveInit := true
 
 	errCh := make(chan error)
 	sendErr := func(err error) {
-		if haveInit.Load() && isEOF(err) {
+		if haveInit && isEOF(err) {
 			logger.Warnf("caller swallowing err %v", err)
 			return
 		}
@@ -215,7 +213,11 @@ func dialWebRTC(
 		return err
 	}
 
+	// this channel blocks goroutines spawned for each ICE candidate in OnIceCandidate from sending a CallUpdateRequest
+	// to the signaling server until a CallResponse_Init is recieved, which in turn causes the channel to be closed and
+	// unblocks goroutines from sending candidate update requests
 	remoteDescSet := make(chan struct{})
+
 	if !dOpts.webrtcOpts.DisableTrickleICE {
 		offer, err := peerConn.CreateOffer(nil)
 		if err != nil {
@@ -329,10 +331,10 @@ func dialWebRTC(
 			}
 			switch s := callResp.Stage.(type) {
 			case *webrtcpb.CallResponse_Init:
-				if haveInit.Load() {
+				if haveInit {
 					return errors.New("got init stage more than once")
 				}
-				haveInit.Store(true)
+				haveInit = true
 				uuid = callResp.Uuid
 				answer := webrtc.SessionDescription{}
 				if err := DecodeSDP(s.Init.Sdp, &answer); err != nil {
@@ -349,7 +351,7 @@ func dialWebRTC(
 					return sendDone()
 				}
 			case *webrtcpb.CallResponse_Update:
-				if !haveInit.Load() {
+				if !haveInit {
 					return errors.New("got update stage before init stage")
 				}
 				if callResp.Uuid != uuid {
