@@ -93,7 +93,7 @@ const (
 )
 
 // Start connects to the signaling service and listens forever until instructed to stop
-// via Stop. Start cannot be called once more than once before a Stop().
+// via Stop. Start cannot be called more than once before a Stop().
 func (ans *webrtcSignalingAnswerer) Start() {
 	ans.startStopMu.Lock()
 	defer ans.startStopMu.Unlock()
