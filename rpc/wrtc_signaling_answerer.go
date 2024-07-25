@@ -338,6 +338,7 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 			ans.logger.Warnf("answerer swallowing err %v", err)
 			return
 		}
+		ans.logger.Warnf("caller received err %v of type %T", err, err)
 		select {
 		case <-exchangeCtx.Done():
 		case errCh <- err:

@@ -181,7 +181,7 @@ func dialWebRTC(
 	defer exchangeCancel()
 
 	// bool representing whether initial sdp exchange has occurred
-	haveInit := true
+	haveInit := false
 
 	errCh := make(chan error)
 	sendErr := func(err error) {
@@ -192,6 +192,7 @@ func dialWebRTC(
 		if s, ok := status.FromError(err); ok && strings.Contains(s.Message(), noActiveOfferStr) {
 			return
 		}
+		logger.Warnf("caller received err %v of type %T", err, err)
 		select {
 		case <-exchangeCtx.Done():
 		case errCh <- err:
@@ -214,7 +215,7 @@ func dialWebRTC(
 	}
 
 	// this channel blocks goroutines spawned for each ICE candidate in OnIceCandidate from sending a CallUpdateRequest
-	// to the signaling server until a CallResponse_Init is recieved, which in turn causes the channel to be closed and
+	// to the signaling server until a CallResponse_Init is received, which in turn causes the channel to be closed and
 	// unblocks goroutines from sending candidate update requests
 	remoteDescSet := make(chan struct{})
 
@@ -324,10 +325,7 @@ func dialWebRTC(
 
 			callResp, err := callClient.Recv()
 			if err != nil {
-				if !errors.Is(err, io.EOF) {
-					return err
-				}
-				return nil
+				return err
 			}
 			switch s := callResp.Stage.(type) {
 			case *webrtcpb.CallResponse_Init:
