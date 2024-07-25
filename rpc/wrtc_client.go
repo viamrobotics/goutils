@@ -180,7 +180,7 @@ func dialWebRTC(
 	exchangeCtx, exchangeCancel := context.WithCancel(signalCtx)
 	defer exchangeCancel()
 
-	// atomic bool representing whether initial sdp exchange has occurred
+	// bool representing whether initial sdp exchange has occurred
 	haveInit := true
 
 	errCh := make(chan error)
