@@ -34,12 +34,12 @@ type webrtcSignalingAnswerer struct {
 	dialOpts     []DialOption
 	webrtcConfig webrtc.Configuration
 
-	// answerMu should be `Lock`ed in `Stop` to `Wait` on ongoing answer workers in startAnswerer/answer.
-	// answerMu should be `RLock`ed when starting a new answer worker (allow concurrent answer workers) to
-	// `Add` to answerWorkers.
-	answerMu            sync.RWMutex
-	answerWorkers       sync.WaitGroup
-	cancelAnswerWorkers func()
+	// bgWorkersMu should be `Lock`ed in `Stop` to `Wait` on ongoing background workers in startAnswerer/answer.
+	// bgWorkersMu should be `RLock`ed when starting a new background worker (allow concurrent background workers) to
+	// `Add` to bgWorkers.
+	bgWorkersMu     sync.RWMutex
+	bgWorkers       sync.WaitGroup
+	cancelBgWorkers func()
 
 	// conn is used to share the direct gRPC connection used by the answerer workers. As direct gRPC connections
 	// reconnect on their own, custom reconnect logic is not needed. However, keepalives are necessary for the connection
@@ -74,21 +74,22 @@ func newWebRTCSignalingAnswerer(
 	dialOptsCopy = append(dialOptsCopy, WithWebRTCOptions(DialWebRTCOptions{Disable: true}))
 	closeCtx, cancel := context.WithCancel(context.Background())
 	return &webrtcSignalingAnswerer{
-		address:             address,
-		hosts:               hosts,
-		server:              server,
-		dialOpts:            dialOptsCopy,
-		webrtcConfig:        webrtcConfig,
-		cancelAnswerWorkers: cancel,
-		closeCtx:            closeCtx,
-		logger:              logger,
-		logStats:            logStats,
+		address:         address,
+		hosts:           hosts,
+		server:          server,
+		dialOpts:        dialOptsCopy,
+		webrtcConfig:    webrtcConfig,
+		cancelBgWorkers: cancel,
+		closeCtx:        closeCtx,
+		logger:          logger,
+		logStats:        logStats,
 	}
 }
 
 const (
-	defaultMaxAnswerers   = 2
-	answererReconnectWait = time.Second
+	defaultMaxAnswerers    = 2
+	answererConnectTimeout = 10 * time.Second
+	answererReconnectWait  = time.Second
 )
 
 // Start connects to the signaling service and listens forever until instructed to stop
@@ -97,9 +98,9 @@ func (ans *webrtcSignalingAnswerer) Start() {
 	ans.startStopMu.Lock()
 	defer ans.startStopMu.Unlock()
 
-	ans.answerMu.RLock()
-	ans.answerWorkers.Add(1)
-	ans.answerMu.RUnlock()
+	ans.bgWorkersMu.RLock()
+	ans.bgWorkers.Add(1)
+	ans.bgWorkersMu.RUnlock()
 
 	// attempt to make connection in a loop
 	utils.ManagedGo(func() {
@@ -110,7 +111,7 @@ func (ans *webrtcSignalingAnswerer) Start() {
 			default:
 			}
 
-			setupCtx, timeoutCancel := context.WithTimeout(ans.closeCtx, 10*time.Second)
+			setupCtx, timeoutCancel := context.WithTimeout(ans.closeCtx, answererConnectTimeout)
 			conn, err := Dial(setupCtx, ans.address, ans.logger, ans.dialOpts...)
 			timeoutCancel()
 			if err != nil {
@@ -129,7 +130,7 @@ func (ans *webrtcSignalingAnswerer) Start() {
 			ans.startAnswerer()
 		}
 	}, func() {
-		ans.answerWorkers.Done()
+		ans.bgWorkers.Done()
 	})
 }
 
@@ -164,15 +165,15 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 		}
 		return answerClient, nil
 	}
-	ans.answerMu.RLock()
-	ans.answerWorkers.Add(1)
-	ans.answerMu.RUnlock()
+	ans.bgWorkersMu.RLock()
+	ans.bgWorkers.Add(1)
+	ans.bgWorkersMu.RUnlock()
 
 	// Check if closeCtx has errored: underlying answerer may have been
 	// `Stop`ped, in which case we mark this answer worker as `Done` and
 	// return.
 	if err := ans.closeCtx.Err(); err != nil {
-		ans.answerWorkers.Done()
+		ans.bgWorkers.Done()
 		return
 	}
 
@@ -209,7 +210,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 			}
 		}
 	}, func() {
-		ans.answerWorkers.Done()
+		ans.bgWorkers.Done()
 	})
 }
 
@@ -218,10 +219,10 @@ func (ans *webrtcSignalingAnswerer) Stop() {
 	ans.startStopMu.Lock()
 	defer ans.startStopMu.Unlock()
 
-	ans.cancelAnswerWorkers()
-	ans.answerMu.Lock()
-	ans.answerWorkers.Wait()
-	ans.answerMu.Unlock()
+	ans.cancelBgWorkers()
+	ans.bgWorkersMu.Lock()
+	ans.bgWorkers.Wait()
+	ans.bgWorkersMu.Unlock()
 
 	ans.connMu.Lock()
 	defer ans.connMu.Unlock()
@@ -361,20 +362,20 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 				}
 			}
 			// must spin off to unblock the ICE gatherer
-			ans.answerMu.RLock()
-			ans.answerWorkers.Add(1)
-			ans.answerMu.RUnlock()
+			ans.bgWorkersMu.RLock()
+			ans.bgWorkers.Add(1)
+			ans.bgWorkersMu.RUnlock()
 
 			// Check if closeCtx has errored: underlying answerer may have been
 			// `Stop`ped, in which case we mark this answer worker as `Done` and
 			// return.
 			if err := ans.closeCtx.Err(); err != nil {
-				ans.answerWorkers.Done()
+				ans.bgWorkers.Done()
 				return
 			}
 
 			utils.PanicCapturingGo(func() {
-				defer ans.answerWorkers.Done()
+				defer ans.bgWorkers.Done()
 
 				if icecandidate != nil {
 					defer pendingCandidates.Done()
