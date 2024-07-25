@@ -1033,7 +1033,6 @@ func TestDialFixupWebRTCOptions(t *testing.T) {
 	go func() {
 		errChan <- rpcServer.Serve(listener)
 	}()
-	test.That(t, rpcServer.Start(), test.ShouldBeNil)
 
 	t.Run("auto detect with no signaling server address", func(t *testing.T) {
 		conn, err := Dial(
