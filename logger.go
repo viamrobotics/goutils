@@ -104,6 +104,7 @@ func LogWith(inp ZapCompatibleLogger, args ...interface{}) (loggerRet ZapCompati
 		// RDK WithFields() modifies the current logger (inp) rather than returing a new one
 		with.Func.Call(reflectArgs)
 		return inp
+	}
 
 	with, ok = typ.MethodByName("With")
 	if !ok {
@@ -118,5 +119,4 @@ func LogWith(inp ZapCompatibleLogger, args ...interface{}) (loggerRet ZapCompati
 	}
 
 	return loggerRet
-	
 }
