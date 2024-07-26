@@ -180,11 +180,19 @@ func dialWebRTC(
 	exchangeCtx, exchangeCancel := context.WithCancel(signalCtx)
 	defer exchangeCancel()
 
+	// bool representing whether initial sdp exchange has occurred
+	haveInit := false
+
 	errCh := make(chan error)
 	sendErr := func(err error) {
+		if haveInit && isEOF(err) {
+			logger.Warnf("caller swallowing err %v", err)
+			return
+		}
 		if s, ok := status.FromError(err); ok && strings.Contains(s.Message(), noActiveOfferStr) {
 			return
 		}
+		logger.Warnf("caller received err %v of type %T", err, err)
 		select {
 		case <-exchangeCtx.Done():
 		case errCh <- err:
@@ -206,7 +214,11 @@ func dialWebRTC(
 		return err
 	}
 
+	// this channel blocks goroutines spawned for each ICE candidate in OnIceCandidate from sending a CallUpdateRequest
+	// to the signaling server until a CallResponse_Init is received, which in turn causes the channel to be closed and
+	// unblocks goroutines from sending candidate update requests
 	remoteDescSet := make(chan struct{})
+
 	if !dOpts.webrtcOpts.DisableTrickleICE {
 		offer, err := peerConn.CreateOffer(nil)
 		if err != nil {
@@ -303,7 +315,6 @@ func dialWebRTC(
 	clientCh := newWebRTCClientChannel(peerConn, dataChannel, onICEConnected, logger, dOpts.unaryInterceptor, dOpts.streamInterceptor)
 
 	exchangeCandidates := func() error {
-		haveInit := false
 		for {
 			if err := exchangeCtx.Err(); err != nil {
 				if errors.Is(err, context.Canceled) {
@@ -314,10 +325,7 @@ func dialWebRTC(
 
 			callResp, err := callClient.Recv()
 			if err != nil {
-				if !errors.Is(err, io.EOF) {
-					return err
-				}
-				return nil
+				return err
 			}
 			switch s := callResp.Stage.(type) {
 			case *webrtcpb.CallResponse_Init:
@@ -432,4 +440,12 @@ func dialSignalingServer(
 
 	conn, _, err := dialDirectGRPC(ctx, signalingServer, dOpts, logger)
 	return conn, err
+}
+
+func isEOF(err error) bool {
+	s, isGRPCErr := status.FromError(err)
+	if errors.Is(err, io.EOF) || (isGRPCErr && (s.Code() == codes.Internal && strings.Contains(s.Message(), "EOF"))) {
+		return true
+	}
+	return false
 }

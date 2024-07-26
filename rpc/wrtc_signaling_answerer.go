@@ -326,9 +326,14 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 		exchangeCtx, exchangeCancel = context.WithTimeout(ans.closeCtx, getDefaultOfferDeadline())
 	}
 
-	errCh := make(chan interface{})
+	errCh := make(chan error)
 	defer exchangeCancel()
-	sendErr := func(err interface{}) {
+	sendErr := func(err error) {
+		if isEOF(err) {
+			ans.logger.Warnf("answerer swallowing err %v", err)
+			return
+		}
+		ans.logger.Warnf("caller received err %v of type %T", err, err)
 		select {
 		case <-exchangeCtx.Done():
 		case errCh <- err:
@@ -507,7 +512,7 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 				sendErr(err)
 			}
 		}, func(err interface{}) {
-			sendErr(err)
+			sendErr(fmt.Errorf("%v", err))
 		})
 	}
 
