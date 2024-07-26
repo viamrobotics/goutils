@@ -104,19 +104,19 @@ func LogWith(inp ZapCompatibleLogger, args ...interface{}) (loggerRet ZapCompati
 		// RDK WithFields() modifies the current logger (inp) rather than returing a new one
 		with.Func.Call(reflectArgs)
 		return inp
-	} else {
-		with, ok = typ.MethodByName("With")
-		if !ok {
-			inp.Debugf("could not add fields to logger of type %s, returning self", typ.String())
-			return inp
-		}
-		ret := with.Func.Call(reflectArgs)
-		loggerRet, ok = ret[0].Interface().(ZapCompatibleLogger)
-		if !ok {
-			inp.Debug("with func returned an unexpected type, returning self")
-			return inp
-		}
 
-		return loggerRet
+	with, ok = typ.MethodByName("With")
+	if !ok {
+		inp.Debugf("could not add fields to logger of type %s, returning self", typ.String())
+		return inp
 	}
+	ret := with.Func.Call(reflectArgs)
+	loggerRet, ok = ret[0].Interface().(ZapCompatibleLogger)
+	if !ok {
+		inp.Debug("with func returned an unexpected type, returning self")
+		return inp
+	}
+
+	return loggerRet
+	
 }
