@@ -19,10 +19,6 @@ func (m *InvalidLogger) Desugar() *zap.Logger {
 	return zap.NewNop()
 }
 
-func (m *InvalidLogger) With(args ...interface{}) *zap.SugaredLogger {
-	return zap.NewNop().Sugar()
-}
-
 func (m *InvalidLogger) Debug(args ...interface{}) {
 }
 
@@ -72,11 +68,15 @@ func (m *InvalidLogger) Fatalw(msg string, keysAndValues ...interface{}) {
 // is used to simulate calling utils.Sublogger() on an RDK logger.
 type MockLogger struct {
 	InvalidLogger
-	name string
+	Name string
 }
 
 func (m *MockLogger) Sublogger(subname string) ZapCompatibleLogger {
-	return &MockLogger{name: m.name + "." + subname}
+	return &MockLogger{Name: m.Name + "." + subname}
+}
+
+func (m *MockLogger) WithFields(args ...interface{}) {
+	m.Name = "WithFields called"
 }
 
 func TestSubloggerWithZapLogger(t *testing.T) {
@@ -88,11 +88,12 @@ func TestSubloggerWithZapLogger(t *testing.T) {
 }
 
 func TestSubloggerWithMockRDKLogger(t *testing.T) {
-	logger := &MockLogger{name: "main"}
+	logger := &MockLogger{Name: "main"}
 	sublogger := Sublogger(logger, "sub")
 	test.That(t, sublogger, test.ShouldNotBeNil)
 	test.That(t, sublogger, test.ShouldNotEqual, logger)
 	test.That(t, reflect.TypeOf(sublogger), test.ShouldEqual, reflect.TypeOf(logger))
+	test.That(t, sublogger.(*MockLogger).Name, test.ShouldEqual, "main.sub")
 }
 
 func TestSubloggerWithInvalidLogger(t *testing.T) {
@@ -100,4 +101,30 @@ func TestSubloggerWithInvalidLogger(t *testing.T) {
 	sublogger := Sublogger(logger, "sub")
 	// Sublogger returns logger (itself) if creating a sublogger fails, which we expect
 	test.That(t, sublogger, test.ShouldEqual, logger)
+}
+
+func TestLogWithZapLogger(t *testing.T) {
+	logger := golog.NewTestLogger(t)
+	loggerWith := LogWith(logger, "key", "value")
+	test.That(t, loggerWith, test.ShouldNotBeNil)
+	test.That(t, loggerWith, test.ShouldNotEqual, logger)
+	test.That(t, reflect.TypeOf(loggerWith), test.ShouldEqual, reflect.TypeOf(logger))
+}
+
+func TestLogWithMockRDKLogger(t *testing.T) {
+	logger := &MockLogger{Name: "main"}
+	loggerWith := LogWith(logger, "key", "value")
+	test.That(t, loggerWith, test.ShouldNotBeNil)
+	test.That(t, loggerWith, test.ShouldEqual, logger) // MockLogger modifies the logger in place
+	test.That(t, reflect.TypeOf(loggerWith), test.ShouldEqual, reflect.TypeOf(logger))
+	test.That(t, loggerWith.(*MockLogger).Name, test.ShouldEqual, "WithFields called")
+
+}
+
+func TestLogWithInvalidLogger(t *testing.T) {
+	logger := &InvalidLogger{name: "main"}
+	loggerWith := LogWith(logger, "key", "value")
+	// With returns logger (itself) if adding fields fails, which we expect
+	test.That(t, loggerWith, test.ShouldEqual, logger)
+
 }

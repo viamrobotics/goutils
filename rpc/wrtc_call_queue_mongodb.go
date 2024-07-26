@@ -204,7 +204,7 @@ func NewMongoDBWebRTCCallQueue(
 		operatorsColl: operatorsColl,
 		cancelCtx:     cancelCtx,
 		cancelFunc:    cancelFunc,
-		logger:        logger.With("operator_id", operatorID),
+		logger:        utils.LogWith(logger, "operator_id", operatorID),
 
 		csStateUpdates:        make(chan changeStreamStateUpdate),
 		callExchangeSubs:      map[string]map[*mongodbCallExchange]struct{}{},

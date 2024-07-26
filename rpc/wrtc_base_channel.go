@@ -47,7 +47,7 @@ func newBaseChannel(
 		ctx:         ctx,
 		cancel:      cancel,
 		ready:       make(chan struct{}),
-		logger:      logger.With("ch", dataChannel.ID()),
+		logger:      utils.LogWith(logger, "ch", dataChannel.ID()),
 	}
 	ch.bufferWriteCond = sync.NewCond(ch.bufferWriteMu.RLocker())
 	dataChannel.OnOpen(ch.onChannelOpen)
