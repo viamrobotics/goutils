@@ -118,7 +118,6 @@ func TestLogWithMockRDKLogger(t *testing.T) {
 	test.That(t, loggerWith, test.ShouldEqual, logger) // MockLogger modifies the logger in place
 	test.That(t, reflect.TypeOf(loggerWith), test.ShouldEqual, reflect.TypeOf(logger))
 	test.That(t, loggerWith.(*MockLogger).Name, test.ShouldEqual, "WithFields called")
-
 }
 
 func TestLogWithInvalidLogger(t *testing.T) {
@@ -126,5 +125,4 @@ func TestLogWithInvalidLogger(t *testing.T) {
 	loggerWith := LogWith(logger, "key", "value")
 	// With returns logger (itself) if adding fields fails, which we expect
 	test.That(t, loggerWith, test.ShouldEqual, logger)
-
 }

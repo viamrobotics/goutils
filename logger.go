@@ -79,7 +79,7 @@ func Sublogger(inp ZapCompatibleLogger, subname string) (loggerRet ZapCompatible
 	return loggerRet
 }
 
-// With adds fields for logging to a given ZapCompatibleLogger instance.
+// LogWith adds fields for logging to a given ZapCompatibleLogger instance.
 // This function uses reflection to dynamically add fields to the provided logger by
 // calling its `WithFields` method if it is an RDK logger, or its `With` method if it is a Zap logger.
 // If neither method is available, it logs a debug message and returns the original logger.
