@@ -262,7 +262,7 @@ func isContextCanceled(err error) bool {
 }
 
 func (s *webrtcServerStream) processHeaders(headers *webrtcpb.RequestHeaders) {
-	s.logger = utils.LogWith(s.logger, "method", headers.Method)
+	s.logger = utils.AddFieldsToLogger(s.logger, "method", headers.Method)
 
 	handlerFunc, ok := s.ch.server.handler(headers.Method)
 	if !ok {

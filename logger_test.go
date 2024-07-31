@@ -105,7 +105,7 @@ func TestSubloggerWithInvalidLogger(t *testing.T) {
 
 func TestLogWithZapLogger(t *testing.T) {
 	logger := golog.NewTestLogger(t)
-	loggerWith := LogWith(logger, "key", "value")
+	loggerWith := AddFieldsToLogger(logger, "key", "value")
 	test.That(t, loggerWith, test.ShouldNotBeNil)
 	test.That(t, loggerWith, test.ShouldNotEqual, logger)
 	test.That(t, reflect.TypeOf(loggerWith), test.ShouldEqual, reflect.TypeOf(logger))
@@ -113,7 +113,7 @@ func TestLogWithZapLogger(t *testing.T) {
 
 func TestLogWithMockRDKLogger(t *testing.T) {
 	logger := &MockLogger{Name: "main"}
-	loggerWith := LogWith(logger, "key", "value")
+	loggerWith := AddFieldsToLogger(logger, "key", "value")
 	test.That(t, loggerWith, test.ShouldNotBeNil)
 	test.That(t, loggerWith, test.ShouldEqual, logger) // MockLogger modifies the logger in place
 	test.That(t, reflect.TypeOf(loggerWith), test.ShouldEqual, reflect.TypeOf(logger))
@@ -122,7 +122,7 @@ func TestLogWithMockRDKLogger(t *testing.T) {
 
 func TestLogWithInvalidLogger(t *testing.T) {
 	logger := &InvalidLogger{name: "main"}
-	loggerWith := LogWith(logger, "key", "value")
+	loggerWith := AddFieldsToLogger(logger, "key", "value")
 	// With returns logger (itself) if adding fields fails, which we expect
 	test.That(t, loggerWith, test.ShouldEqual, logger)
 }

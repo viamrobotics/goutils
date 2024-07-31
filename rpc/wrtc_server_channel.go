@@ -101,7 +101,7 @@ func (ch *webrtcServerChannel) onChannelMessage(msg webrtc.DataChannelMessage) {
 	}
 
 	id := stream.Id
-	logger := utils.LogWith(ch.webrtcBaseChannel.logger, "id", id)
+	logger := utils.AddFieldsToLogger(ch.webrtcBaseChannel.logger, "id", id)
 
 	ch.mu.Lock()
 	serverStream, ok := ch.streams[id]

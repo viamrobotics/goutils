@@ -53,6 +53,8 @@ type ZapCompatibleLogger interface {
 func Sublogger(inp ZapCompatibleLogger, subname string) (loggerRet ZapCompatibleLogger) {
 	loggerRet = inp
 
+	// loggerRet is initialized to inp as a return value and is intentionally never re-assigned
+	// before calling functions that can panic so that defer + recover returns the original logger
 	defer func() {
 		if r := recover(); r != nil {
 			inp.Debugf("panic occurred while creating sublogger: %v, returning self", r)
@@ -69,6 +71,8 @@ func Sublogger(inp ZapCompatibleLogger, subname string) (loggerRet ZapCompatible
 		}
 	}
 
+	// When using reflection to call receiver methods, the first argument must be the object.
+	// The remaining arguments are the actual function parameters.
 	ret := sublogger.Func.Call([]reflect.Value{reflect.ValueOf(inp), reflect.ValueOf(subname)})
 	loggerRet, ok = ret[0].Interface().(ZapCompatibleLogger)
 	if !ok {
@@ -79,19 +83,23 @@ func Sublogger(inp ZapCompatibleLogger, subname string) (loggerRet ZapCompatible
 	return loggerRet
 }
 
-// LogWith adds fields for logging to a given ZapCompatibleLogger instance.
+// AddFieldsToLogger adds fields for logging to a given ZapCompatibleLogger instance.
 // This function uses reflection to dynamically add fields to the provided logger by
 // calling its `WithFields` method if it is an RDK logger, or its `With` method if it is a Zap logger.
 // If neither method is available, it logs a debug message and returns the original logger.
-func LogWith(inp ZapCompatibleLogger, args ...interface{}) (loggerRet ZapCompatibleLogger) {
+func AddFieldsToLogger(inp ZapCompatibleLogger, args ...interface{}) (loggerRet ZapCompatibleLogger) {
 	loggerRet = inp
 
+	// loggerRet is initialized to inp as a return value and is intentionally never re-assigned
+	// before calling functions that can panic so that defer + recover returns the original logger
 	defer func() {
 		if r := recover(); r != nil {
 			inp.Debugf("panic occurred while adding fields to logger: %v, returning self", r)
 		}
 	}()
 
+	// When using reflection to call receiver methods, the first argument must be the object.
+	// The remaining arguments are the actual function parameters.
 	reflectArgs := make([]reflect.Value, len(args)+1)
 	reflectArgs[0] = reflect.ValueOf(inp)
 	for i, arg := range args {
