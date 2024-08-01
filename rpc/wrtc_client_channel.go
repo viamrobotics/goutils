@@ -271,7 +271,7 @@ func (ch *webrtcClientChannel) newStream(
 			ch,
 			stream,
 			ch.removeStreamByID,
-			ch.webrtcBaseChannel.logger.With("id", id),
+			utils.AddFieldsToLogger(ch.webrtcBaseChannel.logger, "id", id),
 		)
 		activeStream = activeWebRTCClientStream{clientStream}
 		ch.streams[id] = activeStream
