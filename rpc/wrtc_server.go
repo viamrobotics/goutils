@@ -194,8 +194,8 @@ func (srv *webrtcServer) NewChannel(
 
 func (srv *webrtcServer) removePeer(peerConn *webrtc.PeerConnection) {
 	srv.peerConnsMu.Lock()
-	defer srv.peerConnsMu.Unlock()
 	delete(srv.peerConns, peerConn)
+	srv.peerConnsMu.Unlock()
 	if srv.onPeerRemoved != nil {
 		srv.onPeerRemoved(peerConn)
 	}
