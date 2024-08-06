@@ -106,7 +106,6 @@ func AddFieldsToLogger(inp ZapCompatibleLogger, args ...interface{}) (loggerRet 
 			inp.Debugf("could not add fields to logger of type %s, returning self", typ.String())
 			return inp
 		}
-
 	}
 
 	// When using reflection to call receiver methods, the first argument must be the object.
