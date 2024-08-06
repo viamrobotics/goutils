@@ -295,7 +295,7 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 	var successful bool
 	defer func() {
 		if !(successful && err == nil) {
-			err = multierr.Combine(err, pc.Close())
+			err = multierr.Combine(err, pc.GracefulClose())
 		} else {
 			stats.mu.Lock()
 			stats.success = true

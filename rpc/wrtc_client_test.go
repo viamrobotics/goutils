@@ -504,14 +504,14 @@ func testWebRTCClientAnswerConcurrent(t *testing.T, signalingCallQueue WebRTCCal
 
 	pc1, _, err := newPeerConnectionForClient(context.Background(), webrtc.Configuration{}, true, logger)
 	test.That(t, err, test.ShouldBeNil)
-	defer pc1.Close()
+	defer pc1.GracefulClose()
 
 	encodedSDP1, err := EncodeSDP(pc1.LocalDescription())
 	test.That(t, err, test.ShouldBeNil)
 
 	pc2, _, err := newPeerConnectionForClient(context.Background(), webrtc.Configuration{}, true, logger)
 	test.That(t, err, test.ShouldBeNil)
-	defer pc2.Close()
+	defer pc2.GracefulClose()
 
 	encodedSDP2, err := EncodeSDP(pc2.LocalDescription())
 	test.That(t, err, test.ShouldBeNil)

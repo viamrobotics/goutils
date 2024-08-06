@@ -584,7 +584,7 @@ func TestWebRTCClientChannelCanStopStreamRecvMsg(t *testing.T) {
 
 	// Close client peer connection before receiving a client message. Assert
 	// that RecvMsg does not hang.
-	test.That(t, pc1.Close(), test.ShouldBeNil)
+	test.That(t, pc1.GracefulClose(), test.ShouldBeNil)
 	var respStatus pbstatus.Status
 	err = clientStream.RecvMsg(&respStatus)
 	test.That(t, err, test.ShouldNotBeNil)
