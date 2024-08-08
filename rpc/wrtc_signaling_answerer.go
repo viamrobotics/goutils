@@ -282,7 +282,6 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 		disableTrickle,
 		ans.logger,
 	)
-	serverChannel := ans.server.NewChannel(pc, dc, ans.hosts)
 
 	if err != nil {
 		return client.Send(&webrtcpb.AnswerResponse{
@@ -294,6 +293,9 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 			},
 		})
 	}
+
+	serverChannel := ans.server.NewChannel(pc, dc, ans.hosts)
+
 	var successful bool
 	defer func() {
 		if !(successful && err == nil) {
