@@ -108,7 +108,8 @@ func newBaseChannel(
 				// the `PeerConnection`.
 				//
 				// We chose here to call close for all cases of `Disconnected`, `Failed` and
-				// `Closed`. We rely on pion's `PeerConnection.Close` method being idempotent.
+				// `Closed`. We rely on pion's `PeerConnection.GracefulClose` method being idempotent.
+				// We "gracefully" close to wait for the read loop to complete.
 				if err := peerConn.GracefulClose(); err != nil {
 					logger.Debugw("Error closing peer connection",
 						"conn_id", currConnID,
