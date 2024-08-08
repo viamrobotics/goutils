@@ -150,7 +150,7 @@ func dialWebRTC(
 	var successful bool
 	defer func() {
 		if !successful {
-			err = multierr.Combine(err, peerConn.Close())
+			err = multierr.Combine(err, peerConn.GracefulClose())
 		}
 	}()
 

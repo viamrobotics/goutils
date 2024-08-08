@@ -53,14 +53,14 @@ func TestRenegotation(t *testing.T) {
 	client, err := webrtc.NewPeerConnection(webrtc.Configuration{})
 	test.That(t, err, test.ShouldBeNil)
 	defer func() {
-		client.Close()
+		client.GracefulClose()
 		<-clientNegChannelClosed
 	}()
 
 	server, err := webrtc.NewPeerConnection(webrtc.Configuration{})
 	test.That(t, err, test.ShouldBeNil)
 	defer func() {
-		server.Close()
+		server.GracefulClose()
 		<-serverNegChannelClosed
 	}()
 

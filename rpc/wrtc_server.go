@@ -102,7 +102,7 @@ func (srv *webrtcServer) Stop() {
 	srv.peerConnsMu.Lock()
 	defer srv.peerConnsMu.Unlock()
 	for pc := range srv.peerConns {
-		if err := pc.Close(); err != nil {
+		if err := pc.GracefulClose(); err != nil {
 			srv.logger.Errorw("error closing peer connection", "error", err)
 		}
 	}
@@ -194,12 +194,12 @@ func (srv *webrtcServer) NewChannel(
 
 func (srv *webrtcServer) removePeer(peerConn *webrtc.PeerConnection) {
 	srv.peerConnsMu.Lock()
-	defer srv.peerConnsMu.Unlock()
 	delete(srv.peerConns, peerConn)
+	srv.peerConnsMu.Unlock()
 	if srv.onPeerRemoved != nil {
 		srv.onPeerRemoved(peerConn)
 	}
-	if err := peerConn.Close(); err != nil {
+	if err := peerConn.GracefulClose(); err != nil {
 		srv.logger.Errorw("error closing peer connection on removal", "error", err)
 	}
 }
