@@ -282,6 +282,8 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 		disableTrickle,
 		ans.logger,
 	)
+	serverChannel := ans.server.NewChannel(pc, dc, ans.hosts)
+
 	if err != nil {
 		return client.Send(&webrtcpb.AnswerResponse{
 			Uuid: uuid,
@@ -458,8 +460,6 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 		return err
 	}
 	close(initSent)
-
-	serverChannel := ans.server.NewChannel(pc, dc, ans.hosts)
 
 	if !init.OptionalConfig.DisableTrickle {
 		exchangeCandidates := func() error {

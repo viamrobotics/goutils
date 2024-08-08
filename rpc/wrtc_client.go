@@ -177,6 +177,9 @@ func dialWebRTC(
 			callUpdates, "average_duration", averageCallUpdateDuration, "max_call_update_duration", maxCallUpdateDuration)
 	}
 
+	//nolint:contextcheck
+	clientCh := newWebRTCClientChannel(peerConn, dataChannel, onICEConnected, logger, dOpts.unaryInterceptor, dOpts.streamInterceptor)
+
 	exchangeCtx, exchangeCancel := context.WithCancel(signalCtx)
 	defer exchangeCancel()
 
@@ -310,9 +313,6 @@ func dialWebRTC(
 		// TODO(GOUT-11): prepare Authenticate here
 		// for client channel
 	}
-
-	//nolint:contextcheck
-	clientCh := newWebRTCClientChannel(peerConn, dataChannel, onICEConnected, logger, dOpts.unaryInterceptor, dOpts.streamInterceptor)
 
 	exchangeCandidates := func() error {
 		for {
