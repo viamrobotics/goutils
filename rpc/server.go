@@ -607,7 +607,7 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 				server.webrtcServer,
 				sOpts.webrtcOpts.ExternalSignalingDialOpts,
 				config,
-				utils.Sublogger(logger, "external_signaler"),
+				utils.Sublogger(logger, "signaler.external"),
 				true, // logStats == true
 			))
 		} else {
@@ -651,7 +651,7 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 				server.webrtcServer,
 				answererDialOpts,
 				config,
-				utils.Sublogger(logger, "internal_signaler"),
+				utils.Sublogger(logger, "signaler.external"),
 				false, // logStats == false
 			))
 		}
