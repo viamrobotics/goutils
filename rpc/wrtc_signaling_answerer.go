@@ -212,7 +212,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 			case err == nil:
 			case receivedInitRequest && err != nil:
 				// We received an error while trying to connect to a caller/peer.
-				ans.logger.Errorw("error connecting", "error", err)
+				ans.logger.Errorw("error connecting to peer", "error", err)
 				if !utils.SelectContextOrWait(ans.closeCtx, answererReconnectWait) {
 					return
 				}
@@ -222,7 +222,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 				// before trying to call again. Common errors represent that an operation has
 				// failed, but can be safely retried over the existing connection.
 				if checkExceptionalError(err) != nil {
-					ans.logger.Warnw("error answering", "error", err)
+					ans.logger.Warnw("error communicating with signaling server", "error", err)
 					if !utils.SelectContextOrWait(ans.closeCtx, answererReconnectWait) {
 						return
 					}
