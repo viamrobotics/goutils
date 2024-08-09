@@ -98,6 +98,16 @@ func AddFieldsToLogger(inp ZapCompatibleLogger, args ...interface{}) (loggerRet 
 		}
 	}()
 
+	typ := reflect.TypeOf(inp)
+	with, ok := typ.MethodByName("WithFields")
+	if !ok {
+		with, ok = typ.MethodByName("With")
+		if !ok {
+			inp.Debugf("could not add fields to logger of type %s, returning self", typ.String())
+			return inp
+		}
+	}
+
 	// When using reflection to call receiver methods, the first argument must be the object.
 	// The remaining arguments are the actual function parameters.
 	reflectArgs := make([]reflect.Value, len(args)+1)
@@ -106,19 +116,6 @@ func AddFieldsToLogger(inp ZapCompatibleLogger, args ...interface{}) (loggerRet 
 		reflectArgs[i+1] = reflect.ValueOf(arg)
 	}
 
-	typ := reflect.TypeOf(inp)
-	with, ok := typ.MethodByName("WithFields")
-	if ok {
-		// RDK WithFields() modifies the current logger (inp) rather than returing a new one
-		with.Func.Call(reflectArgs)
-		return inp
-	}
-
-	with, ok = typ.MethodByName("With")
-	if !ok {
-		inp.Debugf("could not add fields to logger of type %s, returning self", typ.String())
-		return inp
-	}
 	ret := with.Func.Call(reflectArgs)
 	loggerRet, ok = ret[0].Interface().(ZapCompatibleLogger)
 	if !ok {

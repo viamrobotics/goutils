@@ -52,7 +52,7 @@ func newWebRTCServerStream(
 	onDone func(id uint64),
 	logger utils.ZapCompatibleLogger,
 ) *webrtcServerStream {
-	bs := newWebRTCBaseStream(ctx, cancelCtx, stream, onDone, logger)
+	bs := newWebRTCBaseStream(ctx, cancelCtx, stream, onDone, utils.Sublogger(logger, "grpc_requests"))
 	s := &webrtcServerStream{
 		webrtcBaseStream: bs,
 		ch:               channel,
@@ -263,6 +263,7 @@ func isContextCanceled(err error) bool {
 
 func (s *webrtcServerStream) processHeaders(headers *webrtcpb.RequestHeaders) {
 	s.logger = utils.AddFieldsToLogger(s.logger, "method", headers.Method)
+	s.logger.Debug("incoming grpc request")
 
 	handlerFunc, ok := s.ch.server.handler(headers.Method)
 	if !ok {
