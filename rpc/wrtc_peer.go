@@ -444,6 +444,7 @@ func getWebRTCPeerConnectionStats(peerConnection *webrtc.PeerConnection) webrtcP
 		}
 
 		var local bool
+		//nolint:exhaustive
 		switch candidateStats.Type {
 		case webrtc.StatsTypeRemoteCandidate:
 		case webrtc.StatsTypeLocalCandidate:
