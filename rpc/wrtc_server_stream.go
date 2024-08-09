@@ -52,7 +52,7 @@ func newWebRTCServerStream(
 	onDone func(id uint64),
 	logger utils.ZapCompatibleLogger,
 ) *webrtcServerStream {
-	bs := newWebRTCBaseStream(ctx, cancelCtx, stream, onDone, utils.Sublogger(logger, "networking.grpc_requests"))
+	bs := newWebRTCBaseStream(ctx, cancelCtx, stream, onDone, utils.Sublogger(logger, "grpc_requests"))
 	s := &webrtcServerStream{
 		webrtcBaseStream: bs,
 		ch:               channel,
