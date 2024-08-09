@@ -134,8 +134,8 @@ func newBaseChannel(
 				logger.Infow("Connection state changed",
 					"conn_id", connInfo.ID,
 					"conn_state", connectionState.String(),
-					"conn_remote_candidates", connInfo.RemoteCandidates,
 					"conn_local_candidates", connInfo.LocalCandidates,
+					"conn_remote_candidates", connInfo.RemoteCandidates,
 				)
 				if hasCandPair {
 					logger.Infow("Selected candidate pair",

@@ -403,7 +403,7 @@ func ConfigureForRenegotiation(
 
 type webrtcPeerConnectionStats struct {
 	ID                                string
-	RemoteCandidates, LocalCandidates []iceCandidate
+	LocalCandidates, RemoteCandidates []iceCandidate
 }
 
 type iceCandidate struct {
@@ -432,7 +432,7 @@ func webrtcPeerConnCandPair(peerConnection *webrtc.PeerConnection) (*webrtc.ICEC
 func getWebRTCPeerConnectionStats(peerConnection *webrtc.PeerConnection) webrtcPeerConnectionStats {
 	stats := peerConnection.GetStats()
 	var connID string
-	var remoteCands, localCands []iceCandidate
+	var localCands, remoteCands []iceCandidate
 
 	for _, stat := range stats {
 		if pcStats, ok := stat.(webrtc.PeerConnectionStats); ok {
