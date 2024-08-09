@@ -131,13 +131,14 @@ func newBaseChannel(
 				connIDMu.Lock()
 				connID = connInfo.ID
 				connIDMu.Unlock()
-				logger.Debugw("connection state changed",
+				logger.Infow("Connection state changed",
 					"conn_id", connInfo.ID,
 					"conn_state", connectionState.String(),
 					"conn_remote_candidates", connInfo.RemoteCandidates,
+					"conn_local_candidates", connInfo.LocalCandidates,
 				)
 				if hasCandPair {
-					logger.Debugw("selected candidate pair",
+					logger.Infow("Selected candidate pair",
 						"conn_id", connInfo.ID,
 						"candidate_pair", candPair.String(),
 					)

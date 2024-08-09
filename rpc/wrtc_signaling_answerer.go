@@ -49,11 +49,6 @@ type webrtcSignalingAnswerer struct {
 
 	closeCtx context.Context
 	logger   utils.ZapCompatibleLogger
-
-	// When logStats is true, an INFO level log message containing metrics gathered during connection
-	// establishment will be output at the end of every connection establishment attempt. See comments on
-	// `answererStats` for more info.
-	logStats bool
 }
 
 // newWebRTCSignalingAnswerer makes an answerer that will connect to and listen for calls at the given
@@ -67,7 +62,6 @@ func newWebRTCSignalingAnswerer(
 	dialOpts []DialOption,
 	webrtcConfig webrtc.Configuration,
 	logger utils.ZapCompatibleLogger,
-	logStats bool,
 ) *webrtcSignalingAnswerer {
 	dialOptsCopy := make([]DialOption, len(dialOpts))
 	copy(dialOptsCopy, dialOpts)
@@ -82,7 +76,6 @@ func newWebRTCSignalingAnswerer(
 		cancelBgWorkers: cancel,
 		closeCtx:        closeCtx,
 		logger:          logger,
-		logStats:        logStats,
 	}
 }
 
@@ -259,15 +252,8 @@ func (ans *webrtcSignalingAnswerer) Stop() {
 // the designated WebRTC data channel is passed off to the underlying Server which
 // is then used as the server end of a gRPC connection.
 func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_AnswerClient) (receivedInitRequest bool, err error) {
-	// Maintain and eventually log a collection of stats for each answering attempt.
-	stats := &answererStats{}
-	defer func() {
-		if ans.logStats {
-			stats.log(ans.logger)
-		}
-	}()
-
 	receivedInitRequest = false
+
 	resp, err := client.Recv()
 	if err != nil {
 		return receivedInitRequest, err
@@ -287,10 +273,6 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 			},
 		})
 	}
-	answerRequestInitReceived := time.Now()
-	stats.mu.Lock()
-	stats.answerRequestInitReceived = &answerRequestInitReceived
-	stats.mu.Unlock()
 	init := initStage.Init
 
 	disableTrickle := false
@@ -321,10 +303,6 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 	defer func() {
 		if !(successful && err == nil) {
 			err = multierr.Combine(err, pc.GracefulClose())
-		} else {
-			stats.mu.Lock()
-			stats.success = true
-			stats.mu.Unlock()
 		}
 	}()
 
@@ -380,10 +358,6 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 				return
 			}
 			if icecandidate != nil {
-				localCand := &localICECandidate{time.Now(), icecandidate}
-				stats.mu.Lock()
-				stats.localICECandidates = append(stats.localICECandidates, localCand)
-				stats.mu.Unlock()
 				pendingCandidates.Add(1)
 				if icecandidate.Typ == webrtc.ICECandidateTypeHost {
 					waitOneHostOnce.Do(func() {
@@ -441,10 +415,6 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 				}); err != nil {
 					sendErr(err)
 				}
-
-				stats.mu.Lock()
-				stats.numAnswerUpdates++
-				stats.mu.Unlock()
 			})
 		})
 
@@ -509,10 +479,6 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 						return errors.Errorf("uuid mismatch; have=%q want=%q", ansResp.Uuid, uuid)
 					}
 					cand := iceCandidateFromProto(s.Update.Candidate)
-					remoteCand := &remoteICECandidate{time.Now(), &cand}
-					stats.mu.Lock()
-					stats.remoteICECandidates = append(stats.remoteICECandidates, remoteCand)
-					stats.mu.Unlock()
 					if err := pc.AddICECandidate(cand); err != nil {
 						return err
 					}
