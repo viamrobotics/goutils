@@ -196,7 +196,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 			var err error
 			// `newAnswer` opens a bidi grpc stream to the signaling server. But otherwise sends no requests.
 			client, err = newAnswer()
-			var receivedInitRequest = false
+			receivedInitRequest := false
 			if err == nil {
 				// `ans.answer` will send the initial message to the signaling server that says it
 				// is ready to accept connections. Then it waits, typically for a long time, for a
