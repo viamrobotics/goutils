@@ -194,18 +194,38 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 			default:
 			}
 			var err error
+			// `newAnswer` opens a bidi grpc stream to the signaling server. But otherwise sends no requests.
 			client, err = newAnswer()
+			var receivedInitRequest = false
 			if err == nil {
-				err = ans.answer(client)
+				// `ans.answer` will send the initial message to the signaling server that says it
+				// is ready to accept connections. Then it waits, typically for a long time, for a
+				// caller to show up. Which is when the signaling server will send a
+				// response. `ans.answer` then follows with gathering ICE candidates and learning of
+				// the caller's ICE candidates to create a working WebRTC PeerConnection. If
+				// successful, the `PeerConnection` + `webrtcServerChannel` will be registered and
+				// available for the `webrtcServer`.
+				receivedInitRequest, err = ans.answer(client)
 			}
-			// Exceptional errors represent a broken connection. While direct gRPC connections will reconnect
-			// on their own, we should wait a little before trying to call again. Common
-			// errors represent that an operation has failed, but can be safely retried over the
-			// existing connection.
-			if checkExceptionalError(err) != nil {
-				ans.logger.Errorw("error answering", "error", err)
+
+			switch {
+			case err == nil:
+			case receivedInitRequest && err != nil:
+				// We received an error while trying to connect to a caller/peer.
+				ans.logger.Errorw("error connecting", "error", err)
 				if !utils.SelectContextOrWait(ans.closeCtx, answererReconnectWait) {
 					return
+				}
+			case !receivedInitRequest && err != nil:
+				// Exceptional errors represent a broken connection to the signaling server. While
+				// direct gRPC connections will reconnect on their own, we should wait a little
+				// before trying to call again. Common errors represent that an operation has
+				// failed, but can be safely retried over the existing connection.
+				if checkExceptionalError(err) != nil {
+					ans.logger.Warnw("error answering", "error", err)
+					if !utils.SelectContextOrWait(ans.closeCtx, answererReconnectWait) {
+						return
+					}
 				}
 			}
 		}
@@ -238,7 +258,7 @@ func (ans *webrtcSignalingAnswerer) Stop() {
 // attempts to establish a WebRTC connection with the caller via ICE. Once established,
 // the designated WebRTC data channel is passed off to the underlying Server which
 // is then used as the server end of a gRPC connection.
-func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_AnswerClient) (err error) {
+func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_AnswerClient) (receivedInitRequest bool, err error) {
 	// Maintain and eventually log a collection of stats for each answering attempt.
 	stats := &answererStats{}
 	defer func() {
@@ -247,16 +267,18 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 		}
 	}()
 
+	receivedInitRequest = false
 	resp, err := client.Recv()
 	if err != nil {
-		return err
+		return receivedInitRequest, err
 	}
 
+	receivedInitRequest = true
 	uuid := resp.Uuid
 	initStage, ok := resp.Stage.(*webrtcpb.AnswerRequest_Init)
 	if !ok {
 		err := errors.Errorf("expected first stage to be init; got %T", resp.Stage)
-		return client.Send(&webrtcpb.AnswerResponse{
+		return receivedInitRequest, client.Send(&webrtcpb.AnswerResponse{
 			Uuid: uuid,
 			Stage: &webrtcpb.AnswerResponse_Error{
 				Error: &webrtcpb.AnswerResponseErrorStage{
@@ -283,7 +305,7 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 		ans.logger,
 	)
 	if err != nil {
-		return client.Send(&webrtcpb.AnswerResponse{
+		return receivedInitRequest, client.Send(&webrtcpb.AnswerResponse{
 			Uuid: uuid,
 			Stage: &webrtcpb.AnswerResponse_Error{
 				Error: &webrtcpb.AnswerResponseErrorStage{
@@ -333,7 +355,7 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 			ans.logger.Warnf("answerer swallowing err %v", err)
 			return
 		}
-		ans.logger.Warnf("caller received err %v of type %T", err, err)
+		ans.logger.Warnf("answerer received err %v of type %T", err, err)
 		select {
 		case <-exchangeCtx.Done():
 		case errCh <- err:
@@ -344,7 +366,7 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 	if !init.OptionalConfig.DisableTrickle {
 		answer, err := pc.CreateAnswer(nil)
 		if err != nil {
-			return err
+			return receivedInitRequest, err
 		}
 
 		var pendingCandidates sync.WaitGroup
@@ -425,19 +447,19 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 
 		err = pc.SetLocalDescription(answer)
 		if err != nil {
-			return err
+			return receivedInitRequest, err
 		}
 
 		select {
 		case <-exchangeCtx.Done():
-			return exchangeCtx.Err()
+			return receivedInitRequest, exchangeCtx.Err()
 		case <-waitOneHost:
 		}
 	}
 
 	encodedSDP, err := EncodeSDP(pc.LocalDescription())
 	if err != nil {
-		return client.Send(&webrtcpb.AnswerResponse{
+		return receivedInitRequest, client.Send(&webrtcpb.AnswerResponse{
 			Uuid: uuid,
 			Stage: &webrtcpb.AnswerResponse_Error{
 				Error: &webrtcpb.AnswerResponseErrorStage{
@@ -455,7 +477,7 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 			},
 		},
 	}); err != nil {
-		return err
+		return receivedInitRequest, err
 	}
 	close(initSent)
 
@@ -539,7 +561,7 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 				},
 			})
 		})
-		return err
+		return receivedInitRequest, err
 	}
 	if err := sendDone(); err != nil {
 		// Errors from sendDone (such as EOF) are sometimes caused by the signaling
@@ -550,5 +572,5 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 		ans.logger.Warnw("error ending signaling exchange from answer client", "error", err)
 	}
 	successful = true
-	return nil
+	return receivedInitRequest, nil
 }
