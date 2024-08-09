@@ -292,6 +292,9 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 			},
 		})
 	}
+
+	serverChannel := ans.server.NewChannel(pc, dc, ans.hosts)
+
 	var successful bool
 	defer func() {
 		if !(successful && err == nil) {
@@ -458,8 +461,6 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 		return err
 	}
 	close(initSent)
-
-	serverChannel := ans.server.NewChannel(pc, dc, ans.hosts)
 
 	if !init.OptionalConfig.DisableTrickle {
 		exchangeCandidates := func() error {
