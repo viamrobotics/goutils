@@ -302,22 +302,22 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 	var successful bool
 	defer func() {
 		if !(successful && err == nil) {
-			candPair, hasCandPair := webrtcPeerConnCandPair(pc)
+			var candPairStr string
+			if candPair, hasCandPair := webrtcPeerConnCandPair(pc); hasCandPair {
+				candPairStr = candPair.String()
+			}
+
 			connInfo := getWebRTCPeerConnectionStats(pc)
 			iceConnectionState := pc.ICEConnectionState()
 			iceGatheringState := pc.ICEGatheringState()
-			ans.logger.Infow("Connection establishment failed",
+			ans.logger.Warnw("Connection establishment failed",
 				"conn_id", connInfo.ID,
 				"ice_connection_state", iceConnectionState,
 				"ice_gathering_state", iceGatheringState,
 				"conn_local_candidates", connInfo.LocalCandidates,
 				"conn_remote_candidates", connInfo.RemoteCandidates,
+				"candidate_pair", candPairStr,
 			)
-			if hasCandPair {
-				ans.logger.Infow("Candidate pair was selected before failure",
-					"candidate_pair", candPair.String(),
-				)
-			}
 
 			// Close unhealthy connection.
 			err = multierr.Combine(err, pc.GracefulClose())
