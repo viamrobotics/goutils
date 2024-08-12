@@ -75,7 +75,6 @@ func testWebRTCSignaling(t *testing.T, signalingCallQueue WebRTCCallQueue, logge
 				[]DialOption{WithInsecure()},
 				webrtc.Configuration{},
 				logger,
-				false, // `logStats == false` to quiet logs
 			)
 			answerer.Start()
 
@@ -183,7 +182,6 @@ func TestWebRTCAnswererImmediateStop(t *testing.T) {
 		[]DialOption{WithInsecure()},
 		webrtc.Configuration{},
 		logger,
-		false, // `logStats == false` to quiet logs
 	)
 
 	// Running both asynchronously means Stop will potentially happen before Start,

@@ -173,8 +173,9 @@ func dialWebRTC(
 		}
 		averageCallUpdateDuration := totalCallUpdateDuration / time.Duration(callUpdates)
 		// TODO: Potentially report these stats to sentry/some central location at some point.
-		logger.Debugw("ICE connected", "time_since_dial_start", time.Since(dialStart), "num_call_updates",
-			callUpdates, "average_duration", averageCallUpdateDuration, "max_call_update_duration", maxCallUpdateDuration)
+		logger.Debugw("ICE connected", "time_since_dial_start_ms", time.Since(dialStart).Milliseconds(), "num_call_updates",
+			callUpdates, "average_duration_ms", averageCallUpdateDuration.Milliseconds(), "max_call_update_duration_ms",
+			maxCallUpdateDuration.Milliseconds())
 	}
 
 	//nolint:contextcheck
@@ -236,7 +237,6 @@ func dialWebRTC(
 				return
 			}
 			if icecandidate != nil {
-				logger.Debugw("gathered local ICE candidate", "candidate", icecandidate.String())
 				pendingCandidates.Add(1)
 				if icecandidate.Typ == webrtc.ICECandidateTypeHost {
 					waitOneHostOnce.Do(func() {
@@ -356,7 +356,6 @@ func dialWebRTC(
 					return errors.Errorf("uuid mismatch; have=%q want=%q", callResp.Uuid, uuid)
 				}
 				cand := iceCandidateFromProto(s.Update.Candidate)
-				logger.Debugw("received remote ICE candidate", "candidate", cand.Candidate)
 				if err := peerConn.AddICECandidate(cand); err != nil {
 					return err
 				}

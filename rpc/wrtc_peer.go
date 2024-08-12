@@ -402,10 +402,18 @@ func ConfigureForRenegotiation(
 }
 
 type webrtcPeerConnectionStats struct {
-	ID               string
-	RemoteCandidates map[string]string
+	ID                                string
+	LocalCandidates, RemoteCandidates []iceCandidate
 }
 
+type iceCandidate struct {
+	// FoundAt is the time the candidate was gathered for local candidates, and
+	// the time the candidate was received for remote candidates.
+	FoundAt      time.Time
+	CandType, IP string
+}
+
+// Find selected candidate pair.
 func webrtcPeerConnCandPair(peerConnection *webrtc.PeerConnection) (*webrtc.ICECandidatePair, bool) {
 	connectionState := peerConnection.ICEConnectionState()
 	if connectionState == webrtc.ICEConnectionStateConnected && peerConnection.SCTP() != nil &&
@@ -420,10 +428,12 @@ func webrtcPeerConnCandPair(peerConnection *webrtc.PeerConnection) (*webrtc.ICEC
 	return nil, false
 }
 
+// Find connection ID, remote candidates and local candidates.
 func getWebRTCPeerConnectionStats(peerConnection *webrtc.PeerConnection) webrtcPeerConnectionStats {
 	stats := peerConnection.GetStats()
 	var connID string
-	connInfo := map[string]string{}
+	var localCands, remoteCands []iceCandidate
+
 	for _, stat := range stats {
 		if pcStats, ok := stat.(webrtc.PeerConnectionStats); ok {
 			connID = pcStats.ID
@@ -432,9 +442,17 @@ func getWebRTCPeerConnectionStats(peerConnection *webrtc.PeerConnection) webrtcP
 		if !ok {
 			continue
 		}
-		if candidateStats.Type != webrtc.StatsTypeRemoteCandidate {
+
+		var local bool
+		//nolint:exhaustive
+		switch candidateStats.Type {
+		case webrtc.StatsTypeRemoteCandidate:
+		case webrtc.StatsTypeLocalCandidate:
+			local = true
+		default:
 			continue
 		}
+
 		var candidateType string
 		switch candidateStats.CandidateType {
 		case webrtc.ICECandidateTypeRelay:
@@ -449,9 +467,19 @@ func getWebRTCPeerConnectionStats(peerConnection *webrtc.PeerConnection) webrtcP
 		if candidateType == "" {
 			continue
 		}
-		connInfo[candidateType] = candidateStats.IP
+
+		cand := iceCandidate{
+			candidateStats.Timestamp.Time(),
+			candidateType,
+			candidateStats.IP,
+		}
+		if local {
+			localCands = append(localCands, cand)
+		} else {
+			remoteCands = append(remoteCands, cand)
+		}
 	}
-	return webrtcPeerConnectionStats{connID, connInfo}
+	return webrtcPeerConnectionStats{connID, localCands, remoteCands}
 }
 
 func initialDataChannelOnError(pc io.Closer, logger utils.ZapCompatibleLogger) func(err error) {
