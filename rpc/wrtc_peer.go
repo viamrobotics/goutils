@@ -420,7 +420,9 @@ func webrtcPeerConnCandPair(peerConnection *webrtc.PeerConnection) (*webrtc.ICEC
 		peerConnection.SCTP().Transport() != nil &&
 		peerConnection.SCTP().Transport().ICETransport() != nil {
 		candPair, err := peerConnection.SCTP().Transport().ICETransport().GetSelectedCandidatePair()
-		if err != nil {
+		// RSDK-8527: Surprisingly, `GetSelectedCandidatePair` can return `nil, nil` when the ice
+		// agent has been shut down.
+		if candPair == nil || err != nil {
 			return nil, false
 		}
 		return candPair, true
