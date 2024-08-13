@@ -195,39 +195,39 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 			var err error
 			// `newAnswer` opens a bidi grpc stream to the signaling server. But otherwise sends no requests.
 			client, err = newAnswer()
-			receivedInitRequest := false
-			if err == nil {
-				// `ans.answer` will send the initial message to the signaling server that says it
-				// is ready to accept connections. Then it waits, typically for a long time, for a
-				// caller to show up. Which is when the signaling server will send a
-				// response. `ans.answer` then follows with gathering ICE candidates and learning of
-				// the caller's ICE candidates to create a working WebRTC PeerConnection. If
-				// successful, the `PeerConnection` + `webrtcServerChannel` will be registered and
-				// available for the `webrtcServer`.
-				aa := answerAttempt{
-					webrtcSignalingAnswerer: ans,
-				}
-				receivedInitRequest, err = aa.connect(client)
-			}
-
-			switch {
-			case err == nil:
-			case receivedInitRequest && err != nil:
-				// We received an error while trying to connect to a caller/peer.
-				ans.logger.Errorw("error connecting to peer", "error", err)
-				if !utils.SelectContextOrWait(ans.closeCtx, answererReconnectWait) {
-					return
-				}
-			case !receivedInitRequest && err != nil:
-				// Exceptional errors represent a broken connection to the signaling server. While
-				// direct gRPC connections will reconnect on their own, we should wait a little
-				// before trying to call again. Common errors represent that an operation has
-				// failed, but can be safely retried over the existing connection.
+			if err != nil {
 				if checkExceptionalError(err) != nil {
 					ans.logger.Warnw("error communicating with signaling server", "error", err)
 					if !utils.SelectContextOrWait(ans.closeCtx, answererReconnectWait) {
 						return
 					}
+				}
+				continue
+			}
+
+			// `client.Recv` waits, typically for a long time, for a caller to show up. Which is
+			// when the signaling server will send a response saying someone wants to connect.
+			incomingCallerReq, err := client.Recv()
+			if err != nil {
+				if checkExceptionalError(err) != nil {
+					ans.logger.Warnw("error communicating with signaling server", "error", err)
+					if !utils.SelectContextOrWait(ans.closeCtx, answererReconnectWait) {
+						return
+					}
+				}
+				continue
+			}
+
+			aa := &answerAttempt{
+				webrtcSignalingAnswerer: ans,
+				uuid:                    incomingCallerReq.Uuid,
+				client:                  client,
+			}
+			if err = aa.connect(incomingCallerReq); err != nil {
+				// We received an error while trying to connect to a caller/peer.
+				ans.logger.Errorw("error connecting to peer", "error", err)
+				if !utils.SelectContextOrWait(ans.closeCtx, answererReconnectWait) {
+					return
 				}
 			}
 		}
@@ -262,11 +262,9 @@ func (ans *webrtcSignalingAnswerer) Stop() {
 
 type answerAttempt struct {
 	*webrtcSignalingAnswerer
+	uuid   string
+	client webrtcpb.SignalingService_AnswerClient
 
-	receivedInitRequest bool
-	uuid                string
-
-	client          webrtcpb.SignalingService_AnswerClient
 	sendDoneErrOnce sync.Once
 }
 
@@ -274,22 +272,11 @@ type answerAttempt struct {
 // attempts to establish a WebRTC connection with the caller via ICE. Once established,
 // the designated WebRTC data channel is passed off to the underlying Server which
 // is then used as the server end of a gRPC connection.
-func (aa *answerAttempt) connect(client webrtcpb.SignalingService_AnswerClient) (receivedInitRequest bool, err error) {
-	// Assign client for lower-level helpers
-	aa.client = client
-
-	resp, err := client.Recv()
-	if err != nil {
-		return false, err
-	}
-	receivedInitRequest = true
-	aa.uuid = resp.Uuid
-	aa.receivedInitRequest = true
-	initStage, ok := resp.Stage.(*webrtcpb.AnswerRequest_Init)
+func (aa *answerAttempt) connect(req *webrtcpb.AnswerRequest) (err error) {
+	initStage, ok := req.Stage.(*webrtcpb.AnswerRequest_Init)
 	if !ok {
-		err := errors.Errorf("expected first stage to be init; got %T", resp.Stage)
-		aa.sendError(err)
-		return aa.receivedInitRequest, err
+		aa.sendError(fmt.Errorf("expected first stage to be init; got %T", req.Stage))
+		return err
 	}
 	init := initStage.Init
 
@@ -306,7 +293,7 @@ func (aa *answerAttempt) connect(client webrtcpb.SignalingService_AnswerClient) 
 	)
 	if err != nil {
 		aa.sendError(err)
-		return receivedInitRequest, err
+		return err
 	}
 
 	// We have a PeerConnection object. Install an error handler.
@@ -351,7 +338,7 @@ func (aa *answerAttempt) connect(client webrtcpb.SignalingService_AnswerClient) 
 	if !init.OptionalConfig.DisableTrickle {
 		answer, err := pc.CreateAnswer(nil)
 		if err != nil {
-			return receivedInitRequest, err
+			return err
 		}
 
 		var pendingCandidates sync.WaitGroup
@@ -414,7 +401,7 @@ func (aa *answerAttempt) connect(client webrtcpb.SignalingService_AnswerClient) 
 					return
 				}
 				iProto := iceCandidateToProto(icecandidate)
-				if err := client.Send(&webrtcpb.AnswerResponse{
+				if err := aa.client.Send(&webrtcpb.AnswerResponse{
 					Uuid: aa.uuid,
 					Stage: &webrtcpb.AnswerResponse_Update{
 						Update: &webrtcpb.AnswerResponseUpdateStage{
@@ -429,12 +416,12 @@ func (aa *answerAttempt) connect(client webrtcpb.SignalingService_AnswerClient) 
 
 		err = pc.SetLocalDescription(answer)
 		if err != nil {
-			return receivedInitRequest, err
+			return err
 		}
 
 		select {
 		case <-exchangeCtx.Done():
-			return receivedInitRequest, exchangeCtx.Err()
+			return exchangeCtx.Err()
 		case <-waitOneHost:
 		}
 	}
@@ -442,10 +429,10 @@ func (aa *answerAttempt) connect(client webrtcpb.SignalingService_AnswerClient) 
 	encodedSDP, err := EncodeSDP(pc.LocalDescription())
 	if err != nil {
 		aa.sendError(err)
-		return receivedInitRequest, err
+		return err
 	}
 
-	if err := client.Send(&webrtcpb.AnswerResponse{
+	if err := aa.client.Send(&webrtcpb.AnswerResponse{
 		Uuid: aa.uuid,
 		Stage: &webrtcpb.AnswerResponse_Init{
 			Init: &webrtcpb.AnswerResponseInitStage{
@@ -453,7 +440,7 @@ func (aa *answerAttempt) connect(client webrtcpb.SignalingService_AnswerClient) 
 			},
 		},
 	}); err != nil {
-		return receivedInitRequest, err
+		return err
 	}
 	close(initSent)
 
@@ -467,7 +454,7 @@ func (aa *answerAttempt) connect(client webrtcpb.SignalingService_AnswerClient) 
 			for {
 				// `client` was constructed based off of the `ans.closeCtx`. We rely on the
 				// underlying `client.Recv` implementation checking that context for cancelation.
-				ansResp, err := client.Recv()
+				ansResp, err := aa.client.Recv()
 				if err != nil {
 					if !errors.Is(err, io.EOF) {
 						return
@@ -511,14 +498,14 @@ func (aa *answerAttempt) connect(client webrtcpb.SignalingService_AnswerClient) 
 		successful = true
 	case <-exchangeCtx.Done():
 		aa.sendError(multierr.Combine(exchangeCtx.Err(), serverChannel.Close()))
-		return aa.receivedInitRequest, exchangeCtx.Err()
+		return exchangeCtx.Err()
 	case err := <-errCh:
 		aa.sendError(multierr.Combine(err, serverChannel.Close()))
-		return aa.receivedInitRequest, err
+		return err
 	}
 
 	aa.sendDone()
-	return aa.receivedInitRequest, nil
+	return nil
 }
 
 func (aa *answerAttempt) sendDone() {
