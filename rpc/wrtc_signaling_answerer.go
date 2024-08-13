@@ -168,6 +168,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 	ans.bgWorkersMu.RLock()
 	select {
 	case <-ans.closeCtx.Done():
+		ans.bgWorkersMu.RUnlock()
 		return
 	default:
 	}
@@ -404,6 +405,7 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 			ans.bgWorkersMu.RLock()
 			select {
 			case <-ans.closeCtx.Done():
+				ans.bgWorkersMu.RUnlock()
 				return
 			default:
 			}
