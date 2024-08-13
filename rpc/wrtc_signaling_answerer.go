@@ -91,9 +91,8 @@ func (ans *webrtcSignalingAnswerer) Start() {
 	ans.startStopMu.Lock()
 	defer ans.startStopMu.Unlock()
 
-	ans.bgWorkersMu.RLock()
+	// No lock is necessary here. It is illegal to call `ans.Stop` before `ans.Start` returns.
 	ans.bgWorkers.Add(1)
-	ans.bgWorkersMu.RUnlock()
 
 	// attempt to make connection in a loop
 	utils.ManagedGo(func() {
@@ -158,17 +157,22 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 		}
 		return answerClient, nil
 	}
+
+	// The answerer may be stopped (canceling the context and waiting on background workers)
+	// concurrently to executing the below code. In that circumstance we must guarantee either:
+	// * `Stop` waiting on the `bgWorkers` WaitGroup observes our `bgWorkers.Add` or
+	// * Our code observes `Stop`s closing of the `closeCtx`
+	//
+	// We use a mutex to make the read of the `closeCtx` and write to the `bgWorkers` atomic. `Stop`
+	// takes a competing mutex around canceling the `closeCtx`.
 	ans.bgWorkersMu.RLock()
+	select {
+	case <-ans.closeCtx.Done():
+		return
+	default:
+	}
 	ans.bgWorkers.Add(1)
 	ans.bgWorkersMu.RUnlock()
-
-	// Check if closeCtx has errored: underlying answerer may have been
-	// `Stop`ped, in which case we mark this answer worker as `Done` and
-	// return.
-	if err := ans.closeCtx.Err(); err != nil {
-		ans.bgWorkers.Done()
-		return
-	}
 
 	utils.ManagedGo(func() {
 		var client webrtcpb.SignalingService_AnswerClient
@@ -186,6 +190,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 				return
 			default:
 			}
+
 			var err error
 			// `newAnswer` opens a bidi grpc stream to the signaling server. But otherwise sends no requests.
 			client, err = newAnswer()
@@ -232,10 +237,11 @@ func (ans *webrtcSignalingAnswerer) Stop() {
 	ans.startStopMu.Lock()
 	defer ans.startStopMu.Unlock()
 
-	ans.cancelBgWorkers()
 	ans.bgWorkersMu.Lock()
-	ans.bgWorkers.Wait()
+	ans.cancelBgWorkers()
+	// Background workers require the `bgWorkersMu`. Release the mutex before calling `Wait`.
 	ans.bgWorkersMu.Unlock()
+	ans.bgWorkers.Wait()
 
 	ans.connMu.Lock()
 	defer ans.connMu.Unlock()
@@ -383,19 +389,25 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 					})
 				}
 			}
-			// must spin off to unblock the ICE gatherer
+
+			// The answerer may be stopped (canceling the context and waiting on background workers)
+			// concurrently to executing the below code. In that circumstance we must guarantee
+			// either:
+			// * `Stop` waiting on the `bgWorkers` WaitGroup observes our `bgWorkers.Add` or
+			// * Our code observes `Stop`s closing of the `closeCtx`
+			//
+			// We use a mutex to make the read of the `closeCtx` and write to the `bgWorkers`
+			// atomic. `Stop` takes a competing mutex around canceling the `closeCtx`.
 			ans.bgWorkersMu.RLock()
+			select {
+			case <-ans.closeCtx.Done():
+				return
+			default:
+			}
 			ans.bgWorkers.Add(1)
 			ans.bgWorkersMu.RUnlock()
 
-			// Check if closeCtx has errored: underlying answerer may have been
-			// `Stop`ped, in which case we mark this answer worker as `Done` and
-			// return.
-			if err := ans.closeCtx.Err(); err != nil {
-				ans.bgWorkers.Done()
-				return
-			}
-
+			// must spin off to unblock the ICE gatherer
 			utils.PanicCapturingGo(func() {
 				defer ans.bgWorkers.Done()
 
