@@ -288,12 +288,17 @@ func (ans *webrtcSignalingAnswerer) Stop() {
 
 type answerAttempt struct {
 	*webrtcSignalingAnswerer
+	// The uuid is the key for communicating with the signaling server about this connection
+	// attempt.
 	uuid   string
 	client webrtcpb.SignalingService_AnswerClient
 
 	trickleEnabled bool
 	offerSDP       string
 
+	// When a connection attempt concludes, either with success or failure, we will fire a single
+	// message to the signaling server. This allows the signaling server to release resources
+	// related to this connection attempt.
 	sendDoneErrOnce sync.Once
 }
 
@@ -303,7 +308,7 @@ type answerAttempt struct {
 // is then used as the server end of a gRPC connection.
 func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 	pc, dc, err := newPeerConnectionForServer(
-		aa.closeCtx,
+		ctx,
 		aa.offerSDP,
 		aa.webrtcConfig,
 		!aa.trickleEnabled,
@@ -429,9 +434,12 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 		}
 
 		select {
+		case <-waitOneHost:
+			// Dan: We wait for one host before proceeding to ensure the initial response has some
+			// candidate information. This is a Nagle's algorithm-esque batching optimization. I
+			// think.
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-waitOneHost:
 		}
 	}
 
@@ -506,6 +514,7 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 		// Happy path
 		successful = true
 	case <-ctx.Done():
+		// Timed out or server was closed.
 		aa.sendError(multierr.Combine(ctx.Err(), serverChannel.Close()))
 		return ctx.Err()
 	case err := <-errCh:
@@ -526,11 +535,11 @@ func (aa *answerAttempt) sendDone() {
 			},
 		})
 
-		// Errors from sendDone (such as EOF) are sometimes caused by the signaling server "ending"
-		// the exchange process earlier than the answerer due to the caller being able to establish
-		// a connection without all the answerer's ICE candidates (trickle ICE). Only Warn the error
-		// here to avoid accidentally Closing a healthy, established peer connection.
-		aa.logger.Warnw("Error sending DoneMessage to signaling server", "sendErr", sendErr)
+		if sendErr != nil {
+			// Errors communicating with the signaling server have no bearing on whether the
+			// PeerConnection is usable. Log and ignore the send error.
+			aa.logger.Warnw("Failed to send connection success message to signaling server", "sendErr", sendErr)
+		}
 	})
 }
 
@@ -545,6 +554,8 @@ func (aa *answerAttempt) sendError(err error) {
 			},
 		})
 
-		aa.logger.Warnw("Error sending ErrorMessage to signaling server", "sendErr", sendErr)
+		if sendErr != nil {
+			aa.logger.Warnw("Failed to send error message to signaling server", "sendErr", sendErr)
+		}
 	})
 }
