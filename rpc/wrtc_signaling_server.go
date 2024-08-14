@@ -164,16 +164,13 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 		}
 
 		srv.callMu.RLock()
-		// we assume the number of goroutines is bounded by the gRPC server invoking this method.
-		srv.callWorkers.Add(1)
-		srv.callMu.RUnlock()
-
-		// Check if cancelCtx has errored: underlying server may have been
-		// `Close`ed, in which case we mark this call worker as `Done` and return.
+		// Atomically check if the cancelCtx was canceled, and if not, add to the `callWorkers`.
 		if err := srv.cancelCtx.Err(); err != nil {
-			srv.callWorkers.Done()
+			srv.callMu.RUnlock()
 			return
 		}
+		srv.callWorkers.Add(1)
+		srv.callMu.RUnlock()
 
 		utils.PanicCapturingGo(func() {
 			srv.callWorkers.Done()
@@ -470,9 +467,21 @@ func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 		}
 	}
 
+	srv.callMu.RLock()
+	// Atomically check if the cancelCtx was canceled, and if not, add to the `callWorkers`.
+	if err := srv.cancelCtx.Err(); err != nil {
+		srv.callMu.RUnlock()
+		return srv.cancelCtx.Err()
+	}
+	srv.callWorkers.Add(1)
+	srv.callMu.RUnlock()
+
 	callerErrCh := make(chan error, 1)
 	utils.PanicCapturingGo(func() {
-		defer close(callerErrCh)
+		defer func() {
+			close(callerErrCh)
+			srv.callWorkers.Done()
+		}()
 		if err := callerLoop(); err != nil {
 			callerErrCh <- err
 		}
@@ -521,8 +530,8 @@ func (srv *WebRTCSignalingServer) OptionalWebRTCConfig(
 
 // Close cancels all active workers and waits to cleanly close all background workers.
 func (srv *WebRTCSignalingServer) Close() {
-	srv.cancelFunc()
 	srv.callMu.Lock()
-	defer srv.callMu.Unlock()
+	srv.cancelFunc()
+	srv.callMu.Unlock()
 	srv.callWorkers.Wait()
 }
