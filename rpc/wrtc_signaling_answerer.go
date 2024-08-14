@@ -346,7 +346,6 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 	}()
 
 	serverChannel := aa.server.NewChannel(pc, dc, aa.hosts)
-	errCh := make(chan error)
 
 	initSent := make(chan struct{})
 	if aa.trickleEnabled {
@@ -517,9 +516,6 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 		// Timed out or server was closed.
 		aa.sendError(multierr.Combine(ctx.Err(), serverChannel.Close()))
 		return ctx.Err()
-	case err := <-errCh:
-		aa.sendError(multierr.Combine(err, serverChannel.Close()))
-		return err
 	}
 
 	aa.sendDone()
