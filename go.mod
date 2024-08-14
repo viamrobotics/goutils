@@ -33,11 +33,11 @@ require (
 	github.com/pion/ice/v2 v2.3.34
 	github.com/pion/interceptor v0.1.29
 	github.com/pion/logging v0.2.2
-	github.com/pion/sctp v1.8.19
+	github.com/pion/sctp v1.8.22
 	github.com/pkg/errors v0.9.1
 	github.com/pseudomuto/protoc-gen-doc v1.3.2
 	github.com/rs/cors v1.8.3
-	github.com/viamrobotics/webrtc/v3 v3.99.5
+	github.com/viamrobotics/webrtc/v3 v3.99.6
 	github.com/zitadel/oidc v1.13.2
 	go.mongodb.org/mongo-driver v1.11.6
 	go.opencensus.io v0.24.0
