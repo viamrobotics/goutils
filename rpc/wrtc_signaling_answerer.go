@@ -218,18 +218,44 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 				continue
 			}
 
+			// Create an `answerAttempt` to take advantage of the `sendError` method for the
+			// upcoming type check.
 			aa := &answerAttempt{
 				webrtcSignalingAnswerer: ans,
 				uuid:                    incomingCallerReq.Uuid,
 				client:                  client,
+				trickleEnabled:          true,
 			}
-			if err = aa.connect(incomingCallerReq); err != nil {
+
+			initStage, ok := incomingCallerReq.Stage.(*webrtcpb.AnswerRequest_Init)
+			if !ok {
+				aa.sendError(fmt.Errorf("expected first stage to be init; got %T", incomingCallerReq.Stage))
+				ans.logger.Warnw("error communicating with signaling server", "error", err)
+				continue
+			}
+
+			if cfg := initStage.Init.OptionalConfig; cfg != nil && cfg.DisableTrickle {
+				aa.trickleEnabled = false
+			}
+			aa.offerSDP = initStage.Init.Sdp
+
+			var answerCtx context.Context
+			var answerCtxCancel func()
+			if deadline := initStage.Init.Deadline; deadline != nil {
+				answerCtx, answerCtxCancel = context.WithDeadline(aa.closeCtx, deadline.AsTime())
+			} else {
+				answerCtx, answerCtxCancel = context.WithTimeout(aa.closeCtx, getDefaultOfferDeadline())
+			}
+
+			if err = aa.connect(answerCtx); err != nil {
+				answerCtxCancel()
 				// We received an error while trying to connect to a caller/peer.
 				ans.logger.Errorw("error connecting to peer", "error", err)
 				if !utils.SelectContextOrWait(ans.closeCtx, answererReconnectWait) {
 					return
 				}
 			}
+			answerCtxCancel()
 		}
 	}, func() {
 		ans.bgWorkers.Done()
@@ -265,6 +291,9 @@ type answerAttempt struct {
 	uuid   string
 	client webrtcpb.SignalingService_AnswerClient
 
+	trickleEnabled bool
+	offerSDP       string
+
 	sendDoneErrOnce sync.Once
 }
 
@@ -272,23 +301,12 @@ type answerAttempt struct {
 // attempts to establish a WebRTC connection with the caller via ICE. Once established,
 // the designated WebRTC data channel is passed off to the underlying Server which
 // is then used as the server end of a gRPC connection.
-func (aa *answerAttempt) connect(req *webrtcpb.AnswerRequest) (err error) {
-	initStage, ok := req.Stage.(*webrtcpb.AnswerRequest_Init)
-	if !ok {
-		aa.sendError(fmt.Errorf("expected first stage to be init; got %T", req.Stage))
-		return err
-	}
-	init := initStage.Init
-
-	disableTrickle := false
-	if init.OptionalConfig != nil {
-		disableTrickle = init.OptionalConfig.DisableTrickle
-	}
+func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 	pc, dc, err := newPeerConnectionForServer(
 		aa.closeCtx,
-		init.Sdp,
+		aa.offerSDP,
 		aa.webrtcConfig,
-		disableTrickle,
+		!aa.trickleEnabled,
 		aa.logger,
 	)
 	if err != nil {
@@ -323,19 +341,10 @@ func (aa *answerAttempt) connect(req *webrtcpb.AnswerRequest) (err error) {
 	}()
 
 	serverChannel := aa.server.NewChannel(pc, dc, aa.hosts)
-
-	var exchangeCtx context.Context
-	var exchangeCancel func()
-	if initStage.Init.Deadline != nil {
-		exchangeCtx, exchangeCancel = context.WithDeadline(aa.closeCtx, initStage.Init.Deadline.AsTime())
-	} else {
-		exchangeCtx, exchangeCancel = context.WithTimeout(aa.closeCtx, getDefaultOfferDeadline())
-	}
-	defer exchangeCancel()
 	errCh := make(chan error)
 
 	initSent := make(chan struct{})
-	if !init.OptionalConfig.DisableTrickle {
+	if aa.trickleEnabled {
 		answer, err := pc.CreateAnswer(nil)
 		if err != nil {
 			return err
@@ -345,7 +354,7 @@ func (aa *answerAttempt) connect(req *webrtcpb.AnswerRequest) (err error) {
 		waitOneHost := make(chan struct{})
 		var waitOneHostOnce sync.Once
 		pc.OnICECandidate(func(icecandidate *webrtc.ICECandidate) {
-			if exchangeCtx.Err() != nil {
+			if ctx.Err() != nil {
 				return
 			}
 			if icecandidate != nil {
@@ -385,7 +394,7 @@ func (aa *answerAttempt) connect(req *webrtcpb.AnswerRequest) (err error) {
 
 				select {
 				case <-initSent:
-				case <-exchangeCtx.Done():
+				case <-ctx.Done():
 					return
 				}
 				// there are no more candidates coming during this negotiation
@@ -420,8 +429,8 @@ func (aa *answerAttempt) connect(req *webrtcpb.AnswerRequest) (err error) {
 		}
 
 		select {
-		case <-exchangeCtx.Done():
-			return exchangeCtx.Err()
+		case <-ctx.Done():
+			return ctx.Err()
 		case <-waitOneHost:
 		}
 	}
@@ -444,7 +453,7 @@ func (aa *answerAttempt) connect(req *webrtcpb.AnswerRequest) (err error) {
 	}
 	close(initSent)
 
-	if !init.OptionalConfig.DisableTrickle {
+	if aa.trickleEnabled {
 		done := make(chan struct{})
 		defer func() { <-done }()
 
@@ -496,9 +505,9 @@ func (aa *answerAttempt) connect(req *webrtcpb.AnswerRequest) (err error) {
 	case <-serverChannel.Ready():
 		// Happy path
 		successful = true
-	case <-exchangeCtx.Done():
-		aa.sendError(multierr.Combine(exchangeCtx.Err(), serverChannel.Close()))
-		return exchangeCtx.Err()
+	case <-ctx.Done():
+		aa.sendError(multierr.Combine(ctx.Err(), serverChannel.Close()))
+		return ctx.Err()
 	case err := <-errCh:
 		aa.sendError(multierr.Combine(err, serverChannel.Close()))
 		return err
