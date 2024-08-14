@@ -37,7 +37,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/pseudomuto/protoc-gen-doc v1.3.2
 	github.com/rs/cors v1.8.3
-	github.com/viamrobotics/webrtc/v3 v3.99.6
+	github.com/viamrobotics/webrtc/v3 v3.99.7
 	github.com/zitadel/oidc v1.13.2
 	go.mongodb.org/mongo-driver v1.11.6
 	go.opencensus.io v0.24.0

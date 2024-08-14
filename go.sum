@@ -1285,6 +1285,8 @@ github.com/valyala/quicktemplate v1.6.3/go.mod h1:fwPzK2fHuYEODzJ9pkw0ipCPNHZ2tD
 github.com/valyala/tcplisten v0.0.0-20161114210144-ceec8f93295a/go.mod h1:v3UYOV9WzVtRmSR+PDvWpU/qWl4Wa5LApYYX4ZtKbio=
 github.com/viamrobotics/webrtc/v3 v3.99.6 h1:zcKztxLJmjfhTJIC5DP9mi1KCbufW9pnMre0ptAkg28=
 github.com/viamrobotics/webrtc/v3 v3.99.6/go.mod h1:Mkfthml9LxJ/WyP5ouipRiI/JGgtRb9vNeOXufL7UuQ=
+github.com/viamrobotics/webrtc/v3 v3.99.7 h1:7iSyFVdFz1/2Y88yov7Si8verKhXI731L9VyJw9Z2a4=
+github.com/viamrobotics/webrtc/v3 v3.99.7/go.mod h1:Mkfthml9LxJ/WyP5ouipRiI/JGgtRb9vNeOXufL7UuQ=
 github.com/viki-org/dnscache v0.0.0-20130720023526-c70c1f23c5d8/go.mod h1:dniwbG03GafCjFohMDmz6Zc6oCuiqgH6tGNyXTkHzXE=
 github.com/wlynxg/anet v0.0.3 h1:PvR53psxFXstc12jelG6f1Lv4MWqE0tI76/hHGjh9rg=
 github.com/wlynxg/anet v0.0.3/go.mod h1:eay5PRQr7fIVAMbTbchTnO9gG65Hg/uYGdc7mguHxoA=
