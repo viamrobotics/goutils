@@ -195,38 +195,67 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 			var err error
 			// `newAnswer` opens a bidi grpc stream to the signaling server. But otherwise sends no requests.
 			client, err = newAnswer()
-			receivedInitRequest := false
-			if err == nil {
-				// `ans.answer` will send the initial message to the signaling server that says it
-				// is ready to accept connections. Then it waits, typically for a long time, for a
-				// caller to show up. Which is when the signaling server will send a
-				// response. `ans.answer` then follows with gathering ICE candidates and learning of
-				// the caller's ICE candidates to create a working WebRTC PeerConnection. If
-				// successful, the `PeerConnection` + `webrtcServerChannel` will be registered and
-				// available for the `webrtcServer`.
-				receivedInitRequest, err = ans.answer(client)
-			}
-
-			switch {
-			case err == nil:
-			case receivedInitRequest && err != nil:
-				// We received an error while trying to connect to a caller/peer.
-				ans.logger.Errorw("error connecting to peer", "error", err)
-				if !utils.SelectContextOrWait(ans.closeCtx, answererReconnectWait) {
-					return
-				}
-			case !receivedInitRequest && err != nil:
-				// Exceptional errors represent a broken connection to the signaling server. While
-				// direct gRPC connections will reconnect on their own, we should wait a little
-				// before trying to call again. Common errors represent that an operation has
-				// failed, but can be safely retried over the existing connection.
+			if err != nil {
 				if checkExceptionalError(err) != nil {
 					ans.logger.Warnw("error communicating with signaling server", "error", err)
 					if !utils.SelectContextOrWait(ans.closeCtx, answererReconnectWait) {
 						return
 					}
 				}
+				continue
 			}
+
+			// `client.Recv` waits, typically for a long time, for a caller to show up. Which is
+			// when the signaling server will send a response saying someone wants to connect.
+			incomingCallerReq, err := client.Recv()
+			if err != nil {
+				if checkExceptionalError(err) != nil {
+					ans.logger.Warnw("error communicating with signaling server", "error", err)
+					if !utils.SelectContextOrWait(ans.closeCtx, answererReconnectWait) {
+						return
+					}
+				}
+				continue
+			}
+
+			// Create an `answerAttempt` to take advantage of the `sendError` method for the
+			// upcoming type check.
+			aa := &answerAttempt{
+				webrtcSignalingAnswerer: ans,
+				uuid:                    incomingCallerReq.Uuid,
+				client:                  client,
+				trickleEnabled:          true,
+			}
+
+			initStage, ok := incomingCallerReq.Stage.(*webrtcpb.AnswerRequest_Init)
+			if !ok {
+				aa.sendError(fmt.Errorf("expected first stage to be init; got %T", incomingCallerReq.Stage))
+				ans.logger.Warnw("error communicating with signaling server", "error", err)
+				continue
+			}
+
+			if cfg := initStage.Init.OptionalConfig; cfg != nil && cfg.DisableTrickle {
+				aa.trickleEnabled = false
+			}
+			aa.offerSDP = initStage.Init.Sdp
+
+			var answerCtx context.Context
+			var answerCtxCancel func()
+			if deadline := initStage.Init.Deadline; deadline != nil {
+				answerCtx, answerCtxCancel = context.WithDeadline(aa.closeCtx, deadline.AsTime())
+			} else {
+				answerCtx, answerCtxCancel = context.WithTimeout(aa.closeCtx, getDefaultOfferDeadline())
+			}
+
+			if err = aa.connect(answerCtx); err != nil {
+				answerCtxCancel()
+				// We received an error while trying to connect to a caller/peer.
+				ans.logger.Errorw("error connecting to peer", "error", err)
+				if !utils.SelectContextOrWait(ans.closeCtx, answererReconnectWait) {
+					return
+				}
+			}
+			answerCtxCancel()
 		}
 	}, func() {
 		ans.bgWorkers.Done()
@@ -257,58 +286,40 @@ func (ans *webrtcSignalingAnswerer) Stop() {
 	}
 }
 
-// answer accepts a single call offer, responds with a corresponding SDP, and
+type answerAttempt struct {
+	*webrtcSignalingAnswerer
+	// The uuid is the key for communicating with the signaling server about this connection
+	// attempt.
+	uuid   string
+	client webrtcpb.SignalingService_AnswerClient
+
+	trickleEnabled bool
+	offerSDP       string
+
+	// When a connection attempt concludes, either with success or failure, we will fire a single
+	// message to the signaling server. This allows the signaling server to release resources
+	// related to this connection attempt.
+	sendDoneErrOnce sync.Once
+}
+
+// connect accepts a single call offer, responds with a corresponding SDP, and
 // attempts to establish a WebRTC connection with the caller via ICE. Once established,
 // the designated WebRTC data channel is passed off to the underlying Server which
 // is then used as the server end of a gRPC connection.
-func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_AnswerClient) (receivedInitRequest bool, err error) {
-	receivedInitRequest = false
-
-	resp, err := client.Recv()
-	if err != nil {
-		return receivedInitRequest, err
-	}
-
-	receivedInitRequest = true
-	uuid := resp.Uuid
-	initStage, ok := resp.Stage.(*webrtcpb.AnswerRequest_Init)
-	if !ok {
-		err := errors.Errorf("expected first stage to be init; got %T", resp.Stage)
-		return receivedInitRequest, client.Send(&webrtcpb.AnswerResponse{
-			Uuid: uuid,
-			Stage: &webrtcpb.AnswerResponse_Error{
-				Error: &webrtcpb.AnswerResponseErrorStage{
-					Status: ErrorToStatus(err).Proto(),
-				},
-			},
-		})
-	}
-	init := initStage.Init
-
-	disableTrickle := false
-	if init.OptionalConfig != nil {
-		disableTrickle = init.OptionalConfig.DisableTrickle
-	}
+func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 	pc, dc, err := newPeerConnectionForServer(
-		ans.closeCtx,
-		init.Sdp,
-		ans.webrtcConfig,
-		disableTrickle,
-		ans.logger,
+		ctx,
+		aa.offerSDP,
+		aa.webrtcConfig,
+		!aa.trickleEnabled,
+		aa.logger,
 	)
 	if err != nil {
-		return receivedInitRequest, client.Send(&webrtcpb.AnswerResponse{
-			Uuid: uuid,
-			Stage: &webrtcpb.AnswerResponse_Error{
-				Error: &webrtcpb.AnswerResponseErrorStage{
-					Status: ErrorToStatus(err).Proto(),
-				},
-			},
-		})
+		aa.sendError(err)
+		return err
 	}
 
-	serverChannel := ans.server.NewChannel(pc, dc, ans.hosts)
-
+	// We have a PeerConnection object. Install an error handler.
 	var successful bool
 	defer func() {
 		if !(successful && err == nil) {
@@ -320,7 +331,7 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 			connInfo := getWebRTCPeerConnectionStats(pc)
 			iceConnectionState := pc.ICEConnectionState()
 			iceGatheringState := pc.ICEGatheringState()
-			ans.logger.Warnw("Connection establishment failed",
+			aa.logger.Warnw("Connection establishment failed",
 				"conn_id", connInfo.ID,
 				"ice_connection_state", iceConnectionState,
 				"ice_gathering_state", iceGatheringState,
@@ -334,55 +345,20 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 		}
 	}()
 
-	// only send once since exchange may end or ICE may end
-	var sendDoneErrorOnce sync.Once
-	sendDone := func() error {
-		var err error
-		sendDoneErrorOnce.Do(func() {
-			err = client.Send(&webrtcpb.AnswerResponse{
-				Uuid: uuid,
-				Stage: &webrtcpb.AnswerResponse_Done{
-					Done: &webrtcpb.AnswerResponseDoneStage{},
-				},
-			})
-		})
-		return err
-	}
-
-	var exchangeCtx context.Context
-	var exchangeCancel func()
-	if initStage.Init.Deadline != nil {
-		exchangeCtx, exchangeCancel = context.WithDeadline(ans.closeCtx, initStage.Init.Deadline.AsTime())
-	} else {
-		exchangeCtx, exchangeCancel = context.WithTimeout(ans.closeCtx, getDefaultOfferDeadline())
-	}
-
-	errCh := make(chan error)
-	defer exchangeCancel()
-	sendErr := func(err error) {
-		if isEOF(err) {
-			ans.logger.Warnf("answerer swallowing err %v", err)
-			return
-		}
-		ans.logger.Warnf("answerer received err %v of type %T", err, err)
-		select {
-		case <-exchangeCtx.Done():
-		case errCh <- err:
-		}
-	}
+	serverChannel := aa.server.NewChannel(pc, dc, aa.hosts)
 
 	initSent := make(chan struct{})
-	if !init.OptionalConfig.DisableTrickle {
+	if aa.trickleEnabled {
 		answer, err := pc.CreateAnswer(nil)
 		if err != nil {
-			return receivedInitRequest, err
+			return err
 		}
 
 		var pendingCandidates sync.WaitGroup
 		waitOneHost := make(chan struct{})
 		var waitOneHostOnce sync.Once
 		pc.OnICECandidate(func(icecandidate *webrtc.ICECandidate) {
-			if exchangeCtx.Err() != nil {
+			if ctx.Err() != nil {
 				return
 			}
 			if icecandidate != nil {
@@ -402,19 +378,19 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 			//
 			// We use a mutex to make the read of the `closeCtx` and write to the `bgWorkers`
 			// atomic. `Stop` takes a competing mutex around canceling the `closeCtx`.
-			ans.bgWorkersMu.RLock()
+			aa.bgWorkersMu.RLock()
 			select {
-			case <-ans.closeCtx.Done():
-				ans.bgWorkersMu.RUnlock()
+			case <-aa.closeCtx.Done():
+				aa.bgWorkersMu.RUnlock()
 				return
 			default:
 			}
-			ans.bgWorkers.Add(1)
-			ans.bgWorkersMu.RUnlock()
+			aa.bgWorkers.Add(1)
+			aa.bgWorkersMu.RUnlock()
 
 			// must spin off to unblock the ICE gatherer
 			utils.PanicCapturingGo(func() {
-				defer ans.bgWorkers.Done()
+				defer aa.bgWorkers.Done()
 
 				if icecandidate != nil {
 					defer pendingCandidates.Done()
@@ -422,7 +398,7 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 
 				select {
 				case <-initSent:
-				case <-exchangeCtx.Done():
+				case <-ctx.Done():
 					return
 				}
 				// there are no more candidates coming during this negotiation
@@ -430,149 +406,150 @@ func (ans *webrtcSignalingAnswerer) answer(client webrtcpb.SignalingService_Answ
 					if _, ok := os.LookupEnv(testDelayAnswererNegotiationVar); ok {
 						// RSDK-4293: Introducing a sleep here replicates the conditions
 						// for a prior goroutine leak.
-						ans.logger.Debug("Sleeping to delay the end of the negotiation")
+						aa.logger.Debug("Sleeping to delay the end of the negotiation")
 						time.Sleep(1 * time.Second)
 					}
 					pendingCandidates.Wait()
-					if err := sendDone(); err != nil {
-						sendErr(err)
-					}
+					aa.sendDone()
 					return
 				}
 				iProto := iceCandidateToProto(icecandidate)
-				if err := client.Send(&webrtcpb.AnswerResponse{
-					Uuid: uuid,
+				if err := aa.client.Send(&webrtcpb.AnswerResponse{
+					Uuid: aa.uuid,
 					Stage: &webrtcpb.AnswerResponse_Update{
 						Update: &webrtcpb.AnswerResponseUpdateStage{
 							Candidate: iProto,
 						},
 					},
 				}); err != nil {
-					sendErr(err)
+					aa.sendError(err)
 				}
 			})
 		})
 
 		err = pc.SetLocalDescription(answer)
 		if err != nil {
-			return receivedInitRequest, err
+			return err
 		}
 
 		select {
-		case <-exchangeCtx.Done():
-			return receivedInitRequest, exchangeCtx.Err()
 		case <-waitOneHost:
+			// Dan: We wait for one host before proceeding to ensure the initial response has some
+			// candidate information. This is a Nagle's algorithm-esque batching optimization. I
+			// think.
+		case <-ctx.Done():
+			return ctx.Err()
 		}
 	}
 
 	encodedSDP, err := EncodeSDP(pc.LocalDescription())
 	if err != nil {
-		return receivedInitRequest, client.Send(&webrtcpb.AnswerResponse{
-			Uuid: uuid,
-			Stage: &webrtcpb.AnswerResponse_Error{
-				Error: &webrtcpb.AnswerResponseErrorStage{
-					Status: ErrorToStatus(err).Proto(),
-				},
-			},
-		})
+		aa.sendError(err)
+		return err
 	}
 
-	if err := client.Send(&webrtcpb.AnswerResponse{
-		Uuid: uuid,
+	if err := aa.client.Send(&webrtcpb.AnswerResponse{
+		Uuid: aa.uuid,
 		Stage: &webrtcpb.AnswerResponse_Init{
 			Init: &webrtcpb.AnswerResponseInitStage{
 				Sdp: encodedSDP,
 			},
 		},
 	}); err != nil {
-		return receivedInitRequest, err
+		return err
 	}
 	close(initSent)
 
-	if !init.OptionalConfig.DisableTrickle {
-		exchangeCandidates := func() error {
-			for {
-				if err := exchangeCtx.Err(); err != nil {
-					if errors.Is(err, context.Canceled) {
-						return nil
-					}
-					return err
-				}
-
-				ansResp, err := client.Recv()
-				if err != nil {
-					if !errors.Is(err, io.EOF) {
-						return err
-					}
-					return nil
-				}
-
-				switch s := ansResp.Stage.(type) {
-				case *webrtcpb.AnswerRequest_Init:
-				case *webrtcpb.AnswerRequest_Update:
-					if ansResp.Uuid != uuid {
-						return errors.Errorf("uuid mismatch; have=%q want=%q", ansResp.Uuid, uuid)
-					}
-					cand := iceCandidateFromProto(s.Update.Candidate)
-					if err := pc.AddICECandidate(cand); err != nil {
-						return err
-					}
-				case *webrtcpb.AnswerRequest_Done:
-					return nil
-				case *webrtcpb.AnswerRequest_Error:
-					respStatus := status.FromProto(s.Error.Status)
-					return fmt.Errorf("error from requester: %w", respStatus.Err())
-				default:
-					return errors.Errorf("unexpected stage %T", s)
-				}
-			}
-		}
-
+	if aa.trickleEnabled {
 		done := make(chan struct{})
 		defer func() { <-done }()
+
 		utils.PanicCapturingGoWithCallback(func() {
 			defer close(done)
-			if err := exchangeCandidates(); err != nil {
-				sendErr(err)
+
+			for {
+				// `client` was constructed based off of the `ans.closeCtx`. We rely on the
+				// underlying `client.Recv` implementation checking that context for cancelation.
+				ansResp, err := aa.client.Recv()
+				if err != nil {
+					if !errors.Is(err, io.EOF) {
+						aa.logger.Warn("Error receiving initial message from signaling server", "err", err)
+					}
+					return
+				}
+
+				switch stage := ansResp.Stage.(type) {
+				case *webrtcpb.AnswerRequest_Init:
+				case *webrtcpb.AnswerRequest_Update:
+					if ansResp.Uuid != aa.uuid {
+						aa.sendError(fmt.Errorf("uuid mismatch; have=%q want=%q", ansResp.Uuid, aa.uuid))
+						return
+					}
+					cand := iceCandidateFromProto(stage.Update.Candidate)
+					if err := pc.AddICECandidate(cand); err != nil {
+						aa.sendError(err)
+						return
+					}
+				case *webrtcpb.AnswerRequest_Done:
+					return
+				case *webrtcpb.AnswerRequest_Error:
+					respStatus := status.FromProto(stage.Error.Status)
+					aa.sendError(fmt.Errorf("error from requester: %w", respStatus.Err()))
+					return
+				default:
+					aa.sendError(fmt.Errorf("unexpected stage %T", stage))
+					return
+				}
 			}
 		}, func(err interface{}) {
-			sendErr(fmt.Errorf("%v", err))
+			aa.sendError(fmt.Errorf("%v", err))
 		})
 	}
 
-	doAnswer := func() error {
-		select {
-		case <-exchangeCtx.Done():
-			return multierr.Combine(exchangeCtx.Err(), serverChannel.Close())
-		case <-serverChannel.Ready():
-			return nil
-		case <-errCh:
-			return multierr.Combine(err, serverChannel.Close())
+	select {
+	case <-serverChannel.Ready():
+		// Happy path
+		successful = true
+	case <-ctx.Done():
+		// Timed out or signaling server was closed.
+		aa.sendError(multierr.Combine(ctx.Err(), serverChannel.Close()))
+		return ctx.Err()
+	}
+
+	aa.sendDone()
+	return nil
+}
+
+func (aa *answerAttempt) sendDone() {
+	aa.sendDoneErrOnce.Do(func() {
+		sendErr := aa.client.Send(&webrtcpb.AnswerResponse{
+			Uuid: aa.uuid,
+			Stage: &webrtcpb.AnswerResponse_Done{
+				Done: &webrtcpb.AnswerResponseDoneStage{},
+			},
+		})
+
+		if sendErr != nil {
+			// Errors communicating with the signaling server have no bearing on whether the
+			// PeerConnection is usable. Log and ignore the send error.
+			aa.logger.Warnw("Failed to send connection success message to signaling server", "sendErr", sendErr)
 		}
-	}
+	})
+}
 
-	if answerErr := doAnswer(); answerErr != nil {
-		var err error
-		sendDoneErrorOnce.Do(func() {
-			err = client.Send(&webrtcpb.AnswerResponse{
-				Uuid: uuid,
-				Stage: &webrtcpb.AnswerResponse_Error{
-					Error: &webrtcpb.AnswerResponseErrorStage{
-						Status: ErrorToStatus(answerErr).Proto(),
-					},
+func (aa *answerAttempt) sendError(err error) {
+	aa.sendDoneErrOnce.Do(func() {
+		sendErr := aa.client.Send(&webrtcpb.AnswerResponse{
+			Uuid: aa.uuid,
+			Stage: &webrtcpb.AnswerResponse_Error{
+				Error: &webrtcpb.AnswerResponseErrorStage{
+					Status: ErrorToStatus(err).Proto(),
 				},
-			})
+			},
 		})
-		return receivedInitRequest, err
-	}
-	if err := sendDone(); err != nil {
-		// Errors from sendDone (such as EOF) are sometimes caused by the signaling
-		// server "ending" the exchange process earlier than the answerer due to
-		// the caller being able to establish a connection without all the
-		// answerer's ICE candidates (trickle ICE). Only Warn the error here to
-		// avoid accidentally Closing a healthy, established peer connection.
-		ans.logger.Warnw("error ending signaling exchange from answer client", "error", err)
-	}
-	successful = true
-	return receivedInitRequest, nil
+
+		if sendErr != nil {
+			aa.logger.Warnw("Failed to send error message to signaling server", "sendErr", sendErr)
+		}
+	})
 }
