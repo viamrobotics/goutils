@@ -473,10 +473,8 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 				ansResp, err := aa.client.Recv()
 				if err != nil {
 					if !errors.Is(err, io.EOF) {
-						return
+						aa.logger.Warn("Error receiving initial message from signaling server", "err", err)
 					}
-
-					// Dan: ContextCanceled case?
 					return
 				}
 
@@ -513,7 +511,7 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 		// Happy path
 		successful = true
 	case <-ctx.Done():
-		// Timed out or server was closed.
+		// Timed out or signaling server was closed.
 		aa.sendError(multierr.Combine(ctx.Err(), serverChannel.Close()))
 		return ctx.Err()
 	}
