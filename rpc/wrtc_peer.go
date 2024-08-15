@@ -48,6 +48,12 @@ func newWebRTCAPI(isClient bool, logger utils.ZapCompatibleLogger) (*webrtc.API,
 	} else {
 		settingEngine.SetICEMulticastDNSMode(ice.MulticastDNSModeQueryOnly)
 	}
+	// RSDK-8547: Replay protection can result in dropped video data. Specifically when there are
+	// multiple remote hops in getting video from the camera to the user. And these intermediate
+	// hops restart.
+	settingEngine.DisableSRTPReplayProtection(true)
+	settingEngine.DisableSRTCPReplayProtection(true)
+
 	// by including the loopback candidate, we allow an offline mode such that the
 	// server/client (controlled/controlling) can include 127.0.0.1 as a candidate
 	// while the client (controlling) provides an mDNS candidate that may resolve to 127.0.0.1.
