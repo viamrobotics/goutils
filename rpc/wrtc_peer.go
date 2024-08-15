@@ -49,6 +49,9 @@ func newWebRTCAPI(isClient bool, logger golog.Logger) (*webrtc.API, error) {
 	} else {
 		settingEngine.SetICEMulticastDNSMode(ice.MulticastDNSModeQueryOnly)
 	}
+	// RSDK-8547: Replay protection can result in dropped video data. Specifically when there are
+	// multiple remote hops in getting video from the camera to the user. And these intermediate
+	// hops restart.
 	settingEngine.DisableSRTPReplayProtection(true)
 	settingEngine.DisableSRTCPReplayProtection(true)
 
