@@ -72,6 +72,11 @@ func newWebRTCClientChannel(
 	return ch
 }
 
+// GRPCConn returns  nil as this is a webrtc based connection.
+func (ch *webrtcClientChannel) GRPCConn() GRPCClientConnInterface {
+	return nil
+}
+
 func (ch *webrtcClientChannel) PeerConn() *webrtc.PeerConnection {
 	return ch.webrtcBaseChannel.peerConn
 }

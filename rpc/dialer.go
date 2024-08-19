@@ -19,6 +19,7 @@ import (
 	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
@@ -62,6 +63,9 @@ type Dialer interface {
 type ClientConn interface {
 	grpc.ClientConnInterface
 
+	// GRPCConn returns the backing GRPCClientConnInterface, or nil if the underlying transport is not
+	// an http based GRPC connection.
+	GRPCConn() GRPCClientConnInterface
 	// PeerConn returns the backing PeerConnection object, or nil if the underlying transport is not
 	// a PeerConnection.
 	PeerConn() *webrtc.PeerConnection
@@ -77,6 +81,17 @@ type ClientConnAuthenticator interface {
 // A GrpcOverHTTPClientConn is grpc connection that is not backed by a `webrtc.PeerConnection`.
 type GrpcOverHTTPClientConn struct {
 	*grpc.ClientConn
+}
+
+// GRPCClientConnInterface is the allow list of methods
+// we expect to be able to call on a *grpc.ClientConn.
+type GRPCClientConnInterface interface {
+	GetState() connectivity.State
+}
+
+// GRPCConn returns the underlying gprc connection.
+func (cc GrpcOverHTTPClientConn) GRPCConn() GRPCClientConnInterface {
+	return cc.ClientConn
 }
 
 // PeerConn returns nil as this is a native gRPC connection.
