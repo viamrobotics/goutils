@@ -3,13 +3,7 @@ package utils
 import (
 	"context"
 	"sync"
-
-	goutils "go.viam.com/utils"
 )
-
-// TODO: When this struct is widely used and feature complete, move this to goutils instead of
-// here. Until then, we cannot use this in any package imported by utils (e.g., the logging
-// package) without introducing a circular import dependency.
 
 // StoppableWorkers is a collection of goroutines that can be stopped at a later time.
 type StoppableWorkers interface {
@@ -54,7 +48,7 @@ func (sw *stoppableWorkersImpl) AddWorkers(funcs ...func(context.Context)) {
 		// the loop before the goroutine starts up, it starts this function instead of the next
 		// one. For details, see https://go.dev/blog/loopvar-preview
 		f := f
-		goutils.PanicCapturingGo(func() {
+		PanicCapturingGo(func() {
 			defer sw.activeBackgroundWorkers.Done()
 			f(sw.cancelCtx)
 		})
