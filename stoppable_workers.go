@@ -6,9 +6,9 @@ import (
 	"sync"
 )
 
-// StoppableWorkersAlreadyStopped is returned by Add when the StoppableWorkers
+// ErrStoppableWorkersAlreadyStopped is returned by Add when the StoppableWorkers
 // instance has already been stopped.
-var StoppableWorkersAlreadyStopped = errors.New("cannot add worker: already stopped")
+var ErrStoppableWorkersAlreadyStopped = errors.New("cannot add worker: already stopped")
 
 // StoppableWorkers is a collection of goroutines that can be stopped at a
 // later time.
@@ -39,7 +39,7 @@ func (sw *StoppableWorkers) Add(worker func(context.Context)) error {
 	sw.mu.RLock()
 	if sw.ctx.Err() != nil {
 		sw.mu.RUnlock()
-		return StoppableWorkersAlreadyStopped
+		return ErrStoppableWorkersAlreadyStopped
 	}
 	sw.workers.Add(1)
 	sw.mu.RUnlock()

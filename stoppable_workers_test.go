@@ -48,7 +48,7 @@ func TestStoppableWorkers(t *testing.T) {
 		sw := utils.NewStoppableWorkers(ctx)
 		sw.Stop()
 		test.That(t, sw.Add(normalWorker), test.ShouldBeError,
-			utils.StoppableWorkersAlreadyStopped)
+			utils.ErrStoppableWorkersAlreadyStopped)
 		sw.Stop() // stopping twice should cause no `panic`
 	})
 }
