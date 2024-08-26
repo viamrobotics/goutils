@@ -6,6 +6,8 @@ import (
 	"sync"
 )
 
+// StoppableWorkersAlreadyStopped is returned by Add when the StoppableWorkers
+// instance has already been stopped.
 var StoppableWorkersAlreadyStopped = errors.New("cannot add worker: already stopped")
 
 // StoppableWorkers is a collection of goroutines that can be stopped at a
