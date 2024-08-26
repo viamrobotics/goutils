@@ -2,10 +2,14 @@ package utils
 
 import (
 	"context"
+	"errors"
 	"sync"
 )
 
-// StoppableWorkers is a collection of goroutines that can be stopped at a later time.
+var StoppableWorkersAlreadyStopped = errors.New("cannot add worker: already stopped")
+
+// StoppableWorkers is a collection of goroutines that can be stopped at a
+// later time.
 type StoppableWorkers struct {
 	mu         sync.RWMutex
 	ctx        context.Context
@@ -14,27 +18,25 @@ type StoppableWorkers struct {
 	workers sync.WaitGroup
 }
 
-// NewStoppableWorkers creates a new StoppableWorkers instance.
-func NewStoppableWorkers() *StoppableWorkers {
-	ctx, cancelFunc := context.WithCancel(context.Background())
+// NewStoppableWorkers creates a new StoppableWorkers instance. The instance's
+// context will derived from passed in context.
+func NewStoppableWorkers(ctx context.Context) *StoppableWorkers {
+	ctx, cancelFunc := context.WithCancel(ctx)
 	return &StoppableWorkers{ctx: ctx, cancelFunc: cancelFunc}
 }
 
-// AddWorker starts up a goroutine for the passed-in function. If you call this
-// after calling Stop, it will return immediately without starting a new
-// goroutine. Workers:
+// Add starts up a goroutine for the passed-in function. Workers:
 //
-//   - MUST accept a `context.Context` and return nothing.
-//   - MUST respond appropriately to errors on that context.
-//   - MUST NOT add more workers to the `StoppableWorkers` group to which they
-//     belong.
+//   - MUST respond appropriately to errors on the context parameter.
+//   - MUST NOT add more workers to the `StoppableWorkers` group to which
+//     they belong.
 //
 // Any `panic`s from workers will be `recover`ed and logged.
-func (sw *StoppableWorkers) AddWorker(worker func(context.Context)) {
+func (sw *StoppableWorkers) Add(worker func(context.Context)) error {
 	// Read-lock to allow concurrent worker addition. The Stop method will write-lock.
 	sw.mu.RLock()
 	if sw.ctx.Err() != nil {
-		return
+		return StoppableWorkersAlreadyStopped
 	}
 	sw.workers.Add(1)
 	sw.mu.RUnlock()
@@ -43,12 +45,16 @@ func (sw *StoppableWorkers) AddWorker(worker func(context.Context)) {
 		defer sw.workers.Done()
 		worker(sw.ctx)
 	})
+	return nil
 }
 
-// Stop shuts down all the goroutines we started up.
+// Stop idempotently shuts down all the goroutines we started up.
 func (sw *StoppableWorkers) Stop() {
 	sw.mu.Lock()
 	defer sw.mu.Unlock()
+	if sw.ctx.Err() != nil {
+		return
+	}
 
 	sw.cancelFunc()
 	sw.workers.Wait()
