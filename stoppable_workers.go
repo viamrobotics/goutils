@@ -6,66 +6,50 @@ import (
 )
 
 // StoppableWorkers is a collection of goroutines that can be stopped at a later time.
-type StoppableWorkers interface {
-	AddWorkers(...func(context.Context))
-	Stop()
-	Context() context.Context
+type StoppableWorkers struct {
+	mu         sync.RWMutex
+	ctx        context.Context
+	cancelFunc func()
+
+	workers sync.WaitGroup
 }
 
-// stoppableWorkersImpl is the implementation of StoppableWorkers. The linter will complain if you
-// try to make a copy of something that contains a sync.WaitGroup (and returning a value at the end
-// of NewStoppableWorkers() would make a copy of it), so we do everything through the
-// StoppableWorkers interface to avoid making copies (since interfaces do everything by pointer).
-type stoppableWorkersImpl struct {
-	mu                      sync.Mutex
-	cancelCtx               context.Context
-	cancelFunc              func()
-	activeBackgroundWorkers sync.WaitGroup
+// NewStoppableWorkers creates a new StoppableWorkers instance.
+func NewStoppableWorkers() *StoppableWorkers {
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	return &StoppableWorkers{ctx: ctx, cancelFunc: cancelFunc}
 }
 
-// NewStoppableWorkers runs the functions in separate goroutines. They can be stopped later.
-func NewStoppableWorkers(funcs ...func(context.Context)) StoppableWorkers {
-	cancelCtx, cancelFunc := context.WithCancel(context.Background())
-	workers := &stoppableWorkersImpl{cancelCtx: cancelCtx, cancelFunc: cancelFunc}
-	workers.AddWorkers(funcs...)
-	return workers
-}
-
-// AddWorkers starts up additional goroutines for each function passed in. If you call this after
-// calling Stop(), it will return immediately without starting any new goroutines.
-func (sw *stoppableWorkersImpl) AddWorkers(funcs ...func(context.Context)) {
-	sw.mu.Lock()
-	defer sw.mu.Unlock()
-
-	if sw.cancelCtx.Err() != nil { // We've already stopped everything.
+// AddWorker starts up a goroutine for the passed-in function. If you call this
+// after calling Stop, it will return immediately without starting a new
+// goroutine. Workers:
+//
+//   - MUST accept a `context.Context` and return nothing.
+//   - MUST respond appropriately to errors on that context.
+//   - MUST NOT add more workers to the `StoppableWorkers` group to which they
+//     belong.
+//
+// Any `panic`s from workers will be `recover`ed and logged.
+func (sw *StoppableWorkers) AddWorker(worker func(context.Context)) {
+	// Read-lock to allow concurrent worker addition. The Stop method will write-lock.
+	sw.mu.RLock()
+	if sw.ctx.Err() != nil {
 		return
 	}
+	sw.workers.Add(1)
+	sw.mu.RUnlock()
 
-	sw.activeBackgroundWorkers.Add(len(funcs))
-	for _, f := range funcs {
-		// In Go 1.21 and earlier, variables created in a loop were reused from one iteration to
-		// the next. Make a "fresh" copy of it here so that, if we're on to the next iteration of
-		// the loop before the goroutine starts up, it starts this function instead of the next
-		// one. For details, see https://go.dev/blog/loopvar-preview
-		f := f
-		PanicCapturingGo(func() {
-			defer sw.activeBackgroundWorkers.Done()
-			f(sw.cancelCtx)
-		})
-	}
+	PanicCapturingGo(func() {
+		defer sw.workers.Done()
+		worker(sw.ctx)
+	})
 }
 
 // Stop shuts down all the goroutines we started up.
-func (sw *stoppableWorkersImpl) Stop() {
+func (sw *StoppableWorkers) Stop() {
 	sw.mu.Lock()
 	defer sw.mu.Unlock()
 
 	sw.cancelFunc()
-	sw.activeBackgroundWorkers.Wait()
-}
-
-// Context gets the context the workers are checking on. Using this function is expected to be
-// rare: usually you shouldn't need to interact with the context directly.
-func (sw *stoppableWorkersImpl) Context() context.Context {
-	return sw.cancelCtx
+	sw.workers.Wait()
 }
