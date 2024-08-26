@@ -19,7 +19,7 @@ type StoppableWorkers struct {
 }
 
 // NewStoppableWorkers creates a new StoppableWorkers instance. The instance's
-// context will derived from passed in context.
+// context will be derived from passed in context.
 func NewStoppableWorkers(ctx context.Context) *StoppableWorkers {
 	ctx, cancelFunc := context.WithCancel(ctx)
 	return &StoppableWorkers{ctx: ctx, cancelFunc: cancelFunc}

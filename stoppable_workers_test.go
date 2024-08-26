@@ -63,13 +63,13 @@ func normalWorker(ctx context.Context) {
 	}
 }
 
-func panickingWorker(_ context.Context) {
-	panic("this worker panicked; ignore expected stack trace above")
-}
-
 func nestedWorkersWorker(ctx context.Context) {
 	nestedSW := utils.NewStoppableWorkers(ctx)
 	nestedSW.Add(normalWorker)
 
 	normalWorker(ctx)
+}
+
+func panickingWorker(_ context.Context) {
+	panic("this worker panicked; ignore expected stack trace above")
 }
