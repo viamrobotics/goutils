@@ -23,12 +23,11 @@ func TestStoppableWorkers(t *testing.T) {
 
 	t.Run("concurrent workers", func(t *testing.T) {
 		sw := utils.NewStoppableWorkers(ctx)
-		go func() {
-			test.That(t, sw.Add(normalWorker), test.ShouldBeNil)
-		}()
-		go func() {
-			test.That(t, sw.Add(normalWorker), test.ShouldBeNil)
-		}()
+		concurrentWorker := func(ctx context.Context) {
+			go normalWorker(ctx)
+		}
+		test.That(t, sw.Add(concurrentWorker), test.ShouldBeNil)
+		test.That(t, sw.Add(concurrentWorker), test.ShouldBeNil)
 		sw.Stop()
 	})
 
@@ -58,14 +57,14 @@ func normalWorker(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			break
+			return
 		case <-time.After(10 * time.Millisecond):
 		}
 	}
 }
 
 func panickingWorker(_ context.Context) {
-	panic("this worker panicked")
+	panic("this worker panicked; ignore expected stack trace above")
 }
 
 func nestedWorkersWorker(ctx context.Context) {

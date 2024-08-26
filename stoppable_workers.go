@@ -36,6 +36,7 @@ func (sw *StoppableWorkers) Add(worker func(context.Context)) error {
 	// Read-lock to allow concurrent worker addition. The Stop method will write-lock.
 	sw.mu.RLock()
 	if sw.ctx.Err() != nil {
+		sw.mu.RUnlock()
 		return StoppableWorkersAlreadyStopped
 	}
 	sw.workers.Add(1)
