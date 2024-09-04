@@ -53,7 +53,13 @@ func TestStoppableWorkers(t *testing.T) {
 				case <-ctx.Done():
 					return
 				case <-time.After(100 * time.Millisecond):
-					ints <- count
+					// Remain sensitive to context in sending to `ints` channel, so this
+					// goroutine does not get hung when `readWorker` exits without
+					// reading the last int.
+					select {
+					case <-ctx.Done():
+					case ints <- count:
+					}
 				}
 			}
 		}
