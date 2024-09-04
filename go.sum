@@ -1283,8 +1283,8 @@ github.com/valyala/bytebufferpool v1.0.0/go.mod h1:6bBcMArwyJ5K/AmCkWv1jt77kVWyC
 github.com/valyala/fasthttp v1.16.0/go.mod h1:YOKImeEosDdBPnxc0gy7INqi3m1zK6A+xl6TwOBhHCA=
 github.com/valyala/quicktemplate v1.6.3/go.mod h1:fwPzK2fHuYEODzJ9pkw0ipCPNHZ2tD5KW4lOuSdPKzY=
 github.com/valyala/tcplisten v0.0.0-20161114210144-ceec8f93295a/go.mod h1:v3UYOV9WzVtRmSR+PDvWpU/qWl4Wa5LApYYX4ZtKbio=
-github.com/viamrobotics/webrtc/v3 v3.99.9 h1:5FCctlMhO9lr4SJ1TC2WCFocBIriUMb3Sw7i9oDlz2o=
-github.com/viamrobotics/webrtc/v3 v3.99.9/go.mod h1:ziH7/S52IyYAeDdwUUl5ZTbuyKe47fWorAz+0z5w6NA=
+github.com/viamrobotics/webrtc/v3 v3.99.10 h1:ykE14wm+HkqMD5Ozq4rvhzzfvnXAu14ak/HzA1OCzfY=
+github.com/viamrobotics/webrtc/v3 v3.99.10/go.mod h1:ziH7/S52IyYAeDdwUUl5ZTbuyKe47fWorAz+0z5w6NA=
 github.com/viki-org/dnscache v0.0.0-20130720023526-c70c1f23c5d8/go.mod h1:dniwbG03GafCjFohMDmz6Zc6oCuiqgH6tGNyXTkHzXE=
 github.com/wlynxg/anet v0.0.3 h1:PvR53psxFXstc12jelG6f1Lv4MWqE0tI76/hHGjh9rg=
 github.com/wlynxg/anet v0.0.3/go.mod h1:eay5PRQr7fIVAMbTbchTnO9gG65Hg/uYGdc7mguHxoA=
