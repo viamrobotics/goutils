@@ -31,6 +31,11 @@ jobs:
           chmod +x protoc-gen-grpc-web
           sudo install -t /usr/local/bin protoc-gen-grpc-web
 
+          # protobuf-javascript
+          curl --location --fail https://github.com/protocolbuffers/protobuf-javascript/releases/download/v3.21.4/protobuf-javascript-3.21.4-linux-x86_64.tar.gz -o protobuf-js.tgz
+          tar xf protobuf-js.tgz bin/protoc-gen-js
+          sudo install -t /usr/local/bin bin/protoc-gen-js
+
       - name: Install Build
         run: make build-web
 
