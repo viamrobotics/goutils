@@ -216,7 +216,7 @@ func (ss *simpleServer) authStreamInterceptor(
 			return err
 		}
 		serverStream = ctxWrappedServerStream{serverStream, nextCtx}
-		return handler(nextCtx, serverStream)
+		return handler(srv, serverStream)
 	}
 
 	// private auth
