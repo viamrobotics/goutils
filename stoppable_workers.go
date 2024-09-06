@@ -8,7 +8,7 @@ import (
 // StoppableWorkers is a collection of goroutines that can be stopped at a
 // later time.
 type StoppableWorkers struct {
-	// Use a `sync.RWMutex` isntead of a `sync.Mutex` so that additions of new
+	// Use a `sync.RWMutex` instead of a `sync.Mutex` so that additions of new
 	// workers do not lock with each other in any way. We want
 	// as-fast-as-possible worker addition.
 	mu         sync.RWMutex
