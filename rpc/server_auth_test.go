@@ -578,7 +578,9 @@ func TestServerPublicMethods(t *testing.T) {
 		test.That(t, echoResp.Message, test.ShouldEqual, "hello")
 
 		// test the stream service
-		_, err = client.EchoMultiple(context.Background(), &pb.EchoMultipleRequest{Message: "hello"})
+		echoMultClient, err := client.EchoMultiple(context.Background(), &pb.EchoMultipleRequest{Message: "hello"})
+		test.That(t, err, test.ShouldBeNil)
+		_, err = echoMultClient.Recv()
 		test.That(t, err, test.ShouldBeNil)
 		err = <-errChan
 		test.That(t, err, test.ShouldBeNil)
@@ -655,7 +657,9 @@ func TestServerPublicMethods(t *testing.T) {
 		test.That(t, echoResp.Message, test.ShouldEqual, "hello")
 
 		// test the stream service
-		_, err = client.EchoMultiple(context.Background(), &pb.EchoMultipleRequest{Message: "hello"})
+		echoMultClient, err := client.EchoMultiple(context.Background(), &pb.EchoMultipleRequest{Message: "hello"})
+		test.That(t, err, test.ShouldBeNil)
+		_, err = echoMultClient.Recv()
 		test.That(t, err, test.ShouldBeNil)
 		err = <-errChan
 		test.That(t, err, test.ShouldBeNil)
