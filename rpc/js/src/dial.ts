@@ -363,7 +363,9 @@ export async function dialWebRTC(
       },
     };
   } else {
-    webrtcOpts = opts.webrtcOptions;
+    // RSDK-8715: We deep copy here to avoid mutating the input config's `rtcConfig.iceServers`
+    // list.
+    webrtcOpts = JSON.parse(JSON.stringify(opts.webrtcOptions));
     if (!webrtcOpts.rtcConfig) {
       webrtcOpts.rtcConfig = { iceServers: additionalIceServers };
     } else {
