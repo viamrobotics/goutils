@@ -29,7 +29,6 @@ const (
 	externalDNSLookupTimeoutForProxy = 5 * time.Second
 	// Address for external DNS server.
 	externalDNSServerForProxy = "1.1.1.1:53"
-	networkTypeTCP4           = "tcp4"
 )
 
 // DefaultICEServers is the default set of ICE servers to use for WebRTC session negotiation.
@@ -87,8 +86,8 @@ func newWebRTCAPI(isClient bool, logger utils.ZapCompatibleLogger) (*webrtc.API,
 
 	// Use SOCKS proxy from environment as ICE proxy dialer and net transport.
 	if proxyAddr := os.Getenv(socksProxyEnvVar); proxyAddr != "" {
-		logger.Info("Behind SOCKS proxy; setting ICE proxy dialer")
-		dialer, err := proxy.SOCKS5(networkTypeTCP4, proxyAddr, nil, proxy.Direct)
+		logger.Info("behind SOCKS proxy; setting ICE proxy dialer")
+		dialer, err := proxy.SOCKS5("tcp4", proxyAddr, nil, proxy.Direct)
 		if err != nil {
 			return nil, fmt.Errorf("error creating SOCKS proxy dialer to address %q from environment: %w",
 				proxyAddr, err)
@@ -140,7 +139,7 @@ func (pd *proxyNet) ResolveIPAddr(network, address string) (*net.IPAddr, error) 
 		Dial: func(_ context.Context, _, _ string) (net.Conn, error) {
 			// Ignore all passed in values. Dial via tcp4 (only protocol supported by
 			// golang SOCKS) to an external DNS server.
-			return pd.proxyDialer.Dial(networkTypeTCP4, externalDNSServerForProxy)
+			return pd.proxyDialer.Dial("tcp4", externalDNSServerForProxy)
 		},
 	}
 

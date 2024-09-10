@@ -322,7 +322,7 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 	// associated username and password).
 	webrtcConfig := aa.webrtcConfig
 	if proxyAddr := os.Getenv(socksProxyEnvVar); proxyAddr != "" {
-		aa.logger.Info("Behind SOCKS proxy; extending WebRTC config with TURN URL")
+		aa.logger.Info("behind SOCKS proxy; extending WebRTC config with TURN URL")
 		aa.connMu.Lock()
 		conn := aa.conn
 		aa.connMu.Unlock()
@@ -343,7 +343,7 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 			return err
 		}
 		webrtcConfig = extendWebRTCConfig(&webrtcConfig, configResp.Config, true)
-		aa.logger.Debugw("Extended WebRTC config", "ICE servers", webrtcConfig.ICEServers)
+		aa.logger.Debugw("extended WebRTC config", "ICE servers", webrtcConfig.ICEServers)
 	}
 
 	pc, dc, err := newPeerConnectionForServer(

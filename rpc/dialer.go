@@ -262,7 +262,7 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts dialOptions, logg
 		}
 
 		dialOpts = append(dialOpts, grpc.WithContextDialer(func(_ context.Context, addr string) (net.Conn, error) {
-			logger.Info("Behind SOCKS proxy; routing direct dial through proxy")
+			logger.Info("behind SOCKS proxy; routing direct dial through proxy")
 			return dialer.Dial("tcp", addr)
 		}))
 	}
