@@ -36,6 +36,13 @@ func DecodeSDP(in string, sdp *webrtc.SessionDescription) error {
 	return err
 }
 
+// extendWebRTCConfig will take a WebRTC configuration and an extension to that
+// configuration obtained by calling `OptionalWebRTCConfig` against the
+// signaling server and append the latter's ICE servers and creds to the
+// former. This is particularly useful for adding a TURN URL to the ICE servers
+// list. `replaceUDPWithTCP`, when true, will replace URLs suffixed with "udp"
+// with the same URL suffixed with "tcp"; this is useful when running behind
+// a SOCKS proxy that can only forward the TCP protocol.
 func extendWebRTCConfig(original *webrtc.Configuration, optional *webrtcpb.WebRTCConfig,
 	replaceUDPWithTCP bool,
 ) webrtc.Configuration {
@@ -51,8 +58,6 @@ func extendWebRTCConfig(original *webrtc.Configuration, optional *webrtcpb.WebRT
 			if replaceUDPWithTCP {
 				urls = nil
 				for _, url := range server.Urls {
-					// TODO(benji): Check if this is necessary.
-					// Modify URLs that end with "transport=udp" to say "transport=tcp".
 					if strings.HasSuffix(url, "udp") {
 						newURL := url[:len(url)-len("udp")] + "tcp"
 						urls = append(urls, newURL)
