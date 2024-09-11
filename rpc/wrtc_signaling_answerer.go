@@ -80,9 +80,10 @@ func newWebRTCSignalingAnswerer(
 }
 
 const (
-	defaultMaxAnswerers    = 2
-	answererConnectTimeout = 10 * time.Second
-	answererReconnectWait  = time.Second
+	defaultMaxAnswerers               = 2
+	answererConnectTimeout            = 10 * time.Second
+	answererConnectTimeoutBehindProxy = time.Minute
+	answererReconnectWait             = time.Second
 )
 
 // Start connects to the signaling service and listens forever until instructed to stop
@@ -103,7 +104,13 @@ func (ans *webrtcSignalingAnswerer) Start() {
 			default:
 			}
 
-			setupCtx, timeoutCancel := context.WithTimeout(ans.closeCtx, answererConnectTimeout)
+			timeout := answererConnectTimeout
+			// Bump timeout from 10 seconds to 1 minute if behind a SOCKS proxy. It
+			// may take longer to connect to the signaling server in that case.
+			if proxyAddr := os.Getenv(socksProxyEnvVar); proxyAddr != "" {
+				timeout = answererConnectTimeoutBehindProxy
+			}
+			setupCtx, timeoutCancel := context.WithTimeout(ans.closeCtx, timeout)
 			conn, err := Dial(setupCtx, ans.address, ans.logger, ans.dialOpts...)
 			timeoutCancel()
 			if err != nil {
@@ -307,10 +314,42 @@ type answerAttempt struct {
 // the designated WebRTC data channel is passed off to the underlying Server which
 // is then used as the server end of a gRPC connection.
 func (aa *answerAttempt) connect(ctx context.Context) (err error) {
+	// If SOCKS proxy is indicated by environment, extend WebRTC config with an
+	// `OptionalWebRTCConfig` call to the signaling server. The usage of a SOCKS
+	// proxy indicates that the server may need a local TURN ICE candidate to
+	// make a conntion to any peer. Nomination of that type of candidate is only
+	// possible through extending the WebRTC config with a TURN URL (and
+	// associated username and password).
+	webrtcConfig := aa.webrtcConfig
+	if proxyAddr := os.Getenv(socksProxyEnvVar); proxyAddr != "" {
+		aa.logger.Info("behind SOCKS proxy; extending WebRTC config with TURN URL")
+		aa.connMu.Lock()
+		conn := aa.conn
+		aa.connMu.Unlock()
+
+		// Use first host on answerer for rpc-host field in metadata.
+		signalingClient := webrtcpb.NewSignalingServiceClient(conn)
+		md := metadata.New(map[string]string{RPCHostMetadataField: aa.hosts[0]})
+
+		signalCtx := metadata.NewOutgoingContext(ctx, md)
+		configResp, err := signalingClient.OptionalWebRTCConfig(signalCtx,
+			&webrtcpb.OptionalWebRTCConfigRequest{})
+		if err != nil {
+			// Any error below indicates the signaling server is not present.
+			if s, ok := status.FromError(err); ok && (s.Code() == codes.Unimplemented ||
+				(s.Code() == codes.InvalidArgument && s.Message() == hostNotAllowedMsg)) {
+				return ErrNoWebRTCSignaler
+			}
+			return err
+		}
+		webrtcConfig = extendWebRTCConfig(&webrtcConfig, configResp.Config, true)
+		aa.logger.Debugw("extended WebRTC config", "ICE servers", webrtcConfig.ICEServers)
+	}
+
 	pc, dc, err := newPeerConnectionForServer(
 		ctx,
 		aa.offerSDP,
-		aa.webrtcConfig,
+		webrtcConfig,
 		!aa.trickleEnabled,
 		aa.logger,
 	)

@@ -3,6 +3,7 @@ package rpc
 import (
 	"encoding/base64"
 	"encoding/json"
+	"strings"
 
 	"github.com/viamrobotics/webrtc/v3"
 
@@ -35,7 +36,16 @@ func DecodeSDP(in string, sdp *webrtc.SessionDescription) error {
 	return err
 }
 
-func extendWebRTCConfig(original *webrtc.Configuration, optional *webrtcpb.WebRTCConfig) webrtc.Configuration {
+// extendWebRTCConfig will take a WebRTC configuration and an extension to that
+// configuration obtained by calling `OptionalWebRTCConfig` against the
+// signaling server and append the latter's ICE servers and creds to the
+// former. This is particularly useful for adding a TURN URL to the ICE servers
+// list. `replaceUDPWithTCP`, when true, will replace URLs suffixed with "udp"
+// with the same URL suffixed with "tcp"; this is useful when running behind
+// a SOCKS proxy that can only forward the TCP protocol.
+func extendWebRTCConfig(original *webrtc.Configuration, optional *webrtcpb.WebRTCConfig,
+	replaceUDPWithTCP bool,
+) webrtc.Configuration {
 	configCopy := *original
 	if optional == nil {
 		return configCopy
@@ -44,8 +54,21 @@ func extendWebRTCConfig(original *webrtc.Configuration, optional *webrtcpb.WebRT
 		iceServers := make([]webrtc.ICEServer, len(original.ICEServers)+len(optional.AdditionalIceServers))
 		copy(iceServers, original.ICEServers)
 		for _, server := range optional.AdditionalIceServers {
+			urls := server.Urls
+			if replaceUDPWithTCP {
+				urls = nil
+				for _, url := range server.Urls {
+					if strings.HasSuffix(url, "udp") {
+						newURL := url[:len(url)-len("udp")] + "tcp"
+						urls = append(urls, newURL)
+						continue
+					}
+					urls = append(urls, url)
+				}
+			}
+
 			iceServers = append(iceServers, webrtc.ICEServer{
-				URLs:       server.Urls,
+				URLs:       urls,
 				Username:   server.Username,
 				Credential: server.Credential,
 			})
