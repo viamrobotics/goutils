@@ -101,6 +101,9 @@ func RandomizeNamespaces() (newNamespaces map[string][]string, restore func()) {
 	defer namespacesMu.Unlock()
 	oldNamespaces := map[randomizedName][]randomizedName{}
 	for db, colls := range namespaces {
+		// APP-5672: We choose 20 random lower case characters as a simple heuristic to avoid
+		// collisions. We use lower case letters specifically because MongoDB, for historical
+		// reasons, disallows creating a database with the same letters but different capitalization.
 		newDBName := randomizedName{ptr: db, from: *db, to: "test-" + strings.ToLower(utils.RandomAlphaString(20))}
 		oldNamespaces[newDBName] = nil
 		for _, coll := range colls {
