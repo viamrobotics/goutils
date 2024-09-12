@@ -14,14 +14,13 @@ import (
 	"go.viam.com/utils/testutils"
 )
 
-// VerifyTestMain performs various runtime checks on code that tests run.
+// VerifyTestMain preforms various runtime checks on code that tests run.
 func VerifyTestMain(m goleak.TestingM) {
-	currentGoroutines := goleak.IgnoreCurrent()
-
 	cache, err := artifact.GlobalCache()
 	if err != nil {
 		golog.Global().Fatalw("error opening artifact", "error", err)
 	}
+	currentGoroutines := goleak.IgnoreCurrent()
 	//nolint:ifshort
 	exitCode := m.Run()
 	testutils.Teardown()
