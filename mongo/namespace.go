@@ -3,6 +3,7 @@ package mongoutils
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 
 	"go.viam.com/utils"
@@ -100,10 +101,13 @@ func RandomizeNamespaces() (newNamespaces map[string][]string, restore func()) {
 	defer namespacesMu.Unlock()
 	oldNamespaces := map[randomizedName][]randomizedName{}
 	for db, colls := range namespaces {
-		newDBName := randomizedName{ptr: db, from: *db, to: "test-" + utils.RandomAlphaString(5)}
+		// APP-5672: We choose 20 random lower case characters as a simple heuristic to avoid
+		// collisions. We use lower case letters specifically because MongoDB, for historical
+		// reasons, disallows creating a database with the same letters but different capitalization.
+		newDBName := randomizedName{ptr: db, from: *db, to: "test-" + strings.ToLower(utils.RandomAlphaString(20))}
 		oldNamespaces[newDBName] = nil
 		for _, coll := range colls {
-			newCollName := randomizedName{ptr: coll, from: *coll, to: utils.RandomAlphaString(5)}
+			newCollName := randomizedName{ptr: coll, from: *coll, to: strings.ToLower(utils.RandomAlphaString(20))}
 			oldNamespaces[newDBName] = append(oldNamespaces[newDBName], newCollName)
 			*coll = newCollName.to
 		}
