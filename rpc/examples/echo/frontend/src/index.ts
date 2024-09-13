@@ -1,8 +1,11 @@
-import { grpc } from "@improbable-eng/grpc-web";
+import type { PartialMessage } from "@bufbuild/protobuf";
+import { ConnectError, createPromiseClient, PromiseClient } from "@connectrpc/connect";
+import { createWritableIterable } from "@connectrpc/connect/protocol";
 import { Credentials, dialDirect, dialWebRTC } from "@viamrobotics/rpc";
 import { DialOptions } from "@viamrobotics/rpc/src/dial";
-import { EchoBiDiRequest, EchoMultipleRequest, EchoMultipleResponse, EchoRequest, EchoResponse } from "./gen/proto/rpc/examples/echo/v1/echo_pb";
-import { EchoServiceClient, ServiceError } from "./gen/proto/rpc/examples/echo/v1/echo_pb_service";
+import { createWriteStream } from "fs";
+import { EchoService } from "./gen/proto/rpc/examples/echo/v1/echo_connect";
+import { EchoBiDiRequest, EchoBiDiResponse, EchoMultipleRequest, EchoMultipleResponse, EchoRequest, EchoResponse } from "./gen/proto/rpc/examples/echo/v1/echo_pb";
 
 const thisHost = `${window.location.protocol}//${window.location.host}`;
 
@@ -17,15 +20,15 @@ declare global {
 }
 
 function createElemForResponse(text: string, method: string, type: string) {
-  const selector = `[data-testid="${type}-${method}"]`;
-  const elem = document.querySelector(selector);
-  if (!elem) {
-    throw new Error(`expecting to find selector '${selector}'`);
-  }
-  const inner = document.createElement("div");
-  inner.setAttribute("data-testid", "message");
-  inner.innerText = text;
-  elem.appendChild(inner);
+	const selector = `[data-testid="${type}-${method}"]`;
+	const elem = document.querySelector(selector);
+	if (!elem) {
+		throw new Error(`expecting to find selector '${selector}'`);
+	}
+	const inner = document.createElement("div");
+	inner.setAttribute("data-testid", "message");
+	inner.innerText = text;
+	elem.appendChild(inner);
 }
 
 async function getClients() {
@@ -57,101 +60,80 @@ async function getClients() {
 		opts.webrtcOptions!.signalingExternalAuthToEntity = opts.externalAuthToEntity;
 	}
 
-	const webRTCConn = await dialWebRTC(thisHost, webrtcHost, opts);
-	const webrtcClient = new EchoServiceClient(webrtcHost, { transport: webRTCConn.transportFactory });
-	await renderResponses(webrtcClient, "wrtc");
+	// TODO(erd): add back
+	// const webRTCConn = await dialWebRTC(thisHost, webrtcHost, opts);
+	// const webrtcClient = createPromiseClient(EchoService, webRTCConn.transportFactory);
+	// await renderResponses(webrtcClient, "wrtc");
 
 	const directTransport = await dialDirect(thisHost, opts);
-	const directClient = new EchoServiceClient(thisHost, { transport: directTransport });
+	console.log("TRANSPORT", directTransport);
+	const directClient = createPromiseClient(EchoService, directTransport);
 	await renderResponses(directClient, "direct");
 }
 getClients().catch(e => {
 	console.error("error getting clients", e);
 });
 
-async function renderResponses(client: EchoServiceClient, method: string) {
+async function renderResponses(client: PromiseClient<typeof EchoService>, method: string) {
 	const echoRequest = new EchoRequest();
-	echoRequest.setMessage("hello");
+	echoRequest.message = "hello";
 
-	let pResolve: (value: any) => void;
-	let pReject: (reason?: any) => void;
-	let done = new Promise<any>((resolve, reject) => {
-		pResolve = resolve;
-		pReject = reject;
-	});
-	client.echo(echoRequest, (err: ServiceError, resp: EchoResponse) => {
-		if (err) {
-			console.error(err);
-			pReject(err);
-			return
-		}
-		createElemForResponse(resp.getMessage(), method, "unary");
-		pResolve(resp);
-	});
-	await done;
+	console.log("HERE1")
+	const response = await client.echo(echoRequest);
+	console.log("HERE2")
+	createElemForResponse(response.message, method, "unary");
+	console.log("HERE3")
 
 	const echoMultipleRequest = new EchoMultipleRequest();
-	echoMultipleRequest.setMessage("hello?");
+	echoMultipleRequest.message = "hello?";
 
-	done = new Promise<any>((resolve, reject) => {
-		pResolve = resolve;
-		pReject = reject;
-	});
 	const multiStream = client.echoMultiple(echoMultipleRequest);
-	multiStream.on("data", (message: EchoMultipleResponse) => {
-		createElemForResponse(message.getMessage(), method, "multi");
-	});
-	multiStream.on("end", ({ code, details }: { code: number, details: string, metadata: grpc.Metadata }) => {
-		if (code !== 0) {
-			console.log(code);
-			console.log(details);
-			pReject(code);
-			return;
+	try {
+		for await (const response of multiStream) {
+			createElemForResponse(response.message, method, "multi");
 		}
-		pResolve(undefined);
-	});
-	await done;
+	} catch (err) {
+		if (err instanceof ConnectError) {
+			console.log(err.code);
+			console.log(err.details);
+		}
+		throw err;
+	}
 
-	const bidiStream = client.echoBiDi();
-
-	let echoBiDiRequest = new EchoBiDiRequest();
-	echoBiDiRequest.setMessage("one");
-
-	done = new Promise<any>((resolve, reject) => {
-		pResolve = resolve;
-		pReject = reject;
-	});
+	const clientStream = createWritableIterable<PartialMessage<EchoBiDiRequest>>();
+	const bidiStream = client.echoBiDi(clientStream);
 
 	let msgCount = 0;
-	bidiStream.on("data", (message: EchoMultipleResponse) => {
-		msgCount++
-		createElemForResponse(message.getMessage(), method, "bidi");
-		if (msgCount == 3) {
-			pResolve(undefined);
+	const processResponses = async () => {
+		try {
+			for await (const response of bidiStream) {
+				msgCount++
+				createElemForResponse(response.message, method, "bidi");
+				if (msgCount == 3) {
+					return;
+				}
+			}
+		} catch (err) {
+			if (err instanceof ConnectError) {
+				console.log(err.code);
+				console.log(err.details);
+			}
+			throw err;
 		}
-	});
-	bidiStream.on("end", ({ code, details }: { code: number, details: string, metadata: grpc.Metadata }) => {
-		if (code !== 0) {
-			console.log(code);
-			console.log(details);
-			pReject(code);
-			return;
-		}
-	});
+	}
 
-	bidiStream.write(echoBiDiRequest);
-	await done;
+	let echoBiDiRequest = new EchoBiDiRequest();
+	echoBiDiRequest.message = "one";
 
-	done = new Promise<any>((resolve, reject) => {
-		pResolve = resolve;
-		pReject = reject;
-	});
+	clientStream.write(echoBiDiRequest);
+	await processResponses();
+
 	msgCount = 0;
 
 	echoBiDiRequest = new EchoBiDiRequest();
-	echoBiDiRequest.setMessage("two");
-	bidiStream.write(echoBiDiRequest);
+	echoBiDiRequest.message = "two";
+	clientStream.write(echoBiDiRequest);
 
-	await done;
-	bidiStream.end();
+	await processResponses();
+	clientStream.close();
 }

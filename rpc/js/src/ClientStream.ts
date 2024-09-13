@@ -1,4 +1,7 @@
-import { grpc } from '@improbable-eng/grpc-web';
+import { AnyMessage, Message, MethodInfo, PartialMessage, ServiceType } from '@bufbuild/protobuf';
+import { ContextValues, createContextValues, Transport, UnaryRequest, UnaryResponse } from '@connectrpc/connect';
+import { GrpcWebTransportOptions } from '@connectrpc/connect-web';
+import { createClientMethodSerializers, runUnaryCall } from '@connectrpc/connect/protocol';
 import { BaseStream } from './BaseStream';
 import type { ClientChannel } from './ClientChannel';
 import { GRPCError } from './errors';
@@ -18,7 +21,7 @@ import {
 // see golang/client_stream.go
 const maxRequestMessagePacketDataSize = 16373;
 
-export class ClientStream extends BaseStream implements grpc.Transport {
+export class ClientStream extends BaseStream implements Transport {
   private readonly channel: ClientChannel;
   private headersReceived: boolean = false;
   private trailersReceived: boolean = false;
@@ -27,24 +30,70 @@ export class ClientStream extends BaseStream implements grpc.Transport {
     channel: ClientChannel,
     stream: Stream,
     onDone: (id: number) => void,
-    opts: grpc.TransportOptions
+    opts: GrpcWebTransportOptions
   ) {
     super(stream, onDone, opts);
     this.channel = channel;
   }
 
-  public start(metadata: grpc.Metadata) {
-    const method = `/${this.opts.methodDefinition.service.serviceName}/${this.opts.methodDefinition.methodName}`;
-    const requestHeaders = new RequestHeaders();
-    requestHeaders.setMethod(method);
-    requestHeaders.setMetadata(fromGRPCMetadata(metadata));
+  public async unary<
+    I extends Message<I> = AnyMessage,
+    O extends Message<O> = AnyMessage,
+  >(
+    service: ServiceType,
+    method: MethodInfo<I, O>,
+    signal: AbortSignal | undefined,
+    timeoutMs: number | undefined,
+    header: Headers,
+    message: PartialMessage<I>,
+    contextValues?: ContextValues,
+  ): Promise<UnaryResponse<I, O>> {
+    const { serialize, parse } = createClientMethodSerializers(
+      method,
+      true,
+      this.opts.jsonOptions,
+      this.opts.binaryOptions,
+    );
 
-    try {
-      this.channel.writeHeaders(this.stream, requestHeaders);
-    } catch (error) {
-      console.error('error writing headers', error);
-      this.closeWithRecvError(error as Error);
-    }
+    return await runUnaryCall<I, O>({
+      signal,
+      interceptors: this.opts.interceptors,
+      timeoutMs: timeoutMs ?? 0,
+      req: {
+        stream: false,
+        url: '',
+        init: {},
+        service,
+        method,
+        header,
+        contextValues: contextValues ?? createContextValues(),
+        message
+      },
+      next: async (req: UnaryRequest<I, O>): Promise<UnaryResponse<I, O>> => {
+        // TODO(erd): correct?
+        const svcMethod = `/${service.typeName}/${method.name}`;
+        console.log("METHOD", method);
+        const requestHeaders = new RequestHeaders();
+        requestHeaders.method = svcMethod;
+        const metadataProto = fromGRPCMetadata(header);
+        if (metadataProto) {
+          requestHeaders.metadata = metadataProto;
+        }
+
+        try {
+          this.channel.writeHeaders(this.stream, requestHeaders);
+        } catch (error) {
+          console.error('error writing headers', error);
+          this.closeWithRecvError();
+        }
+
+        // TODO(erd): around here https://github.com/connectrpc/examples-es/blob/main/react-native/app/custom-transport.ts#L111
+
+        this.sendMessage(serialize(req.message));
+
+        throw "ah";
+      },
+    });
   }
 
   public sendMessage(msgBytes?: Uint8Array) {
@@ -83,11 +132,11 @@ export class ClientStream extends BaseStream implements grpc.Transport {
     try {
       if (!msgBytes || msgBytes.length == 0) {
         const packet = new PacketMessage();
-        packet.setEom(true);
+        packet.eom = true;
         const requestMessage = new RequestMessage();
-        requestMessage.setHasMessage(!!msgBytes);
-        requestMessage.setPacketMessage(packet);
-        requestMessage.setEos(eos);
+        requestMessage.hasMessage = !!msgBytes;
+        requestMessage.packetMessage = packet;
+        requestMessage.eos = eos;
         this.channel.writeMessage(this.stream, requestMessage);
         return;
       }
@@ -98,20 +147,20 @@ export class ClientStream extends BaseStream implements grpc.Transport {
           maxRequestMessagePacketDataSize
         );
         const packet = new PacketMessage();
-        packet.setData(msgBytes.slice(0, amountToSend));
+        packet.data = msgBytes.slice(0, amountToSend);
         msgBytes = msgBytes.slice(amountToSend);
         if (msgBytes.length === 0) {
-          packet.setEom(true);
+          packet.eom = true;
         }
         const requestMessage = new RequestMessage();
-        requestMessage.setHasMessage(!!msgBytes);
-        requestMessage.setPacketMessage(packet);
-        requestMessage.setEos(eos);
+        requestMessage.hasMessage = !!msgBytes;
+        requestMessage.packetMessage = packet;
+        requestMessage.eos = eos;
         this.channel.writeMessage(this.stream, requestMessage);
       }
     } catch (error) {
       console.error('error writing message', error);
-      this.closeWithRecvError(error as Error);
+      this.closeWithRecvError();
     }
   }
 
@@ -166,15 +215,15 @@ export class ClientStream extends BaseStream implements grpc.Transport {
 
   private processTrailers(trailers: ResponseTrailers) {
     this.trailersReceived = true;
-    const headers = toGRPCMetadata(trailers.getMetadata());
+    const headers = toGRPCMetadata(trailers.metadata);
     let statusCode, statusMessage;
-    const status = trailers.getStatus();
+    const status = trailers.status;
     if (status) {
-      statusCode = status.getCode();
-      statusMessage = status.getMessage();
-      headers.set('grpc-status', `${status.getCode()}`);
+      statusCode = status.code;
+      statusMessage = status.message;
+      headers.set('grpc-status', `${status.code}`);
       if (statusMessage !== undefined) {
-        headers.set('grpc-message', status.getMessage());
+        headers.set('grpc-message', status.message);
       }
     } else {
       statusCode = 0;
@@ -192,7 +241,7 @@ export class ClientStream extends BaseStream implements grpc.Transport {
       this.closeWithRecvError();
       return;
     }
-    this.closeWithRecvError(new GRPCError(statusCode, statusMessage));
+    this.closeWithRecvError();
   }
 }
 
@@ -216,40 +265,43 @@ function isValidHeaderAscii(val: number): boolean {
   return isAllowedControlChars(val) || (val >= 0x20 && val <= 0x7e);
 }
 
-function headersToBytes(headers: grpc.Metadata): Uint8Array {
+function headersToBytes(headers: Headers): Uint8Array {
   let asString = '';
-  headers.forEach((key, values) => {
-    asString += `${key}: ${values.join(', ')}\r\n`;
+  headers.forEach((key, value) => {
+    asString += `${key}: ${value}\r\n`;
   });
   return encodeASCII(asString);
 }
 
 // from https://github.com/jsmouret/grpc-over-webrtc/blob/45cd6d6cf516e78b1e262ea7aa741bc7a7a93dbc/client-improbable/src/grtc/webrtcclient.ts#L7
-const fromGRPCMetadata = (metadata?: grpc.Metadata): Metadata | undefined => {
-  if (!metadata) {
+const fromGRPCMetadata = (headers?: Headers): Metadata | undefined => {
+  if (!headers) {
     return undefined;
   }
-  const result = new Metadata();
-  const md = result.getMdMap();
-  metadata.forEach((key, values) => {
-    const strings = new Strings();
-    strings.setValuesList(values);
-    md.set(key, strings);
+  const result = new Metadata({
+    md: {}
   });
-  if (result.getMdMap().getLength() === 0) {
+  const md = result.md;
+  headers.forEach((key, value) => {
+    const strings = new Strings();
+    strings.values = [value];
+    md[key] = strings;
+  });
+  if (Object.keys(result.md).length === 0) {
     return undefined;
   }
   return result;
 };
 
-const toGRPCMetadata = (metadata?: Metadata): grpc.Metadata => {
-  const result = new grpc.Metadata();
-  if (metadata) {
-    metadata
-      .getMdMap()
-      .forEach((entry: any, key: any) =>
-        result.append(key, entry.getValuesList())
-      );
+const toGRPCMetadata = (metadata?: Metadata): Headers => {
+  const result = new Headers();
+  if (metadata && metadata.md) {
+    for (let key in metadata.md) {
+      let value = metadata.md[key];
+      for (let val in value?.values) {
+        result.append(key, val);
+      }
+    }
   }
   return result;
 };

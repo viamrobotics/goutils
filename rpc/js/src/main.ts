@@ -10,7 +10,7 @@ export {
   type Credentials,
   type DialOptions,
   type DialWebRTCOptions,
-  type WebRTCConnection,
+  type WebRTCConnection
 } from './dial';
 
 export { ConnectionClosedError, GRPCError } from './errors';

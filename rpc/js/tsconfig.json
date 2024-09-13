@@ -7,7 +7,8 @@
     "module": "ESNext",
     "moduleResolution": "node",
     "verbatimModuleSyntax": false,
-    "lib": ["ESNext", "DOM", "DOM.iterable"]
+    "lib": ["ESNext", "DOM", "DOM.iterable"],
+    "exactOptionalPropertyTypes": false,
   },
   "include": ["src", "vite.config.ts", ".*.cjs"],
   "exclude": ["node_modules", "src/gen"]
