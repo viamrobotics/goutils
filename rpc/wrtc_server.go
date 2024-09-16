@@ -99,9 +99,19 @@ func (srv *webrtcServer) Stop() {
 	srv.processHeadersMu.Unlock()
 	srv.logger.Info("handlers complete")
 	srv.logger.Info("closing lingering peer connections")
+
+	// Only lock to grab reference to peerConns. Locking while closing
+	// connections can cause hangs (see RSDK-8789).
 	srv.peerConnsMu.Lock()
-	defer srv.peerConnsMu.Unlock()
+	// Build a slice of peer conn references, as iterating through the map
+	// without a lock will race with `removePeer`.
+	var peerConns []*webrtc.PeerConnection
 	for pc := range srv.peerConns {
+		peerConns = append(peerConns, pc)
+	}
+	srv.peerConnsMu.Unlock()
+
+	for _, pc := range peerConns {
 		if err := pc.GracefulClose(); err != nil {
 			srv.logger.Errorw("error closing peer connection", "error", err)
 		}
