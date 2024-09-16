@@ -16,7 +16,5 @@ message UploadFileResponse {
 }
 
 service FileUploadService {
-  // Due to an issue described by https://github.com/improbable-eng/ts-protoc-gen/pull/264
-  // we use a streaming response but only expect one response.
-  rpc UploadFile(stream UploadFileRequest) returns (stream UploadFileResponse) {}
+  rpc UploadFile(stream UploadFileRequest) returns (UploadFileResponse) {}
 }

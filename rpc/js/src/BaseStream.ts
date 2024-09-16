@@ -1,4 +1,3 @@
-import { GrpcWebTransportOptions } from '@connectrpc/connect-web';
 import type { PacketMessage, Stream } from './gen/proto/rpc/webrtc/v1/grpc_pb';
 
 // MaxMessageSize is the maximum size a gRPC message can be.
@@ -7,7 +6,6 @@ let MaxMessageSize = 1 << 25;
 export class BaseStream {
   protected readonly grpcStream: Stream;
   private readonly onDone: (id: number) => void;
-  protected readonly opts: GrpcWebTransportOptions;
   protected closed: boolean = false;
   private readonly packetBuf: Array<Uint8Array> = [];
   private packetBufSize = 0;
@@ -15,11 +13,9 @@ export class BaseStream {
   constructor(
     grpcStream: Stream,
     onDone: (id: number) => void,
-    opts: GrpcWebTransportOptions
   ) {
     this.grpcStream = grpcStream;
     this.onDone = onDone;
-    this.opts = opts;
   }
 
   public closeWithRecvError() {

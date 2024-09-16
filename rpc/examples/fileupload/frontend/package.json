@@ -3,8 +3,10 @@
   "version": "0.1.0",
   "license": "MIT",
   "dependencies": {
-    "@improbable-eng/grpc-web": "^0.13.0",
-    "@viamrobotics/rpc": "^0.1.25",
+    "@bufbuild/protobuf": "^1.10.0",
+    "@connectrpc/connect": "^1.5.0",
+    "@connectrpc/connect-web": "^1.5.0",
+    "@viamrobotics/rpc": "file:../../../js",
     "google-protobuf": "^3.14.0"
   },
   "devDependencies": {

@@ -1,8 +1,10 @@
-import { grpc } from "@improbable-eng/grpc-web";
+import { PartialMessage } from "@bufbuild/protobuf";
+import { createPromiseClient, PromiseClient } from "@connectrpc/connect";
+import { createWritableIterable } from "@connectrpc/connect/protocol";
 import { Credentials, dialWebRTC } from "@viamrobotics/rpc";
 import { DialOptions } from "@viamrobotics/rpc/src/dial";
+import { FileUploadService } from "./gen/proto/rpc/examples/fileupload/v1/fileupload_connect";
 import { UploadFileRequest, UploadFileResponse } from "./gen/proto/rpc/examples/fileupload/v1/fileupload_pb";
-import { FileUploadServiceClient } from "./gen/proto/rpc/examples/fileupload/v1/fileupload_pb_service";
 
 const thisHost = `${window.location.protocol}//${window.location.host}`;
 
@@ -15,9 +17,9 @@ declare global {
 	}
 }
 
-let clientResolve: (value: FileUploadServiceClient) => void;
+let clientResolve: (value: PromiseClient<typeof FileUploadService>) => void;
 let clientReject: (reason?: any) => void;
-let clientProm = new Promise<FileUploadServiceClient>((resolve, reject) => {
+let clientProm = new Promise<PromiseClient<typeof FileUploadService>>((resolve, reject) => {
 	clientResolve = resolve;
 	clientReject = reject;
 });
@@ -41,10 +43,9 @@ if (opts.externalAuthAddress) {
 	opts.webrtcOptions!.signalingExternalAuthAddress = opts.externalAuthAddress;
 	opts.webrtcOptions!.signalingExternalAuthToEntity = opts.externalAuthToEntity;
 }
-dialWebRTC(thisHost, webrtcHost, opts).then(async ({ transportFactory }) => {
+dialWebRTC(thisHost, webrtcHost, opts).then(async ({ transport }) => {
 	console.log("WebRTC connection established")
-	const webrtcClient = new FileUploadServiceClient(webrtcHost, { transport: transportFactory });
-	clientResolve(webrtcClient);
+	clientResolve(createPromiseClient(FileUploadService, transport));
 }).catch((e: any) => clientReject(e));
 
 window.onload = async (event) => {
@@ -63,7 +64,7 @@ window.onload = async (event) => {
 	});
 };
 
-async function doUpload(client: FileUploadServiceClient, name: string, data: Uint8Array) {
+async function doUpload(client: PromiseClient<typeof FileUploadService>, name: string, data: Uint8Array) {
 	let pResolve: (value: UploadFileResponse) => void;
 	let pReject: (reason?: any) => void;
 	let done = new Promise<UploadFileResponse>((resolve, reject) => {
@@ -71,32 +72,23 @@ async function doUpload(client: FileUploadServiceClient, name: string, data: Uin
 		pReject = reject;
 	});
 
-	const uploadStream = client.uploadFile();
+
+	const uploadStream = createWritableIterable<PartialMessage<UploadFileRequest>>();
+	const resp = client.uploadFile(uploadStream);
 
 	let uploadFileRequest = new UploadFileRequest();
 
-	uploadFileRequest.setName(name);
+	uploadFileRequest.data.case = "name";
+	uploadFileRequest.data.value = name;
 	uploadStream.write(uploadFileRequest);
-
-	uploadStream.on("data", (message: UploadFileResponse) => {
-		pResolve(message);
-	});
-	uploadStream.on("end", ({ code, details }: { code: number, details: string, metadata: grpc.Metadata }) => {
-		if (code !== 0) {
-			console.log(code);
-			console.log(details);
-			pReject(code);
-			return;
-		}
-	});
 
 	for (let i = 0; i < data.byteLength; i += 1024) {
 		uploadFileRequest = new UploadFileRequest();
-		uploadFileRequest.setChunkData(data.slice(i, i + 1024));
+		uploadFileRequest.data.case = "chunkData";
+		uploadFileRequest.data.value = data.slice(i, i + 1024);
 		uploadStream.write(uploadFileRequest);
 	}
 
-	uploadStream.end();
-	const resp = await done;
-	console.log("upload complete", resp.toObject());
+	uploadStream.close();
+	console.log("upload complete", (await resp).toJson());
 }

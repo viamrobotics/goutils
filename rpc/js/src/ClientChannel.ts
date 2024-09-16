@@ -24,7 +24,7 @@ export type TransportFactory = (
   init: GrpcWebTransportOptions
 ) => Transport
 
-export class ClientChannel extends BaseChannel {
+export class ClientChannel extends BaseChannel implements Transport {
   private streamIDCounter = 0;
   private readonly streams: Record<number, activeClienStream> = {};
 
@@ -43,12 +43,6 @@ export class ClientChannel extends BaseChannel {
       this.onConnectionTerminated();
     });
     dc.addEventListener('close', () => this.onConnectionTerminated());
-  }
-
-  public transportFactory(): TransportFactory {
-    return (opts: GrpcWebTransportOptions) => {
-      return this.newStream(this.nextStreamID(), opts);
-    };
   }
 
   private onConnectionTerminated() {
@@ -94,7 +88,6 @@ export class ClientChannel extends BaseChannel {
 
   private newStream(
     stream: Stream,
-    opts: GrpcWebTransportOptions
   ): Transport {
     if (this.isClosed()) {
       return new FailingClientStream(
@@ -109,8 +102,7 @@ export class ClientChannel extends BaseChannel {
       const clientStream = new ClientStream(
         this,
         stream,
-        (id: number) => this.removeStreamByID(id),
-        opts
+        (id: number) => this.removeStreamByID(id)
       );
       activeStream = { cs: clientStream };
       this.streams[Number(stream.id)] = activeStream;
@@ -150,6 +142,40 @@ export class ClientChannel extends BaseChannel {
       value: true,
     }
     this.write(request);
+  }
+
+  public async unary<
+    I extends Message<I> = AnyMessage,
+    O extends Message<O> = AnyMessage,
+  >(
+    service: ServiceType,
+    method: MethodInfo<I, O>,
+    signal: AbortSignal | undefined,
+    timeoutMs: number | undefined,
+    header: Headers,
+    message: PartialMessage<I>,
+    contextValues?: ContextValues,
+  ): Promise<UnaryResponse<I, O>> {
+    return this.
+      newStream(this.nextStreamID()).
+      unary(service, method, signal, timeoutMs, header, message, contextValues);
+  }
+
+  public async stream<
+    I extends Message<I> = AnyMessage,
+    O extends Message<O> = AnyMessage
+  >(
+    service: ServiceType, 
+    method: MethodInfo<I, O>, 
+    signal: AbortSignal | undefined, 
+    timeoutMs: number | undefined, 
+    header: HeadersInit | undefined, 
+    input: AsyncIterable<PartialMessage<I>>, 
+    contextValues?: ContextValues,
+  ): Promise<StreamResponse<I, O>> {
+    return this.
+      newStream(this.nextStreamID()).
+      stream(service, method, signal, timeoutMs, header, input, contextValues);
   }
 }
 

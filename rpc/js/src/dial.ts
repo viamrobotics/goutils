@@ -254,7 +254,7 @@ class authenticatedTransport implements Transport {
 }
 
 export interface WebRTCConnection {
-  transportFactory: TransportFactory;
+  transport: Transport;
   peerConnection: RTCPeerConnection;
   dataChannel: RTCDataChannel;
 }
@@ -618,7 +618,7 @@ export async function dialWebRTC(
 
     successful = true;
     return {
-      transportFactory: cc.transportFactory(),
+      transport: cc,
       peerConnection: pc,
       dataChannel: dc,
     };

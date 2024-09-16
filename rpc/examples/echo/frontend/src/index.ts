@@ -60,16 +60,23 @@ async function getClients() {
 		opts.webrtcOptions!.signalingExternalAuthToEntity = opts.externalAuthToEntity;
 	}
 
-	// TODO(erd): add back
-	// const webRTCConn = await dialWebRTC(thisHost, webrtcHost, opts);
-	// const webrtcClient = createPromiseClient(EchoService, webRTCConn.transportFactory);
-	// await renderResponses(webrtcClient, "wrtc");
+	try {
+		const webRTCConn = await dialWebRTC(thisHost, webrtcHost, opts);
+		const webrtcClient = createPromiseClient(EchoService, webRTCConn.transport);
+		await renderResponses(webrtcClient, "wrtc");
+	} catch (err) {
+		console.error("error trying WebRTC", err);
+	}
 
-	const directTransport = await dialDirect(thisHost, opts);
-	console.log("TRANSPORT", directTransport);
-	const directClient = createPromiseClient(EchoService, directTransport);
-	await renderResponses(directClient, "direct");
+	try {
+		const directTransport = await dialDirect(thisHost, opts);
+		const directClient = createPromiseClient(EchoService, directTransport);
+		await renderResponses(directClient, "direct");
+	} catch (err) {
+		console.error("error trying direct", err);
+	}
 }
+
 getClients().catch(e => {
 	console.error("error getting clients", e);
 });
@@ -78,11 +85,8 @@ async function renderResponses(client: PromiseClient<typeof EchoService>, method
 	const echoRequest = new EchoRequest();
 	echoRequest.message = "hello";
 
-	console.log("HERE1")
 	const response = await client.echo(echoRequest);
-	console.log("HERE2")
 	createElemForResponse(response.message, method, "unary");
-	console.log("HERE3")
 
 	const echoMultipleRequest = new EchoMultipleRequest();
 	echoMultipleRequest.message = "hello?";
@@ -98,6 +102,12 @@ async function renderResponses(client: PromiseClient<typeof EchoService>, method
 			console.log(err.details);
 		}
 		throw err;
+	}
+
+	if (method === "direct") {
+		// grpc-web cannot do bidi correctly. Previous versions
+		// of this code just stalled after the first message was received.
+		return;
 	}
 
 	const clientStream = createWritableIterable<PartialMessage<EchoBiDiRequest>>();
