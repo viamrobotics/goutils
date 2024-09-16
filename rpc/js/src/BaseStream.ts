@@ -5,7 +5,7 @@ import type { PacketMessage, Stream } from './gen/proto/rpc/webrtc/v1/grpc_pb';
 let MaxMessageSize = 1 << 25;
 
 export class BaseStream {
-  protected readonly stream: Stream;
+  protected readonly grpcStream: Stream;
   private readonly onDone: (id: number) => void;
   protected readonly opts: GrpcWebTransportOptions;
   protected closed: boolean = false;
@@ -13,11 +13,11 @@ export class BaseStream {
   private packetBufSize = 0;
 
   constructor(
-    stream: Stream,
+    grpcStream: Stream,
     onDone: (id: number) => void,
     opts: GrpcWebTransportOptions
   ) {
-    this.stream = stream;
+    this.grpcStream = grpcStream;
     this.onDone = onDone;
     this.opts = opts;
   }
@@ -27,7 +27,7 @@ export class BaseStream {
       return;
     }
     this.closed = true;
-    this.onDone(Number(this.stream.id));
+    this.onDone(Number(this.grpcStream.id));
   }
 
   protected processPacketMessage(msg: PacketMessage): Uint8Array | undefined {

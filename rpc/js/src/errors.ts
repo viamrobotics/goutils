@@ -18,14 +18,3 @@ export class ConnectionClosedError extends Error {
   }
 }
 
-export class GRPCError extends Error {
-  public readonly code: number;
-  public readonly grpcMessage: string;
-
-  constructor(code: number, message: string) {
-    super(`Code=${code} Message=${message}`);
-    this.code = code;
-    this.grpcMessage = message;
-    Object.setPrototypeOf(this, GRPCError.prototype);
-  }
-}

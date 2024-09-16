@@ -10,7 +10,7 @@ import type {
 
 import type { ContextValues, StreamResponse, Transport, UnaryResponse } from "@connectrpc/connect";
 import { Code, ConnectError, createPromiseClient } from "@connectrpc/connect";
-import { ClientChannel } from './ClientChannel';
+import { ClientChannel, TransportFactory } from './ClientChannel';
 import { ConnectionClosedError } from './errors';
 import { Status } from './gen/google/rpc/status_pb';
 import {
@@ -93,11 +93,6 @@ export interface Credentials {
   type: string;
   payload: string;
 }
-
-// TODO(erd): cross-platform
-type TransportFactory = (
-  init: GrpcWebTransportOptions
-) => Transport
 
 // TODO(erd): correctly get grpc-web/node
 export async function dialDirect(

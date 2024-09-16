@@ -1,10 +1,9 @@
 import { AnyMessage, Message, MethodInfo, PartialMessage, ServiceType } from '@bufbuild/protobuf';
-import { ContextValues, createContextValues, Transport, UnaryRequest, UnaryResponse } from '@connectrpc/connect';
+import { ContextValues, StreamResponse, Transport, UnaryRequest, UnaryResponse, createContextValues } from '@connectrpc/connect';
 import { GrpcWebTransportOptions } from '@connectrpc/connect-web';
-import { createClientMethodSerializers, runUnaryCall } from '@connectrpc/connect/protocol';
+import { runUnaryCall } from '@connectrpc/connect/protocol';
 import { BaseStream } from './BaseStream';
 import type { ClientChannel } from './ClientChannel';
-import { GRPCError } from './errors';
 import {
   Metadata,
   PacketMessage,
@@ -48,13 +47,6 @@ export class ClientStream extends BaseStream implements Transport {
     message: PartialMessage<I>,
     contextValues?: ContextValues,
   ): Promise<UnaryResponse<I, O>> {
-    const { serialize, parse } = createClientMethodSerializers(
-      method,
-      true,
-      this.opts.jsonOptions,
-      this.opts.binaryOptions,
-    );
-
     return await runUnaryCall<I, O>({
       signal,
       interceptors: this.opts.interceptors,
@@ -81,7 +73,7 @@ export class ClientStream extends BaseStream implements Transport {
         }
 
         try {
-          this.channel.writeHeaders(this.stream, requestHeaders);
+          this.channel.writeHeaders(this.grpcStream, requestHeaders);
         } catch (error) {
           console.error('error writing headers', error);
           this.closeWithRecvError();
@@ -89,11 +81,26 @@ export class ClientStream extends BaseStream implements Transport {
 
         // TODO(erd): around here https://github.com/connectrpc/examples-es/blob/main/react-native/app/custom-transport.ts#L111
 
-        this.sendMessage(serialize(req.message));
+        this.sendMessage(req.message.toBinary());
 
         throw "ah";
       },
     });
+  }
+
+  public async stream<
+    I extends Message<I> = AnyMessage,
+    O extends Message<O> = AnyMessage
+  >(
+    _service: ServiceType, 
+    _method: MethodInfo<I, O>, 
+    _signal: AbortSignal | undefined, 
+    _timeoutMs: number | undefined, 
+    _header: HeadersInit | undefined, 
+    _input: AsyncIterable<PartialMessage<I>>, 
+    _contextValues?: ContextValues,
+  ): Promise<StreamResponse<I, O>> {
+    throw new Error("unimplemented");
   }
 
   public sendMessage(msgBytes?: Uint8Array) {
@@ -107,17 +114,18 @@ export class ClientStream extends BaseStream implements Transport {
 
   public resetStream() {
     try {
-      this.channel.writeReset(this.stream);
+      this.channel.writeReset(this.grpcStream);
     } catch (error) {
       console.error('error writing reset', error);
-      this.closeWithRecvError(error as Error);
+      this.closeWithRecvError();
     }
   }
 
   public finishSend() {
-    if (!this.opts.methodDefinition.requestStream) {
-      return;
-    }
+    // TODO(erd): check?
+    // if (!this.opts.methodDefinition.requestStream) {
+    //   return;
+    // }
     this.writeMessage(true, undefined);
   }
 
@@ -137,7 +145,7 @@ export class ClientStream extends BaseStream implements Transport {
         requestMessage.hasMessage = !!msgBytes;
         requestMessage.packetMessage = packet;
         requestMessage.eos = eos;
-        this.channel.writeMessage(this.stream, requestMessage);
+        this.channel.writeMessage(this.grpcStream, requestMessage);
         return;
       }
 
@@ -156,7 +164,7 @@ export class ClientStream extends BaseStream implements Transport {
         requestMessage.hasMessage = !!msgBytes;
         requestMessage.packetMessage = packet;
         requestMessage.eos = eos;
-        this.channel.writeMessage(this.stream, requestMessage);
+        this.channel.writeMessage(this.grpcStream, requestMessage);
       }
     } catch (error) {
       console.error('error writing message', error);
@@ -165,52 +173,57 @@ export class ClientStream extends BaseStream implements Transport {
   }
 
   public onResponse(resp: Response) {
-    switch (resp.getTypeCase()) {
-      case Response.TypeCase.HEADERS:
+    switch (resp.type.case) {
+      case "headers":
         if (this.headersReceived) {
-          this.closeWithRecvError(new Error('headers already received'));
+          console.error(`headers already received for ${this.grpcStream.id}`);
           return;
         }
         if (this.trailersReceived) {
-          this.closeWithRecvError(new Error('headers received after trailers'));
+          console.error(`headers received after trailers for ${this.grpcStream.id}`);
           return;
         }
-        this.processHeaders(resp.getHeaders()!);
+        this.processHeaders(resp.type.value);
         break;
-      case Response.TypeCase.MESSAGE:
+      case "message":
         if (!this.headersReceived) {
-          this.closeWithRecvError(new Error('headers not yet received'));
+          console.error(`headers not yet received for ${this.grpcStream.id}`);
           return;
         }
         if (this.trailersReceived) {
-          this.closeWithRecvError(new Error('headers received after trailers'));
+          console.error(`headers received after trailers for ${this.grpcStream.id}`);
           return;
         }
-        this.processMessage(resp.getMessage()!);
+        this.processMessage(resp.type.value);
         break;
-      case Response.TypeCase.TRAILERS:
-        this.processTrailers(resp.getTrailers()!);
+      case "trailers":
+        this.processTrailers(resp.type.value);
         break;
       default:
-        console.error('unknown response type', resp.getTypeCase());
+        console.error('unknown response type', resp.type.case);
         break;
     }
   }
 
-  private processHeaders(headers: ResponseHeaders) {
+  private processHeaders(_headers: ResponseHeaders) {
     this.headersReceived = true;
-    this.opts.onHeaders(toGRPCMetadata(headers.getMetadata()), 200);
+    // TODO(erd): callback
+    // this.opts.onHeaders(toGRPCMetadata(headers.getMetadata()), 200);
   }
 
   private processMessage(msg: ResponseMessage) {
-    const result = super.processPacketMessage(msg.getPacketMessage()!);
+    if (!msg.packetMessage) {
+      return;
+    }
+    const result = super.processPacketMessage(msg.packetMessage);
     if (!result) {
       return;
     }
     const chunk = new ArrayBuffer(result.length + 5);
     new DataView(chunk, 1, 4).setUint32(0, result.length, false);
     new Uint8Array(chunk, 5).set(result);
-    this.opts.onChunk(new Uint8Array(chunk));
+    // TODO(erd): callback
+    // this.opts.onChunk(new Uint8Array(chunk));
   }
 
   private processTrailers(trailers: ResponseTrailers) {
@@ -236,7 +249,8 @@ export class ClientStream extends BaseStream implements Transport {
     new DataView(chunk, 0, 1).setUint8(0, 1 << 7);
     new DataView(chunk, 1, 4).setUint32(0, headerBytes.length, false);
     new Uint8Array(chunk, 5).set(headerBytes);
-    this.opts.onChunk(new Uint8Array(chunk));
+    // TODO(erd): callback
+    // this.opts.onChunk(new Uint8Array(chunk));
     if (statusCode === 0) {
       this.closeWithRecvError();
       return;

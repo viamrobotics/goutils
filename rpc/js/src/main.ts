@@ -13,4 +13,4 @@ export {
   type WebRTCConnection
 } from './dial';
 
-export { ConnectionClosedError, GRPCError } from './errors';
+export { ConnectionClosedError } from './errors';

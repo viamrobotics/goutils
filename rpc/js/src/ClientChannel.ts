@@ -1,4 +1,6 @@
-import type { grpc } from '@improbable-eng/grpc-web';
+import { AnyMessage, Message, MethodInfo, PartialMessage, ServiceType } from '@bufbuild/protobuf';
+import { ContextValues, StreamResponse, Transport, UnaryResponse } from '@connectrpc/connect';
+import { GrpcWebTransportOptions } from '@connectrpc/connect-web';
 import { BaseChannel } from './BaseChannel';
 import { ClientStream } from './ClientStream';
 import { ConnectionClosedError } from './errors';
@@ -16,6 +18,11 @@ let MaxStreamCount = 256;
 interface activeClienStream {
   cs: ClientStream;
 }
+
+// TODO(erd): cross-platform
+export type TransportFactory = (
+  init: GrpcWebTransportOptions
+) => Transport
 
 export class ClientChannel extends BaseChannel {
   private streamIDCounter = 0;
@@ -38,8 +45,8 @@ export class ClientChannel extends BaseChannel {
     dc.addEventListener('close', () => this.onConnectionTerminated());
   }
 
-  public transportFactory(): grpc.TransportFactory {
-    return (opts: grpc.TransportOptions) => {
+  public transportFactory(): TransportFactory {
+    return (opts: GrpcWebTransportOptions) => {
       return this.newStream(this.nextStreamID(), opts);
     };
   }
@@ -47,17 +54,16 @@ export class ClientChannel extends BaseChannel {
   private onConnectionTerminated() {
     // we may call this twice but we know closed will be true at this point.
     this.closeWithReason(new ConnectionClosedError('data channel closed'));
-    const err = new ConnectionClosedError('connection terminated');
     for (const streamId in this.streams) {
       const stream = this.streams[streamId]!;
-      stream.cs.closeWithRecvError(err);
+      stream.cs.closeWithRecvError();
     }
   }
 
   private onChannelMessage(event: MessageEvent<any>) {
     let resp: Response;
     try {
-      resp = Response.deserializeBinary(
+      resp = Response.fromBinary(
         new Uint8Array(event.data as ArrayBuffer)
       );
     } catch (e) {
@@ -65,14 +71,14 @@ export class ClientChannel extends BaseChannel {
       return;
     }
 
-    const stream = resp.getStream();
+    const stream = resp.stream;
     if (stream === undefined) {
       console.error('no stream id; discarding');
       return;
     }
 
-    const id = stream.getId();
-    const activeStream = this.streams[id];
+    const id = stream.id;
+    const activeStream = this.streams[Number(id)];
     if (activeStream === undefined) {
       console.error('no stream for id; discarding', 'id', id);
       return;
@@ -82,24 +88,23 @@ export class ClientChannel extends BaseChannel {
 
   private nextStreamID(): Stream {
     const stream = new Stream();
-    stream.setId(this.streamIDCounter++);
+    stream.id = BigInt(this.streamIDCounter++);
     return stream;
   }
 
   private newStream(
     stream: Stream,
-    opts: grpc.TransportOptions
-  ): grpc.Transport {
+    opts: GrpcWebTransportOptions
+  ): Transport {
     if (this.isClosed()) {
       return new FailingClientStream(
         new ConnectionClosedError('connection closed'),
-        opts
       );
     }
-    let activeStream = this.streams[stream.getId()];
+    let activeStream = this.streams[Number(stream.id)];
     if (activeStream === undefined) {
       if (Object.keys(this.streams).length > MaxStreamCount) {
-        return new FailingClientStream(new Error('stream limit hit'), opts);
+        return new FailingClientStream(new Error('stream limit hit'));
       }
       const clientStream = new ClientStream(
         this,
@@ -108,7 +113,7 @@ export class ClientChannel extends BaseChannel {
         opts
       );
       activeStream = { cs: clientStream };
-      this.streams[stream.getId()] = activeStream;
+      this.streams[Number(stream.id)] = activeStream;
     }
     return activeStream.cs;
   }
@@ -119,44 +124,69 @@ export class ClientChannel extends BaseChannel {
 
   public writeHeaders(stream: Stream, headers: RequestHeaders) {
     const request = new Request();
-    request.setStream(stream);
-    request.setHeaders(headers);
+    request.stream = stream;
+    request.type = {
+      case: "headers",
+      value: headers,
+    }
     this.write(request);
   }
 
   public writeMessage(stream: Stream, msg: RequestMessage) {
     const request = new Request();
-    request.setStream(stream);
-    request.setMessage(msg);
+    request.stream = stream;
+    request.type = {
+      case: "message",
+      value: msg,
+    }
     this.write(request);
   }
 
   public writeReset(stream: Stream) {
     const request = new Request();
-    request.setStream(stream);
-    request.setRstStream(true);
+    request.stream = stream;
+    request.type = {
+      case: "rstStream",
+      value: true,
+    }
     this.write(request);
   }
 }
 
-class FailingClientStream implements grpc.Transport {
+class FailingClientStream implements Transport {
   private readonly err: Error;
-  private readonly opts: grpc.TransportOptions;
 
-  constructor(err: Error, opts: grpc.TransportOptions) {
+  constructor(err: Error) {
     this.err = err;
-    this.opts = opts;
   }
 
-  public start() {
-    if (this.opts.onEnd) {
-      setTimeout(() => this.opts.onEnd(this.err));
-    }
+  public async unary<
+    I extends Message<I> = AnyMessage,
+    O extends Message<O> = AnyMessage,
+  >(
+    _service: ServiceType,
+    _method: MethodInfo<I, O>,
+    _signal: AbortSignal | undefined,
+    _timeoutMs: number | undefined,
+    _header: Headers,
+    _message: PartialMessage<I>,
+    _contextValues?: ContextValues,
+  ): Promise<UnaryResponse<I, O>> {
+    throw this.err;
   }
 
-  public sendMessage() {}
-
-  public finishSend() {}
-
-  public cancel() {}
+  public async stream<
+    I extends Message<I> = AnyMessage,
+    O extends Message<O> = AnyMessage
+  >(
+    _service: ServiceType, 
+    _method: MethodInfo<I, O>, 
+    _signal: AbortSignal | undefined, 
+    _timeoutMs: number | undefined, 
+    _header: HeadersInit | undefined, 
+    _input: AsyncIterable<PartialMessage<I>>, 
+    _contextValues?: ContextValues,
+  ): Promise<StreamResponse<I, O>> {
+    throw this.err;
+  }
 }
