@@ -10,7 +10,7 @@ import type {
 
 import type { ContextValues, StreamResponse, Transport, UnaryResponse } from "@connectrpc/connect";
 import { Code, ConnectError, createPromiseClient } from "@connectrpc/connect";
-import { ClientChannel, TransportFactory } from './ClientChannel';
+import { ClientChannel } from './ClientChannel';
 import { ConnectionClosedError } from './errors';
 import { Status } from './gen/google/rpc/status_pb';
 import {
@@ -32,7 +32,7 @@ import {
 } from './gen/proto/rpc/webrtc/v1/signaling_pb';
 import { addSdpFields, newPeerConnectionForClient } from './peer';
 
-import { createGrpcWebTransport, GrpcWebTransportOptions } from "@connectrpc/connect-web";
+import { createGrpcWebTransport } from "@connectrpc/connect-web";
 import { atob, btoa } from './polyfills';
 
 export interface DialOptions {
@@ -92,6 +92,14 @@ export interface DialWebRTCOptions {
 export interface Credentials {
   type: string;
   payload: string;
+}
+
+export type TransportFactory = (
+  init: TransportInitOptions
+) => Transport
+
+interface TransportInitOptions {
+  baseUrl: string;
 }
 
 // TODO(erd): correctly get grpc-web/node
@@ -180,22 +188,20 @@ async function makeAuthenticatedTransportFactory(
     return headers;
   };
   const extraMd = await getExtraHeaders();
-  return (opts: GrpcWebTransportOptions): Transport => {
+  return (opts: TransportInitOptions): Transport => {
     return new authenticatedTransport(opts, defaultFactory, extraMd);
   };
 }
 
 class authenticatedTransport implements Transport {
-  protected readonly opts: GrpcWebTransportOptions;
   protected readonly transport: Transport;
   protected readonly extraHeaders: Headers;
 
   constructor(
-    opts: GrpcWebTransportOptions,
+    opts: TransportInitOptions,
     defaultFactory: TransportFactory,
     extraHeaders: Headers
   ) {
-    this.opts = opts;
     this.extraHeaders = extraHeaders;
     this.transport = defaultFactory(opts);
   }
@@ -249,8 +255,6 @@ class authenticatedTransport implements Transport {
       input,
       contextValues)
   }
-
-  
 }
 
 export interface WebRTCConnection {

@@ -1,6 +1,5 @@
 import { AnyMessage, Message, MethodInfo, PartialMessage, ServiceType } from '@bufbuild/protobuf';
 import { ContextValues, StreamResponse, Transport, UnaryResponse } from '@connectrpc/connect';
-import { GrpcWebTransportOptions } from '@connectrpc/connect-web';
 import { BaseChannel } from './BaseChannel';
 import { ClientStream } from './ClientStream';
 import { ConnectionClosedError } from './errors';
@@ -18,11 +17,6 @@ let MaxStreamCount = 256;
 interface activeClienStream {
   cs: ClientStream;
 }
-
-// TODO(erd): cross-platform
-export type TransportFactory = (
-  init: GrpcWebTransportOptions
-) => Transport
 
 export class ClientChannel extends BaseChannel implements Transport {
   private streamIDCounter = 0;
