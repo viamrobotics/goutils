@@ -3,6 +3,7 @@ package utils
 import (
 	"context"
 	"sync"
+	"time"
 )
 
 // StoppableWorkers is a collection of goroutines that can be stopped at a
@@ -14,6 +15,7 @@ type StoppableWorkers struct {
 	mu         sync.RWMutex
 	ctx        context.Context
 	cancelFunc func()
+	timer      *time.Timer
 
 	workers sync.WaitGroup
 }
@@ -66,6 +68,28 @@ func (sw *StoppableWorkers) Add(worker func(context.Context)) {
 		defer sw.workers.Done()
 		worker(sw.ctx)
 	})
+}
+
+// StartTimer is an optional call that creates a timer that can be used in conjunction with
+// `NextTick`.
+func (sw *StoppableWorkers) StartTimer(duration time.Duration) {
+	sw.timer = time.NewTimer(duration)
+}
+
+// NextTick blocks until the timer ticks or the StoppableWorkers has been canceled. It returns true
+// if the timer has ticked and false if the context is canceled. Such that one can write a loop to
+// do work as such:
+//
+//	for sw.NextTick() {
+//	  doWork()
+//	}
+func (sw *StoppableWorkers) NextTick() bool {
+	select {
+	case <-sw.timer.C:
+		return true
+	case <-sw.ctx.Done():
+		return false
+	}
 }
 
 // Stop idempotently shuts down all the goroutines we started up.
