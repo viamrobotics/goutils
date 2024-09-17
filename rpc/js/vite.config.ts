@@ -17,9 +17,8 @@ export default defineConfig({
       include: [
         /exponential-backoff/u,
         /google-protobuf/u,
-        /@improbable-eng\/grpc-web/u,
         /gen\//u,
-      ],
+      ]
     },
     lib: {
       entry: 'src/main.ts',
@@ -32,7 +31,7 @@ export default defineConfig({
           return;
         }
         warn(warning);
-      },
-    },
+      }
+    }
   },
 });

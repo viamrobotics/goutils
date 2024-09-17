@@ -1,0 +1,4 @@
+node_modules
+src/gen
+src/index.js
+dist

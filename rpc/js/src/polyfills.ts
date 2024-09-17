@@ -45,3 +45,12 @@ export const atob = (input: string = '') => {
 
   return output;
 };
+
+export const createPeerConnection = async (rtcConfig?: RTCConfiguration) => {
+  if (typeof window === 'undefined') {
+    const dc = await import('node-datachannel/polyfill');
+    return new dc.RTCPeerConnection(rtcConfig);
+  } else {
+    return new RTCPeerConnection(rtcConfig);
+  }
+}

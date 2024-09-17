@@ -32,8 +32,10 @@ import {
 } from './gen/proto/rpc/webrtc/v1/signaling_pb';
 import { addSdpFields, newPeerConnectionForClient } from './peer';
 
-import { createGrpcWebTransport } from "@connectrpc/connect-web";
 import { atob, btoa } from './polyfills';
+
+import { createGrpcTransport } from "@connectrpc/connect-node";
+import { RTCSessionDescription } from 'node-datachannel/polyfill';
 
 export interface DialOptions {
   authEntity?: string | undefined;
@@ -95,7 +97,7 @@ export interface Credentials {
 }
 
 export type TransportFactory = (
-  init: TransportInitOptions
+  init: any // platform specific
 ) => Transport
 
 interface TransportInitOptions {
@@ -112,11 +114,12 @@ export async function dialDirect(
   try {
     transFact = window.VIAM.GRPC_TRANSPORT_FACTORY;
   } catch {
-    transFact = createGrpcWebTransport;
+    transFact = createGrpcTransport;
   }
 
   const transportOpts = {
-    baseUrl: address
+    baseUrl: address,
+    httpVersion: '2',
   };
 
   // Client already has access token with no external auth, skip Authenticate process.
@@ -458,8 +461,7 @@ export async function dialWebRTC(
         });
         console.groupEnd();
       });
-      pc.addEventListener(
-        'icecandidate',
+      pc.onicecandidate = 
         async (event: { candidate: RTCIceCandidateInit | null }) => {
           await remoteDescSet;
           if (exchangeDone) {
@@ -505,7 +507,6 @@ export async function dialWebRTC(
             console.error(err);
           }
         }
-      );
 
       await pc.setLocalDescription(offerDesc);
     }

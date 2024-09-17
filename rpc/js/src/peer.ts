@@ -1,4 +1,4 @@
-import { atob, btoa } from './polyfills';
+import { atob, btoa, createPeerConnection } from './polyfills';
 
 interface ReadyPeer {
   pc: RTCPeerConnection;
@@ -38,7 +38,7 @@ export async function newPeerConnectionForClient(
       ],
     };
   }
-  const peerConnection = new RTCPeerConnection(rtcConfig);
+  const peerConnection = await createPeerConnection(rtcConfig);
 
   let pResolve: (value: ReadyPeer) => void;
   const result = new Promise<ReadyPeer>((resolve) => {
@@ -83,7 +83,7 @@ export async function newPeerConnectionForClient(
         await peerConnection.setRemoteDescription(description);
 
         if (description.type === 'offer') {
-          await peerConnection.setLocalDescription();
+          await peerConnection.setLocalDescription({ type: "offer" });
           const newDescription = addSdpFields(
             peerConnection.localDescription,
             additionalSdpFields
@@ -101,7 +101,7 @@ export async function newPeerConnectionForClient(
       return;
     }
     try {
-      await peerConnection.setLocalDescription();
+      await peerConnection.setLocalDescription({ type: "offer" });
       const newDescription = addSdpFields(
         peerConnection.localDescription,
         additionalSdpFields
@@ -123,12 +123,12 @@ export async function newPeerConnectionForClient(
     return Promise.reject(e);
   }
 
-  peerConnection.addEventListener('icecandidate', async (event) => {
+  peerConnection.onicecandidate = async (event) => {
     if (event.candidate !== null) {
       return;
     }
     pResolve({ pc: peerConnection, dc: dataChannel });
-  });
+  };
 
   return result;
 }
