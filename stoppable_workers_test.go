@@ -1,4 +1,4 @@
-package utils_test
+package utils
 
 import (
 	"bytes"
@@ -7,8 +7,6 @@ import (
 	"time"
 
 	"go.viam.com/test"
-
-	"go.viam.com/utils"
 )
 
 func TestStoppableWorkers(t *testing.T) {
@@ -17,7 +15,7 @@ func TestStoppableWorkers(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("one worker", func(t *testing.T) {
-		sw := utils.NewStoppableWorkers(ctx)
+		sw := NewStoppableWorkers(ctx)
 		sw.Add(normalWorker)
 		sw.Stop()
 		ctx := sw.Context()
@@ -26,7 +24,7 @@ func TestStoppableWorkers(t *testing.T) {
 	})
 
 	t.Run("one worker background constructor", func(t *testing.T) {
-		sw := utils.NewBackgroundStoppableWorkers(normalWorker)
+		sw := NewBackgroundStoppableWorkers(normalWorker)
 		sw.Stop()
 		ctx := sw.Context()
 		test.That(t, ctx, test.ShouldNotBeNil)
@@ -34,7 +32,7 @@ func TestStoppableWorkers(t *testing.T) {
 	})
 
 	t.Run("heavy workers", func(t *testing.T) {
-		sw := utils.NewStoppableWorkers(ctx)
+		sw := NewStoppableWorkers(ctx)
 		sw.Add(heavyWorker)
 		sw.Add(heavyWorker)
 		sw.Add(heavyWorker)
@@ -75,7 +73,7 @@ func TestStoppableWorkers(t *testing.T) {
 			}
 		}
 
-		sw := utils.NewBackgroundStoppableWorkers(writeWorker, readWorker)
+		sw := NewBackgroundStoppableWorkers(writeWorker, readWorker)
 		// Sleep for a second to let concurrent workers do work.
 		time.Sleep(500 * time.Millisecond)
 		sw.Stop()
@@ -84,24 +82,49 @@ func TestStoppableWorkers(t *testing.T) {
 	})
 
 	t.Run("nested workers", func(t *testing.T) {
-		sw := utils.NewStoppableWorkers(ctx)
+		sw := NewStoppableWorkers(ctx)
 		sw.Add(nestedWorkersWorker)
 		sw.Stop()
 	})
 
 	t.Run("panicking worker", func(t *testing.T) {
-		sw := utils.NewStoppableWorkers(ctx)
+		sw := NewStoppableWorkers(ctx)
 		// Both adding and stopping a panicking worker should cause no `panic`s.
 		sw.Add(panickingWorker)
 		sw.Stop()
 	})
 
 	t.Run("already stopped", func(t *testing.T) {
-		sw := utils.NewStoppableWorkers(ctx)
+		sw := NewStoppableWorkers(ctx)
 		sw.Stop()
 		sw.Add(normalWorker) // adding after Stop should cause no `panic`
 		sw.Stop()            // stopping twice should cause no `panic`
 	})
+}
+
+func TestStoppableWorkersWithTicker(t *testing.T) {
+	timesCalled := 0
+	workFn := func(ctx context.Context) {
+		timesCalled++
+		select {
+		case <-time.After(24 * time.Hour):
+			t.Log("Failed to observe `Stop` call.")
+			// Realistically, the go test timeout will be hit and not this `FailNow` call.
+			t.FailNow()
+		case <-ctx.Done():
+			return
+		}
+	}
+
+	// Create a worker with a ticker << the sleep time the test will use. The work function
+	// increments a counter and hangs. This test will logically assert that:
+	// - The work function was called exactly once.
+	// - The work function was passed a context that observed `Stop` was called.
+	sw := NewStoppableWorkerWithTicker(time.Millisecond, workFn)
+	time.Sleep(time.Second)
+	sw.Stop()
+
+	test.That(t, timesCalled, test.ShouldEqual, 1)
 }
 
 func normalWorker(ctx context.Context) {
@@ -131,7 +154,7 @@ func heavyWorker(ctx context.Context) {
 }
 
 func nestedWorkersWorker(ctx context.Context) {
-	nestedSW := utils.NewStoppableWorkers(ctx)
+	nestedSW := NewStoppableWorkers(ctx)
 	nestedSW.Add(normalWorker)
 
 	normalWorker(ctx)
