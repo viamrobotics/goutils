@@ -1,7 +1,10 @@
+import { Transport } from '@connectrpc/connect';
+
 declare global {
-  interface Window {
-    VIAM: any;
-  }
+  // eslint-disable-next-line vars-on-top,no-var
+  var VIAM: {
+    GRPC_TRANSPORT_FACTORY: (opts: any) => Transport;
+  };
 }
 
 export {

@@ -1,4 +1,4 @@
-import type { ProtobufMessage } from '@improbable-eng/grpc-web/dist/typings/message';
+import { Message } from '@bufbuild/protobuf';
 import { ConnectionClosedError } from './errors';
 
 export class BaseChannel {
@@ -75,7 +75,7 @@ export class BaseChannel {
     this.closeWithReason(new Error(ev));
   }
 
-  protected write(msg: ProtobufMessage) {
-    this.dataChannel.send(msg.serializeBinary());
+  protected write(msg: Message) {
+    this.dataChannel.send(msg.toBinary());
   }
 }

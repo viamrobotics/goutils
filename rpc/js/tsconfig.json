@@ -1,7 +1,7 @@
 {
   "extends": "@viamrobotics/typescript-config/base.json",
   "compilerOptions": {
-    "target": "ES5",
+    "target": "esnext",
     "useDefineForClassFields": true,
     "importHelpers": true,
     "module": "ESNext",

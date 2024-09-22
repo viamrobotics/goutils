@@ -1,7 +1,13 @@
-import { grpc } from '@improbable-eng/grpc-web';
+import {
+  AnyMessage,
+  Message,
+  MethodInfo,
+  ServiceType,
+} from '@bufbuild/protobuf';
+import { createClientMethodSerializers } from '@connectrpc/connect/protocol';
 import { BaseStream } from './BaseStream';
 import type { ClientChannel } from './ClientChannel';
-import { GRPCError } from './errors';
+import { cloneHeaders } from './dial';
 import {
   Metadata,
   PacketMessage,
@@ -18,77 +24,120 @@ import {
 // see golang/client_stream.go
 const maxRequestMessagePacketDataSize = 16373;
 
-export class ClientStream extends BaseStream implements grpc.Transport {
-  private readonly channel: ClientChannel;
+export interface ClientStreamConstructor<
+  T extends ClientStream<I, O>,
+  I extends Message<I> = AnyMessage,
+  O extends Message<O> = AnyMessage,
+> {
+  // eslint-disable-next-line @typescript-eslint/prefer-function-type -- this works better with ClientChannel
+  new (
+    channel: ClientChannel,
+    stream: Stream,
+    onDone: (id: bigint) => void,
+    service: ServiceType,
+    method: MethodInfo<I, O>,
+    header: HeadersInit | undefined
+  ): T;
+}
+
+/** A ClientStream provides all the facilities needed to invoke and manage a
+ * gRPC stream at a low-level. Implementors like UnaryClientStream and StreamClientStream
+ * handle the method specific flow of unary/stream operations.
+ */
+export abstract class ClientStream<
+  I extends Message<I> = AnyMessage,
+  O extends Message<O> = AnyMessage,
+> extends BaseStream {
+  protected readonly channel: ClientChannel;
+  protected readonly service: ServiceType;
+  protected readonly method: MethodInfo<I, O>;
+  protected readonly parseMessage: (data: Uint8Array) => O;
+  protected readonly requestHeaders: RequestHeaders;
+
   private headersReceived: boolean = false;
   private trailersReceived: boolean = false;
+
+  protected abstract onHeaders(headers: ResponseHeaders): void;
+  protected abstract onTrailers(trailers: ResponseTrailers): void;
+  protected abstract onMessage(msgBytes: Uint8Array): void;
 
   constructor(
     channel: ClientChannel,
     stream: Stream,
-    onDone: (id: number) => void,
-    opts: grpc.TransportOptions
+    onDone: (id: bigint) => void,
+    service: ServiceType,
+    method: MethodInfo<I, O>,
+    header: HeadersInit | undefined
   ) {
-    super(stream, onDone, opts);
+    super(stream, onDone);
     this.channel = channel;
-  }
+    this.service = service;
+    this.method = method;
 
-  public start(metadata: grpc.Metadata) {
-    const method = `/${this.opts.methodDefinition.service.serviceName}/${this.opts.methodDefinition.methodName}`;
-    const requestHeaders = new RequestHeaders();
-    requestHeaders.setMethod(method);
-    requestHeaders.setMetadata(fromGRPCMetadata(metadata));
-
-    try {
-      this.channel.writeHeaders(this.stream, requestHeaders);
-    } catch (error) {
-      console.error('error writing headers', error);
-      this.closeWithRecvError(error as Error);
+    const { parse } = createClientMethodSerializers(
+      method,
+      true,
+      undefined,
+      undefined
+    );
+    this.parseMessage = parse;
+    const svcMethod = `/${service.typeName}/${method.name}`;
+    this.requestHeaders = new RequestHeaders({
+      method: svcMethod,
+    });
+    const metadataProto = fromGRPCMetadata(cloneHeaders(header));
+    if (metadataProto) {
+      this.requestHeaders.metadata = metadataProto;
     }
   }
 
-  public sendMessage(msgBytes?: Uint8Array) {
-    // skip frame header bytes
+  protected startRequest(signal?: AbortSignal) {
+    if (signal) {
+      signal.onabort = () => {
+        this.resetStream();
+      };
+    }
+
+    try {
+      this.channel.writeHeaders(this.grpcStream, this.requestHeaders);
+    } catch (error) {
+      console.error('error writing headers', error);
+      this.closeWithRecvError();
+    }
+  }
+
+  protected sendMessage(msgBytes?: Uint8Array) {
     if (msgBytes) {
-      this.writeMessage(false, msgBytes.slice(5));
+      this.writeMessage(false, msgBytes);
       return;
     }
     this.writeMessage(false, undefined);
   }
 
-  public resetStream() {
-    try {
-      this.channel.writeReset(this.stream);
-    } catch (error) {
-      console.error('error writing reset', error);
-      this.closeWithRecvError(error as Error);
-    }
-  }
-
-  public finishSend() {
-    if (!this.opts.methodDefinition.requestStream) {
-      return;
-    }
-    this.writeMessage(true, undefined);
-  }
-
-  public cancel() {
+  protected resetStream() {
     if (this.closed) {
       return;
     }
-    this.resetStream();
+    try {
+      this.channel.writeReset(this.grpcStream);
+    } catch (error) {
+      console.error('error writing reset', error);
+      this.closeWithRecvError();
+    }
   }
 
-  private writeMessage(eos: boolean, msgBytes?: Uint8Array) {
+  protected writeMessage(eos: boolean, msgBytes?: Uint8Array) {
     try {
       if (!msgBytes || msgBytes.length == 0) {
-        const packet = new PacketMessage();
-        packet.setEom(true);
-        const requestMessage = new RequestMessage();
-        requestMessage.setHasMessage(!!msgBytes);
-        requestMessage.setPacketMessage(packet);
-        requestMessage.setEos(eos);
-        this.channel.writeMessage(this.stream, requestMessage);
+        const packetMessage = new PacketMessage({
+          eom: true,
+        });
+        const requestMessage = new RequestMessage({
+          hasMessage: !!msgBytes,
+          packetMessage,
+          eos,
+        });
+        this.channel.writeMessage(this.grpcStream, requestMessage);
         return;
       }
 
@@ -97,159 +146,133 @@ export class ClientStream extends BaseStream implements grpc.Transport {
           msgBytes.length,
           maxRequestMessagePacketDataSize
         );
-        const packet = new PacketMessage();
-        packet.setData(msgBytes.slice(0, amountToSend));
+        const packetMessage = new PacketMessage();
+        packetMessage.data = msgBytes.slice(0, amountToSend);
         msgBytes = msgBytes.slice(amountToSend);
         if (msgBytes.length === 0) {
-          packet.setEom(true);
+          packetMessage.eom = true;
         }
-        const requestMessage = new RequestMessage();
-        requestMessage.setHasMessage(!!msgBytes);
-        requestMessage.setPacketMessage(packet);
-        requestMessage.setEos(eos);
-        this.channel.writeMessage(this.stream, requestMessage);
+        const requestMessage = new RequestMessage({
+          hasMessage: !!msgBytes,
+          packetMessage,
+          eos,
+        });
+        this.channel.writeMessage(this.grpcStream, requestMessage);
       }
     } catch (error) {
       console.error('error writing message', error);
-      this.closeWithRecvError(error as Error);
+      this.closeWithRecvError();
     }
   }
 
   public onResponse(resp: Response) {
-    switch (resp.getTypeCase()) {
-      case Response.TypeCase.HEADERS:
+    switch (resp.type.case) {
+      case 'headers':
         if (this.headersReceived) {
-          this.closeWithRecvError(new Error('headers already received'));
+          console.error(
+            `invariant: headers already received for ${this.grpcStream.id}`
+          );
           return;
         }
         if (this.trailersReceived) {
-          this.closeWithRecvError(new Error('headers received after trailers'));
+          console.error(
+            `invariant: headers received after trailers for ${this.grpcStream.id}`
+          );
           return;
         }
-        this.processHeaders(resp.getHeaders()!);
+        this.processHeaders(resp.type.value);
         break;
-      case Response.TypeCase.MESSAGE:
+      case 'message':
         if (!this.headersReceived) {
-          this.closeWithRecvError(new Error('headers not yet received'));
+          console.error(
+            `invariant: headers not yet received for ${this.grpcStream.id}`
+          );
           return;
         }
         if (this.trailersReceived) {
-          this.closeWithRecvError(new Error('headers received after trailers'));
+          console.error(
+            `invariant: headers received after trailers for ${this.grpcStream.id}`
+          );
           return;
         }
-        this.processMessage(resp.getMessage()!);
+        this.processMessage(resp.type.value);
         break;
-      case Response.TypeCase.TRAILERS:
-        this.processTrailers(resp.getTrailers()!);
+      case 'trailers':
+        this.processTrailers(resp.type.value);
         break;
       default:
-        console.error('unknown response type', resp.getTypeCase());
+        console.error('unknown response type', resp.type.case);
         break;
     }
   }
 
   private processHeaders(headers: ResponseHeaders) {
     this.headersReceived = true;
-    this.opts.onHeaders(toGRPCMetadata(headers.getMetadata()), 200);
+    if (!this.onHeaders) {
+      throw new Error('invariant: onHeaders unset');
+    }
+    this.onHeaders(headers);
   }
 
   private processMessage(msg: ResponseMessage) {
-    const result = super.processPacketMessage(msg.getPacketMessage()!);
+    if (!this.onMessage) {
+      throw new Error('invariant: onMessage unset');
+    }
+    if (!msg.packetMessage) {
+      return;
+    }
+    const result = super.processPacketMessage(msg.packetMessage);
     if (!result) {
       return;
     }
-    const chunk = new ArrayBuffer(result.length + 5);
-    new DataView(chunk, 1, 4).setUint32(0, result.length, false);
-    new Uint8Array(chunk, 5).set(result);
-    this.opts.onChunk(new Uint8Array(chunk));
+    this.onMessage(result);
   }
 
   private processTrailers(trailers: ResponseTrailers) {
     this.trailersReceived = true;
-    const headers = toGRPCMetadata(trailers.getMetadata());
-    let statusCode, statusMessage;
-    const status = trailers.getStatus();
-    if (status) {
-      statusCode = status.getCode();
-      statusMessage = status.getMessage();
-      headers.set('grpc-status', `${status.getCode()}`);
-      if (statusMessage !== undefined) {
-        headers.set('grpc-message', status.getMessage());
-      }
-    } else {
-      statusCode = 0;
-      headers.set('grpc-status', '0');
-      statusMessage = '';
+    if (!this.onTrailers) {
+      throw new Error('invariant: onTrailers unset');
     }
 
-    const headerBytes = headersToBytes(headers);
-    const chunk = new ArrayBuffer(headerBytes.length + 5);
-    new DataView(chunk, 0, 1).setUint8(0, 1 << 7);
-    new DataView(chunk, 1, 4).setUint32(0, headerBytes.length, false);
-    new Uint8Array(chunk, 5).set(headerBytes);
-    this.opts.onChunk(new Uint8Array(chunk));
+    let statusCode;
+    const { status } = trailers;
+    if (status) {
+      statusCode = status.code;
+    } else {
+      statusCode = 0;
+    }
+
+    this.onTrailers(trailers);
     if (statusCode === 0) {
       this.closeWithRecvError();
       return;
     }
-    this.closeWithRecvError(new GRPCError(statusCode, statusMessage));
+    this.closeWithRecvError();
   }
 }
 
-// from https://github.com/improbable-eng/grpc-web/blob/6fb683f067bd56862c3a510bc5590b955ce46d2a/ts/src/ChunkParser.ts#L22
-export function encodeASCII(input: string): Uint8Array {
-  const encoded = new Uint8Array(input.length);
-  for (let i = 0; i !== input.length; ++i) {
-    const charCode = input.charCodeAt(i);
-    if (!isValidHeaderAscii(charCode)) {
-      throw new Error('Metadata contains invalid ASCII');
-    }
-    encoded[i] = charCode;
-  }
-  return encoded;
-}
-
-const isAllowedControlChars = (char: number) =>
-  char === 0x9 || char === 0xa || char === 0xd;
-
-function isValidHeaderAscii(val: number): boolean {
-  return isAllowedControlChars(val) || (val >= 0x20 && val <= 0x7e);
-}
-
-function headersToBytes(headers: grpc.Metadata): Uint8Array {
-  let asString = '';
-  headers.forEach((key, values) => {
-    asString += `${key}: ${values.join(', ')}\r\n`;
-  });
-  return encodeASCII(asString);
-}
-
+// Needs testing
 // from https://github.com/jsmouret/grpc-over-webrtc/blob/45cd6d6cf516e78b1e262ea7aa741bc7a7a93dbc/client-improbable/src/grtc/webrtcclient.ts#L7
-const fromGRPCMetadata = (metadata?: grpc.Metadata): Metadata | undefined => {
-  if (!metadata) {
+const fromGRPCMetadata = (headers?: Headers): Metadata | undefined => {
+  if (!headers) {
     return undefined;
   }
-  const result = new Metadata();
-  const md = result.getMdMap();
-  metadata.forEach((key, values) => {
-    const strings = new Strings();
-    strings.setValuesList(values);
-    md.set(key, strings);
+  const result = new Metadata({
+    md: Object.fromEntries(
+      [...headers.entries()].map(([key, value]) => [
+        key,
+        new Strings({ values: [value] }),
+      ])
+    ),
   });
-  if (result.getMdMap().getLength() === 0) {
-    return undefined;
-  }
-  return result;
+
+  return Object.keys(result.md).length > 0 ? result : undefined;
 };
 
-const toGRPCMetadata = (metadata?: Metadata): grpc.Metadata => {
-  const result = new grpc.Metadata();
-  if (metadata) {
-    metadata
-      .getMdMap()
-      .forEach((entry: any, key: any) =>
-        result.append(key, entry.getValuesList())
-      );
-  }
-  return result;
+// Needs testing
+export const toGRPCMetadata = (metadata?: Metadata): Headers => {
+  const headers = Object.entries(metadata?.md ?? {}).flatMap(
+    ([key, { values }]) => values.map<[string, string]>((value) => [key, value])
+  );
+  return new Headers(headers);
 };
