@@ -75,6 +75,13 @@ func NewWebRTCSignalingServer(
 // RPCHostMetadataField is the identifier of a host.
 const RPCHostMetadataField = "rpc-host"
 
+// HeartbeatsAllowedMetadataField is the identifier for allowing heartbeats
+// from a signaling server to answerers.
+const HeartbeatsAllowedMetadataField = "heartbeats-allowed"
+
+// Interval at which to send heartbeats.
+const heartbeatInterval = 15 * time.Second
+
 // HostFromCtx gets the host being called/answered for from the context.
 func HostFromCtx(ctx context.Context) (string, error) {
 	hosts, err := HostsFromCtx(ctx)
@@ -125,6 +132,17 @@ func (srv *WebRTCSignalingServer) validateHosts(hosts ...string) error {
 		return status.Error(codes.InvalidArgument, hostNotAllowedMsg)
 	}
 	return nil
+}
+
+// HeartbeatsAllowedFromCtx checks if heartbeats are allowed with respect to
+// the context.
+func HeartbeatsAllowedFromCtx(ctx context.Context) bool {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok || len(md[HeartbeatsAllowedMetadataField]) == 0 {
+		return false
+	}
+	// Only allow "true" as a value for now.
+	return md[HeartbeatsAllowedMetadataField][0] == "true"
 }
 
 // Call is a request/offer to start a caller with the connected answerer.
@@ -331,7 +349,29 @@ func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 	}
 	defer srv.clearAdditionalICEServers(hosts)
 
-	// Check if heartbeats allowed, and start heartbeat goroutine if so.
+	// If heartbeats allowed (indicated by answerer), start goroutine to send
+	// heartbeats.
+	if HeartbeatsAllowedFromCtx(ctx) {
+		utils.PanicCapturingGo(func() {
+			for {
+				select {
+				case <-time.After(heartbeatInterval):
+					if err := server.Send(&webrtcpb.AnswerRequest{
+						Stage: &webrtcpb.AnswerRequest_Done{
+							Done: &webrtcpb.AnswerRequestDoneStage{},
+						},
+					}); err != nil {
+						srv.logger.Debugw(
+							"error sending answer heartbeat",
+							"error", err,
+						)
+					}
+				case <-ctx.Done():
+					return
+				}
+			}
+		})
+	}
 
 	offer, err := srv.callQueue.RecvOffer(ctx, hosts)
 	if err != nil {

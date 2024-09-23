@@ -157,8 +157,8 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 		client := webrtcpb.NewSignalingServiceClient(conn)
 		md := metadata.New(nil)
 		md.Append(RPCHostMetadataField, ans.hosts...)
+		md.Append(HeartbeatsAllowedMetadataField, "true")
 		answerCtx := metadata.NewOutgoingContext(ans.closeCtx, md)
-		// append to context
 		answerClient, err := client.Answer(answerCtx)
 		if err != nil {
 			return nil, err
@@ -536,6 +536,10 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 					respStatus := status.FromProto(stage.Error.Status)
 					aa.sendError(fmt.Errorf("error from requester: %w", respStatus.Err()))
 					return
+				case *webrtcpb.AnswerRequest_Heartbeat:
+					// TODO(benji): Remove log.
+					aa.logger.Info("Received a heartbeat")
+					// Ignore heartbeats.
 				default:
 					aa.sendError(fmt.Errorf("unexpected stage %T", stage))
 					return
