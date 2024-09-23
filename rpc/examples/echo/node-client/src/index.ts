@@ -1,5 +1,5 @@
 import type { PartialMessage } from "@bufbuild/protobuf";
-import { ConnectError, createPromiseClient, PromiseClient, Transport } from "@connectrpc/connect";
+import { ConnectError, createPromiseClient, PromiseClient } from "@connectrpc/connect";
 import { createWritableIterable } from "@connectrpc/connect/protocol";
 import { dialDirect, dialWebRTC } from "@viamrobotics/rpc";
 import { EchoService } from "./gen/proto/rpc/examples/echo/v1/echo_connect.js";
@@ -7,11 +7,6 @@ import { EchoBiDiRequest, EchoMultipleRequest, EchoRequest } from "./gen/proto/r
 
 import { createGrpcTransport } from '@connectrpc/connect-node';
 import wrtc from "node-datachannel/polyfill";
-declare global {
-	var VIAM: {
-		GRPC_TRANSPORT_FACTORY: (opts: any) => Transport;
-	};
-}
 globalThis.VIAM = {
 	GRPC_TRANSPORT_FACTORY: (opts: any) => createGrpcTransport({ httpVersion: "2", ...opts }),
 };
