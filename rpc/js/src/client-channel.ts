@@ -1,19 +1,19 @@
-import {
+import type {
   AnyMessage,
   Message,
   MethodInfo,
   PartialMessage,
   ServiceType,
 } from '@bufbuild/protobuf';
-import {
+import type {
   ContextValues,
   StreamResponse,
   Transport,
   UnaryResponse,
 } from '@connectrpc/connect';
-import { BaseChannel } from './BaseChannel';
-import { ClientStream, ClientStreamConstructor } from './ClientStream';
-import { ConnectionClosedError } from './errors';
+import { BaseChannel } from './base-channel';
+import type { ClientStream, ClientStreamConstructor } from './client-stream';
+import { ConnectionClosedError } from './connection-closed-error';
 import {
   Request,
   RequestHeaders,
@@ -21,11 +21,11 @@ import {
   Response,
   Stream,
 } from './gen/proto/rpc/webrtc/v1/grpc_pb';
-import { StreamClientStream } from './StreamClientStream';
-import { UnaryClientStream } from './UnaryClientStream';
+import { StreamClientStream } from './stream-client-stream';
+import { UnaryClientStream } from './unary-client-stream';
 
 // MaxStreamCount is the max number of streams a channel can have.
-let MaxStreamCount = 256;
+const MaxStreamCount = 256;
 
 interface activeClienStream {
   cs: ClientStream;
@@ -33,11 +33,11 @@ interface activeClienStream {
 
 export class ClientChannel extends BaseChannel implements Transport {
   private streamIDCounter = 0;
-  private readonly streams: Record<string, activeClienStream> = {};
+  private readonly streams = new Map<string, activeClienStream>();
 
   constructor(pc: RTCPeerConnection, dc: RTCDataChannel) {
     super(pc, dc);
-    dc.addEventListener('message', (event: MessageEvent<'message'>) => {
+    dc.addEventListener('message', (event: MessageEvent<ArrayBuffer>) => {
       this.onChannelMessage(event);
     });
     pc.addEventListener('iceconnectionstatechange', () => {
@@ -55,14 +55,13 @@ export class ClientChannel extends BaseChannel implements Transport {
   private onConnectionTerminated() {
     // we may call this twice but we know closed will be true at this point.
     this.closeWithReason(new ConnectionClosedError('data channel closed'));
-    for (const streamId in this.streams) {
-      const stream = this.streams[streamId]!;
+    for (const stream of this.streams.values()) {
       stream.cs.closeWithRecvError();
     }
   }
 
-  private onChannelMessage(event: MessageEvent<any>) {
-    let resp = Response.fromBinary(new Uint8Array(event.data as ArrayBuffer));
+  private onChannelMessage(event: MessageEvent<ArrayBuffer>) {
+    const resp = Response.fromBinary(new Uint8Array(event.data));
 
     const { stream } = resp;
     if (stream === undefined) {
@@ -71,7 +70,7 @@ export class ClientChannel extends BaseChannel implements Transport {
     }
 
     const { id } = stream;
-    const activeStream = this.streams[id.toString()];
+    const activeStream = this.streams.get(id.toString());
     if (activeStream === undefined) {
       console.error('no stream for id; discarding', 'id', id);
       return;
@@ -80,8 +79,10 @@ export class ClientChannel extends BaseChannel implements Transport {
   }
 
   private nextStreamID(): Stream {
+    const thisId = this.streamIDCounter;
+    this.streamIDCounter += 1;
     return new Stream({
-      id: BigInt(this.streamIDCounter++),
+      id: BigInt(thisId),
     });
   }
 
@@ -90,7 +91,7 @@ export class ClientChannel extends BaseChannel implements Transport {
     I extends Message<I>,
     O extends Message<O>,
   >(
-    clientCtor: ClientStreamConstructor<T, I, O>,
+    ClientCtor: ClientStreamConstructor<T, I, O>,
     stream: Stream,
     service: ServiceType,
     method: MethodInfo<I, O>,
@@ -99,14 +100,14 @@ export class ClientChannel extends BaseChannel implements Transport {
     if (this.isClosed()) {
       throw new ConnectionClosedError('connection closed');
     }
-    let activeStream = this.streams[stream.id.toString()];
+    let activeStream = this.streams.get(stream.id.toString());
     if (activeStream !== undefined) {
       throw new Error('invariant: stream should not exist yet');
     }
     if (Object.keys(this.streams).length > MaxStreamCount) {
       throw new Error('stream limit hit');
     }
-    const clientStream = new clientCtor(
+    const clientStream = new ClientCtor(
       this,
       stream,
       (id: bigint) => this.removeStreamByID(id),
@@ -115,12 +116,12 @@ export class ClientChannel extends BaseChannel implements Transport {
       header
     );
     activeStream = { cs: clientStream };
-    this.streams[stream.id.toString()] = activeStream;
+    this.streams.set(stream.id.toString(), activeStream);
     return clientStream;
   }
 
   private removeStreamByID(id: bigint) {
-    delete this.streams[id.toString()];
+    this.streams.delete(id.toString());
   }
 
   public writeHeaders(stream: Stream, headers: RequestHeaders) {

@@ -2,12 +2,10 @@
   "extends": "@viamrobotics/typescript-config/base.json",
   "compilerOptions": {
     "target": "esnext",
-    "useDefineForClassFields": true,
-    "importHelpers": true,
     "module": "ESNext",
     "moduleResolution": "node",
-    "verbatimModuleSyntax": false,
-    "lib": ["ESNext", "DOM", "DOM.iterable"]
+    "lib": ["ESNext", "DOM", "DOM.iterable"],
+    "noEmit": true
   },
   "include": ["src", "vite.config.ts", ".*.cjs"],
   "exclude": ["node_modules", "src/gen"]

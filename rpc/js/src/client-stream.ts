@@ -1,12 +1,12 @@
-import {
+import type {
   AnyMessage,
   Message,
   MethodInfo,
   ServiceType,
 } from '@bufbuild/protobuf';
 import { createClientMethodSerializers } from '@connectrpc/connect/protocol';
-import { BaseStream } from './BaseStream';
-import type { ClientChannel } from './ClientChannel';
+import { BaseStream } from './base-stream';
+import type { ClientChannel } from './client-channel';
 import { cloneHeaders } from './dial';
 import {
   Metadata,
@@ -22,7 +22,7 @@ import {
 } from './gen/proto/rpc/webrtc/v1/grpc_pb';
 
 // see golang/client_stream.go
-const maxRequestMessagePacketDataSize = 16373;
+const maxRequestMessagePacketDataSize = 16_373;
 
 export interface ClientStreamConstructor<
   T extends ClientStream<I, O>,
@@ -40,7 +40,8 @@ export interface ClientStreamConstructor<
   ): T;
 }
 
-/** A ClientStream provides all the facilities needed to invoke and manage a
+/**
+ * A ClientStream provides all the facilities needed to invoke and manage a
  * gRPC stream at a low-level. Implementors like UnaryClientStream and StreamClientStream
  * handle the method specific flow of unary/stream operations.
  */
@@ -54,8 +55,8 @@ export abstract class ClientStream<
   protected readonly parseMessage: (data: Uint8Array) => O;
   protected readonly requestHeaders: RequestHeaders;
 
-  private headersReceived: boolean = false;
-  private trailersReceived: boolean = false;
+  private headersReceived = false;
+  private trailersReceived = false;
 
   protected abstract onHeaders(headers: ResponseHeaders): void;
   protected abstract onTrailers(trailers: ResponseTrailers): void;
@@ -93,9 +94,9 @@ export abstract class ClientStream<
 
   protected startRequest(signal?: AbortSignal) {
     if (signal) {
-      signal.onabort = () => {
+      signal.addEventListener('abort', () => {
         this.resetStream();
-      };
+      });
     }
 
     try {
@@ -128,12 +129,12 @@ export abstract class ClientStream<
 
   protected writeMessage(eos: boolean, msgBytes?: Uint8Array) {
     try {
-      if (!msgBytes || msgBytes.length == 0) {
+      if (!msgBytes || msgBytes.length === 0) {
         const packetMessage = new PacketMessage({
           eom: true,
         });
         const requestMessage = new RequestMessage({
-          hasMessage: !!msgBytes,
+          hasMessage: Boolean(msgBytes),
           packetMessage,
           eos,
         });
@@ -141,19 +142,20 @@ export abstract class ClientStream<
         return;
       }
 
-      while (msgBytes.length !== 0) {
+      let remMsgBytes = msgBytes;
+      while (remMsgBytes.length > 0) {
         const amountToSend = Math.min(
-          msgBytes.length,
+          remMsgBytes.length,
           maxRequestMessagePacketDataSize
         );
         const packetMessage = new PacketMessage();
-        packetMessage.data = msgBytes.slice(0, amountToSend);
-        msgBytes = msgBytes.slice(amountToSend);
-        if (msgBytes.length === 0) {
+        packetMessage.data = remMsgBytes.slice(0, amountToSend);
+        remMsgBytes = remMsgBytes.slice(amountToSend);
+        if (remMsgBytes.length === 0) {
           packetMessage.eom = true;
         }
         const requestMessage = new RequestMessage({
-          hasMessage: !!msgBytes,
+          hasMessage: Boolean(remMsgBytes),
           packetMessage,
           eos,
         });
@@ -167,7 +169,7 @@ export abstract class ClientStream<
 
   public onResponse(resp: Response) {
     switch (resp.type.case) {
-      case 'headers':
+      case 'headers': {
         if (this.headersReceived) {
           console.error(
             `invariant: headers already received for ${this.grpcStream.id}`
@@ -182,7 +184,8 @@ export abstract class ClientStream<
         }
         this.processHeaders(resp.type.value);
         break;
-      case 'message':
+      }
+      case 'message': {
         if (!this.headersReceived) {
           console.error(
             `invariant: headers not yet received for ${this.grpcStream.id}`
@@ -197,27 +200,24 @@ export abstract class ClientStream<
         }
         this.processMessage(resp.type.value);
         break;
-      case 'trailers':
+      }
+      case 'trailers': {
         this.processTrailers(resp.type.value);
         break;
-      default:
+      }
+      default: {
         console.error('unknown response type', resp.type.case);
         break;
+      }
     }
   }
 
   private processHeaders(headers: ResponseHeaders) {
     this.headersReceived = true;
-    if (!this.onHeaders) {
-      throw new Error('invariant: onHeaders unset');
-    }
     this.onHeaders(headers);
   }
 
   private processMessage(msg: ResponseMessage) {
-    if (!this.onMessage) {
-      throw new Error('invariant: onMessage unset');
-    }
     if (!msg.packetMessage) {
       return;
     }
@@ -230,18 +230,8 @@ export abstract class ClientStream<
 
   private processTrailers(trailers: ResponseTrailers) {
     this.trailersReceived = true;
-    if (!this.onTrailers) {
-      throw new Error('invariant: onTrailers unset');
-    }
-
-    let statusCode;
     const { status } = trailers;
-    if (status) {
-      statusCode = status.code;
-    } else {
-      statusCode = 0;
-    }
-
+    const statusCode = status ? status.code : 0;
     this.onTrailers(trailers);
     if (statusCode === 0) {
       this.closeWithRecvError();
@@ -251,8 +241,10 @@ export abstract class ClientStream<
   }
 }
 
-// Needs testing
-// from https://github.com/jsmouret/grpc-over-webrtc/blob/45cd6d6cf516e78b1e262ea7aa741bc7a7a93dbc/client-improbable/src/grtc/webrtcclient.ts#L7
+/**
+ * Needs testing
+ * from https://github.com/jsmouret/grpc-over-webrtc/blob/45cd6d6cf516e78b1e262ea7aa741bc7a7a93dbc/client-improbable/src/grtc/webrtcclient.ts#L7
+ */
 const fromGRPCMetadata = (headers?: Headers): Metadata | undefined => {
   if (!headers) {
     return undefined;

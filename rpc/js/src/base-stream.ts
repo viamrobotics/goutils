@@ -1,13 +1,13 @@
 import type { PacketMessage, Stream } from './gen/proto/rpc/webrtc/v1/grpc_pb';
 
-// MaxMessageSize is the maximum size a gRPC message can be.
-let MaxMessageSize = 1 << 25;
+// MaxMessageSize (2^25) is the maximum size a gRPC message can be.
+const MaxMessageSize = 33_554_432;
 
 export class BaseStream {
   protected readonly grpcStream: Stream;
   private readonly onDone: (id: bigint) => void;
-  protected closed: boolean = false;
-  private readonly packetBuf: Array<Uint8Array> = [];
+  protected closed = false;
+  private readonly packetBuf: Uint8Array[] = [];
   private packetBufSize = 0;
 
   constructor(grpcStream: Stream, onDone: (id: bigint) => void) {
@@ -36,16 +36,15 @@ export class BaseStream {
     this.packetBuf.push(data);
     this.packetBufSize += data.length;
     if (msg.eom) {
-      const data = new Uint8Array(this.packetBufSize);
+      const pktData = new Uint8Array(this.packetBufSize);
       let position = 0;
-      for (let i = 0; i < this.packetBuf.length; i++) {
-        const partialData = this.packetBuf[i]!;
-        data.set(partialData, position);
+      for (const partialData of this.packetBuf) {
+        pktData.set(partialData, position);
         position += partialData.length;
       }
       this.packetBuf.length = 0;
       this.packetBufSize = 0;
-      return data;
+      return pktData;
     }
     return undefined;
   }

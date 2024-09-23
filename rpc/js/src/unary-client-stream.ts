@@ -1,12 +1,12 @@
-import { Message, PartialMessage } from '@bufbuild/protobuf';
-import {
+import type { Message, PartialMessage } from '@bufbuild/protobuf';
+import type {
   ContextValues,
   UnaryRequest,
   UnaryResponse,
-  createContextValues,
 } from '@connectrpc/connect';
+import { createContextValues } from '@connectrpc/connect';
 import { runUnaryCall } from '@connectrpc/connect/protocol';
-import { ClientStream, toGRPCMetadata } from './ClientStream';
+import { ClientStream, toGRPCMetadata } from './client-stream';
 import {
   ResponseHeaders,
   ResponseTrailers,
@@ -18,7 +18,7 @@ export class UnaryClientStream<
 > extends ClientStream<I, O> {
   private result?: {
     success: (value: UnaryResponse<I, O>) => void;
-    failure: (reason?: any) => void;
+    failure: (reason?: unknown) => void;
   };
 
   private headers?: Headers;
@@ -30,7 +30,7 @@ export class UnaryClientStream<
     message: PartialMessage<I>,
     contextValues?: ContextValues
   ): Promise<UnaryResponse<I, O>> {
-    let req = {
+    const req = {
       stream: false as const,
       url: '',
       init: {},
@@ -41,15 +41,19 @@ export class UnaryClientStream<
       message,
     };
     type optParams = Parameters<typeof runUnaryCall<I, O>>[0];
-    let opt: optParams = {
+    const opt: optParams = {
       req,
-      // next is what actually kicks off the request. The run call below will
-      // ultimately call this for us.
-      next: async (req: UnaryRequest<I, O>): Promise<UnaryResponse<I, O>> => {
+      /**
+       * next is what actually kicks off the request. The run call below will
+       * ultimately call this for us.
+       */
+      next: async (
+        unaryReq: UnaryRequest<I, O>
+      ): Promise<UnaryResponse<I, O>> => {
         return new Promise((resolve, reject) => {
           this.result = { success: resolve, failure: reject };
           this.startRequest();
-          this.sendMessage(req.message.toBinary());
+          this.sendMessage(unaryReq.message.toBinary());
         });
       },
     };
@@ -73,8 +77,8 @@ export class UnaryClientStream<
   }
 
   protected onTrailers(respTrailers: ResponseTrailers): void {
-    let trailers = toGRPCMetadata(respTrailers.metadata);
-    if (!respTrailers.status || respTrailers.status.code == 0) {
+    const trailers = toGRPCMetadata(respTrailers.metadata);
+    if (!respTrailers.status || respTrailers.status.code === 0) {
       if (!this.headers) {
         this.result?.failure(
           new Error(

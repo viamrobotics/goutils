@@ -1,15 +1,15 @@
-import { Message, PartialMessage } from '@bufbuild/protobuf';
-import {
+import type { Message, PartialMessage } from '@bufbuild/protobuf';
+import type {
   ContextValues,
   StreamRequest,
   StreamResponse,
-  createContextValues,
 } from '@connectrpc/connect';
+import { createContextValues } from '@connectrpc/connect';
 import {
   createWritableIterable,
   runStreamingCall,
 } from '@connectrpc/connect/protocol';
-import { ClientStream, toGRPCMetadata } from './ClientStream';
+import { ClientStream, toGRPCMetadata } from './client-stream';
 import {
   ResponseHeaders,
   ResponseTrailers,
@@ -21,7 +21,7 @@ export class StreamClientStream<
 > extends ClientStream<I, O> {
   private awaitingHeadersResult?: {
     success: (value: Headers) => void;
-    failure: (reason?: any) => void;
+    failure: (reason?: unknown) => void;
   };
 
   private gotHeaders = false;
@@ -37,7 +37,7 @@ export class StreamClientStream<
     input: AsyncIterable<PartialMessage<I>>,
     contextValues?: ContextValues
   ): Promise<StreamResponse<I, O>> {
-    let req = {
+    const req = {
       stream: true as const,
       url: '',
       init: {},
@@ -48,19 +48,23 @@ export class StreamClientStream<
       message: input,
     };
     type optParams = Parameters<typeof runStreamingCall<I, O>>[0];
-    let opt: optParams = {
+    const opt: optParams = {
       req,
-      // next is what actually kicks off the request. The run call below will
-      // ultimately call this for us.
-      next: async (req: StreamRequest<I, O>): Promise<StreamResponse<I, O>> => {
-        let startRequest = new Promise<Headers>((resolve, reject) => {
+      /**
+       *  next is what actually kicks off the request. The run call below will
+       * ultimately call this for us.
+       */
+      next: async (
+        streamReq: StreamRequest<I, O>
+      ): Promise<StreamResponse<I, O>> => {
+        const startRequest = new Promise<Headers>((resolve, reject) => {
           this.awaitingHeadersResult = {
             success: resolve,
             failure: reject,
           };
           this.startRequest();
-          this.sendMessages(req.message).catch((err) => {
-            console.error('error sending streaming message', err);
+          this.sendMessages(streamReq.message).catch((error) => {
+            console.error('error sending streaming message', error);
             this.closeWithRecvError();
           });
         });
@@ -68,7 +72,7 @@ export class StreamClientStream<
         const headers = await startRequest;
 
         return {
-          ...req,
+          ...streamReq,
           header: headers,
           trailer: this.trailers,
           message: this.respStream,
@@ -100,16 +104,18 @@ export class StreamClientStream<
 
   protected onTrailers(respTrailers: ResponseTrailers): void {
     if (respTrailers.metadata?.md) {
-      for (let key in respTrailers.metadata.md) {
-        let value = respTrailers.metadata.md[key];
-        for (let val in value?.values) {
-          this.trailers.append(key, val);
+      for (const key in respTrailers.metadata.md) {
+        if (Object.hasOwn(respTrailers.metadata.md, key)) {
+          const value = respTrailers.metadata.md[key];
+          for (const val of value?.values ?? []) {
+            this.trailers.append(key, val);
+          }
         }
       }
     }
     this.respStream.close();
 
-    if (!respTrailers.status || respTrailers.status.code == 0) {
+    if (!respTrailers.status || respTrailers.status.code === 0) {
       if (this.gotHeaders) {
         return;
       }
@@ -124,17 +130,13 @@ export class StreamClientStream<
   }
 
   protected onMessage(msgBytes: Uint8Array) {
-    let msg = this.parseMessage(msgBytes);
-    if (this.respStreamQueue) {
-      this.respStreamQueue = this.respStreamQueue.then(async () =>
-        this.respStream.write(msg)
-      );
-    } else {
-      this.respStreamQueue = this.respStream.write(msg);
-    }
-    this.respStreamQueue.catch((err) => {
+    const msg = this.parseMessage(msgBytes);
+    this.respStreamQueue = this.respStreamQueue
+      ? this.respStreamQueue.then(async () => this.respStream.write(msg))
+      : this.respStream.write(msg);
+    this.respStreamQueue.catch((error) => {
       console.error(
-        `error pushing received message into stream; failing: ${err}`
+        `error pushing received message into stream; failing: ${error}`
       );
       this.resetStream();
     });

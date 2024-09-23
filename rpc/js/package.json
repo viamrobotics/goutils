@@ -36,8 +36,8 @@
   },
   "scripts": {
     "prepare": "./etc/prepare.sh",
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint '**/*.{ts,js,cjs}' --quiet",
+    "typecheck": "tsc",
+    "lint": "eslint '**/*.{ts,js,cjs}'",
     "format": "prettier --write '**/*.{ts,js,cjs}'",
     "build": "vite build && tsc --project tsconfig.build.json",
     "test": "echo \"Error: no test specified\" && exit 1"
