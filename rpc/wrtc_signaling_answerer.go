@@ -158,6 +158,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 		md := metadata.New(nil)
 		md.Append(RPCHostMetadataField, ans.hosts...)
 		answerCtx := metadata.NewOutgoingContext(ans.closeCtx, md)
+		// append to context
 		answerClient, err := client.Answer(answerCtx)
 		if err != nil {
 			return nil, err

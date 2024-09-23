@@ -331,6 +331,8 @@ func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 	}
 	defer srv.clearAdditionalICEServers(hosts)
 
+	// Check if heartbeats allowed, and start heartbeat goroutine if so.
+
 	offer, err := srv.callQueue.RecvOffer(ctx, hosts)
 	if err != nil {
 		return err
