@@ -295,11 +295,38 @@ func dial(
 	return conn, cached, nil
 }
 
+func listMulticastInterfaces() []net.Interface {
+	var interfaces []net.Interface
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return nil
+	}
+	for _, ifi := range ifaces {
+		if (ifi.Flags & net.FlagUp) == 0 {
+			continue
+		}
+
+		// On Linux machines the loopback interface may not enable multicast by default even if it is
+		// capable. In cases where other network interfaces is shut off, this will cause issues
+		// when trying to connect to a candidate on the same host.
+		// Therefore, hardcode and return loopback interfaces as a multicast interface regardless of whether
+		// the multicast flag exists.
+		if (ifi.Flags&net.FlagLoopback) > 0 || (ifi.Flags&net.FlagMulticast) > 0 {
+			interfaces = append(interfaces, ifi)
+		}
+	}
+	return interfaces
+}
+
 func lookupMDNSCandidate(ctx context.Context, address string, logger utils.ZapCompatibleLogger) (*zeroconf.ServiceEntry, error) {
 	candidates := []string{address, strings.ReplaceAll(address, ".", "-")}
 	// RSDK-8205: logger.Desugar().Sugar() is necessary to massage a ZapCompatibleLogger into a
 	// *zap.SugaredLogger to match zeroconf function signatures.
-	resolver, err := zeroconf.NewResolver(logger.Desugar().Sugar(), zeroconf.SelectIPRecordType(zeroconf.IPv4))
+	resolver, err := zeroconf.NewResolver(
+		logger.Desugar().Sugar(),
+		zeroconf.SelectIPRecordType(zeroconf.IPv4),
+		zeroconf.SelectIfaces(listMulticastInterfaces()),
+	)
 	if err != nil {
 		return nil, err
 	}
