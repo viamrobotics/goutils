@@ -38,8 +38,9 @@ type AuthProviderConfig struct {
 type AuthProvider struct {
 	io.Closer
 
-	config   AuthProviderConfig
-	sessions *SessionManager
+	config      AuthProviderConfig
+	sessions    *SessionManager
+	jwtSessions JWTSessionManager
 
 	oidcConfig    *oidc.Config
 	authConfig    oauth2.Config
@@ -72,6 +73,7 @@ func InstallAuth0(
 	ctx context.Context,
 	mux *goji.Mux,
 	sessions *SessionManager,
+	jwtValidate JWTSessionManager,
 	config AuthProviderConfig,
 	logger utils.ZapCompatibleLogger,
 ) (io.Closer, error) {
@@ -79,6 +81,7 @@ func InstallAuth0(
 	authProvider, err := installAuthProvider(
 		ctx,
 		sessions,
+		jwtValidate,
 		config,
 		"/callback",
 		"auth0_redirect_state")
@@ -104,6 +107,7 @@ func InstallFusionAuth(
 	ctx context.Context,
 	mux *goji.Mux,
 	sessions *SessionManager,
+	jwtValidate JWTSessionManager,
 	config AuthProviderConfig,
 	logger utils.ZapCompatibleLogger,
 ) (io.Closer, error) {
@@ -111,6 +115,7 @@ func InstallFusionAuth(
 	authProvider, err := installAuthProvider(
 		ctx,
 		sessions,
+		jwtValidate,
 		config,
 		"/callback",
 		"fa_redirect_state")
@@ -133,6 +138,7 @@ func InstallFusionAuth(
 func installAuthProvider(
 	ctx context.Context,
 	sessions *SessionManager,
+	jwtSessions JWTSessionManager,
 	config AuthProviderConfig,
 	redirectURL string,
 	providerCookieName string,
@@ -156,6 +162,7 @@ func installAuthProvider(
 	state := &AuthProvider{
 		config:            config,
 		sessions:          sessions,
+		jwtSessions:       jwtSessions,
 		redirectURL:       redirectURL,
 		stateCookieName:   providerCookieName,
 		stateCookieMaxAge: time.Minute * 10,
@@ -196,10 +203,10 @@ func installAuthProviderRoutes(
 	logger utils.ZapCompatibleLogger,
 ) {
 	mux.Handle(pat.New("/login"), &loginHandler{
-		authProvider,
-		logger,
-		redirectStateCookieName,
-		redirectStateCookieMaxAge,
+		state:                     authProvider,
+		logger:                    logger,
+		redirectStateCookieName:   redirectStateCookieName,
+		redirectStateCookieMaxAge: redirectStateCookieMaxAge,
 	})
 	mux.Handle(pat.New(redirectURL), &callbackHandler{
 		authProvider,
@@ -207,9 +214,9 @@ func installAuthProviderRoutes(
 		redirectStateCookieName,
 	})
 	mux.Handle(pat.New("/logout"), &logoutHandler{
-		authProvider,
-		logger,
-		providerLogoutURL,
+		state:             authProvider,
+		logger:            logger,
+		providerLogoutURL: providerLogoutURL,
 	})
 	mux.Handle(pat.New("/token"), &tokenHandler{
 		authProvider,
@@ -536,6 +543,10 @@ func (h *loginHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	_, span := trace.StartSpan(ctx, r.URL.Path)
 	defer span.End()
 
+	if h.state.jwtSessions != nil {
+		h.state.jwtSessions.Save(ctx, r)
+	}
+
 	// Generate random state
 	b := make([]byte, 32)
 	_, err := rand.Read(b)
@@ -584,6 +595,7 @@ func (h *loginHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 type logoutHandler struct {
 	state             *AuthProvider
+	invalidateJWT     func()
 	logger            utils.ZapCompatibleLogger
 	providerLogoutURL string
 }
@@ -608,5 +620,8 @@ func (h *logoutHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	logoutURL.RawQuery = parameters.Encode()
 
 	h.state.sessions.DeleteSession(ctx, r, w)
+	if h.state.jwtSessions != nil {
+		h.state.jwtSessions.Invalidate(ctx, r)
+	}
 	http.Redirect(w, r, logoutURL.String(), http.StatusTemporaryRedirect)
 }

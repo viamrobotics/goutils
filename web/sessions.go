@@ -25,6 +25,11 @@ var webSessionsIndex = []mongo.IndexModel{
 		},
 		Options: options.Index().SetExpireAfterSeconds(30 * 24 * 3600),
 	},
+	{
+		Keys: bson.D{
+			{Key: "data.access_token", Value: 1},
+		},
+	},
 }
 
 // SessionManager handles working with sessions from http.
@@ -51,6 +56,7 @@ type Store interface {
 	Get(ctx context.Context, id string) (*Session, error)
 	Save(ctx context.Context, s *Session) error
 	SetSessionManager(*SessionManager)
+	GetByToken(ctx context.Context, id string) (*Session, error)
 }
 
 // ----
@@ -128,6 +134,19 @@ func (sm *SessionManager) DeleteSession(ctx context.Context, r *http.Request, w 
 			sm.logger.Errorw("cannot delete cookie", "error", err)
 		}
 	}
+}
+
+func (sm *SessionManager) HasSessionWithAccessToken(ctx context.Context, token string) bool {
+	session, err := sm.store.GetByToken(ctx, token)
+	if err != nil && !errors.Is(err, errNoSession) {
+		sm.logger.Errorw("error finding session with access token", "err", err)
+		return false
+	}
+
+	if session == nil {
+		return false
+	}
+	return true
 }
 
 func (sm *SessionManager) newID() (string, error) {
@@ -216,6 +235,34 @@ func (mss *mongoDBSessionStore) Get(ctx context.Context, id string) (*Session, e
 	return s, nil
 }
 
+func (mss *mongoDBSessionStore) GetByToken(ctx context.Context, token string) (*Session, error) {
+	ctx, span := trace.StartSpan(ctx, "MongoDBSessionStore::Get")
+	defer span.End()
+
+	res := mss.collection.FindOne(ctx, bson.M{"data.access_token": token})
+	if res.Err() != nil {
+		if errors.Is(res.Err(), mongo.ErrNoDocuments) {
+			return nil, errNoSession
+		}
+		return nil, fmt.Errorf("couldn't load session from db: %w", res.Err())
+	}
+
+	m := bson.M{}
+	if err := res.Decode(&m); err != nil {
+		return nil, err
+	}
+
+	s := &Session{
+		store:   mss,
+		manager: mss.manager,
+		isNew:   false,
+		id:      m["_id"].(string),
+		Data:    m["data"].(bson.M),
+	}
+
+	return s, nil
+}
+
 func (mss *mongoDBSessionStore) Save(ctx context.Context, s *Session) error {
 	ctx, span := trace.StartSpan(ctx, "MongoDBSessionStore::Save")
 	defer span.End()
@@ -256,6 +303,21 @@ func (mss *memorySessionStore) Delete(ctx context.Context, id string) error {
 		mss.data[id] = nil
 	}
 	return nil
+}
+
+func (mss *memorySessionStore) GetByToken(ctx context.Context, token string) (*Session, error) {
+	if mss.data != nil {
+		for _, session := range mss.data {
+			savedToken, ok := session.Data["access_token"]
+			if !ok {
+				continue
+			}
+			if token == savedToken {
+				return session, nil
+			}
+		}
+	}
+	return nil, errNoSession
 }
 
 func (mss *memorySessionStore) Get(ctx context.Context, id string) (*Session, error) {
