@@ -1,15 +1,8 @@
 version: v1
+managed:
+  enabled: true
 plugins:
-  - name: js
+  - plugin: buf.build/connectrpc/es:v1.5.0
     out: dist/js
-    opt:
-      - import_style=commonjs
-  - name: grpc-web
+  - plugin: buf.build/bufbuild/es:v1.10.0
     out: dist/js
-    opt:
-      - import_style=commonjs
-      - mode=grpcwebtext
-  - name: ts
-    out: dist/js
-    opt:
-      - service=grpc-web

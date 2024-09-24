@@ -39,7 +39,7 @@ func (srv *Server) UploadFile(server pb.FileUploadService_UploadFileServer) erro
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				// at this point, you can do something with the file
-				return server.Send(&pb.UploadFileResponse{Name: fileName, Size: int64(len(data))})
+				return server.SendAndClose(&pb.UploadFileResponse{Name: fileName, Size: int64(len(data))})
 			}
 			return err
 		}

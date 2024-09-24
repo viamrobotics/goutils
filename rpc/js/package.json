@@ -3,11 +3,11 @@
   "version": "0.2.6",
   "license": "Apache-2.0",
   "dependencies": {
-    "@improbable-eng/grpc-web": "^0.13.0",
-    "google-protobuf": "^3.14.0"
+    "@bufbuild/protobuf": "^1.10.0",
+    "@connectrpc/connect": "^1.5.0",
+    "@connectrpc/connect-web": "^1.5.0"
   },
   "devDependencies": {
-    "@types/google-protobuf": "^3.7.4",
     "@typescript-eslint/eslint-plugin": "^6.10.0",
     "@typescript-eslint/parser": "^6.10.0",
     "@viamrobotics/eslint-config": "^0.2.6",
@@ -36,8 +36,8 @@
   },
   "scripts": {
     "prepare": "./etc/prepare.sh",
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint '**/*.{ts,js,cjs}' --quiet",
+    "typecheck": "tsc",
+    "lint": "eslint '**/*.{ts,js,cjs}'",
     "format": "prettier --write '**/*.{ts,js,cjs}'",
     "build": "vite build && tsc --project tsconfig.build.json",
     "test": "echo \"Error: no test specified\" && exit 1"

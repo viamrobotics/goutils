@@ -1,7 +1,12 @@
+import type { Transport } from '@connectrpc/connect';
+
 declare global {
-  interface Window {
-    VIAM: any;
-  }
+  // eslint-disable-next-line vars-on-top,no-var
+  var VIAM:
+    | {
+        GRPC_TRANSPORT_FACTORY?: (opts: unknown) => Transport;
+      }
+    | undefined;
 }
 
 export {
@@ -13,4 +18,5 @@ export {
   type WebRTCConnection,
 } from './dial';
 
-export { ConnectionClosedError, GRPCError } from './errors';
+export { ConnectionClosedError } from './connection-closed-error';
+export { GRPCError } from './grpc-error';
