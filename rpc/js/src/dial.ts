@@ -132,86 +132,68 @@ export const dialDirect = async (
     return createTransport(transportOpts);
   }
 
-  const authFact = await makeAuthenticatedTransportFactory(
+  return makeAuthenticatedTransport(
     address,
     createTransport,
-    opts
+    opts,
+    transportOpts
   );
-  return authFact(transportOpts);
 };
 
 const addressCleanupRegex = /^.*:\/\//u;
 
-const makeAuthenticatedTransportFactory = async (
+const makeAuthenticatedTransport = async (
   address: string,
   defaultFactory: TransportFactory,
-  opts: DialOptions
-): Promise<TransportFactory> => {
-  let accessToken = '';
-  const getExtraHeaders = async (): Promise<Headers> => {
-    const headers = new Headers();
-    // TODO(GOUT-10): handle expiration
-    if (accessToken === '') {
-      let thisAccessToken = '';
+  opts: DialOptions,
+  transportOpts: TransportInitOptions
+): Promise<Transport> => {
+  const authHeaders = new Headers();
 
-      if (!opts.accessToken || opts.accessToken === '') {
-        const request = new AuthenticateRequest({
-          entity: opts.authEntity ?? address.replace(addressCleanupRegex, ''),
-        });
-        if (opts.credentials) {
-          request.credentials = new PBCredentials({
-            type: opts.credentials.type,
-            payload: opts.credentials.payload,
-          });
-        }
-
-        const resolvedAddress = opts.externalAuthAddress ?? address;
-        const transport = defaultFactory({ baseUrl: resolvedAddress });
-        const authClient = createPromiseClient(AuthService, transport);
-        const resp = await authClient.authenticate(request);
-        thisAccessToken = resp.accessToken;
-      } else {
-        thisAccessToken = opts.accessToken;
-      }
-
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- await race
-      if (accessToken === '') {
-        accessToken = thisAccessToken;
-
-        if (opts.externalAuthAddress && opts.externalAuthToEntity) {
-          const authHeaders = new Headers();
-          authHeaders.set('authorization', `Bearer ${accessToken}`);
-
-          thisAccessToken = '';
-
-          const request = new AuthenticateRequest({
-            entity: opts.externalAuthToEntity,
-          });
-          const transport = defaultFactory({
-            baseUrl: opts.externalAuthAddress,
-          });
-          const externalAuthClient = createPromiseClient(
-            ExternalAuthService,
-            transport
-          );
-          const resp = await externalAuthClient.authenticateTo(request, {
-            headers: authHeaders,
-          });
-          thisAccessToken = resp.accessToken;
-          // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- await race
-          if (accessToken === '') {
-            accessToken = thisAccessToken;
-          }
-        }
-      }
+  let accessToken;
+  if (!opts.accessToken || opts.accessToken === '') {
+    const request = new AuthenticateRequest({
+      entity: opts.authEntity ?? address.replace(addressCleanupRegex, ''),
+    });
+    if (opts.credentials) {
+      request.credentials = new PBCredentials({
+        type: opts.credentials.type,
+        payload: opts.credentials.payload,
+      });
     }
-    headers.set('authorization', `Bearer ${accessToken}`);
-    return headers;
-  };
-  const extraMd = await getExtraHeaders();
-  return (transportOpts: TransportInitOptions): Transport => {
-    return new AuthenticatedTransport(transportOpts, defaultFactory, extraMd);
-  };
+
+    const resolvedAddress = opts.externalAuthAddress ?? address;
+    const transport = defaultFactory({ baseUrl: resolvedAddress });
+    const authClient = createPromiseClient(AuthService, transport);
+    const resp = await authClient.authenticate(request);
+    accessToken = resp.accessToken;
+  } else {
+    accessToken = opts.accessToken;
+  }
+
+  if (opts.externalAuthAddress && opts.externalAuthToEntity) {
+    const extAuthHeaders = new Headers();
+    extAuthHeaders.set('authorization', `Bearer ${accessToken}`);
+
+    accessToken = '';
+
+    const request = new AuthenticateRequest({
+      entity: opts.externalAuthToEntity,
+    });
+    const transport = defaultFactory({
+      baseUrl: opts.externalAuthAddress,
+    });
+    const externalAuthClient = createPromiseClient(
+      ExternalAuthService,
+      transport
+    );
+    const resp = await externalAuthClient.authenticateTo(request, {
+      headers: extAuthHeaders,
+    });
+    accessToken = resp.accessToken;
+  }
+  authHeaders.set('authorization', `Bearer ${accessToken}`);
+  return new AuthenticatedTransport(transportOpts, defaultFactory, authHeaders);
 };
 
 class AuthenticatedTransport implements Transport {
