@@ -20,6 +20,9 @@ test-run-server: build install-playwright
 run-client:
 	go run client/main.go -host=echo-server
 
+run-node-client:
+	cd node-client && npm start
+
 setup-auth:
 	cd ${ROOT_DIR} && make setup-cert setup-priv-key
 

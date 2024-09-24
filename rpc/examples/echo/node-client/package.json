@@ -5,22 +5,25 @@
   "dependencies": {
     "@bufbuild/protobuf": "^1.10.0",
     "@connectrpc/connect": "^1.5.0",
+    "@connectrpc/connect-node": "^1.5.0",
     "@connectrpc/connect-web": "^1.5.0",
-    "@viamrobotics/rpc": "file:../../../js"
+    "@viamrobotics/rpc": "file:../../../js",
+    "node-datachannel": "^0.11.0"
   },
   "devDependencies": {
+    "@types/node": "^22.5.5",
+    "@viamrobotics/typescript-config": "^0.1.0",
     "ansi-regex": ">=5.0.1",
-    "set-value": ">=4.0.1",
     "concurrently": "^5.3.0",
+    "set-value": ">=4.0.1",
     "ts-loader": "^8.0.14",
     "ts-protoc-gen": "^0.14.0",
-    "typescript": "^4.8.4",
-    "vite": "^4.0.0"
+    "typescript": "^5.2.2"
   },
   "type": "module",
   "scripts": {
     "prepare": "./etc/prepare.sh",
-    "build": "vite build",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "npx tsc && node src/index.js"
   }
 }

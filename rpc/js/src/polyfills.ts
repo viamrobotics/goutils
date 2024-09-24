@@ -1,8 +1,9 @@
 const chars =
   'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
 
-export const btoa = (input: string = '') => {
-  let str = input;
+/* eslint-disable no-bitwise, unicorn/prefer-code-point, no-plusplus, require-unicode-regexp */
+export const btoa = (input = '') => {
+  const str = input;
   let output = '';
 
   for (
@@ -24,11 +25,11 @@ export const btoa = (input: string = '') => {
   return output;
 };
 
-export const atob = (input: string = '') => {
-  let str = input.replace(/=+$/, ''); // eslint-disable-line no-div-regex
+export const atob = (input = '') => {
+  const str = input.replace(/=+$/, ''); // eslint-disable-line no-div-regex
   let output = '';
 
-  if (str.length % 4 == 1) {
+  if (str.length % 4 === 1) {
     throw new Error(
       "'atob' failed: The string to be decoded is not correctly encoded."
     );
@@ -45,3 +46,4 @@ export const atob = (input: string = '') => {
 
   return output;
 };
+/* eslint-enable no-bitwise, unicorn/prefer-code-point, no-plusplus, require-unicode-regexp */

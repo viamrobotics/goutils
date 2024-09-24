@@ -1,5 +1,5 @@
-import type { ProtobufMessage } from '@improbable-eng/grpc-web/dist/typings/message';
-import { ConnectionClosedError } from './errors';
+import type { Message } from '@bufbuild/protobuf';
+import { ConnectionClosedError } from './connection-closed-error';
 
 export class BaseChannel {
   public readonly ready: Promise<unknown>;
@@ -12,7 +12,7 @@ export class BaseChannel {
   private closed = false;
   private closedReason: Error | undefined;
 
-  protected maxDataChannelSize = 65535;
+  protected maxDataChannelSize = 65_535;
 
   constructor(peerConn: RTCPeerConnection, dataChannel: RTCDataChannel) {
     this.peerConn = peerConn;
@@ -70,12 +70,12 @@ export class BaseChannel {
     this.closeWithReason(new ConnectionClosedError('data channel closed'));
   }
 
-  private onChannelError(ev: any) {
+  private onChannelError(ev: Event) {
     console.error('channel error', ev);
-    this.closeWithReason(new Error(ev));
+    this.closeWithReason(new Error(ev.toString()));
   }
 
-  protected write(msg: ProtobufMessage) {
-    this.dataChannel.send(msg.serializeBinary());
+  protected write(msg: Message) {
+    this.dataChannel.send(msg.toBinary());
   }
 }

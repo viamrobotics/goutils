@@ -6,6 +6,7 @@ build:
   excludes:
     - node_modules
     - rpc/examples/echo/frontend/node_modules
+    - rpc/examples/echo/node-client/node_modules
     - rpc/examples/fileupload/frontend/node_modules
     - rpc/js/node_modules
     - vendor
