@@ -244,10 +244,7 @@ func (mss *mongoDBSessionStore) HasSessionWithToken(ctx context.Context, token s
 
 	count, err := mss.collection.CountDocuments(ctx, bson.M{accessTokenFieldPath: token}, options.Count().SetLimit(1))
 	if err != nil {
-		if errors.Is(err, mongo.ErrNoDocuments) {
-			return false, errNoSession
-		}
-		return false, fmt.Errorf("failed to load session from db: %w", err)
+		return false, fmt.Errorf("failed to check if token session exists: %w", err)
 	}
 
 	return count > 0, nil
