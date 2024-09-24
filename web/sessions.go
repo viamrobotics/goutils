@@ -136,6 +136,7 @@ func (sm *SessionManager) DeleteSession(ctx context.Context, r *http.Request, w 
 	}
 }
 
+// HasSessionWithAccessToken returns true if there is an active session associated with that access token.
 func (sm *SessionManager) HasSessionWithAccessToken(ctx context.Context, token string) bool {
 	session, err := sm.store.GetByToken(ctx, token)
 	if err != nil && !errors.Is(err, errNoSession) {
