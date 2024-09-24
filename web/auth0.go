@@ -425,7 +425,7 @@ func verifyAndSaveToken(ctx context.Context, state *AuthProvider, session *Sessi
 	}
 
 	session.Data["id_token"] = rawIDToken
-	session.Data["access_token"] = token.AccessToken
+	session.Data[accessTokenSessionDataField] = token.AccessToken
 	session.Data["profile"] = profile
 
 	return session, nil

@@ -18,6 +18,11 @@ import (
 	mongoutils "go.viam.com/utils/mongo"
 )
 
+var (
+	accessTokenSessionDataField = "access_token"
+	accessTokenFieldPath        = fmt.Sprintf("data.%s", accessTokenSessionDataField)
+)
+
 var webSessionsIndex = []mongo.IndexModel{
 	{
 		Keys: bson.D{
@@ -27,7 +32,7 @@ var webSessionsIndex = []mongo.IndexModel{
 	},
 	{
 		Keys: bson.D{
-			{Key: "data.access_token", Value: 1},
+			{Key: accessTokenFieldPath, Value: 1},
 		},
 	},
 }
@@ -237,7 +242,7 @@ func (mss *mongoDBSessionStore) HasSessionWithToken(ctx context.Context, token s
 	ctx, span := trace.StartSpan(ctx, "MongoDBSessionStore::Get")
 	defer span.End()
 
-	count, err := mss.collection.CountDocuments(ctx, bson.M{"data.access_token": token}, options.Count().SetLimit(1))
+	count, err := mss.collection.CountDocuments(ctx, bson.M{accessTokenFieldPath: token}, options.Count().SetLimit(1))
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
 			return false, errNoSession
@@ -293,7 +298,7 @@ func (mss *memorySessionStore) Delete(ctx context.Context, id string) error {
 func (mss *memorySessionStore) HasSessionWithToken(ctx context.Context, token string) (bool, error) {
 	if mss.data != nil {
 		for _, session := range mss.data {
-			savedToken, ok := session.Data["access_token"]
+			savedToken, ok := session.Data[accessTokenSessionDataField]
 			if !ok {
 				continue
 			}

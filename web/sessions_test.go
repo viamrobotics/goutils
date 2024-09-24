@@ -13,6 +13,7 @@ import (
 )
 
 func TestSession1(t *testing.T) {
+	ctx := context.Background()
 	sm := NewSessionManager(&memorySessionStore{}, golog.NewTestLogger(t))
 
 	r, err := http.NewRequest(http.MethodGet, "http://localhost/", nil)
@@ -36,7 +37,16 @@ func TestSession1(t *testing.T) {
 	w := &DummyWriter{}
 
 	s.Data["a"] = 1
+	s.Data["access_token"] = "the_access_token"
 	s.Save(context.TODO(), r, w)
+
+	if hasSession := sm.HasSessionWithAccessToken(ctx, "the_wrong_access_token"); hasSession {
+		t.Fatal("should not have session with token")
+	}
+
+	if hasSession := sm.HasSessionWithAccessToken(ctx, "the_access_token"); !hasSession {
+		t.Fatal("should have session with token")
+	}
 }
 
 // ----
@@ -64,7 +74,7 @@ func TestMongoStore(t *testing.T) {
 
 	s1 := &Session{}
 	s1.id = "foo"
-	s1.Data = bson.M{"a": 1, "b": 2}
+	s1.Data = bson.M{"a": 1, "b": 2, "access_token": "testToken"}
 	err = store.Save(ctx, s1)
 	if err != nil {
 		t.Fatal(err)
@@ -83,6 +93,22 @@ func TestMongoStore(t *testing.T) {
 
 	if _, err := store.Get(ctx, "something"); !errors.Is(err, errNoSession) {
 		t.Fatal(err)
+	}
+
+	hasSession, err := store.HasSessionWithToken(ctx, "no_token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasSession {
+		t.Fatal("should not have session")
+	}
+
+	hasSession, err = store.HasSessionWithToken(ctx, "testToken")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasSession {
+		t.Fatal("should have session")
 	}
 }
 
