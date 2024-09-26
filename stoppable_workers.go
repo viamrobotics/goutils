@@ -109,6 +109,7 @@ func (sw *StoppableWorkers) Stop() {
 	// prior to `Stop` calling `Wait`.
 	sw.mu.Lock()
 	if sw.ctx.Err() != nil {
+		sw.mu.Unlock()
 		return
 	}
 	sw.cancelFunc()
