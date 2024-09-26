@@ -238,6 +238,7 @@ func (wrapped ctxWrappedServerStream) Context() context.Context {
 	return wrapped.ctx
 }
 
+// TokenFromContext returns the bearer token from the authorization header and errors if it does not exist.
 func TokenFromContext(ctx context.Context) (string, error) {
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
