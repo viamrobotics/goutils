@@ -357,9 +357,7 @@ func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 				select {
 				case <-time.After(heartbeatInterval):
 					if err := server.Send(&webrtcpb.AnswerRequest{
-						Stage: &webrtcpb.AnswerRequest_Done{
-							Done: &webrtcpb.AnswerRequestDoneStage{},
-						},
+						Stage: &webrtcpb.AnswerRequest_Heartbeat{},
 					}); err != nil {
 						srv.logger.Debugw(
 							"error sending answer heartbeat",

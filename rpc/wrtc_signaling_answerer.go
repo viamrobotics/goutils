@@ -237,8 +237,11 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 
 			initStage, ok := incomingCallerReq.Stage.(*webrtcpb.AnswerRequest_Init)
 			if !ok {
-				aa.sendError(fmt.Errorf("expected first stage to be init; got %T", incomingCallerReq.Stage))
-				ans.logger.Warnw("error communicating with signaling server", "error", err)
+				_, ok = incomingCallerReq.Stage.(*webrtcpb.AnswerRequest_Heartbeat)
+				if !ok {
+					aa.sendError(fmt.Errorf("expected first stage to be init or heartbeat; got %T", incomingCallerReq.Stage))
+					ans.logger.Warnw("error communicating with signaling server", "error", err, "stage", incomingCallerReq.Stage)
+				}
 				continue
 			}
 
