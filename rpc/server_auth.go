@@ -42,6 +42,7 @@ type JWTClaims struct {
 	jwt.RegisteredClaims
 	AuthCredentialsType CredentialsType   `json:"rpc_creds_type,omitempty"`
 	AuthMetadata        map[string]string `json:"rpc_auth_md,omitempty"`
+	ApplicationID       string            `json:"applicationId,omitempty"`
 }
 
 // Entity returns the entity from the claims' Subject.
