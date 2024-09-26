@@ -213,9 +213,21 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 				continue
 			}
 
-			// `client.Recv` waits, typically for a long time, for a caller to show up. Which is
-			// when the signaling server will send a response saying someone wants to connect.
-			incomingCallerReq, err := client.Recv()
+			var incomingCallerReq *webrtcpb.AnswerRequest
+			for {
+				// `client.Recv` waits, typically for a long time, for a caller to show up. Which is
+				// when the signaling server will send a response saying someone wants to connect. It
+				// can also receive heartbeats every 15s. Discard heartbeats.
+				incomingCallerReq, err = client.Recv()
+				if err != nil {
+					break
+				}
+				if _, ok := incomingCallerReq.Stage.(*webrtcpb.AnswerRequest_Heartbeat); ok {
+					ans.logger.Debug("Received a heartbeat from the signaling server")
+					continue
+				}
+				break // not a heartbeat
+			}
 			if err != nil {
 				if checkExceptionalError(err) != nil {
 					ans.logger.Warnw("error communicating with signaling server", "error", err)
@@ -237,11 +249,9 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 
 			initStage, ok := incomingCallerReq.Stage.(*webrtcpb.AnswerRequest_Init)
 			if !ok {
-				_, ok = incomingCallerReq.Stage.(*webrtcpb.AnswerRequest_Heartbeat)
-				if !ok {
-					aa.sendError(fmt.Errorf("expected first stage to be init or heartbeat; got %T", incomingCallerReq.Stage))
-					ans.logger.Warnw("error communicating with signaling server", "error", err, "stage", incomingCallerReq.Stage)
-				}
+				err := fmt.Errorf("expected first stage to be init or heartbeat; got %T", incomingCallerReq.Stage)
+				aa.sendError(err)
+				ans.logger.Warn(err.Error())
 				continue
 			}
 
@@ -540,9 +550,7 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 					aa.sendError(fmt.Errorf("error from requester: %w", respStatus.Err()))
 					return
 				case *webrtcpb.AnswerRequest_Heartbeat:
-					// TODO(benji): Remove log.
-					aa.logger.Info("Received a heartbeat")
-					// Ignore heartbeats.
+					aa.logger.Debug("Received a heartbeat from the signaling server")
 				default:
 					aa.sendError(fmt.Errorf("unexpected stage %T", stage))
 					return
