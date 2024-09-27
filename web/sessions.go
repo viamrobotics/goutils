@@ -143,13 +143,13 @@ func (sm *SessionManager) DeleteSession(ctx context.Context, r *http.Request, w 
 
 // HasSessionWithAccessToken returns true if there is an active session associated with that access token.
 func (sm *SessionManager) HasSessionWithAccessToken(ctx context.Context, token string) bool {
-	hasSessionWIthToken, err := sm.store.HasSessionWithToken(ctx, token)
+	hasSessionWithToken, err := sm.store.HasSessionWithToken(ctx, token)
 	if err != nil {
 		sm.logger.Errorw("error finding session with access token", "err", err)
 		return false
 	}
 
-	return hasSessionWIthToken
+	return hasSessionWithToken
 }
 
 func (sm *SessionManager) newID() (string, error) {
@@ -239,7 +239,7 @@ func (mss *mongoDBSessionStore) Get(ctx context.Context, id string) (*Session, e
 }
 
 func (mss *mongoDBSessionStore) HasSessionWithToken(ctx context.Context, token string) (bool, error) {
-	ctx, span := trace.StartSpan(ctx, "MongoDBSessionStore::Get")
+	ctx, span := trace.StartSpan(ctx, "MongoDBSessionStore::HasSessionWithToken")
 	defer span.End()
 
 	count, err := mss.collection.CountDocuments(ctx, bson.M{accessTokenFieldPath: token}, options.Count().SetLimit(1))
