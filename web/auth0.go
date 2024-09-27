@@ -196,10 +196,10 @@ func installAuthProviderRoutes(
 	logger utils.ZapCompatibleLogger,
 ) {
 	mux.Handle(pat.New("/login"), &loginHandler{
-		authProvider,
-		logger,
-		redirectStateCookieName,
-		redirectStateCookieMaxAge,
+		state:                     authProvider,
+		logger:                    logger,
+		redirectStateCookieName:   redirectStateCookieName,
+		redirectStateCookieMaxAge: redirectStateCookieMaxAge,
 	})
 	mux.Handle(pat.New(redirectURL), &callbackHandler{
 		authProvider,
@@ -207,9 +207,9 @@ func installAuthProviderRoutes(
 		redirectStateCookieName,
 	})
 	mux.Handle(pat.New("/logout"), &logoutHandler{
-		authProvider,
-		logger,
-		providerLogoutURL,
+		state:             authProvider,
+		logger:            logger,
+		providerLogoutURL: providerLogoutURL,
 	})
 	mux.Handle(pat.New("/token"), &tokenHandler{
 		authProvider,
@@ -425,7 +425,7 @@ func verifyAndSaveToken(ctx context.Context, state *AuthProvider, session *Sessi
 	}
 
 	session.Data["id_token"] = rawIDToken
-	session.Data["access_token"] = token.AccessToken
+	session.Data[accessTokenSessionDataField] = token.AccessToken
 	session.Data["profile"] = profile
 
 	return session, nil

@@ -18,12 +18,22 @@ import (
 	mongoutils "go.viam.com/utils/mongo"
 )
 
+var (
+	accessTokenSessionDataField = "access_token"
+	accessTokenFieldPath        = fmt.Sprintf("data.%s", accessTokenSessionDataField)
+)
+
 var webSessionsIndex = []mongo.IndexModel{
 	{
 		Keys: bson.D{
 			{Key: "lastUpdate", Value: 1},
 		},
 		Options: options.Index().SetExpireAfterSeconds(30 * 24 * 3600),
+	},
+	{
+		Keys: bson.D{
+			{Key: accessTokenFieldPath, Value: 1},
+		},
 	},
 }
 
@@ -51,6 +61,7 @@ type Store interface {
 	Get(ctx context.Context, id string) (*Session, error)
 	Save(ctx context.Context, s *Session) error
 	SetSessionManager(*SessionManager)
+	HasSessionWithToken(ctx context.Context, token string) (bool, error)
 }
 
 // ----
@@ -128,6 +139,17 @@ func (sm *SessionManager) DeleteSession(ctx context.Context, r *http.Request, w 
 			sm.logger.Errorw("cannot delete cookie", "error", err)
 		}
 	}
+}
+
+// HasSessionWithAccessToken returns true if there is an active session associated with that access token.
+func (sm *SessionManager) HasSessionWithAccessToken(ctx context.Context, token string) bool {
+	hasSessionWithToken, err := sm.store.HasSessionWithToken(ctx, token)
+	if err != nil {
+		sm.logger.Errorw("error finding session with access token", "err", err)
+		return false
+	}
+
+	return hasSessionWithToken
 }
 
 func (sm *SessionManager) newID() (string, error) {
@@ -216,6 +238,18 @@ func (mss *mongoDBSessionStore) Get(ctx context.Context, id string) (*Session, e
 	return s, nil
 }
 
+func (mss *mongoDBSessionStore) HasSessionWithToken(ctx context.Context, token string) (bool, error) {
+	ctx, span := trace.StartSpan(ctx, "MongoDBSessionStore::HasSessionWithToken")
+	defer span.End()
+
+	count, err := mss.collection.CountDocuments(ctx, bson.M{accessTokenFieldPath: token}, options.Count().SetLimit(1))
+	if err != nil {
+		return false, fmt.Errorf("failed to check if token session exists: %w", err)
+	}
+
+	return count > 0, nil
+}
+
 func (mss *mongoDBSessionStore) Save(ctx context.Context, s *Session) error {
 	ctx, span := trace.StartSpan(ctx, "MongoDBSessionStore::Save")
 	defer span.End()
@@ -256,6 +290,21 @@ func (mss *memorySessionStore) Delete(ctx context.Context, id string) error {
 		mss.data[id] = nil
 	}
 	return nil
+}
+
+func (mss *memorySessionStore) HasSessionWithToken(ctx context.Context, token string) (bool, error) {
+	if mss.data != nil {
+		for _, session := range mss.data {
+			savedToken, ok := session.Data[accessTokenSessionDataField]
+			if !ok {
+				continue
+			}
+			if token == savedToken {
+				return true, nil
+			}
+		}
+	}
+	return false, errNoSession
 }
 
 func (mss *memorySessionStore) Get(ctx context.Context, id string) (*Session, error) {
