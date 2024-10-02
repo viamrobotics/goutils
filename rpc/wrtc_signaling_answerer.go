@@ -215,9 +215,16 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 
 			var incomingCallerReq *webrtcpb.AnswerRequest
 			for {
-				// `client.Recv` waits, typically for a long time, for a caller to show up. Which is
-				// when the signaling server will send a response saying someone wants to connect. It
-				// can also receive heartbeats every 15s. Discard heartbeats.
+				// `client.Recv` waits, typically for a long time, for a caller to show
+				// up. Which is when the signaling server will send a response saying
+				// someone wants to connect. It can also receive heartbeats every 15s.
+				//
+				// The answerer does not respond to heartbeats. The signaling server is
+				// only using heartbeats to ensure the answerer is reachable. If the
+				// answerer is down, the heartbeat will error in the server's
+				// heartbeating goroutine, the server's stream's context will be
+				// canceled, and the server will stop handling interactions for this
+				// answerer.
 				incomingCallerReq, err = client.Recv()
 				if err != nil {
 					break

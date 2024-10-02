@@ -351,6 +351,12 @@ func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 
 	// If heartbeats allowed (indicated by answerer), start goroutine to send
 	// heartbeats.
+	//
+	// The answerer does not respond to heartbeats. The signaling server is only
+	// using heartbeats to ensure the answerer is reachable. If the answerer is
+	// down, the heartbeat will error in the heartbeating goroutine below, the
+	// stream's context will be canceled, and we will stop handling interactions
+	// for this answerer.
 	if HeartbeatsAllowedFromCtx(ctx) {
 		utils.PanicCapturingGo(func() {
 			for {
