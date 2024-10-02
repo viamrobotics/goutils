@@ -356,7 +356,9 @@ func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 	// using heartbeats to ensure the answerer is reachable. If the answerer is
 	// down, the heartbeat will error in the heartbeating goroutine below, the
 	// stream's context will be canceled, and we will stop handling interactions
-	// for this answerer.
+	// for this answerer. We stop handling interactions because the stream's
+	// context (`ctx` here and below) is used in the `RecvOffer` call below this
+	// goroutine that waits for a caller to attempt to establish a connection.
 	if HeartbeatsAllowedFromCtx(ctx) {
 		utils.PanicCapturingGo(func() {
 			for {
