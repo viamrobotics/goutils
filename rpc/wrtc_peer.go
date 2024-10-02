@@ -85,7 +85,7 @@ func newWebRTCAPI(isClient bool, logger utils.ZapCompatibleLogger) (*webrtc.API,
 	})
 
 	// Use SOCKS proxy from environment as ICE proxy dialer and net transport.
-	if proxyAddr := os.Getenv(socksProxyEnvVar); proxyAddr != "" {
+	if proxyAddr := os.Getenv(SocksProxyEnvVar); proxyAddr != "" {
 		logger.Info("behind SOCKS proxy; setting ICE proxy dialer")
 		dialer, err := proxy.SOCKS5("tcp4", proxyAddr, nil, proxy.Direct)
 		if err != nil {

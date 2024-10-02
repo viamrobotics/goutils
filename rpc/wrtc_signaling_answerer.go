@@ -107,7 +107,7 @@ func (ans *webrtcSignalingAnswerer) Start() {
 			timeout := answererConnectTimeout
 			// Bump timeout from 10 seconds to 1 minute if behind a SOCKS proxy. It
 			// may take longer to connect to the signaling server in that case.
-			if proxyAddr := os.Getenv(socksProxyEnvVar); proxyAddr != "" {
+			if proxyAddr := os.Getenv(SocksProxyEnvVar); proxyAddr != "" {
 				timeout = answererConnectTimeoutBehindProxy
 			}
 			setupCtx, timeoutCancel := context.WithTimeout(ans.closeCtx, timeout)
@@ -321,7 +321,7 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 	// possible through extending the WebRTC config with a TURN URL (and
 	// associated username and password).
 	webrtcConfig := aa.webrtcConfig
-	if proxyAddr := os.Getenv(socksProxyEnvVar); proxyAddr != "" {
+	if proxyAddr := os.Getenv(SocksProxyEnvVar); proxyAddr != "" {
 		aa.logger.Info("behind SOCKS proxy; extending WebRTC config with TURN URL")
 		aa.connMu.Lock()
 		conn := aa.conn
