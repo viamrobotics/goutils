@@ -445,6 +445,20 @@ type tokenResponse struct {
 	Expiry       string `json:"expiry"`
 }
 
+func getBearerToken(req *http.Request) string {
+	authHeader := req.Header.Get("Authorization")
+	if authHeader == "" {
+		return ""
+	}
+
+	parts := strings.Split(authHeader, " ")
+	if len(parts) == 2 && parts[0] == "Bearer" {
+		return parts[1]
+	}
+
+	return ""
+}
+
 func (h *tokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
@@ -452,19 +466,48 @@ func (h *tokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	_, span := trace.StartSpan(ctx, r.URL.Path)
 	defer span.End()
 
+	current := getBearerToken(r)
+	failedToGetCookies := false
+
 	token, err := r.Cookie("viam.auth.token")
-	if HandleError(w, err, h.logger, "getting token cookie") {
-		return
+	if err != nil || token.Value == "" {
+		failedToGetCookies = true
 	}
 
 	refresh, err := r.Cookie("viam.auth.refresh")
-	if HandleError(w, err, h.logger, "getting refresh cookie") {
-		return
+	if err != nil || token.Value == "" {
+		failedToGetCookies = true
 	}
 
 	expiry, err := r.Cookie("viam.auth.expiry")
-	if HandleError(w, err, h.logger, "getting expiry cookie") {
+	if err != nil || token.Value == "" {
+		failedToGetCookies = true
+	}
+
+	// user calls with no token in the header, no cookies exist
+	// - return a bad request 400
+	if failedToGetCookies && current == "" {
+		w.WriteHeader(http.StatusBadRequest)
 		return
+	}
+
+	// user calls with a token in the header, no cookies exist
+	// - check if the token in the header is valid
+	//   - if so:
+	//     - do nothing, return 204
+	//   - if not:
+	//     - return an unauthenticated error 401
+	//     - force user logout
+	if failedToGetCookies && current != "" {
+		isValid := h.state.sessions.HasSessionWithAccessToken(ctx, current)
+
+		if isValid {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		} else {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
 	}
 
 	response := &tokenResponse{
