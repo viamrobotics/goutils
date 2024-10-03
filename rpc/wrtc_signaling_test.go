@@ -147,9 +147,11 @@ func testWebRTCSignaling(t *testing.T, signalingCallQueue WebRTCCallQueue, logge
 				})
 			}
 
-			webrtcServer.Stop()
+			// Mimic order of stopping used in `simpleServer.Stop()` (answerer, sig
+			// server's gRPC listener, then machine).
 			answerer.Stop()
 			grpcServer.Stop()
+			webrtcServer.Stop()
 			test.That(t, <-serveDone, test.ShouldBeNil)
 		})
 	}
@@ -248,8 +250,10 @@ func TestSignalingHeartbeats(t *testing.T) {
 			test.ShouldBeGreaterThan, 0)
 	})
 
-	webrtcServer.Stop()
+	// Mimic order of stopping used in `simpleServer.Stop()` (answerer, sig
+	// server's gRPC listener, then machine).
 	answerer.Stop()
 	grpcServer.Stop()
+	webrtcServer.Stop()
 	test.That(t, <-serveDone, test.ShouldBeNil)
 }

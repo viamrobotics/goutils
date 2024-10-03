@@ -361,6 +361,8 @@ func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 	// goroutine that waits for a caller to attempt to establish a connection.
 	if HeartbeatsAllowedFromCtx(ctx) {
 		utils.PanicCapturingGo(func() {
+			// Capture as tests can mutate this value.
+			heartbeatInterval := heartbeatInterval
 			for {
 				select {
 				case <-time.After(heartbeatInterval):
