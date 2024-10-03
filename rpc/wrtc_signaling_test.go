@@ -199,3 +199,57 @@ func TestWebRTCAnswererImmediateStop(t *testing.T) {
 	}()
 	wg.Wait()
 }
+
+func TestSignalingHeartbeats(t *testing.T) {
+	logger, observer := golog.NewObservedTestLogger(t)
+
+	// Artificially lower signaling heartbeat interval to speed
+	// up test.
+	originalHeartbeatInterval := heartbeatInterval
+	defer func() {
+		heartbeatInterval = originalHeartbeatInterval
+	}()
+	heartbeatInterval = 500 * time.Millisecond
+
+	// Create a simple signaling server with an in-memory call-queue.
+	signalingCallQueue := NewMemoryWebRTCCallQueue(logger)
+	defer func() {
+		test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
+	}()
+	signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, logger)
+	defer signalingServer.Close()
+	grpcListener, err := net.Listen("tcp", "localhost:0")
+	test.That(t, err, test.ShouldBeNil)
+	grpcServer := grpc.NewServer()
+	grpcServer.RegisterService(&webrtcpb.SignalingService_ServiceDesc, signalingServer)
+	serveDone := make(chan error)
+	go func() {
+		serveDone <- grpcServer.Serve(grpcListener)
+	}()
+
+	// Create a simple WebRTC server that (needlessly) serves the Echo service.
+	// Start an answerer with it.
+	webrtcServer := newWebRTCServer(logger)
+	webrtcServer.RegisterService(&echopb.EchoService_ServiceDesc, &echoserver.Server{})
+	answerer := newWebRTCSignalingAnswerer(
+		grpcListener.Addr().String(),
+		[]string{"foo"},
+		webrtcServer,
+		[]DialOption{WithInsecure()},
+		webrtc.Configuration{},
+		logger,
+	)
+	answerer.Start()
+
+	// Assert that the answerer eventually logs received heartbeats.
+	testutils.WaitForAssertion(t, func(tb testing.TB) {
+		t.Helper()
+		test.That(tb, observer.FilterMessageSnippet(heartbeatReceivedLog).Len(),
+			test.ShouldBeGreaterThan, 0)
+	})
+
+	webrtcServer.Stop()
+	answerer.Stop()
+	grpcServer.Stop()
+	test.That(t, <-serveDone, test.ShouldBeNil)
+}

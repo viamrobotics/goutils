@@ -80,7 +80,7 @@ const RPCHostMetadataField = "rpc-host"
 const HeartbeatsAllowedMetadataField = "heartbeats-allowed"
 
 // Interval at which to send heartbeats.
-const heartbeatInterval = 15 * time.Second
+var heartbeatInterval = 15 * time.Second
 
 // HostFromCtx gets the host being called/answered for from the context.
 func HostFromCtx(ctx context.Context) (string, error) {

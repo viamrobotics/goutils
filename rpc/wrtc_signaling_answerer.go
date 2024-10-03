@@ -22,6 +22,8 @@ import (
 
 const testDelayAnswererNegotiationVar = "TEST_DELAY_ANSWERER_NEGOTIATION"
 
+const heartbeatReceivedLog = "Received a heartbeat from the signaling server"
+
 // A webrtcSignalingAnswerer listens for and answers calls with a given signaling service. It is
 // directly connected to a Server that will handle the actual calls/connections over WebRTC
 // data channels.
@@ -230,7 +232,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 					break
 				}
 				if _, ok := incomingCallerReq.Stage.(*webrtcpb.AnswerRequest_Heartbeat); ok {
-					ans.logger.Debug("Received a heartbeat from the signaling server")
+					ans.logger.Debug(heartbeatReceivedLog)
 					continue
 				}
 				break // not a heartbeat
@@ -557,7 +559,7 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 					aa.sendError(fmt.Errorf("error from requester: %w", respStatus.Err()))
 					return
 				case *webrtcpb.AnswerRequest_Heartbeat:
-					aa.logger.Debug("Received a heartbeat from the signaling server")
+					aa.logger.Debug(heartbeatReceivedLog)
 				default:
 					aa.sendError(fmt.Errorf("unexpected stage %T", stage))
 					return
