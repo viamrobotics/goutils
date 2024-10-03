@@ -56,7 +56,7 @@ func (u *UserInfo) GetBool(name string) bool {
 	return b
 }
 
-// GetUpdatedAt gets the timestamp indicating when the user's auth0 profile was last updated/modified.
+// GetUpdatedAt gets the timestamp indicating when the user's profile was last updated/modified.
 func (u *UserInfo) GetUpdatedAt() string {
 	if u.Properties == nil {
 		return ""
