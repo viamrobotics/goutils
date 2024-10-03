@@ -503,11 +503,11 @@ func (h *tokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		if isValid {
 			w.WriteHeader(http.StatusNoContent)
-			return
 		} else {
 			w.WriteHeader(http.StatusUnauthorized)
-			return
 		}
+
+		return
 	}
 
 	response := &tokenResponse{
