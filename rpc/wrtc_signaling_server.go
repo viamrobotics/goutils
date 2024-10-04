@@ -43,16 +43,22 @@ type WebRTCSignalingServer struct {
 	cancelCtx  context.Context
 	cancelFunc func()
 	logger     utils.ZapCompatibleLogger
+
+	// Interval at which to send heartbeats.
+	heartbeatInterval time.Duration
 }
 
 // NewWebRTCSignalingServer makes a new signaling server that uses the given
 // call queue and looks routes based on a given robot host. If forHosts is
 // non-empty, the server will only accept the given hosts and reject all
-// others.
+// others. The signaling server will send heartbeats to answerers at the
+// provided heartbeatInterval if the answerer requests heartbeats through
+// the initial Answer metadata.
 func NewWebRTCSignalingServer(
 	callQueue WebRTCCallQueue,
 	webrtcConfigProvider WebRTCConfigProvider,
 	logger utils.ZapCompatibleLogger,
+	heartbeatInterval time.Duration,
 	forHosts ...string,
 ) *WebRTCSignalingServer {
 	forHostsSet := make(map[string]struct{}, len(forHosts))
@@ -69,6 +75,7 @@ func NewWebRTCSignalingServer(
 		cancelCtx:            cancelCtx,
 		cancelFunc:           cancelFunc,
 		logger:               logger,
+		heartbeatInterval:    heartbeatInterval,
 	}
 }
 
@@ -79,8 +86,8 @@ const RPCHostMetadataField = "rpc-host"
 // from a signaling server to answerers.
 const HeartbeatsAllowedMetadataField = "heartbeats-allowed"
 
-// Interval at which to send heartbeats.
-var heartbeatInterval = 15 * time.Second
+// Default interval at which to send heartbeats.
+const defaultHeartbeatInterval = 15 * time.Second
 
 // HostFromCtx gets the host being called/answered for from the context.
 func HostFromCtx(ctx context.Context) (string, error) {
@@ -361,11 +368,9 @@ func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 	// goroutine that waits for a caller to attempt to establish a connection.
 	if HeartbeatsAllowedFromCtx(ctx) {
 		utils.PanicCapturingGo(func() {
-			// Capture as tests can mutate this value.
-			heartbeatInterval := heartbeatInterval
 			for {
 				select {
-				case <-time.After(heartbeatInterval):
+				case <-time.After(srv.heartbeatInterval):
 					if err := server.Send(&webrtcpb.AnswerRequest{
 						Stage: &webrtcpb.AnswerRequest_Heartbeat{},
 					}); err != nil {

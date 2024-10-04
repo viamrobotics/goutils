@@ -52,7 +52,8 @@ func TestWebRTCClientServerWithMongoDBQueue(t *testing.T) {
 
 //nolint:thelper
 func testWebRTCClientServer(t *testing.T, signalingCallQueue WebRTCCallQueue, logger utils.ZapCompatibleLogger) {
-	signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, logger)
+	signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, logger,
+		defaultHeartbeatInterval)
 	defer signalingServer.Close()
 
 	grpcListener, err := net.Listen("tcp", "localhost:0")
@@ -145,7 +146,8 @@ func TestWebRTCClientDialCancelWithMongoDBQueue(t *testing.T) {
 
 //nolint:thelper
 func testWebRTCClientDialCancel(t *testing.T, signalingCallQueue WebRTCCallQueue, logger utils.ZapCompatibleLogger) {
-	signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, logger)
+	signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, logger,
+		defaultHeartbeatInterval)
 	defer signalingServer.Close()
 
 	grpcListener, err := net.Listen("tcp", "localhost:0")
@@ -232,7 +234,8 @@ func TestWebRTCClientDialReflectAnswererErrorWithMongoDBQueue(t *testing.T) {
 
 //nolint:thelper
 func testWebRTCClientDialReflectAnswererError(t *testing.T, signalingCallQueue WebRTCCallQueue, logger utils.ZapCompatibleLogger) {
-	signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, logger)
+	signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, logger,
+		defaultHeartbeatInterval)
 	defer signalingServer.Close()
 
 	grpcListener, err := net.Listen("tcp", "localhost:0")
@@ -326,7 +329,8 @@ func TestWebRTCClientDialConcurrentWithMongoDBQueue(t *testing.T) {
 //
 //nolint:thelper
 func testWebRTCClientDialConcurrent(t *testing.T, signalingCallQueue WebRTCCallQueue, logger utils.ZapCompatibleLogger) {
-	signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, logger)
+	signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, logger,
+		defaultHeartbeatInterval)
 	defer signalingServer.Close()
 
 	grpcListener, err := net.Listen("tcp", "localhost:0")
@@ -464,7 +468,8 @@ func TestWebRTCClientAnswerConcurrentWithMongoDBQueue(t *testing.T) {
 
 //nolint:thelper
 func testWebRTCClientAnswerConcurrent(t *testing.T, signalingCallQueue WebRTCCallQueue, logger utils.ZapCompatibleLogger) {
-	signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, logger)
+	signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, logger,
+		defaultHeartbeatInterval)
 	defer signalingServer.Close()
 
 	grpcListener, err := net.Listen("tcp", "localhost:0")

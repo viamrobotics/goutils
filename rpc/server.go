@@ -617,7 +617,8 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 			logger.Debug("will run internal signaling service")
 			signalingCallQueue := NewMemoryWebRTCCallQueue(logger)
 			server.signalingCallQueue = signalingCallQueue
-			server.signalingServer = NewWebRTCSignalingServer(signalingCallQueue, nil, logger, internalSignalingHosts...)
+			server.signalingServer = NewWebRTCSignalingServer(signalingCallQueue, nil, logger,
+				defaultHeartbeatInterval, internalSignalingHosts...)
 			if err := server.RegisterServiceServer(
 				context.Background(),
 				&webrtcpb.SignalingService_ServiceDesc,
