@@ -443,12 +443,13 @@ func (h *tokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	refresh, err := r.Cookie("viam.auth.refresh")
-	if err != nil || token.Value == "" {
+	// TODO: Check if refresh is empty when implemented, always empty now
+	if err != nil {
 		failedToGetCookies = true
 	}
 
 	expiry, err := r.Cookie("viam.auth.expiry")
-	if err != nil || token.Value == "" {
+	if err != nil || expiry.Value == "" {
 		failedToGetCookies = true
 	}
 
