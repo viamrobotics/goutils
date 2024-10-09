@@ -54,6 +54,7 @@ type AuthProvider struct {
 }
 
 const (
+	//nolint:gosec
 	ViamTokenCookie   string = "viam.auth.token"
 	ViamRefreshCookie string = "viam.auth.refresh"
 	ViamExpiryCookie  string = "viam.auth.expiry"
