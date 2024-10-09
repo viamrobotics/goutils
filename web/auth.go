@@ -53,6 +53,12 @@ type AuthProvider struct {
 	stateCookieMaxAge time.Duration
 }
 
+const (
+	ViamAuthToken   string = "viam.auth.token"
+	ViamAuthRefresh string = "viam.auth.refresh"
+	ViamAuthExpiry  string = "viam.auth.expiry"
+)
+
 // Close called by io.Closer.
 func (s *AuthProvider) Close() error {
 	s.httpTransport.CloseIdleConnections()
@@ -262,7 +268,7 @@ func (h *callbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.SetCookie(w, &http.Cookie{
-		Name:     "viam.auth.token",
+		Name:     ViamAuthToken,
 		Value:    token.AccessToken,
 		Path:     "/",
 		Expires:  token.Expiry,
@@ -272,7 +278,7 @@ func (h *callbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	})
 
 	http.SetCookie(w, &http.Cookie{
-		Name:     "viam.auth.refresh",
+		Name:     ViamAuthRefresh,
 		Value:    token.RefreshToken,
 		Path:     "/",
 		Expires:  token.Expiry,
@@ -282,7 +288,7 @@ func (h *callbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	})
 
 	http.SetCookie(w, &http.Cookie{
-		Name:     "viam.auth.expiry",
+		Name:     ViamAuthExpiry,
 		Value:    token.Expiry.Format(time.RFC3339),
 		Path:     "/",
 		Expires:  token.Expiry,
@@ -427,6 +433,62 @@ func getBearerToken(req *http.Request) string {
 	return ""
 }
 
+// getAuthCookieValues reads the authentication cookie values as a /token response
+func getAuthCookieValues(r *http.Request) *tokenResponse {
+	token, err := r.Cookie(ViamAuthToken)
+	if err != nil || token.Value == "" {
+		return nil
+	}
+
+	refresh, err := r.Cookie(ViamAuthRefresh)
+	// TODO: Check if refresh is empty when implemented, always empty now
+	if err != nil {
+		return nil
+	}
+
+	expiry, err := r.Cookie(ViamAuthExpiry)
+	if err != nil || expiry.Value == "" {
+		return nil
+	}
+
+	return &tokenResponse{
+		AccessToken:  token.Value,
+		RefreshToken: refresh.Value,
+		Expiry:       expiry.Value,
+	}
+}
+
+// clearAuthCookies removes auth cookies from /callback
+// - to be used after reading the cookies so they can only be used once
+func clearAuthCookies(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     ViamAuthToken,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		SameSite: http.SameSiteLaxMode,
+		HttpOnly: true,
+	})
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     ViamAuthRefresh,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		SameSite: http.SameSiteLaxMode,
+		HttpOnly: true,
+	})
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     ViamAuthExpiry,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		SameSite: http.SameSiteLaxMode,
+		HttpOnly: true,
+	})
+}
+
 func (h *tokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
@@ -435,101 +497,46 @@ func (h *tokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer span.End()
 
 	current := getBearerToken(r)
-	failedToGetCookies := false
+	data := getAuthCookieValues(r)
+	clearAuthCookies(w)
 
-	token, err := r.Cookie("viam.auth.token")
-	if err != nil || token.Value == "" {
-		failedToGetCookies = true
-	}
+	// handle incoming login request with cookies
+	if data != nil {
+		w.Header().Set("Content-Type", "application/json")
+		response, err := json.Marshal(data)
+		if err != nil {
+			temp := errors.New("failed to verify marshal token data: " + err.Error())
+			w.WriteHeader(http.StatusInternalServerError)
+			_, err = w.Write([]byte(temp.Error()))
+			if err != nil {
+				utils.UncheckedError(err)
+			}
+			h.logger.Error(temp)
+			return
+		}
 
-	refresh, err := r.Cookie("viam.auth.refresh")
-	// TODO: Check if refresh is empty when implemented, always empty now
-	if err != nil {
-		failedToGetCookies = true
-	}
-
-	expiry, err := r.Cookie("viam.auth.expiry")
-	if err != nil || expiry.Value == "" {
-		failedToGetCookies = true
+		_, err = w.Write(response)
+		utils.UncheckedError(err)
+		return
 	}
 
 	// user calls with no token in the header, no cookies exist
 	// - return a bad request 400
-	if failedToGetCookies && current == "" {
+	if current == "" {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	// user calls with a token in the header, no cookies exist
-	// - check if the token in the header is valid
-	//   - if so:
-	//     - do nothing, return 204
-	//   - if not:
-	//     - return an unauthenticated error 401
-	//     - force user logout
-	if failedToGetCookies && current != "" {
-		isValid := h.state.sessions.HasSessionWithAccessToken(ctx, current)
-
-		if isValid {
-			w.WriteHeader(http.StatusNoContent)
-		} else {
-			w.WriteHeader(http.StatusUnauthorized)
-		}
-
-		return
+	// user calls with an invalid token in the header, no cookies exist
+	// - return an unauthenticated error 401
+	isValid := h.state.sessions.HasSessionWithAccessToken(ctx, current)
+	if !isValid {
+		w.WriteHeader(http.StatusUnauthorized)
 	}
 
-	response := &tokenResponse{
-		AccessToken:  token.Value,
-		RefreshToken: refresh.Value,
-		Expiry:       expiry.Value,
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	data, err := json.Marshal(response)
-	if err != nil {
-		temp := errors.New("failed to verify marshal token data: " + err.Error())
-		w.WriteHeader(http.StatusInternalServerError)
-		_, err = w.Write([]byte(temp.Error()))
-		if err != nil {
-			utils.UncheckedError(err)
-		}
-		h.logger.Error(temp)
-		return
-	}
-
-	http.SetCookie(w, &http.Cookie{
-		Name:     "viam.auth.token",
-		Value:    "",
-		Path:     "/",
-		MaxAge:   -1,
-		Secure:   r.TLS != nil,
-		SameSite: http.SameSiteLaxMode,
-		HttpOnly: true,
-	})
-
-	http.SetCookie(w, &http.Cookie{
-		Name:     "viam.auth.refresh",
-		Value:    "",
-		Path:     "/",
-		MaxAge:   -1,
-		Secure:   r.TLS != nil,
-		SameSite: http.SameSiteLaxMode,
-		HttpOnly: true,
-	})
-
-	http.SetCookie(w, &http.Cookie{
-		Name:     "viam.auth.expiry",
-		Value:    "",
-		Path:     "/",
-		MaxAge:   -1,
-		Secure:   r.TLS != nil,
-		SameSite: http.SameSiteLaxMode,
-		HttpOnly: true,
-	})
-
-	_, err = w.Write(data)
-	utils.UncheckedError(err)
+	// user calls with a valid token in the header, no cookies exist
+	// - return a no content 204 response
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // --------------------------------
