@@ -51,7 +51,7 @@ type ZapCompatibleLogger interface {
 // calling its `Sublogger` method if it is an RDK logger, or its `Named` method if it is a Zap logger.
 // If neither method is available, it logs a debug message and returns the original logger.
 func Sublogger(inp ZapCompatibleLogger, subname string) (loggerRet ZapCompatibleLogger) {
-	loggerRet = inp //nolint:wastedassign
+	loggerRet = inp
 
 	// loggerRet is initialized to inp as a return value and is intentionally never re-assigned
 	// before calling functions that can panic so that defer + recover returns the original logger
@@ -88,7 +88,7 @@ func Sublogger(inp ZapCompatibleLogger, subname string) (loggerRet ZapCompatible
 // calling its `WithFields` method if it is an RDK logger, or its `With` method if it is a Zap logger.
 // If neither method is available, it logs a debug message and returns the original logger.
 func AddFieldsToLogger(inp ZapCompatibleLogger, args ...interface{}) (loggerRet ZapCompatibleLogger) {
-	loggerRet = inp //nolint:wastedassign
+	loggerRet = inp
 
 	// loggerRet is initialized to inp as a return value and is intentionally never re-assigned
 	// before calling functions that can panic so that defer + recover returns the original logger

@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/viamrobotics/webrtc/v3"
+	"github.com/pion/webrtc/v4"
 	"go.viam.com/test"
 )
 

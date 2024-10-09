@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/viamrobotics/webrtc/v3"
+	"github.com/pion/webrtc/v4"
 
 	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
 )

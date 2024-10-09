@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/viamrobotics/webrtc/v3"
+	"github.com/pion/webrtc/v4"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.viam.com/test"
 )
