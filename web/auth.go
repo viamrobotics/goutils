@@ -54,10 +54,15 @@ type AuthProvider struct {
 }
 
 const (
+	// ViamTokenCookie is the cookie name for an authenticated access token
 	//nolint:gosec
-	ViamTokenCookie   string = "viam.auth.token"
+	ViamTokenCookie string = "viam.auth.token"
+	// ViamRefreshCookie is the cookie name for an authenticated refresh token
+	//nolint:gosec
 	ViamRefreshCookie string = "viam.auth.refresh"
-	ViamExpiryCookie  string = "viam.auth.expiry"
+	// ViamExpiryCookie is the cookie name for an authenticated token's expiry
+	//nolint:gosec
+	ViamExpiryCookie string = "viam.auth.expiry"
 )
 
 // Close called by io.Closer.
