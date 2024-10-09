@@ -10,7 +10,7 @@ import (
 
 	"github.com/edaniels/golog"
 	"github.com/google/uuid"
-	"github.com/viamrobotics/webrtc/v3"
+	"github.com/pion/webrtc/v4"
 	"go.viam.com/test"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"

@@ -7,9 +7,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/pion/dtls/v2"
+	"github.com/pion/dtls/v3"
 	"github.com/pion/sctp"
-	"github.com/viamrobotics/webrtc/v3"
+	"github.com/pion/webrtc/v4"
 	"google.golang.org/protobuf/proto"
 
 	"go.viam.com/utils"

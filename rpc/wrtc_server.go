@@ -7,7 +7,7 @@ import (
 	"io"
 	"sync"
 
-	"github.com/viamrobotics/webrtc/v3"
+	"github.com/pion/webrtc/v4"
 	"google.golang.org/grpc"
 
 	"go.viam.com/utils"

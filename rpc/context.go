@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/viamrobotics/webrtc/v3"
+	"github.com/pion/webrtc/v4"
 )
 
 type ctxKey int

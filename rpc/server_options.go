@@ -11,7 +11,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/pkg/errors"
-	"github.com/viamrobotics/webrtc/v3"
+	"github.com/pion/webrtc/v4"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/stats"
 

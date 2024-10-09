@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"github.com/viamrobotics/webrtc/v3"
+	"github.com/pion/webrtc/v4"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
