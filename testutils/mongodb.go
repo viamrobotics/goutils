@@ -148,18 +148,12 @@ func backingMongoDBClientWithOptions(baseOptions *options.ClientOptions) (*mongo
 // BackingMongoDBClient returns a backing MongoDB client to use.
 func BackingMongoDBClient(tb testing.TB) *mongo.Client {
 	tb.Helper()
-	// TODO(RSDK-8952): Re-enable tests that interact with MDB once
-	// we resurrect the downed MBD instance or create a new one.
-	tb.Skip("skipping MongoDB related test for now; see RSDK-8952")
-	return nil
-	/*
-		client, err := backingMongoDBClient()
-		if err != nil {
-			skipWithError(tb, err)
-			return nil
-		}
-		return client
-	*/
+	client, err := backingMongoDBClient()
+	if err != nil {
+		skipWithError(tb, err)
+		return nil
+	}
+	return client
 }
 
 // BackingMongoDBClientWithOptions returns a backing MongoDB client to use with the provided options.
