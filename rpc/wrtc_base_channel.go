@@ -123,7 +123,7 @@ func newBaseChannel(
 				}
 				fallthrough
 			case webrtc.ICEConnectionStateChecking, webrtc.ICEConnectionStateCompleted,
-				webrtc.ICEConnectionStateNew:
+				webrtc.ICEConnectionStateNew, webrtc.ICEConnectionStateUnknown:
 				fallthrough
 			default:
 				candPair, hasCandPair := webrtcPeerConnCandPair(peerConn)

@@ -578,6 +578,8 @@ func getWebRTCPeerConnectionStats(peerConnection *webrtc.PeerConnection) webrtcP
 			candidateType = "server-reflexive"
 		case webrtc.ICECandidateTypeHost:
 			candidateType = "host"
+		case webrtc.ICECandidateTypeUnknown:
+		default:
 		}
 		if candidateType == "" {
 			continue
