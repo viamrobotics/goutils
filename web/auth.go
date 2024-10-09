@@ -54,9 +54,9 @@ type AuthProvider struct {
 }
 
 const (
-	ViamAuthToken   string = "viam.auth.token"
-	ViamAuthRefresh string = "viam.auth.refresh"
-	ViamAuthExpiry  string = "viam.auth.expiry"
+	ViamTokenCookie   string = "viam.auth.token"
+	ViamRefreshCookie string = "viam.auth.refresh"
+	ViamExpiryCookie  string = "viam.auth.expiry"
 )
 
 // Close called by io.Closer.
@@ -268,7 +268,7 @@ func (h *callbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.SetCookie(w, &http.Cookie{
-		Name:     ViamAuthToken,
+		Name:     ViamTokenCookie,
 		Value:    token.AccessToken,
 		Path:     "/",
 		Expires:  token.Expiry,
@@ -278,7 +278,7 @@ func (h *callbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	})
 
 	http.SetCookie(w, &http.Cookie{
-		Name:     ViamAuthRefresh,
+		Name:     ViamRefreshCookie,
 		Value:    token.RefreshToken,
 		Path:     "/",
 		Expires:  token.Expiry,
@@ -288,7 +288,7 @@ func (h *callbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	})
 
 	http.SetCookie(w, &http.Cookie{
-		Name:     ViamAuthExpiry,
+		Name:     ViamExpiryCookie,
 		Value:    token.Expiry.Format(time.RFC3339),
 		Path:     "/",
 		Expires:  token.Expiry,
@@ -435,18 +435,18 @@ func getBearerToken(req *http.Request) string {
 
 // getAuthCookieValues reads the authentication cookie values as a /token response
 func getAuthCookieValues(r *http.Request) *tokenResponse {
-	token, err := r.Cookie(ViamAuthToken)
+	token, err := r.Cookie(ViamTokenCookie)
 	if err != nil || token.Value == "" {
 		return nil
 	}
 
-	refresh, err := r.Cookie(ViamAuthRefresh)
+	refresh, err := r.Cookie(ViamRefreshCookie)
 	// TODO: Check if refresh is empty when implemented, always empty now
 	if err != nil {
 		return nil
 	}
 
-	expiry, err := r.Cookie(ViamAuthExpiry)
+	expiry, err := r.Cookie(ViamExpiryCookie)
 	if err != nil || expiry.Value == "" {
 		return nil
 	}
@@ -462,7 +462,7 @@ func getAuthCookieValues(r *http.Request) *tokenResponse {
 // - to be used after reading the cookies so they can only be used once
 func clearAuthCookies(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{
-		Name:     ViamAuthToken,
+		Name:     ViamTokenCookie,
 		Value:    "",
 		Path:     "/",
 		MaxAge:   -1,
@@ -471,7 +471,7 @@ func clearAuthCookies(w http.ResponseWriter) {
 	})
 
 	http.SetCookie(w, &http.Cookie{
-		Name:     ViamAuthRefresh,
+		Name:     ViamRefreshCookie,
 		Value:    "",
 		Path:     "/",
 		MaxAge:   -1,
@@ -480,7 +480,7 @@ func clearAuthCookies(w http.ResponseWriter) {
 	})
 
 	http.SetCookie(w, &http.Cookie{
-		Name:     ViamAuthExpiry,
+		Name:     ViamExpiryCookie,
 		Value:    "",
 		Path:     "/",
 		MaxAge:   -1,
