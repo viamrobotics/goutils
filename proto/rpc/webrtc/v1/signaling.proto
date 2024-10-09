@@ -140,6 +140,10 @@ message AnswerRequestErrorStage {
 	google.rpc.Status status = 1;
 }
 
+// AnswerRequestHeartbeatStage is sent periodically to verify liveness of answerer.
+message AnswerRequestHeartbeatStage {
+}
+
 // AnswerRequest is the SDP offer that the controlling side is making via the answering
 // stream.
 message AnswerRequest {
@@ -153,6 +157,9 @@ message AnswerRequest {
 
 		// error is sent any time before done
 		AnswerRequestErrorStage error = 5;
+
+		// heartbeat is sent periodically to verify liveness of answerer
+		AnswerRequestHeartbeatStage heartbeat = 6;
 	}
 }
 
@@ -176,6 +183,7 @@ message AnswerResponseDoneStage {
 message AnswerResponseErrorStage {
 	google.rpc.Status status = 1;
 }
+
 
 // AnswerResponse is the SDP answer that an answerer responds with.
 message AnswerResponse {

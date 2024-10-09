@@ -52,7 +52,8 @@ func testWebRTCSignaling(t *testing.T, signalingCallQueue WebRTCCallQueue, logge
 	hosts := []string{"yeehaw", "woahthere"}
 	for _, host := range hosts {
 		t.Run(host, func(t *testing.T) {
-			signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, logger)
+			signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, logger,
+				defaultHeartbeatInterval)
 			defer signalingServer.Close()
 
 			grpcListener, err := net.Listen("tcp", "localhost:0")
@@ -147,9 +148,11 @@ func testWebRTCSignaling(t *testing.T, signalingCallQueue WebRTCCallQueue, logge
 				})
 			}
 
-			webrtcServer.Stop()
+			// Mimic order of stopping used in `simpleServer.Stop()` (answerer, sig
+			// server's gRPC listener, then machine).
 			answerer.Stop()
 			grpcServer.Stop()
+			webrtcServer.Stop()
 			test.That(t, <-serveDone, test.ShouldBeNil)
 		})
 	}
@@ -164,7 +167,8 @@ func TestWebRTCAnswererImmediateStop(t *testing.T) {
 		test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
 	}()
 
-	signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, logger)
+	signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, logger,
+		defaultHeartbeatInterval)
 	defer signalingServer.Close()
 
 	grpcListener, err := net.Listen("tcp", "localhost:0")
@@ -198,4 +202,54 @@ func TestWebRTCAnswererImmediateStop(t *testing.T) {
 		answerer.Stop()
 	}()
 	wg.Wait()
+}
+
+func TestSignalingHeartbeats(t *testing.T) {
+	logger, observer := golog.NewObservedTestLogger(t)
+
+	// Create a simple signaling server with an in-memory call-queue.
+	signalingCallQueue := NewMemoryWebRTCCallQueue(logger)
+	defer func() {
+		test.That(t, signalingCallQueue.Close(), test.ShouldBeNil)
+	}()
+	// Use a lowered heartbeatInterval (500ms instead of 15s).
+	signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, logger,
+		500*time.Millisecond)
+	defer signalingServer.Close()
+	grpcListener, err := net.Listen("tcp", "localhost:0")
+	test.That(t, err, test.ShouldBeNil)
+	grpcServer := grpc.NewServer()
+	grpcServer.RegisterService(&webrtcpb.SignalingService_ServiceDesc, signalingServer)
+	serveDone := make(chan error)
+	go func() {
+		serveDone <- grpcServer.Serve(grpcListener)
+	}()
+
+	// Create a simple WebRTC server that (needlessly) serves the Echo service.
+	// Start an answerer with it.
+	webrtcServer := newWebRTCServer(logger)
+	webrtcServer.RegisterService(&echopb.EchoService_ServiceDesc, &echoserver.Server{})
+	answerer := newWebRTCSignalingAnswerer(
+		grpcListener.Addr().String(),
+		[]string{"foo"},
+		webrtcServer,
+		[]DialOption{WithInsecure()},
+		webrtc.Configuration{},
+		logger,
+	)
+	answerer.Start()
+
+	// Assert that the answerer eventually logs received heartbeats.
+	testutils.WaitForAssertion(t, func(tb testing.TB) {
+		t.Helper()
+		test.That(tb, observer.FilterMessageSnippet(heartbeatReceivedLog).Len(),
+			test.ShouldBeGreaterThan, 0)
+	})
+
+	// Mimic order of stopping used in `simpleServer.Stop()` (answerer, sig
+	// server's gRPC listener, then machine).
+	answerer.Stop()
+	grpcServer.Stop()
+	webrtcServer.Stop()
+	test.That(t, <-serveDone, test.ShouldBeNil)
 }
