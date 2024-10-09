@@ -10,8 +10,8 @@ import (
 	"net"
 
 	"github.com/golang-jwt/jwt/v4"
-	"github.com/pkg/errors"
 	"github.com/pion/webrtc/v4"
+	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/stats"
 

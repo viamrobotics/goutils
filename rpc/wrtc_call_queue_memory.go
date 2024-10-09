@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/pkg/errors"
 	"github.com/pion/webrtc/v4"
+	"github.com/pkg/errors"
 
 	"go.viam.com/utils"
 )
