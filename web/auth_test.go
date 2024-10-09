@@ -29,8 +29,16 @@ func setCookie(t *testing.T, r *http.Request, key string, value string) {
 }
 
 func TestWebAuth(t *testing.T) {
+	t.Run("should return nil when token cookie is not present", func(t *testing.T) {
+		r := createRequest(t)
+		setCookie(t, r, ViamAuthRefresh, "")
+		setCookie(t, r, ViamAuthExpiry, "123456")
 
-	t.Run("should return nil when token cookie is not set", func(t *testing.T) {
+		data := getAuthCookieValues(r)
+		test.That(t, data, test.ShouldBeNil)
+	})
+
+	t.Run("should return nil when token cookie is empty", func(t *testing.T) {
 		r := createRequest(t)
 		setCookie(t, r, ViamAuthToken, "")
 		setCookie(t, r, ViamAuthRefresh, "")
@@ -40,7 +48,7 @@ func TestWebAuth(t *testing.T) {
 		test.That(t, data, test.ShouldBeNil)
 	})
 
-	t.Run("should return nil when refresh cookies causes an error", func(t *testing.T) {
+	t.Run("should return nil when refresh cookies is not present", func(t *testing.T) {
 		r := createRequest(t)
 		setCookie(t, r, ViamAuthToken, "abc123")
 		setCookie(t, r, ViamAuthExpiry, "123456")
@@ -49,7 +57,16 @@ func TestWebAuth(t *testing.T) {
 		test.That(t, data, test.ShouldBeNil)
 	})
 
-	t.Run("should return nil when expiry cookie is not set", func(t *testing.T) {
+	t.Run("should return nil when expiry cookie is not present", func(t *testing.T) {
+		r := createRequest(t)
+		setCookie(t, r, ViamAuthToken, "abc123")
+		setCookie(t, r, ViamAuthRefresh, "")
+
+		data := getAuthCookieValues(r)
+		test.That(t, data, test.ShouldBeNil)
+	})
+
+	t.Run("should return nil when expiry cookie is empty", func(t *testing.T) {
 		r := createRequest(t)
 		setCookie(t, r, ViamAuthToken, "abc123")
 		setCookie(t, r, ViamAuthRefresh, "")
