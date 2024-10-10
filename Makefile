@@ -8,16 +8,10 @@ setup-cert:
 setup-priv-key:
 	cd etc && bash ./setup_priv_key.sh
 
-build: build-web build-go
+build: build-go
 
 build-go: buf-go
 	go build ./...
-
-build-web: buf-web
-	export NODE_OPTIONS=--openssl-legacy-provider && node --version 2>/dev/null || unset NODE_OPTIONS;\
-	cd rpc/js && npm install && npm run build && \
-	cd ../examples/echo/frontend && npm install && npm run build && \
-	cd ../../fileupload/frontend && npm install && npm run build
 
 tool-install:
 	GOBIN=`pwd`/$(TOOL_BIN) go install google.golang.org/protobuf/cmd/protoc-gen-go \
@@ -34,22 +28,13 @@ tool-install:
 		github.com/axw/gocov/gocov \
 		gotest.tools/gotestsum
 
-buf: buf-go buf-web
+buf: buf-go
 
 buf-go: tool-install
 	PATH=$(PATH_WITH_TOOLS) buf lint
 	PATH=$(PATH_WITH_TOOLS) buf generate
 
-buf-web: tool-install
-	npm install
-	PATH=$(PATH_WITH_TOOLS) buf lint
-	PATH=$(PATH_WITH_TOOLS) buf generate --template ./etc/buf.web.gen.yaml
-	PATH=$(PATH_WITH_TOOLS) buf generate --template ./etc/buf.web.gen.yaml buf.build/googleapis/googleapis
-
-lint: tool-install lint-go lint-web
-
-lint-web:
-	cd rpc/js && npm install && npm run lint && npm run format
+lint: tool-install lint-go
 
 lint-go: tool-install
 	PATH=$(PATH_WITH_TOOLS) buf lint
@@ -59,18 +44,12 @@ lint-go: tool-install
 cover: tool-install
 	PATH=$(PATH_WITH_TOOLS) ./etc/test.bash cover
 
-test: test-go test-web
+test: test-go
 
 test-go: tool-install
 	PATH=$(PATH_WITH_TOOLS) ./etc/test.bash
 
-test-web:
-	$(MAKE) -C rpc/examples/echo test-run-server
-
 # examples
 
-example-echo/%: build-web
+example-echo/%:
 	$(MAKE) -C rpc/examples/echo $*
-
-example-fileupload/%: build-web
-	$(MAKE) -C rpc/examples/fileupload $*

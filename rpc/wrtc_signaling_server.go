@@ -43,16 +43,22 @@ type WebRTCSignalingServer struct {
 	cancelCtx  context.Context
 	cancelFunc func()
 	logger     utils.ZapCompatibleLogger
+
+	// Interval at which to send heartbeats.
+	heartbeatInterval time.Duration
 }
 
 // NewWebRTCSignalingServer makes a new signaling server that uses the given
 // call queue and looks routes based on a given robot host. If forHosts is
 // non-empty, the server will only accept the given hosts and reject all
-// others.
+// others. The signaling server will send heartbeats to answerers at the
+// provided heartbeatInterval if the answerer requests heartbeats through
+// the initial Answer metadata.
 func NewWebRTCSignalingServer(
 	callQueue WebRTCCallQueue,
 	webrtcConfigProvider WebRTCConfigProvider,
 	logger utils.ZapCompatibleLogger,
+	heartbeatInterval time.Duration,
 	forHosts ...string,
 ) *WebRTCSignalingServer {
 	forHostsSet := make(map[string]struct{}, len(forHosts))
@@ -69,11 +75,19 @@ func NewWebRTCSignalingServer(
 		cancelCtx:            cancelCtx,
 		cancelFunc:           cancelFunc,
 		logger:               logger,
+		heartbeatInterval:    heartbeatInterval,
 	}
 }
 
 // RPCHostMetadataField is the identifier of a host.
 const RPCHostMetadataField = "rpc-host"
+
+// HeartbeatsAllowedMetadataField is the identifier for allowing heartbeats
+// from a signaling server to answerers.
+const HeartbeatsAllowedMetadataField = "heartbeats-allowed"
+
+// Default interval at which to send heartbeats.
+const defaultHeartbeatInterval = 15 * time.Second
 
 // HostFromCtx gets the host being called/answered for from the context.
 func HostFromCtx(ctx context.Context) (string, error) {
@@ -125,6 +139,17 @@ func (srv *WebRTCSignalingServer) validateHosts(hosts ...string) error {
 		return status.Error(codes.InvalidArgument, hostNotAllowedMsg)
 	}
 	return nil
+}
+
+// HeartbeatsAllowedFromCtx checks if heartbeats are allowed with respect to
+// the context.
+func HeartbeatsAllowedFromCtx(ctx context.Context) bool {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok || len(md[HeartbeatsAllowedMetadataField]) == 0 {
+		return false
+	}
+	// Only allow "true" as a value for now.
+	return md[HeartbeatsAllowedMetadataField][0] == "true"
 }
 
 // Call is a request/offer to start a caller with the connected answerer.
@@ -330,6 +355,36 @@ func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 		return err
 	}
 	defer srv.clearAdditionalICEServers(hosts)
+
+	// If heartbeats allowed (indicated by answerer), start goroutine to send
+	// heartbeats.
+	//
+	// The answerer does not respond to heartbeats. The signaling server is only
+	// using heartbeats to ensure the answerer is reachable. If the answerer is
+	// down, the heartbeat will error in the heartbeating goroutine below, the
+	// stream's context will be canceled, and we will stop handling interactions
+	// for this answerer. We stop handling interactions because the stream's
+	// context (`ctx` here and below) is used in the `RecvOffer` call below this
+	// goroutine that waits for a caller to attempt to establish a connection.
+	if HeartbeatsAllowedFromCtx(ctx) {
+		utils.PanicCapturingGo(func() {
+			for {
+				select {
+				case <-time.After(srv.heartbeatInterval):
+					if err := server.Send(&webrtcpb.AnswerRequest{
+						Stage: &webrtcpb.AnswerRequest_Heartbeat{},
+					}); err != nil {
+						srv.logger.Debugw(
+							"error sending answer heartbeat",
+							"error", err,
+						)
+					}
+				case <-ctx.Done():
+					return
+				}
+			}
+		})
+	}
 
 	offer, err := srv.callQueue.RecvOffer(ctx, hosts)
 	if err != nil {

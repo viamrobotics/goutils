@@ -253,8 +253,9 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts dialOptions, logg
 
 	// Use SOCKS proxy from environment as gRPC proxy dialer. Do not use
 	// if trying to connect to a local address.
-	if proxyAddr := os.Getenv(socksProxyEnvVar); proxyAddr != "" &&
-		!(strings.HasPrefix(address, "[::]") || strings.HasPrefix(address, "localhost")) {
+	if proxyAddr := os.Getenv(SocksProxyEnvVar); proxyAddr != "" &&
+		!(strings.HasPrefix(address, "[::]") || strings.HasPrefix(address, "localhost") ||
+			strings.HasPrefix(address, "unix")) {
 		dialer, err := proxy.SOCKS5("tcp", proxyAddr, nil, proxy.Direct)
 		if err != nil {
 			return nil, false, fmt.Errorf("error creating SOCKS proxy dialer to address %q from environment: %w",

@@ -1,8 +1,0 @@
-{
-  "name": "goutils",
-  "license": "Apache-2.0",
-  "devDependencies": {
-    "ts-protoc-gen": "0.15.0",
-    "tslib": "^2.4.0"
-  }
-}

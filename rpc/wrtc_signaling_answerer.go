@@ -22,6 +22,8 @@ import (
 
 const testDelayAnswererNegotiationVar = "TEST_DELAY_ANSWERER_NEGOTIATION"
 
+const heartbeatReceivedLog = "Received a heartbeat from the signaling server"
+
 // A webrtcSignalingAnswerer listens for and answers calls with a given signaling service. It is
 // directly connected to a Server that will handle the actual calls/connections over WebRTC
 // data channels.
@@ -107,7 +109,7 @@ func (ans *webrtcSignalingAnswerer) Start() {
 			timeout := answererConnectTimeout
 			// Bump timeout from 10 seconds to 1 minute if behind a SOCKS proxy. It
 			// may take longer to connect to the signaling server in that case.
-			if proxyAddr := os.Getenv(socksProxyEnvVar); proxyAddr != "" {
+			if proxyAddr := os.Getenv(SocksProxyEnvVar); proxyAddr != "" {
 				timeout = answererConnectTimeoutBehindProxy
 			}
 			setupCtx, timeoutCancel := context.WithTimeout(ans.closeCtx, timeout)
@@ -157,6 +159,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 		client := webrtcpb.NewSignalingServiceClient(conn)
 		md := metadata.New(nil)
 		md.Append(RPCHostMetadataField, ans.hosts...)
+		md.Append(HeartbeatsAllowedMetadataField, "true")
 		answerCtx := metadata.NewOutgoingContext(ans.closeCtx, md)
 		answerClient, err := client.Answer(answerCtx)
 		if err != nil {
@@ -212,9 +215,28 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 				continue
 			}
 
-			// `client.Recv` waits, typically for a long time, for a caller to show up. Which is
-			// when the signaling server will send a response saying someone wants to connect.
-			incomingCallerReq, err := client.Recv()
+			var incomingCallerReq *webrtcpb.AnswerRequest
+			for {
+				// `client.Recv` waits, typically for a long time, for a caller to show
+				// up. Which is when the signaling server will send a response saying
+				// someone wants to connect. It can also receive heartbeats every 15s.
+				//
+				// The answerer does not respond to heartbeats. The signaling server is
+				// only using heartbeats to ensure the answerer is reachable. If the
+				// answerer is down, the heartbeat will error in the server's
+				// heartbeating goroutine, the server's stream's context will be
+				// canceled, and the server will stop handling interactions for this
+				// answerer.
+				incomingCallerReq, err = client.Recv()
+				if err != nil {
+					break
+				}
+				if _, ok := incomingCallerReq.Stage.(*webrtcpb.AnswerRequest_Heartbeat); ok {
+					ans.logger.Debug(heartbeatReceivedLog)
+					continue
+				}
+				break // not a heartbeat
+			}
 			if err != nil {
 				if checkExceptionalError(err) != nil {
 					ans.logger.Warnw("error communicating with signaling server", "error", err)
@@ -236,8 +258,9 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 
 			initStage, ok := incomingCallerReq.Stage.(*webrtcpb.AnswerRequest_Init)
 			if !ok {
-				aa.sendError(fmt.Errorf("expected first stage to be init; got %T", incomingCallerReq.Stage))
-				ans.logger.Warnw("error communicating with signaling server", "error", err)
+				err := fmt.Errorf("expected first stage to be init or heartbeat; got %T", incomingCallerReq.Stage)
+				aa.sendError(err)
+				ans.logger.Warn(err.Error())
 				continue
 			}
 
@@ -321,7 +344,7 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 	// possible through extending the WebRTC config with a TURN URL (and
 	// associated username and password).
 	webrtcConfig := aa.webrtcConfig
-	if proxyAddr := os.Getenv(socksProxyEnvVar); proxyAddr != "" {
+	if proxyAddr := os.Getenv(SocksProxyEnvVar); proxyAddr != "" {
 		aa.logger.Info("behind SOCKS proxy; extending WebRTC config with TURN URL")
 		aa.connMu.Lock()
 		conn := aa.conn
@@ -535,6 +558,8 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 					respStatus := status.FromProto(stage.Error.Status)
 					aa.sendError(fmt.Errorf("error from requester: %w", respStatus.Err()))
 					return
+				case *webrtcpb.AnswerRequest_Heartbeat:
+					aa.logger.Debug(heartbeatReceivedLog)
 				default:
 					aa.sendError(fmt.Errorf("unexpected stage %T", stage))
 					return

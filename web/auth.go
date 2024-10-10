@@ -23,7 +23,7 @@ import (
 )
 
 // AuthProviderConfig config options with constants that will probably need to be manually configured after
-// retrieval from the auth provider web UI or API (e.g. for Auth0, FusionAuth).
+// retrieval from the auth provider web UI or API (e.g. for FusionAuth).
 type AuthProviderConfig struct {
 	Domain                string
 	ClientID              string
@@ -65,38 +65,6 @@ func (s *AuthProvider) newAuthProvider(ctx context.Context) (*oidc.Provider, err
 		return nil, fmt.Errorf("failed to get provider: %w", err)
 	}
 	return p, nil
-}
-
-// InstallAuth0 does initial setup and installs routes for auth0.
-func InstallAuth0(
-	ctx context.Context,
-	mux *goji.Mux,
-	sessions *SessionManager,
-	config AuthProviderConfig,
-	logger utils.ZapCompatibleLogger,
-) (io.Closer, error) {
-	config.PostLogoutRedirectURL = "returnTo"
-	authProvider, err := installAuthProvider(
-		ctx,
-		sessions,
-		config,
-		"/callback",
-		"auth0_redirect_state")
-	if err != nil {
-		return nil, err
-	}
-
-	installAuthProviderRoutes(
-		mux,
-		authProvider,
-		// see https://auth0.com/docs/authenticate/login/logout/redirect-users-after-logout
-		"/v2/logout",
-		authProvider.redirectURL,
-		authProvider.stateCookieName,
-		authProvider.stateCookieMaxAge,
-		logger)
-
-	return authProvider, nil
 }
 
 // InstallFusionAuth does initial setup and installs routes for FusionAuth.
@@ -196,10 +164,10 @@ func installAuthProviderRoutes(
 	logger utils.ZapCompatibleLogger,
 ) {
 	mux.Handle(pat.New("/login"), &loginHandler{
-		authProvider,
-		logger,
-		redirectStateCookieName,
-		redirectStateCookieMaxAge,
+		state:                     authProvider,
+		logger:                    logger,
+		redirectStateCookieName:   redirectStateCookieName,
+		redirectStateCookieMaxAge: redirectStateCookieMaxAge,
 	})
 	mux.Handle(pat.New(redirectURL), &callbackHandler{
 		authProvider,
@@ -207,9 +175,9 @@ func installAuthProviderRoutes(
 		redirectStateCookieName,
 	})
 	mux.Handle(pat.New("/logout"), &logoutHandler{
-		authProvider,
-		logger,
-		providerLogoutURL,
+		state:             authProvider,
+		logger:            logger,
+		providerLogoutURL: providerLogoutURL,
 	})
 	mux.Handle(pat.New("/token"), &tokenHandler{
 		authProvider,
@@ -425,7 +393,7 @@ func verifyAndSaveToken(ctx context.Context, state *AuthProvider, session *Sessi
 	}
 
 	session.Data["id_token"] = rawIDToken
-	session.Data["access_token"] = token.AccessToken
+	session.Data[accessTokenSessionDataField] = token.AccessToken
 	session.Data["profile"] = profile
 
 	return session, nil

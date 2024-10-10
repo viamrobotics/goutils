@@ -42,6 +42,7 @@ type JWTClaims struct {
 	jwt.RegisteredClaims
 	AuthCredentialsType CredentialsType   `json:"rpc_creds_type,omitempty"`
 	AuthMetadata        map[string]string `json:"rpc_auth_md,omitempty"`
+	ApplicationID       string            `json:"applicationId,omitempty"`
 }
 
 // Entity returns the entity from the claims' Subject.
@@ -238,7 +239,8 @@ func (wrapped ctxWrappedServerStream) Context() context.Context {
 	return wrapped.ctx
 }
 
-func tokenFromContext(ctx context.Context) (string, error) {
+// TokenFromContext returns the bearer token from the authorization header and errors if it does not exist.
+func TokenFromContext(ctx context.Context) (string, error) {
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
 		return "", status.Error(codes.Unauthenticated, "authentication required")
@@ -289,7 +291,7 @@ func (ss *simpleServer) ensureAuthed(ctx context.Context) (context.Context, erro
 		return ss.ensureAuthedHandler(ctx)
 	}
 
-	tokenString, err := tokenFromContext(ctx)
+	tokenString, err := TokenFromContext(ctx)
 	if err != nil {
 		// check TLS state
 		if ss.tlsAuthHandler == nil {

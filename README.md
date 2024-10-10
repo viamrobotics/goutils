@@ -12,7 +12,6 @@ This is a set of go utilities you can use via importing `go.viam.com/utils`.
 
 This library includes examples that demonstrate grpc functionality for a variety of contexts - see links for more information:
 * [echo](https://github.com/viamrobotics/goutils/blob/main/rpc/examples/echo/README.md)
-* [fileupload](https://github.com/viamrobotics/goutils/blob/main/rpc/examples/fileupload/README.md)
 
 As a convenience, you can run the `make` recipes for these examples from the root of this repository via:
 ```
@@ -22,15 +21,6 @@ make example-{name}/{recipe}
 For example, try running a simple echo server with:
 ```
 make example-echo/run-server
-```
-
-### Automated Web Browser Tests
-
-You can web browser tests locally with the following commands:
-
-```
-make build-web  # one time step
-make test-web
 ```
 
 ## Windows Support

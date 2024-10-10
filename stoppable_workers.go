@@ -109,9 +109,13 @@ func (sw *StoppableWorkers) Stop() {
 	// prior to `Stop` calling `Wait`.
 	sw.mu.Lock()
 	if sw.ctx.Err() != nil {
+		sw.mu.Unlock()
 		return
 	}
 	sw.cancelFunc()
+	// Make sure to unlock the mutex before waiting for background goroutines to shut down! That
+	// way, any goroutine that was waiting on this lock (e.g., it was trying to spawn another
+	// background worker) won't deadlock, and we'll shut down properly.
 	sw.mu.Unlock()
 
 	sw.workers.Wait()

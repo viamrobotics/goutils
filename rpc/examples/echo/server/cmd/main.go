@@ -11,13 +11,11 @@ import (
 	"encoding/base64"
 	"encoding/pem"
 	"fmt"
-	"html/template"
 	"net"
 	"net/http"
 	"os"
 	"strings"
 
-	"github.com/Masterminds/sprig"
 	"github.com/edaniels/golog"
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/pkg/errors"
@@ -26,7 +24,6 @@ import (
 	"goji.io/pat"
 
 	"go.viam.com/utils"
-	"go.viam.com/utils/internal"
 	echopb "go.viam.com/utils/proto/rpc/examples/echo/v1"
 	"go.viam.com/utils/rpc"
 	"go.viam.com/utils/rpc/examples/echo/server"
@@ -235,57 +232,10 @@ func runServer(
 		return err
 	}
 
-	t := template.New("foo").Funcs(template.FuncMap{
-		//nolint:gosec
-		"jsSafe": func(js string) template.JS {
-			return template.JS(js)
-		},
-		//nolint:gosec
-		"htmlSafe": func(html string) template.HTML {
-			return template.HTML(html)
-		},
-	}).Funcs(sprig.FuncMap())
-	t, err = t.ParseGlob(fmt.Sprintf("%s/*.html", internal.ResolveFile("rpc/examples/echo/server/templates")))
-	if err != nil {
-		return err
-	}
-	indexT := t.Lookup("index.html")
-
 	mux := goji.NewMux()
 	mux.Handle(pat.Get("/"), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		type Temp struct {
-			WebRTCHost           string
-			ExternalAuthAddr     string
-			ExternalAuthToEntity string
-			Credentials          map[string]interface{}
-			AccessToken          string // precomuted access token, bypasses credentials.
-		}
-		temp := Temp{
-			WebRTCHost:           rpcServer.InstanceNames()[0],
-			ExternalAuthAddr:     externalAuthAddr,
-			ExternalAuthToEntity: rpcServer.InstanceNames()[0],
-		}
-		if apiKey != "" {
-			temp.Credentials = map[string]interface{}{
-				"type":    string(rpc.CredentialsTypeAPIKey),
-				"payload": apiKey,
-			}
-		}
-
-		if useAccesssToken {
-			precomputedToken, err := computeAccessToken(authPublicKey, authPrivKey, listenerAddr, "sub1", rpc.CredentialsTypeAPIKey)
-			if err != nil {
-				panic(err)
-			}
-			temp.AccessToken = precomputedToken
-		}
-
-		if err := indexT.Execute(w, temp); err != nil {
-			panic(err)
-		}
+		w.Write([]byte("go run make run-client"))
 	}))
-	mux.Handle(pat.Get("/static/*"),
-		http.StripPrefix("/static", http.FileServer(http.Dir(internal.ResolveFile("rpc/examples/echo/frontend/dist")))))
 	mux.Handle(pat.New("/api/*"), http.StripPrefix("/api", rpcServer.GatewayHandler()))
 	mux.Handle(pat.New("/*"), rpcServer.GRPCHandler())
 
