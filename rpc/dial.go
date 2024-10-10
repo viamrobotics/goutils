@@ -139,6 +139,9 @@ func dial(
 		wg.Add(1)
 		go func(dOpts dialOptions) {
 			defer wg.Done()
+			if dOpts.debug {
+				logger.Debugw("trying mDNS", "address", address)
+			}
 			conn, cached, err := dialMulticastDNS(ctxParallel, address, logger, dOpts)
 			if err != nil {
 				dialCh <- dialResult{err: err}
@@ -363,6 +366,12 @@ func dialMulticastDNS(
 ) (ClientConn, bool, error) {
 	entry, err := lookupMDNSCandidate(ctx, address, logger)
 	if err != nil {
+		if dOpts.debug {
+			logger.Debugw(
+				"failed to find mDNS candidate",
+				"err", err,
+			)
+		}
 		return nil, false, err
 	}
 	var hasGRPC, hasWebRTC bool
