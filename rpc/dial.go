@@ -369,7 +369,7 @@ func dialMulticastDNS(
 		if dOpts.debug {
 			logger.Debugw(
 				"failed to find mDNS candidate",
-				"err", err,
+				"err", err.Error(),
 			)
 		}
 		return nil, false, err
