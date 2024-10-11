@@ -305,6 +305,7 @@ func listMulticastInterfaces() []net.Interface {
 		return nil
 	}
 	for _, ifi := range ifaces {
+		// If the interface is not up, skip and continue the loop
 		if (ifi.Flags & net.FlagUp) == 0 {
 			continue
 		}
