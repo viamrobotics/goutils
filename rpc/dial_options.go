@@ -272,7 +272,7 @@ func WithStreamClientInterceptor(interceptor grpc.StreamClientInterceptor) DialO
 	})
 }
 
-// WithForceDirectGRPC forces direct dialing first.
+// WithForceDirectGRPC forces direct dialing to the target address. This option disables WebRTC connections and mDNS lookup.
 func WithForceDirectGRPC() DialOption {
 	return newFuncDialOption(func(o *dialOptions) {
 		o.mdnsOptions.Disable = true
