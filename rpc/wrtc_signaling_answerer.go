@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pion/webrtc/v4"
 	"github.com/pkg/errors"
-	"github.com/viamrobotics/webrtc/v3"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
