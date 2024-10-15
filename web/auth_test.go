@@ -17,7 +17,7 @@ func createRequest(t *testing.T) *http.Request {
 	return r
 }
 
-func setCookie(r *http.Request, key string, value string) {
+func setCookie(r *http.Request, key, value string) {
 	r.AddCookie(&http.Cookie{
 		Name:     key,
 		Value:    value,

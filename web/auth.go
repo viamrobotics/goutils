@@ -57,11 +57,9 @@ const (
 	// ViamTokenCookie is the cookie name for an authenticated access token
 	//nolint:gosec
 	ViamTokenCookie string = "viam.auth.token"
-	// ViamRefreshCookie is the cookie name for an authenticated refresh token
-	//nolint:gosec
+	// ViamRefreshCookie is the cookie name for an authenticated refresh token.
 	ViamRefreshCookie string = "viam.auth.refresh"
-	// ViamExpiryCookie is the cookie name for an authenticated token's expiry
-	//nolint:gosec
+	// ViamExpiryCookie is the cookie name for an authenticated token's expiry.
 	ViamExpiryCookie string = "viam.auth.expiry"
 )
 
@@ -439,7 +437,7 @@ func getBearerToken(req *http.Request) string {
 	return ""
 }
 
-// getAuthCookieValues reads the authentication cookie values as a /token response
+// getAuthCookieValues reads the authentication cookie values as a /token response.
 func getAuthCookieValues(r *http.Request) *tokenResponse {
 	token, err := r.Cookie(ViamTokenCookie)
 	if err != nil || token.Value == "" {
@@ -465,7 +463,7 @@ func getAuthCookieValues(r *http.Request) *tokenResponse {
 }
 
 // clearAuthCookies removes auth cookies from /callback
-// - to be used after reading the cookies so they can only be used once
+// - to be used after reading the cookies so they can only be used once.
 func clearAuthCookies(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     ViamTokenCookie,
