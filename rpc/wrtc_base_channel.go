@@ -206,7 +206,7 @@ func (ch *webrtcBaseChannel) onChannelClose() {
 // abort chunk that is not indicative of an actual state of error.
 func isUserInitiatedAbortChunkErr(err error) bool {
 	return err != nil && errors.Is(err, sctp.ErrChunk) &&
-		strings.Contains(err.Error(), "User Initiated Abort: Close called")
+		strings.Contains(err.Error(), "User Initiated Abort:")
 }
 
 func (ch *webrtcBaseChannel) onChannelError(err error) {
