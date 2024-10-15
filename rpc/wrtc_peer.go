@@ -56,6 +56,9 @@ func newWebRTCAPI(isClient bool, logger utils.ZapCompatibleLogger) (*webrtc.API,
 	}
 
 	var settingEngine webrtc.SettingEngine
+	// We want OnTrack to happen as soon as negotiation is done.
+	settingEngine.SetFireOnTrackBeforeFirstRTP(true)
+
 	if isClient {
 		settingEngine.SetICEMulticastDNSMode(ice.MulticastDNSModeQueryAndGather)
 	} else {

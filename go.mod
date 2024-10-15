@@ -35,7 +35,7 @@ require (
 	github.com/pion/logging v0.2.2
 	github.com/pion/sctp v1.8.33
 	github.com/pion/transport/v3 v3.0.7
-	github.com/pion/webrtc/v4 v4.0.0-beta.34
+	github.com/pion/webrtc/v4 v4.0.1
 	github.com/pkg/errors v0.9.1
 	github.com/pseudomuto/protoc-gen-doc v1.3.2
 	github.com/rs/cors v1.9.0
