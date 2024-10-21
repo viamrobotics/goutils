@@ -530,7 +530,7 @@ func (h *loginHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		backto := r.FormValue("backto")
 
 		_, err := url.ParseRequestURI(backto)
-		if err == nil {
+		if err != nil {
 			session.Data["backto"] = backto
 		}
 	}
