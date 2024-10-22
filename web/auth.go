@@ -527,8 +527,15 @@ func (h *loginHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	})
 
 	if r.FormValue("backto") != "" {
-		session.Data["backto"] = r.FormValue("backto")
+		backto := r.FormValue("backto")
+
+		// to prevent redirecting to an external URL we only set the session data when we fail to parse backto
+		_, err := url.ParseRequestURI(backto)
+		if err != nil {
+			session.Data["backto"] = backto
+		}
 	}
+
 	if session.Data["backto"] == "" {
 		session.Data["backto"] = r.Header.Get("Referer")
 	}
