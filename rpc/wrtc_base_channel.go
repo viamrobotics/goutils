@@ -7,9 +7,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/pion/dtls/v2"
+	"github.com/pion/dtls/v3"
 	"github.com/pion/sctp"
-	"github.com/viamrobotics/webrtc/v3"
+	"github.com/pion/webrtc/v4"
 	"google.golang.org/protobuf/proto"
 
 	"go.viam.com/utils"
@@ -123,7 +123,7 @@ func newBaseChannel(
 				}
 				fallthrough
 			case webrtc.ICEConnectionStateChecking, webrtc.ICEConnectionStateCompleted,
-				webrtc.ICEConnectionStateNew:
+				webrtc.ICEConnectionStateNew, webrtc.ICEConnectionStateUnknown:
 				fallthrough
 			default:
 				candPair, hasCandPair := webrtcPeerConnCandPair(peerConn)
@@ -206,12 +206,13 @@ func (ch *webrtcBaseChannel) onChannelClose() {
 // abort chunk that is not indicative of an actual state of error.
 func isUserInitiatedAbortChunkErr(err error) bool {
 	return err != nil && errors.Is(err, sctp.ErrChunk) &&
-		strings.Contains(err.Error(), "User Initiated Abort: Close called")
+		strings.Contains(err.Error(), "User Initiated Abort:")
 }
 
 func (ch *webrtcBaseChannel) onChannelError(err error) {
 	if errors.Is(err, sctp.ErrResetPacketInStateNotExist) ||
 		isUserInitiatedAbortChunkErr(err) {
+		ch.onChannelClose()
 		return
 	}
 	ch.logger.Errorw("channel error", "error", err)

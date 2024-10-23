@@ -11,12 +11,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pion/ice/v2"
+	"github.com/pion/ice/v4"
 	"github.com/pion/interceptor"
 	"github.com/pion/sctp"
-	"github.com/pion/transport/v2"
-	"github.com/pion/transport/v2/stdnet"
-	"github.com/viamrobotics/webrtc/v3"
+	"github.com/pion/transport/v3"
+	"github.com/pion/transport/v3/stdnet"
+	"github.com/pion/webrtc/v4"
 	"go.uber.org/multierr"
 	"golang.org/x/net/proxy"
 
@@ -56,6 +56,9 @@ func newWebRTCAPI(isClient bool, logger utils.ZapCompatibleLogger) (*webrtc.API,
 	}
 
 	var settingEngine webrtc.SettingEngine
+	// We want OnTrack to happen as soon as negotiation is done.
+	settingEngine.SetFireOnTrackBeforeFirstRTP(true)
+
 	if isClient {
 		settingEngine.SetICEMulticastDNSMode(ice.MulticastDNSModeQueryAndGather)
 	} else {
@@ -578,6 +581,8 @@ func getWebRTCPeerConnectionStats(peerConnection *webrtc.PeerConnection) webrtcP
 			candidateType = "server-reflexive"
 		case webrtc.ICECandidateTypeHost:
 			candidateType = "host"
+		case webrtc.ICECandidateTypeUnknown:
+		default:
 		}
 		if candidateType == "" {
 			continue

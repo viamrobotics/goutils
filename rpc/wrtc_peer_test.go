@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/edaniels/golog"
-	"github.com/viamrobotics/webrtc/v3"
-	"github.com/viamrobotics/webrtc/v3/pkg/media"
+	"github.com/pion/webrtc/v4"
+	"github.com/pion/webrtc/v4/pkg/media"
 	"go.uber.org/atomic"
 	"go.viam.com/test"
 )

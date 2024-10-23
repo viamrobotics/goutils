@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/edaniels/golog"
-	"github.com/viamrobotics/webrtc/v3"
+	"github.com/pion/webrtc/v4"
 	"go.viam.com/test"
 	pbstatus "google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc"

@@ -48,7 +48,7 @@ func mainWithArgs(ctx context.Context, args []string, logger utils.ZapCompatible
 	}
 	switch topArgsParsed.Command {
 	case commandNameClean:
-		//nolint:contextcheck
+
 		if err := tools.Clean(); err != nil {
 			logger.Fatal(err)
 		}
@@ -57,12 +57,12 @@ func mainWithArgs(ctx context.Context, args []string, logger utils.ZapCompatible
 		if err := utils.ParseFlags(utils.StringSliceRemove(args, 1), &pullArgsParsed); err != nil {
 			return err
 		}
-		//nolint:contextcheck
+
 		if err := tools.Pull(pullArgsParsed.TreePath, pullArgsParsed.All); err != nil {
 			logger.Fatal(err)
 		}
 	case commandNamePush:
-		//nolint:contextcheck
+
 		if err := tools.Push(); err != nil {
 			logger.Fatal(err)
 		}
@@ -71,12 +71,12 @@ func mainWithArgs(ctx context.Context, args []string, logger utils.ZapCompatible
 		if err := utils.ParseFlags(utils.StringSliceRemove(args, 1), &removeArgsParsed); err != nil {
 			return err
 		}
-		//nolint:contextcheck
+
 		if err := tools.Remove(removeArgsParsed.Path); err != nil {
 			logger.Fatal(err)
 		}
 	case commandNameStatus:
-		//nolint:contextcheck
+
 		status, err := tools.Status()
 		if err != nil {
 			logger.Fatal(err)
