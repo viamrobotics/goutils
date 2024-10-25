@@ -6,6 +6,7 @@ import (
 
 	"github.com/edaniels/golog"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"go.viam.com/test"
 )
 
@@ -64,6 +65,10 @@ func (m *InvalidLogger) Fatalf(template string, args ...interface{}) {
 func (m *InvalidLogger) Fatalw(msg string, keysAndValues ...interface{}) {
 }
 
+func (m *InvalidLogger) Level() zapcore.Level {
+	return zapcore.Level(zap.DebugLevel)
+}
+
 // MockLogger fulfills the ZapCompatibleLogger interface by extending InvalidLogger with a Sublogger() method. This type
 // is used to simulate calling utils.Sublogger() on an RDK logger.
 type MockLogger struct {
@@ -77,6 +82,10 @@ func (m *MockLogger) Sublogger(subname string) ZapCompatibleLogger {
 
 func (m *MockLogger) WithFields(args ...interface{}) {
 	m.Name = "WithFields called"
+}
+
+func (m *MockLogger) Level() zapcore.Level {
+	return zapcore.Level(zap.DebugLevel)
 }
 
 func TestSubloggerWithZapLogger(t *testing.T) {
