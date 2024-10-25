@@ -13,6 +13,7 @@ import (
 	"github.com/pion/webrtc/v4"
 
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/proto"
@@ -348,7 +349,7 @@ func logFinalClientLine(logger utils.ZapCompatibleLogger, startTime time.Time, e
 	fields = append(fields, "grpc.code", code.String(), "grpc.time_ms", duration)
 
 	if logger.Level().Enabled(level) {
-		// cases for all outputs of grpc_zap.DefaultCodeToLevel
+		// grpc_zap.DefaultCodeToLevel will only return zap.DebugLevel, zap.InfoLevel, zap.ErrorLevel, zap.WarnLevel
 		switch level {
 		case zap.DebugLevel:
 			logger.Debugw(msg, fields...)
@@ -356,9 +357,7 @@ func logFinalClientLine(logger utils.ZapCompatibleLogger, startTime time.Time, e
 			logger.Infow(msg, fields...)
 		case zap.ErrorLevel:
 			logger.Errorw(msg, fields...)
-		case zap.WarnLevel:
-			fallthrough
-		default:
+		case zap.WarnLevel, zap.DPanicLevel, zap.PanicLevel, zap.FatalLevel, zapcore.InvalidLevel:
 			logger.Warnw(msg, fields...)
 		}
 	}

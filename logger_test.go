@@ -66,7 +66,7 @@ func (m *InvalidLogger) Fatalw(msg string, keysAndValues ...interface{}) {
 }
 
 func (m *InvalidLogger) Level() zapcore.Level {
-	return zapcore.Level(zap.DebugLevel)
+	return zap.DebugLevel
 }
 
 // MockLogger fulfills the ZapCompatibleLogger interface by extending InvalidLogger with a Sublogger() method. This type
@@ -85,7 +85,7 @@ func (m *MockLogger) WithFields(args ...interface{}) {
 }
 
 func (m *MockLogger) Level() zapcore.Level {
-	return zapcore.Level(zap.DebugLevel)
+	return zap.DebugLevel
 }
 
 func TestSubloggerWithZapLogger(t *testing.T) {
