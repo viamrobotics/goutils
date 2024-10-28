@@ -87,6 +87,7 @@ func Sublogger(inp ZapCompatibleLogger, subname string) (loggerRet ZapCompatible
 // This function uses reflection to dynamically add fields to the provided logger by
 // calling its `WithFields` method if it is an RDK logger. If the logger is not an RDK logger,
 // it logs a debug message and returns the original logger.
+// Args is expected to be a list of key-value pair(s).
 func AddFieldsToLogger(inp ZapCompatibleLogger, args ...interface{}) (loggerRet ZapCompatibleLogger) {
 	loggerRet = inp //nolint:wastedassign
 
