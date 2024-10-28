@@ -5,7 +5,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/pion/webrtc/v4"
+	"github.com/viamrobotics/webrtc/v3"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/proto"
 

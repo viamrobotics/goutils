@@ -11,7 +11,7 @@ import (
 
 	"github.com/edaniels/golog"
 	"github.com/google/uuid"
-	"github.com/pion/webrtc/v4"
+	"github.com/viamrobotics/webrtc/v3"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.viam.com/test"
 	"google.golang.org/grpc"
