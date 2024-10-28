@@ -22,23 +22,22 @@ require (
 	github.com/golang-jwt/jwt/v4 v4.2.0
 	github.com/golang/protobuf v1.5.3
 	github.com/golangci/golangci-lint v1.51.2
-	github.com/google/uuid v1.6.0
+	github.com/google/uuid v1.3.1
 	github.com/grpc-ecosystem/go-grpc-middleware v1.2.2
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.11.3
 	github.com/improbable-eng/grpc-web v0.14.0
 	github.com/jacobsa/go-serial v0.0.0-20180131005756-15cf729a72d4
 	github.com/lestrrat-go/jwx v1.2.25
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/pion/dtls/v3 v3.0.3
-	github.com/pion/ice/v4 v4.0.2
-	github.com/pion/interceptor v0.1.37
+	github.com/pion/dtls/v2 v2.2.12
+	github.com/pion/ice/v2 v2.3.34
+	github.com/pion/interceptor v0.1.29
 	github.com/pion/logging v0.2.2
 	github.com/pion/sctp v1.8.33
-	github.com/pion/transport/v3 v3.0.7
-	github.com/pion/webrtc/v4 v4.0.1
 	github.com/pkg/errors v0.9.1
 	github.com/pseudomuto/protoc-gen-doc v1.3.2
 	github.com/rs/cors v1.9.0
+	github.com/viamrobotics/webrtc/v3 v3.99.10
 	github.com/zitadel/oidc v1.13.2
 	go.mongodb.org/mongo-driver v1.11.6
 	go.opencensus.io v0.24.0
@@ -48,9 +47,9 @@ require (
 	go.uber.org/zap v1.24.0
 	go.viam.com/test v1.1.0
 	goji.io v2.0.2+incompatible
-	golang.org/x/net v0.29.0
+	golang.org/x/net v0.23.0
 	golang.org/x/oauth2 v0.7.0
-	golang.org/x/tools v0.21.1-0.20240508182429-e35e4ccd0d2d
+	golang.org/x/tools v0.9.3
 	google.golang.org/api v0.114.0
 	google.golang.org/genproto v0.0.0-20230323212658-478b75c54725
 	google.golang.org/grpc v1.54.0
@@ -155,7 +154,7 @@ require (
 	github.com/golangci/misspell v0.4.0 // indirect
 	github.com/golangci/revgrep v0.0.0-20220804021717-745bb2f7c2e6 // indirect
 	github.com/golangci/unconvert v0.0.0-20180507085042-28b1c447d1f4 // indirect
-	github.com/google/go-cmp v0.6.0 // indirect
+	github.com/google/go-cmp v0.5.9 // indirect
 	github.com/google/go-containerregistry v0.15.2 // indirect
 	github.com/google/pprof v0.0.0-20230602150820-91b7bce49751 // indirect
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
@@ -229,15 +228,16 @@ require (
 	github.com/opencontainers/image-spec v1.1.0-rc3 // indirect
 	github.com/pelletier/go-toml v1.9.5 // indirect
 	github.com/pelletier/go-toml/v2 v2.0.5 // indirect
-	github.com/pion/datachannel v1.5.9 // indirect
-	github.com/pion/mdns/v2 v2.0.7 // indirect
+	github.com/pion/datachannel v1.5.8 // indirect
+	github.com/pion/mdns v0.0.12 // indirect
 	github.com/pion/randutil v0.1.0 // indirect
 	github.com/pion/rtcp v1.2.14 // indirect
-	github.com/pion/rtp v1.8.9 // indirect
+	github.com/pion/rtp v1.8.7 // indirect
 	github.com/pion/sdp/v3 v3.0.9 // indirect
-	github.com/pion/srtp/v3 v3.0.4 // indirect
-	github.com/pion/stun/v3 v3.0.0 // indirect
-	github.com/pion/turn/v4 v4.0.0 // indirect
+	github.com/pion/srtp/v2 v2.0.20 // indirect
+	github.com/pion/stun v0.6.1 // indirect
+	github.com/pion/transport/v2 v2.2.10 // indirect
+	github.com/pion/turn/v2 v2.1.6 // indirect
 	github.com/pkg/browser v0.0.0-20210911075715-681adbf594b8 // indirect
 	github.com/pkg/profile v1.7.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
@@ -302,14 +302,14 @@ require (
 	go.opentelemetry.io/otel/metric v1.16.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.16.0 // indirect
 	go.opentelemetry.io/otel/trace v1.16.0 // indirect
-	golang.org/x/crypto v0.28.0 // indirect
+	golang.org/x/crypto v0.21.0 // indirect
 	golang.org/x/exp v0.0.0-20230522175609-2e198f4a06a1 // indirect
 	golang.org/x/exp/typeparams v0.0.0-20230203172020-98cc5a0785f9 // indirect
-	golang.org/x/mod v0.17.0 // indirect
-	golang.org/x/sync v0.8.0 // indirect
-	golang.org/x/sys v0.26.0 // indirect
-	golang.org/x/term v0.25.0 // indirect
-	golang.org/x/text v0.19.0 // indirect
+	golang.org/x/mod v0.10.0 // indirect
+	golang.org/x/sync v0.2.0 // indirect
+	golang.org/x/sys v0.18.0 // indirect
+	golang.org/x/term v0.18.0 // indirect
+	golang.org/x/text v0.14.0 // indirect
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect

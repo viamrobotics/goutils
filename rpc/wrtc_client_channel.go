@@ -11,7 +11,7 @@ import (
 	grpc_logging "github.com/grpc-ecosystem/go-grpc-middleware/logging"
 	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
-	"github.com/pion/webrtc/v4"
+	"github.com/viamrobotics/webrtc/v3"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
