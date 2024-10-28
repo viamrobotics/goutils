@@ -107,7 +107,7 @@ func TestLogWithZapLogger(t *testing.T) {
 	logger := golog.NewTestLogger(t)
 	loggerWith := AddFieldsToLogger(logger, "key", "value")
 	test.That(t, loggerWith, test.ShouldNotBeNil)
-	test.That(t, loggerWith, test.ShouldNotEqual, logger)
+	test.That(t, loggerWith, test.ShouldEqual, logger)
 	test.That(t, reflect.TypeOf(loggerWith), test.ShouldEqual, reflect.TypeOf(logger))
 }
 
