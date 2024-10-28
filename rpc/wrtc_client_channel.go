@@ -346,19 +346,16 @@ func logFinalClientLine(logger utils.ZapCompatibleLogger, startTime time.Time, e
 		fields = append(fields, "error", err)
 	}
 	fields = append(fields, "grpc.code", code.String(), "grpc.time_ms", duration)
-
-	if logger.Level().Enabled(level) {
-		// grpc_zap.DefaultCodeToLevel will only return zap.DebugLevel, zap.InfoLevel, zap.ErrorLevel, zap.WarnLevel
-		switch level {
-		case zap.DebugLevel:
-			logger.Debugw(msg, fields...)
-		case zap.InfoLevel:
-			logger.Infow(msg, fields...)
-		case zap.ErrorLevel:
-			logger.Errorw(msg, fields...)
-		case zap.WarnLevel, zap.DPanicLevel, zap.PanicLevel, zap.FatalLevel, zapcore.InvalidLevel:
-			logger.Warnw(msg, fields...)
-		}
+	// grpc_zap.DefaultCodeToLevel will only return zap.DebugLevel, zap.InfoLevel, zap.ErrorLevel, zap.WarnLevel
+	switch level {
+	case zap.DebugLevel:
+		logger.Debugw(msg, fields...)
+	case zap.InfoLevel:
+		logger.Infow(msg, fields...)
+	case zap.ErrorLevel:
+		logger.Errorw(msg, fields...)
+	case zap.WarnLevel, zap.DPanicLevel, zap.PanicLevel, zap.FatalLevel, zapcore.InvalidLevel:
+		logger.Warnw(msg, fields...)
 	}
 }
 

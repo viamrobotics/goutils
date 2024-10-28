@@ -5,7 +5,6 @@ import (
 
 	"github.com/edaniels/golog"
 	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 )
 
 // Logger is used various parts of the package for informational/debugging purposes.
@@ -25,7 +24,6 @@ type ILogger interface {
 // ZapCompatibleLogger is a basic logging interface for golog.Logger (alias for *zap.SugaredLogger) and RDK loggers.
 type ZapCompatibleLogger interface {
 	Desugar() *zap.Logger
-	Level() zapcore.Level
 
 	Debug(args ...interface{})
 	Debugf(template string, args ...interface{})
