@@ -1,3 +1,4 @@
+// Package apputils has a collection of methods useful for app
 package apputils
 
 import (
