@@ -1,10 +1,9 @@
 package utils
 
 import (
-	"github.com/pkg/errors"
-	"go.mongodb.org/mongo-driver/bson"
 	"reflect"
 	"regexp"
+
 )
 
 // Eval is a typed representation of logic that can be evaluated.

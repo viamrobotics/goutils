@@ -1,10 +1,11 @@
 package utils
 
 import (
+	"testing"
+
 	"github.com/pkg/errors"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.viam.com/test"
-	"testing"
 )
 
 func TestIsMap(t *testing.T) {
