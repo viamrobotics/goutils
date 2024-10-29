@@ -3,11 +3,17 @@
 package testutilsext
 
 import (
+	"context"
 	"fmt"
+	"net/http"
 	"os"
+	"runtime"
+	"time"
 
 	"github.com/edaniels/golog"
 	"go.uber.org/goleak"
+	"google.golang.org/api/option"
+	"google.golang.org/api/transport"
 
 	"go.viam.com/utils"
 	"go.viam.com/utils/artifact"
@@ -16,11 +22,32 @@ import (
 
 // VerifyTestMain preforms various runtime checks on code that tests run.
 func VerifyTestMain(m goleak.TestingM) {
+	func() {
+		// workaround https://github.com/googleapis/google-cloud-go/issues/5430
+		httpClient := &http.Client{Transport: http.DefaultTransport.(*http.Transport).Clone()}
+		defer httpClient.CloseIdleConnections()
+
+		//nolint:errcheck
+		_, _ = transport.Creds(context.Background(), option.WithHTTPClient(httpClient))
+
+		t := time.NewTimer(100 * time.Millisecond)
+		defer t.Stop()
+		for {
+			select {
+			case <-t.C:
+				return
+			default:
+				runtime.Gosched()
+			}
+		}
+	}()
+
+	currentGoroutines := goleak.IgnoreCurrent()
+
 	cache, err := artifact.GlobalCache()
 	if err != nil {
 		golog.Global().Fatalw("error opening artifact", "error", err)
 	}
-	currentGoroutines := goleak.IgnoreCurrent()
 	//nolint:ifshort
 	exitCode := m.Run()
 	testutils.Teardown()
