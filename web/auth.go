@@ -529,9 +529,11 @@ func (h *loginHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.FormValue("backto") != "" {
 		backto := r.FormValue("backto")
 
-		// to prevent redirecting to an external URL we only set the session data when we fail to parse backto
-		_, err := url.ParseRequestURI(backto)
-		if err != nil {
+		// to prevent redirecting to an external URL we only set the session data when:
+		// 1. we fail to parse backto
+		// 2. backto does not include a hostname
+		parsed, err := url.ParseRequestURI(backto)
+		if err != nil || parsed.Hostname() == "" {
 			session.Data["backto"] = backto
 		}
 	}
