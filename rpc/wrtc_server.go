@@ -84,7 +84,10 @@ func (srv *webrtcServer) Stats() WebRTCGrpcStats {
 		TotalTimeConnectingMillis: srv.counters.TotalTimeConnectingMillis.Load(),
 	}
 	ret.PeersActive = ret.PeersConnected - ret.PeersDisconnected
-	ret.AverageTimeConnectingMillis = float64(ret.TotalTimeConnectingMillis) / float64(ret.PeersConnected)
+	if ret.PeersConnected > 0 {
+		ret.AverageTimeConnectingMillis = float64(ret.TotalTimeConnectingMillis) / float64(ret.PeersConnected)
+	}
+
 	return ret
 }
 
