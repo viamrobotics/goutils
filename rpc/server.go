@@ -13,6 +13,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/edaniels/zeroconf"
@@ -102,6 +103,10 @@ type Server interface {
 	http.Handler
 
 	EnsureAuthed(ctx context.Context) (context.Context, error)
+
+	// Stats returns a structure containing numbers that can be interesting for graphing over time
+	// as a diagnostics tool.
+	Stats() any
 }
 
 type simpleServer struct {
@@ -146,6 +151,15 @@ type simpleServer struct {
 
 	// authIssuer is the JWT issuer (iss) that will be used for our service.
 	authIssuer string
+
+	counters struct {
+		TcpGrpcRequestsStarted      atomic.Int64
+		TcpGrpcWebRequestsStarted   atomic.Int64
+		TcpOtherRequestsStarted     atomic.Int64
+		TcpGrpcRequestsCompleted    atomic.Int64
+		TcpGrpcWebRequestsCompleted atomic.Int64
+		TcpOtherRequestsCompleted   atomic.Int64
+	}
 }
 
 var errMixedUnauthAndAuth = errors.New("cannot use unauthenticated and auth handlers at same time")
@@ -721,13 +735,19 @@ func (ss *simpleServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r = requestWithHost(r)
 	switch ss.getRequestType(r) {
 	case requestTypeGRPC:
+		ss.counters.TcpGrpcRequestsStarted.Add(1)
 		ss.grpcServer.ServeHTTP(w, r)
+		ss.counters.TcpGrpcRequestsCompleted.Add(1)
 	case requestTypeGRPCWeb:
+		ss.counters.TcpGrpcWebRequestsStarted.Add(1)
 		ss.grpcWebServer.ServeHTTP(w, r)
+		ss.counters.TcpGrpcWebRequestsCompleted.Add(1)
 	case requestTypeNone:
 		fallthrough
 	default:
+		ss.counters.TcpOtherRequestsStarted.Add(1)
 		ss.grpcGatewayHandler.ServeHTTP(w, r)
+		ss.counters.TcpOtherRequestsCompleted.Add(1)
 	}
 }
 
@@ -859,6 +879,34 @@ func (ss *simpleServer) Stop() error {
 	ss.activeBackgroundWorkers.Wait()
 	ss.logger.Info("stopped cleanly")
 	return err
+}
+
+type SimpleServerStats struct {
+	TcpGrpcStats    TcpGrpcStats
+	WebRTCGrpcStats WebRTCGrpcStats
+}
+
+type TcpGrpcStats struct {
+	RequestsStarted        int64
+	WebRequestsStarted     int64
+	OtherRequestsStarted   int64
+	RequestsCompleted      int64
+	WebRequestsCompleted   int64
+	OtherRequestsCompleted int64
+}
+
+func (ss *simpleServer) Stats() any {
+	return SimpleServerStats{
+		TcpGrpcStats: TcpGrpcStats{
+			RequestsStarted:        ss.counters.TcpGrpcRequestsStarted.Load(),
+			WebRequestsStarted:     ss.counters.TcpGrpcWebRequestsStarted.Load(),
+			OtherRequestsStarted:   ss.counters.TcpOtherRequestsStarted.Load(),
+			RequestsCompleted:      ss.counters.TcpGrpcRequestsCompleted.Load(),
+			WebRequestsCompleted:   ss.counters.TcpGrpcWebRequestsCompleted.Load(),
+			OtherRequestsCompleted: ss.counters.TcpOtherRequestsCompleted.Load(),
+		},
+		WebRTCGrpcStats: ss.webrtcServer.Stats(),
+	}
 }
 
 // A RegisterServiceHandlerFromEndpointFunc is a means to have a service attach itself to a gRPC gateway mux.
