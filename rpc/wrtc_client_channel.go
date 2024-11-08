@@ -10,7 +10,6 @@ import (
 
 	grpc_logging "github.com/grpc-ecosystem/go-grpc-middleware/logging"
 	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
-	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
 	"github.com/viamrobotics/webrtc/v3"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -101,11 +100,10 @@ func (ch *webrtcClientChannel) Invoke(
 	reply interface{},
 	opts ...grpc.CallOption,
 ) error {
-	fields := newClientLoggerFields(method)
 	startTime := time.Now()
 	err := ch.invokeWithInterceptor(ctx, method, args, reply, opts...)
-	newCtx := ctxzap.ToContext(ctx, ch.webrtcBaseChannel.logger.Desugar().With(fields...))
-	logFinalClientLine(newCtx, startTime, err, "finished client unary call")
+	loggerWithFields := utils.AddFieldsToLogger(ch.webrtcBaseChannel.logger, newClientLoggerFields(method)...)
+	logFinalClientLine(loggerWithFields, startTime, err, "finished client unary call")
 	return err
 }
 
@@ -189,11 +187,10 @@ func (ch *webrtcClientChannel) NewStream(
 	method string,
 	opts ...grpc.CallOption,
 ) (grpc.ClientStream, error) {
-	fields := newClientLoggerFields(method)
 	startTime := time.Now()
 	clientStream, err := ch.streamWithInterceptor(ctx, method)
-	newCtx := ctxzap.ToContext(ctx, ch.webrtcBaseChannel.logger.Desugar().With(fields...))
-	logFinalClientLine(newCtx, startTime, err, "finished client streaming call")
+	loggerWithFields := utils.AddFieldsToLogger(ch.webrtcBaseChannel.logger, newClientLoggerFields(method)...)
+	logFinalClientLine(loggerWithFields, startTime, err, "finished client streaming call")
 	return clientStream, err
 }
 
@@ -336,29 +333,39 @@ func (ch *webrtcClientChannel) writeReset(stream *webrtcpb.Stream) error {
 
 // taken from
 // https://github.com/grpc-ecosystem/go-grpc-middleware/blob/560829fc74fcf9a69b7ab01d484f8b8961dc734b/logging/zap/client_interceptors.go
-
-func logFinalClientLine(ctx context.Context, startTime time.Time, err error, msg string) {
+func logFinalClientLine(logger utils.ZapCompatibleLogger, startTime time.Time, err error, msg string) {
 	code := grpc_logging.DefaultErrorToCode(err)
 	level := grpc_zap.DefaultCodeToLevel(code)
+
+	// this calculation is done because duration.Milliseconds() will return an integer, which is not precise enough.
+	duration := float32(time.Since(startTime).Nanoseconds()/1000) / 1000
+	fields := []any{}
 	if err == nil {
 		level = zap.DebugLevel
+	} else {
+		fields = append(fields, "error", err)
 	}
-	duration := grpc_zap.DefaultDurationToField(time.Since(startTime))
-	grpc_zap.DefaultMessageProducer(ctx, msg, level, code, err, duration)
+	fields = append(fields, "grpc.code", code.String(), "grpc.time_ms", duration)
+	// grpc_zap.DefaultCodeToLevel will only return zap.DebugLevel, zap.InfoLevel, zap.ErrorLevel, zap.WarnLevel
+	switch level {
+	case zap.DebugLevel:
+		logger.Debugw(msg, fields...)
+	case zap.InfoLevel:
+		logger.Infow(msg, fields...)
+	case zap.ErrorLevel:
+		logger.Errorw(msg, fields...)
+	case zap.WarnLevel, zap.DPanicLevel, zap.PanicLevel, zap.FatalLevel, zapcore.InvalidLevel:
+		logger.Warnw(msg, fields...)
+	}
 }
 
-var (
-	clientField = zap.String("span.kind", "client")
-	systemField = zap.String("system", "grpc")
-)
-
-func newClientLoggerFields(fullMethodString string) []zapcore.Field {
+func newClientLoggerFields(fullMethodString string) []any {
 	service := path.Dir(fullMethodString)[1:]
 	method := path.Base(fullMethodString)
-	return []zapcore.Field{
-		systemField,
-		clientField,
-		zap.String("grpc.service", service),
-		zap.String("grpc.method", method),
+	return []any{
+		"span.kind", "client",
+		"system", "grpc",
+		"grpc.service", service,
+		"grpc.method", method,
 	}
 }
