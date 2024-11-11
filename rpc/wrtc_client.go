@@ -2,7 +2,6 @@ package rpc
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"strings"
 	"sync"
@@ -119,7 +118,9 @@ func dialWebRTC(
 		return nil, err
 	}
 	defer func() {
-		err = multierr.Combine(err, conn.Close())
+		// Ignore any errors closing the signaling server connection. That step has no bearing on
+		// whether the PeerConnection was successfully made.
+		utils.UncheckedError(conn.Close())
 	}()
 
 	logger.Debugw("connected to signaling server", "signaling_server", signalingServer)
@@ -142,11 +143,13 @@ func dialWebRTC(
 	if dOpts.webrtcOpts.Config != nil {
 		config = *dOpts.webrtcOpts.Config
 	}
+
 	extendedConfig := extendWebRTCConfig(&config, configResp.Config, false)
 	peerConn, dataChannel, err := newPeerConnectionForClient(ctx, extendedConfig, dOpts.webrtcOpts.DisableTrickleICE, logger)
 	if err != nil {
 		return nil, err
 	}
+
 	var successful bool
 	defer func() {
 		if !successful {
@@ -187,27 +190,12 @@ func dialWebRTC(
 	// bool representing whether initial sdp exchange has occurred
 	haveInit := false
 
-	errCh := make(chan error)
-	sendErr := func(err error) {
-		if haveInit && isEOF(err) {
-			logger.Warnf("caller swallowing err %v", err)
-			return
-		}
-		if s, ok := status.FromError(err); ok && strings.Contains(s.Message(), noActiveOfferStr) {
-			return
-		}
-		logger.Warnf("caller received err %v of type %T", err, err)
-		select {
-		case <-exchangeCtx.Done():
-		case errCh <- err:
-		}
-	}
 	var uuid string
 	// only send once since exchange may end or ICE may end
-	var sendDoneErrorOnce sync.Once
+	var sendDoneOnce sync.Once
 	sendDone := func() error {
 		var err error
-		sendDoneErrorOnce.Do(func() {
+		sendDoneOnce.Do(func() {
 			_, err = signalingClient.CallUpdate(exchangeCtx, &webrtcpb.CallUpdateRequest{
 				Uuid: uuid,
 				Update: &webrtcpb.CallUpdateRequest_Done{
@@ -230,13 +218,22 @@ func dialWebRTC(
 		}
 
 		var pendingCandidates sync.WaitGroup
+
+		// waitOneHost is closed when the first ICE candidate of type `Host` (e.g: 127.0.0.1) is
+		// found.
 		waitOneHost := make(chan struct{})
 		var waitOneHostOnce sync.Once
 		peerConn.OnICECandidate(func(icecandidate *webrtc.ICECandidate) {
 			if exchangeCtx.Err() != nil {
+				// We've decided to bail.
 				return
 			}
+
 			if icecandidate != nil {
+				// The last `icecandidate` called from pion will be nil. `nil` signifies that all
+				// candidates were created. We will still create a goroutine for this "empty"
+				// candidate to wait for all other candidates to complete. Thus we only increment
+				// `pendingCandidates` for non-nil values.
 				pendingCandidates.Add(1)
 				if icecandidate.Typ == webrtc.ICECandidateTypeHost {
 					waitOneHostOnce.Do(func() {
@@ -244,6 +241,7 @@ func dialWebRTC(
 					})
 				}
 			}
+
 			// must spin off to unblock the ICE gatherer
 			utils.PanicCapturingGo(func() {
 				if icecandidate != nil {
@@ -251,16 +249,20 @@ func dialWebRTC(
 				}
 				select {
 				case <-remoteDescSet:
+					// We've sent the `init` offer. We can now proceed with sending individual
+					// candidates.
 				case <-exchangeCtx.Done():
 					return
 				}
+
 				if icecandidate == nil {
+					// There are no more candidates to generate. Wait for all existing
+					// candidates/CallUpdate's to complete. Then "sendDone".
 					pendingCandidates.Wait()
-					if err := sendDone(); err != nil {
-						sendErr(err)
-					}
+					sendDone()
 					return
 				}
+
 				iProto := iceCandidateToProto(icecandidate)
 				callUpdateStart := time.Now()
 				if _, err := signalingClient.CallUpdate(exchangeCtx, &webrtcpb.CallUpdateRequest{
@@ -269,9 +271,10 @@ func dialWebRTC(
 						Candidate: iProto,
 					},
 				}); err != nil {
-					sendErr(err)
+					logger.Warnw("Error sending a CallUpdate", "err", err)
 					return
 				}
+
 				statsMu.Lock()
 				callUpdates++
 				callUpdateDuration := time.Since(callUpdateStart)
@@ -285,11 +288,13 @@ func dialWebRTC(
 
 		err = peerConn.SetLocalDescription(offer)
 		if err != nil {
+			logger.Errorw("Error setting local description with offer", "err", err)
 			return nil, err
 		}
 
 		select {
 		case <-exchangeCtx.Done():
+			logger.Errorw("Failed while waiting for first host to be generated", "err", err)
 			return nil, exchangeCtx.Err()
 		case <-waitOneHost:
 		}
@@ -297,11 +302,13 @@ func dialWebRTC(
 
 	encodedSDP, err := EncodeSDP(peerConn.LocalDescription())
 	if err != nil {
+		logger.Errorw("Error encoding local description", "err", err)
 		return nil, err
 	}
 
 	callClient, err := signalingClient.Call(signalCtx, &webrtcpb.CallRequest{Sdp: encodedSDP})
 	if err != nil {
+		logger.Errorw("Error calling with initial SDP", "err", err)
 		return nil, err
 	}
 
@@ -365,41 +372,29 @@ func dialWebRTC(
 		}
 	}
 
-	utils.PanicCapturingGoWithCallback(func() {
+	utils.PanicCapturingGo(func() {
 		if err := exchangeCandidates(); err != nil {
-			sendErr(err)
+			logger.Warn("Failed to exchange candidates", "err", err)
 		}
-	}, func(err interface{}) {
-		sendErr(fmt.Errorf("%v", err))
 	})
 
-	doCall := func() error {
-		select {
-		case <-exchangeCtx.Done():
-			return multierr.Combine(exchangeCtx.Err(), clientCh.Close())
-		case <-clientCh.Ready():
-			return nil
-		case err := <-errCh:
-			return multierr.Combine(err, clientCh.Close())
-		}
-	}
-
-	if callErr := doCall(); callErr != nil {
-		var err error
-		sendDoneErrorOnce.Do(func() {
+	select {
+	case <-clientCh.Ready():
+		// Happy path
+		sendDone()
+		successful = true
+	case <-exchangeCtx.Done():
+		sendDoneOnce.Do(func() {
 			_, err = signalingClient.CallUpdate(exchangeCtx, &webrtcpb.CallUpdateRequest{
 				Uuid: uuid,
 				Update: &webrtcpb.CallUpdateRequest_Error{
-					Error: ErrorToStatus(callErr).Proto(),
+					Error: ErrorToStatus(exchangeCtx.Err()).Proto(),
 				},
 			})
 		})
-		return nil, multierr.Combine(callErr, err)
+		return nil, exchangeCtx.Err()
 	}
-	if err := sendDone(); err != nil {
-		return nil, err
-	}
-	successful = true
+
 	return clientCh, nil
 }
 
