@@ -232,7 +232,10 @@ func (ch *webrtcBaseChannel) write(msg proto.Message) error {
 		if ch.ctx.Err() != nil {
 			return io.ErrClosedPipe
 		}
-		if ch.dataChannel.BufferedAmount() >= bufferThreshold {
+		// RSDK-9239: Only wait when we're strictly over the threshold. Pion invokes the registered
+		// callback (notify `bufferWriteCond`) when moving from larger than bufferThreshold to less
+		// than or equal to.
+		if ch.dataChannel.BufferedAmount() > bufferThreshold {
 			ch.bufferWriteCond.Wait()
 			continue
 		}
