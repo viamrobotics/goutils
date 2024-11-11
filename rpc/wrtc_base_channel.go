@@ -6,6 +6,7 @@ import (
 	"io"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/pion/dtls/v2"
 	"github.com/pion/sctp"
@@ -22,7 +23,7 @@ type webrtcBaseChannel struct {
 	ctx                     context.Context
 	cancel                  func()
 	ready                   chan struct{}
-	closed                  bool
+	closed                  atomic.Bool
 	closedReason            error
 	activeBackgroundWorkers sync.WaitGroup
 	logger                  utils.ZapCompatibleLogger
@@ -78,13 +79,13 @@ func newBaseChannel(
 		utils.PanicCapturingGo(func() {
 			defer ch.activeBackgroundWorkers.Done()
 
-			ch.mu.Lock()
-			defer ch.mu.Unlock()
-			if ch.closed {
+			if ch.closed.Load() {
 				doPeerDone()
 				return
 			}
 
+			ch.mu.Lock()
+			defer ch.mu.Unlock()
 			switch connectionState {
 			case webrtc.ICEConnectionStateDisconnected,
 				webrtc.ICEConnectionStateFailed,
@@ -155,12 +156,12 @@ func newBaseChannel(
 }
 
 func (ch *webrtcBaseChannel) closeWithReason(err error) error {
-	ch.mu.Lock()
-	defer ch.mu.Unlock()
-	if ch.closed {
+	if !ch.closed.CompareAndSwap(false, true) {
 		return nil
 	}
-	ch.closed = true
+
+	ch.mu.Lock()
+	defer ch.mu.Unlock()
 	ch.closedReason = err
 	ch.cancel()
 	ch.bufferWriteCond.Broadcast()
@@ -179,9 +180,7 @@ func (ch *webrtcBaseChannel) Close() error {
 }
 
 func (ch *webrtcBaseChannel) Closed() (bool, error) {
-	ch.mu.Lock()
-	defer ch.mu.Unlock()
-	return ch.closed, ch.closedReason
+	return ch.closed.Load(), ch.closedReason
 }
 
 func (ch *webrtcBaseChannel) Ready() <-chan struct{} {
