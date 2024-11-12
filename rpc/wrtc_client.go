@@ -226,7 +226,7 @@ func dialWebRTC(
 		var waitOneHostOnce sync.Once
 		peerConn.OnICECandidate(func(icecandidate *webrtc.ICECandidate) {
 			if exchangeCtx.Err() != nil {
-				// We've decided to bail.
+				// Caller has canceled the dial, or a timeout has occurred.
 				return
 			}
 
@@ -250,8 +250,8 @@ func dialWebRTC(
 				}
 				select {
 				case <-remoteDescSet:
-					// We've sent the `init` offer. We can now proceed with sending individual
-					// candidates.
+					// We've received the `init` answer and initialized `uuid`. We can now proceed
+					// with sending individual candidates.
 				case <-exchangeCtx.Done():
 					return
 				}
@@ -354,7 +354,8 @@ func dialWebRTC(
 				close(remoteDescSet)
 
 				if dOpts.webrtcOpts.DisableTrickleICE {
-					return sendDone()
+					sendDone()
+					return nil
 				}
 			case *webrtcpb.CallResponse_Update:
 				if !haveInit {
