@@ -16,5 +16,6 @@ func IsLocalRedirectPath(path string) bool {
 		return false
 	}
 
-	return strings.HasPrefix(path, "/") && !strings.HasPrefix(path, "//")
+	candidate := url.String()
+	return strings.HasPrefix(candidate, "/") && !strings.HasPrefix(candidate, "//")
 }
