@@ -9,6 +9,7 @@ import (
 func TestIsLocalRedirectPath(t *testing.T) {
 	t.Run("check valid redirect paths", func(t *testing.T) {
 		test.That(t, IsLocalRedirectPath("https://example.com"), test.ShouldBeFalse)
+		test.That(t, IsLocalRedirectPath("http://example.com"), test.ShouldBeFalse)
 		test.That(t, IsLocalRedirectPath("://example.com"), test.ShouldBeFalse)
 		test.That(t, IsLocalRedirectPath("//example.com"), test.ShouldBeFalse)
 		test.That(t, IsLocalRedirectPath("example.com"), test.ShouldBeFalse)
