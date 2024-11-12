@@ -30,7 +30,7 @@ type webrtcBaseChannel struct {
 	bufferWriteCond         *sync.Cond
 }
 
-const bufferThreshold = 1
+const bufferThreshold = 1024 * 1024
 
 func newBaseChannel(
 	ctx context.Context,
