@@ -344,24 +344,35 @@ func (s *webrtcServerStream) closeWithSendError(err error) {
 	if !s.sendClosed.CompareAndSwap(false, true) {
 		return
 	}
+
 	defer func() {
 		s.webrtcBaseStream.mu.Lock()
 		defer s.webrtcBaseStream.mu.Unlock()
 		s.close()
 	}()
+
+	// If the error is a closed pipe error, there's no use trying to write headers/trailers.
+	if err != nil && (errors.Is(err, io.ErrClosedPipe)) {
+		return
+	}
+
+	// If the data channel is closed, there's no use trying to write headers/trailers.
 	if s.ch.Closed() {
 		return
 	}
+
 	if headersErr := s.writeHeaders(); headersErr != nil {
 		s.logger.Warnw("Error writing headers", "err", headersErr)
 		return
 	}
+
 	var respStatus *status.Status
 	if err == nil {
 		respStatus = ErrorToStatus(s.ctx.Err())
 	} else {
 		respStatus = ErrorToStatus(err)
 	}
+
 	if trailersErr := s.ch.writeTrailers(s.stream, &webrtcpb.ResponseTrailers{
 		Status:   respStatus.Proto(),
 		Metadata: metadataToProto(s.trailer),
