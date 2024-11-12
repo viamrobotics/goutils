@@ -2,8 +2,6 @@ package rpc
 
 import (
 	"context"
-	"io"
-	"strings"
 	"sync"
 	"time"
 
@@ -204,7 +202,6 @@ func dialWebRTC(
 				logger.Warn("Error sending CallUpdate", "err", err)
 			}
 		})
-		return
 	}
 
 	// this channel blocks goroutines spawned for each ICE candidate in OnIceCandidate from sending a CallUpdateRequest
@@ -436,12 +433,4 @@ func dialSignalingServer(
 
 	conn, _, err := dialDirectGRPC(ctx, signalingServer, dOpts, logger)
 	return conn, err
-}
-
-func isEOF(err error) bool {
-	s, isGRPCErr := status.FromError(err)
-	if errors.Is(err, io.EOF) || (isGRPCErr && (s.Code() == codes.Internal && strings.Contains(s.Message(), "EOF"))) {
-		return true
-	}
-	return false
 }
