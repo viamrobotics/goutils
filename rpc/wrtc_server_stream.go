@@ -221,11 +221,14 @@ func (s *webrtcServerStream) SendMsg(m interface{}) (err error) {
 }
 
 func (s *webrtcServerStream) onRequest(request *webrtcpb.Request) {
+	// Error cases here are logged at the warn level. It's not a server error to find client
+	// misbehavior during validation. Additionally, clients can go away at any time, so failing to
+	// respond is likewise not an error.
 	switch r := request.Type.(type) {
 	case *webrtcpb.Request_Headers:
 		if s.headersReceived {
 			if err := s.closeWithSendError(status.Error(codes.InvalidArgument, "headers already received")); err != nil {
-				s.logger.Errorw("error closing", "error", err)
+				s.logger.Warnw("error closing", "error", err)
 			}
 			return
 		}
@@ -233,19 +236,19 @@ func (s *webrtcServerStream) onRequest(request *webrtcpb.Request) {
 	case *webrtcpb.Request_Message:
 		if !s.headersReceived {
 			if err := s.closeWithSendError(status.Error(codes.InvalidArgument, "headers not yet received")); err != nil {
-				s.logger.Errorw("error closing", "error", err)
+				s.logger.Warnw("error closing", "error", err)
 			}
 			return
 		}
 		s.processMessage(r.Message)
 	case *webrtcpb.Request_RstStream:
 		if err := s.closeWithSendError(status.Error(codes.Canceled, "request cancelled")); err != nil {
-			s.logger.Errorw("error closing", "error", err)
+			s.logger.Warnw("error closing", "error", err)
 		}
 		return
 	default:
 		if err := s.closeWithSendError(status.Error(codes.InvalidArgument, fmt.Sprintf("unknown request type %T", r))); err != nil {
-			s.logger.Errorw("error closing", "error", err)
+			s.logger.Warnw("error closing", "error", err)
 		}
 	}
 }
