@@ -497,7 +497,6 @@ func (h *tokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	_, span := trace.StartSpan(ctx, r.URL.Path)
 	defer span.End()
 
-	current := getBearerToken(r)
 	data := getAndClearAuthCookieValues(w, r)
 
 	// handle incoming login request with cookies
@@ -522,6 +521,7 @@ func (h *tokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// user calls with no token in the header, no cookies exist
 	// - return a bad request 400
+	current := getBearerToken(r)
 	if current == "" {
 		w.WriteHeader(http.StatusBadRequest)
 		return
