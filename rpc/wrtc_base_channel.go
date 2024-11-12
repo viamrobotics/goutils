@@ -24,7 +24,6 @@ type webrtcBaseChannel struct {
 	cancel                  func()
 	ready                   chan struct{}
 	closed                  atomic.Bool
-	closedReason            error
 	activeBackgroundWorkers sync.WaitGroup
 	logger                  utils.ZapCompatibleLogger
 	bufferWriteMu           sync.RWMutex
@@ -162,7 +161,6 @@ func (ch *webrtcBaseChannel) closeWithReason(err error) error {
 
 	ch.mu.Lock()
 	defer ch.mu.Unlock()
-	ch.closedReason = err
 	ch.cancel()
 	ch.bufferWriteCond.Broadcast()
 
@@ -179,8 +177,8 @@ func (ch *webrtcBaseChannel) Close() error {
 	return ch.closeWithReason(nil)
 }
 
-func (ch *webrtcBaseChannel) Closed() (bool, error) {
-	return ch.closed.Load(), ch.closedReason
+func (ch *webrtcBaseChannel) Closed() bool {
+	return ch.closed.Load()
 }
 
 func (ch *webrtcBaseChannel) Ready() <-chan struct{} {
