@@ -76,7 +76,7 @@ func TestWebRTCBaseChannel(t *testing.T) {
 
 	bc1, bc2, peer1Done, peer2Done = setupWebRTCBaseChannels(t)
 	err1 := errors.New("whoops")
-	test.That(t, bc2.closeWithReason(err1), test.ShouldBeNil)
+	test.That(t, bc2.Close(), test.ShouldBeNil)
 	<-peer1Done
 	<-peer2Done
 	isClosed = bc1.Closed()

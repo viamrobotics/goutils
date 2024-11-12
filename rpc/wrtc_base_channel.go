@@ -75,6 +75,7 @@ func newBaseChannel(
 	}
 	connStateChanged := func(connectionState webrtc.ICEConnectionState) {
 		ch.activeBackgroundWorkers.Add(1)
+
 		utils.PanicCapturingGo(func() {
 			defer ch.activeBackgroundWorkers.Done()
 
@@ -154,27 +155,23 @@ func newBaseChannel(
 	return ch
 }
 
-func (ch *webrtcBaseChannel) closeWithReason(err error) error {
+func (ch *webrtcBaseChannel) Close() error {
 	if !ch.closed.CompareAndSwap(false, true) {
 		return nil
 	}
 
 	ch.mu.Lock()
-	defer ch.mu.Unlock()
 	ch.cancel()
 	ch.bufferWriteCond.Broadcast()
+	ch.mu.Unlock()
 
 	// Underlying connection may already be closed; ignore "conn is closed"
 	// errors.
 	if err := ch.peerConn.GracefulClose(); !errors.Is(err, dtls.ErrConnClosed) {
 		return err
 	}
+	ch.activeBackgroundWorkers.Wait()
 	return nil
-}
-
-func (ch *webrtcBaseChannel) Close() error {
-	defer ch.activeBackgroundWorkers.Wait()
-	return ch.closeWithReason(nil)
 }
 
 func (ch *webrtcBaseChannel) Closed() bool {
@@ -192,7 +189,7 @@ func (ch *webrtcBaseChannel) onChannelOpen() {
 var errDataChannelClosed = errors.New("data channel closed")
 
 func (ch *webrtcBaseChannel) onChannelClose() {
-	if err := ch.closeWithReason(errDataChannelClosed); err != nil {
+	if err := ch.Close(); err != nil {
 		ch.logger.Errorw("error closing channel", "error", err)
 	}
 }
@@ -212,7 +209,7 @@ func (ch *webrtcBaseChannel) onChannelError(err error) {
 		return
 	}
 	ch.logger.Errorw("channel error", "error", err)
-	if err := ch.closeWithReason(err); err != nil {
+	if err := ch.Close(); err != nil {
 		ch.logger.Errorw("error closing channel", "error", err)
 	}
 }
