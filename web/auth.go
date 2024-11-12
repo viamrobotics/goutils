@@ -437,8 +437,9 @@ func getBearerToken(req *http.Request) string {
 	return ""
 }
 
-// getAuthCookieValues reads the authentication cookie values as a /token response.
-func getAuthCookieValues(r *http.Request) *tokenResponse {
+// getAuthCookieValues reads the authentication cookie values as a /token response
+// before clearing the cookies.
+func getAndClearAuthCookieValues(w http.ResponseWriter, r *http.Request) *tokenResponse {
 	token, err := r.Cookie(ViamTokenCookie)
 	if err != nil || token.Value == "" {
 		return nil
@@ -455,16 +456,6 @@ func getAuthCookieValues(r *http.Request) *tokenResponse {
 		return nil
 	}
 
-	return &tokenResponse{
-		AccessToken:  token.Value,
-		RefreshToken: refresh.Value,
-		Expiry:       expiry.Value,
-	}
-}
-
-// clearAuthCookies removes auth cookies from /callback
-// - to be used after reading the cookies so they can only be used once.
-func clearAuthCookies(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     ViamTokenCookie,
 		Value:    "",
@@ -491,6 +482,12 @@ func clearAuthCookies(w http.ResponseWriter) {
 		SameSite: http.SameSiteLaxMode,
 		HttpOnly: true,
 	})
+
+	return &tokenResponse{
+		AccessToken:  token.Value,
+		RefreshToken: refresh.Value,
+		Expiry:       expiry.Value,
+	}
 }
 
 func (h *tokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -501,8 +498,7 @@ func (h *tokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer span.End()
 
 	current := getBearerToken(r)
-	data := getAuthCookieValues(r)
-	clearAuthCookies(w)
+	data := getAndClearAuthCookieValues(w, r)
 
 	// handle incoming login request with cookies
 	if data != nil {
