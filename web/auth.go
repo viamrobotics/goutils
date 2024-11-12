@@ -532,6 +532,7 @@ func (h *tokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	isValid := h.state.sessions.HasSessionWithAccessToken(ctx, current)
 	if !isValid {
 		w.WriteHeader(http.StatusUnauthorized)
+		return
 	}
 
 	// user calls with a valid token in the header, no cookies exist
