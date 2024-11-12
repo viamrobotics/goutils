@@ -11,7 +11,6 @@ import (
 func createRequest(t *testing.T) (http.ResponseWriter, *http.Request) {
 	w := httptest.NewRecorder()
 	r, err := http.NewRequest(http.MethodGet, "http://localhost/", nil)
-
 	if err != nil {
 		t.Fatal(err)
 		return nil, nil
