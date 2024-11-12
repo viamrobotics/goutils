@@ -193,17 +193,18 @@ func dialWebRTC(
 	var uuid string
 	// only send once since exchange may end or ICE may end
 	var sendDoneOnce sync.Once
-	sendDone := func() error {
-		var err error
+	sendDone := func() {
 		sendDoneOnce.Do(func() {
-			_, err = signalingClient.CallUpdate(exchangeCtx, &webrtcpb.CallUpdateRequest{
+			if _, err = signalingClient.CallUpdate(exchangeCtx, &webrtcpb.CallUpdateRequest{
 				Uuid: uuid,
 				Update: &webrtcpb.CallUpdateRequest_Done{
 					Done: true,
 				},
-			})
+			}); err != nil {
+				logger.Warn("Error sending CallUpdate", "err", err)
+			}
 		})
-		return err
+		return
 	}
 
 	// this channel blocks goroutines spawned for each ICE candidate in OnIceCandidate from sending a CallUpdateRequest
