@@ -5,14 +5,14 @@ import (
 	"strings"
 )
 
-var hostname_whitelist = map[string]bool{
+var hostnameWhitelist = map[string]bool{
 	"localhost": true,
 	"viam.dev":  true,
 	"viam.com":  true,
 }
 
 func isWhitelisted(hostname string) bool {
-	return hostname_whitelist[hostname]
+	return hostnameWhitelist[hostname]
 }
 
 // IsLocalRedirectPath returns true if the passed string is a secure URL to a whitelisted hostname or a valid local pathname for the local
