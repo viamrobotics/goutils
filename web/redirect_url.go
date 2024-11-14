@@ -16,7 +16,7 @@ func isWhitelisted(hostname string) bool {
 }
 
 // IsLocalRedirectPath returns true if the passed string is a secure URL to a whitelisted
-// hostname or a valid local pathname for the local server. The whitelisted hostnames are:
+// hostname or a valid pathname for the local server. The whitelisted hostnames are:
 // "localhost", "viam.dev", and "viam.com".
 //
 //   - https://example.com -> false
