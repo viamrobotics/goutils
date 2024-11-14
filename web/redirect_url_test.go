@@ -63,8 +63,4 @@ func TestIsLocalRedirectPath(t *testing.T) {
 		test.That(t, IsLocalRedirectPath("https://localhost"), test.ShouldBeTrue)
 		test.That(t, IsLocalRedirectPath("https://localhost/some/path"), test.ShouldBeTrue)
 	})
-
-	t.Run("accepts path names", func(t *testing.T) {
-		test.That(t, IsLocalRedirectPath("/local/path?myparam=test"), test.ShouldBeTrue)
-	})
 }

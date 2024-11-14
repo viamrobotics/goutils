@@ -16,13 +16,11 @@ func isWhitelisted(hostname string) bool {
 }
 
 // IsLocalRedirectPath returns true if the passed string is a secure URL to a whitelisted
-// hostname or a valid pathname for the local server. The whitelisted hostnames are:
-// "localhost", "viam.dev", and "viam.com".
+// hostname. The whitelisted hostnames are: "localhost", "viam.dev", and "viam.com".
 //
 //   - https://example.com -> false
 //   - http://viam.com/path/name -> false
 //   - https://viam.com/path/name -> true
-//   - /local/path/name -> true
 func IsLocalRedirectPath(path string) bool {
 	normalized := strings.ReplaceAll(path, "\\", "/")
 	url, err := url.ParseRequestURI(normalized)
@@ -41,7 +39,5 @@ func IsLocalRedirectPath(path string) bool {
 		return true
 	}
 
-	// allow local app paths
-	candidate := url.String()
-	return strings.HasPrefix(candidate, "/") && !strings.HasPrefix(candidate, "//")
+	return false
 }
