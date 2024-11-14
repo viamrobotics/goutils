@@ -528,7 +528,7 @@ func (h *loginHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if r.FormValue("backto") != "" {
 		backto := r.FormValue("backto")
-		if IsLocalRedirectPath(backto) {
+		if IsValidBacktoURL(backto) {
 			session.Data["backto"] = backto
 		}
 	}

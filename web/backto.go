@@ -15,13 +15,13 @@ func isWhitelisted(hostname string) bool {
 	return hostnameWhitelist[hostname]
 }
 
-// IsLocalRedirectPath returns true if the passed string is a secure URL to a whitelisted
+// IsValidBacktoURL returns true if the passed string is a secure URL to a whitelisted
 // hostname. The whitelisted hostnames are: "localhost", "viam.dev", and "viam.com".
 //
 //   - https://example.com -> false
 //   - http://viam.com/path/name -> false
 //   - https://viam.com/path/name -> true
-func IsLocalRedirectPath(path string) bool {
+func IsValidBacktoURL(path string) bool {
 	normalized := strings.ReplaceAll(path, "\\", "/")
 	url, err := url.ParseRequestURI(normalized)
 	if err != nil {
