@@ -329,9 +329,9 @@ func TestWebRTCClientDialConcurrentWithMongoDBQueue(t *testing.T) {
 //
 //nolint:thelper
 func testWebRTCClientDialConcurrent(t *testing.T, signalingCallQueue WebRTCCallQueue, logger utils.ZapCompatibleLogger) {
-	logger = logger.Named("test")
+	logger = utils.Sublogger(logger, "test")
 
-	signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, logger.Named("signaling-server"),
+	signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, utils.Sublogger(logger, "signaling-server"),
 		defaultHeartbeatInterval)
 	defer signalingServer.Close()
 

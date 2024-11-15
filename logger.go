@@ -24,7 +24,10 @@ type ILogger interface {
 // ZapCompatibleLogger is a basic logging interface for golog.Logger (alias for *zap.SugaredLogger) and RDK loggers.
 type ZapCompatibleLogger interface {
 	Desugar() *zap.Logger
-	Named(name string) *zap.SugaredLogger
+
+	// Not defined: Named(name string) *zap.SugaredLogger
+	//
+	// Use `Sublogger(logger, "name")` instead of calling `Named` directly.
 
 	Debug(args ...interface{})
 	Debugf(template string, args ...interface{})

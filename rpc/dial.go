@@ -138,7 +138,7 @@ func dial(
 	if !dOpts.mdnsOptions.Disable && tryLocal && isJustDomain {
 		wg.Add(1)
 		go func(dOpts dialOptions) {
-			mdnsLogger := logger.Named("mdns")
+			mdnsLogger := utils.Sublogger(logger, "mdns")
 			defer wg.Done()
 
 			mdnsLogger.Debugw("trying mDNS", "address", address)
@@ -152,7 +152,7 @@ func dial(
 	}
 
 	if !dOpts.webrtcOpts.Disable {
-		webrtcLogger := logger.Named("webrtc")
+		webrtcLogger := utils.Sublogger(logger, "webrtc")
 		wg.Add(1)
 		go func(dOpts dialOptions) {
 			defer wg.Done()
