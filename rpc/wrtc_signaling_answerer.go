@@ -403,7 +403,7 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 			)
 
 			// Close unhealthy connection.
-			err = multierr.Combine(err, pc.GracefulClose())
+			utils.UncheckedError(pc.GracefulClose())
 		}
 	}()
 

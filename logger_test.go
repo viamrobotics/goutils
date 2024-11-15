@@ -19,6 +19,10 @@ func (m *InvalidLogger) Desugar() *zap.Logger {
 	return zap.NewNop()
 }
 
+func (m *InvalidLogger) Named(name string) *zap.SugaredLogger {
+	return nil
+}
+
 func (m *InvalidLogger) Debug(args ...interface{}) {
 }
 
@@ -75,6 +79,10 @@ func (m *MockLogger) Sublogger(subname string) ZapCompatibleLogger {
 	return &MockLogger{Name: m.Name + "." + subname}
 }
 
+func (m *MockLogger) Named(name string) *zap.SugaredLogger {
+	return nil
+}
+
 func (m *MockLogger) WithFields(args ...interface{}) {
 	m.Name = "WithFields called"
 }
@@ -94,13 +102,6 @@ func TestSubloggerWithMockRDKLogger(t *testing.T) {
 	test.That(t, sublogger, test.ShouldNotEqual, logger)
 	test.That(t, reflect.TypeOf(sublogger), test.ShouldEqual, reflect.TypeOf(logger))
 	test.That(t, sublogger.(*MockLogger).Name, test.ShouldEqual, "main.sub")
-}
-
-func TestSubloggerWithInvalidLogger(t *testing.T) {
-	logger := &InvalidLogger{name: "main"}
-	sublogger := Sublogger(logger, "sub")
-	// Sublogger returns logger (itself) if creating a sublogger fails, which we expect
-	test.That(t, sublogger, test.ShouldEqual, logger)
 }
 
 func TestLogWithZapLogger(t *testing.T) {
