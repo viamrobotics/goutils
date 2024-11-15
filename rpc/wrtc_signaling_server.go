@@ -152,7 +152,7 @@ func HeartbeatsAllowedFromCtx(ctx context.Context) bool {
 	return md[HeartbeatsAllowedMetadataField][0] == "true"
 }
 
-func (srv *WebRTCSignalingServer) AsyncSetOfferError(host string, uuid string, offerErr error) {
+func (srv *WebRTCSignalingServer) asyncSetOfferError(host string, uuid string, offerErr error) {
 	srv.callMu.RLock()
 	// Atomically check if the cancelCtx was canceled, and if not, add to the `callWorkers`.
 	if err := srv.cancelCtx.Err(); err != nil {
@@ -205,7 +205,7 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 		var resp WebRTCCallAnswer
 		select {
 		case <-ctx.Done():
-			srv.AsyncSetOfferError(host, uuid, context.Cause(ctx))
+			srv.asyncSetOfferError(host, uuid, context.Cause(ctx))
 			return ctx.Err()
 		case <-respDone:
 			return nil
@@ -213,13 +213,13 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 		}
 		if resp.Err != nil {
 			err := fmt.Errorf("error from answerer: %w", resp.Err)
-			srv.AsyncSetOfferError(host, uuid, err)
+			srv.asyncSetOfferError(host, uuid, err)
 			return err
 		}
 
 		if !haveInit && resp.InitialSDP == nil {
 			err := errors.New("expected to have initial SDP if no error")
-			srv.AsyncSetOfferError(host, uuid, err)
+			srv.asyncSetOfferError(host, uuid, err)
 			return err
 		}
 		if !haveInit {
@@ -232,7 +232,7 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 					},
 				},
 			}); err != nil {
-				srv.AsyncSetOfferError(host, uuid, err)
+				srv.asyncSetOfferError(host, uuid, err)
 				return err
 			}
 		}

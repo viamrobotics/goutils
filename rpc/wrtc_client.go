@@ -100,7 +100,6 @@ func dialWebRTC(
 ) (*webrtcClientChannel, error) {
 	dialStart := time.Now()
 
-	logger = utils.Sublogger(logger, "webrtc")
 	dialCtx, timeoutCancel := context.WithTimeout(ctx, getDefaultOfferDeadline())
 	defer timeoutCancel()
 
@@ -150,7 +149,7 @@ func dialWebRTC(
 	var successful bool
 	defer func() {
 		if !successful {
-			peerConn.GracefulClose()
+			utils.UncheckedError(peerConn.GracefulClose())
 		}
 	}()
 
@@ -198,7 +197,7 @@ func dialWebRTC(
 					Done: true,
 				},
 			}); err != nil {
-				logger.Warn("Error sending CallUpdate", "err", err)
+				logger.Warnw("Error sending CallUpdate", "err", err)
 			}
 		})
 	}
