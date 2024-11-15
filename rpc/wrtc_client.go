@@ -2,6 +2,8 @@ package rpc
 
 import (
 	"context"
+	"io"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -181,7 +183,6 @@ func dialWebRTC(
 	clientCh := newWebRTCClientChannel(peerConn, dataChannel, onICEConnected, logger, dOpts.unaryInterceptor, dOpts.streamInterceptor)
 
 	exchangeCtx, exchangeCancel := context.WithCancelCause(signalCtx)
-	defer exchangeCancel(nil)
 
 	// bool representing whether initial sdp exchange has occurred
 	haveInit := false
@@ -191,13 +192,14 @@ func dialWebRTC(
 	var sendDoneOnce sync.Once
 	sendDone := func() {
 		sendDoneOnce.Do(func() {
-			if _, err = signalingClient.CallUpdate(exchangeCtx, &webrtcpb.CallUpdateRequest{
+			if _, err = signalingClient.CallUpdate(signalCtx, &webrtcpb.CallUpdateRequest{
 				Uuid: uuid,
 				Update: &webrtcpb.CallUpdateRequest_Done{
 					Done: true,
 				},
 			}); err != nil {
 				logger.Warnw("Error sending CallUpdate", "err", err)
+				debug.PrintStack()
 			}
 		})
 	}
@@ -319,7 +321,7 @@ func dialWebRTC(
 
 	exchangeCandidates := func() error {
 		for {
-			if err := exchangeCtx.Err(); err != nil {
+			if err := dialCtx.Err(); err != nil {
 				if errors.Is(err, context.Canceled) {
 					return nil
 				}
@@ -328,6 +330,10 @@ func dialWebRTC(
 
 			callResp, err := callClient.Recv()
 			if err != nil {
+				if errors.Is(err, io.EOF) {
+					return nil
+				}
+
 				return err
 			}
 			switch s := callResp.Stage.(type) {
@@ -376,10 +382,6 @@ func dialWebRTC(
 		if err := exchangeCandidates(); err != nil {
 			logger.Warnw("Failed to exchange candidates", "err", err)
 			exchangeCancel(err)
-		} else {
-			// Mark the `exchangeCtx` as done. Such that we can wait for this goroutine to exit
-			// before returning.
-			exchangeCancel(nil)
 		}
 	})
 
@@ -388,20 +390,24 @@ func dialWebRTC(
 		// Happy path
 		sendDone()
 		successful = true
+
+		// Ensure the exchange goroutine has exited.
+		exchangeCancel(nil)
+		<-exchangeCtx.Done()
 	case <-exchangeCtx.Done():
 		exchangeErr := context.Cause(exchangeCtx)
 		sendDoneOnce.Do(func() {
-			_, err = signalingClient.CallUpdate(signalCtx, &webrtcpb.CallUpdateRequest{
+			if _, err = signalingClient.CallUpdate(signalCtx, &webrtcpb.CallUpdateRequest{
 				Uuid: uuid,
 				Update: &webrtcpb.CallUpdateRequest_Error{
 					Error: ErrorToStatus(exchangeErr).Proto(),
 				},
-			})
+			}); err != nil {
+				logger.Warnw("Problem sending error to signaling server", "err", err)
+			}
 		})
 		return nil, exchangeErr
 	}
-
-	<-exchangeCtx.Done()
 
 	return clientCh, nil
 }

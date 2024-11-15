@@ -1182,44 +1182,44 @@ func TestDialMulticastDNS(t *testing.T) {
 	})
 
 	t.Run("unauthenticated", func(t *testing.T) {
-		// rpcServer, err := NewServer(
-		//  	logger.Named("server"),
-		//  	WithUnauthenticated(),
-		// )
-		// test.That(t, err, test.ShouldBeNil)
-		// test.That(t, rpcServer.Start(), test.ShouldBeNil)
-		// test.That(t, rpcServer.InstanceNames(), test.ShouldHaveLength, 1)
-		//
-		// conn, err := Dial(
-		//  	context.Background(),
-		//  	rpcServer.InstanceNames()[0],
-		//  	logger.Named("unauthenticated1"),
-		//  	WithInsecure(),
-		//  	WithDialDebug(),
-		// )
-		// test.That(t, err, test.ShouldBeNil)
-		// logger.Info("Dial1 success")
-		// // There's no webrtc. The connection must not be backed by a PeerConn.
-		// test.That(t, conn.PeerConn(), test.ShouldBeNil)
-		// test.That(t, conn.Close(), test.ShouldBeNil)
-		//
-		// ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		// defer cancel()
-		// _, err = Dial(
-		//  	ctx,
-		//  	rpcServer.InstanceNames()[0],
-		//  	logger.Named("unauthenticated2"),
-		//  	WithInsecure(),
-		//  	WithDialDebug(),
-		//  	WithDialMulticastDNSOptions(DialMulticastDNSOptions{Disable: true}),
-		// )
-		// test.That(t, err, test.ShouldResemble, context.DeadlineExceeded)
-		// logger.Info("Dial2 'success'")
-		//
-		// test.That(t, rpcServer.Stop(), test.ShouldBeNil)
-		//
-		// logger.Info("Dial2 server stopped")
 		rpcServer, err := NewServer(
+			logger.Named("server"),
+			WithUnauthenticated(),
+		)
+		test.That(t, err, test.ShouldBeNil)
+		test.That(t, rpcServer.Start(), test.ShouldBeNil)
+		test.That(t, rpcServer.InstanceNames(), test.ShouldHaveLength, 1)
+
+		conn, err := Dial(
+			context.Background(),
+			rpcServer.InstanceNames()[0],
+			logger.Named("unauthenticated1"),
+			WithInsecure(),
+			WithDialDebug(),
+		)
+		test.That(t, err, test.ShouldBeNil)
+		logger.Info("Dial1 success")
+		// There's no webrtc. The connection must not be backed by a PeerConn.
+		test.That(t, conn.PeerConn(), test.ShouldBeNil)
+		test.That(t, conn.Close(), test.ShouldBeNil)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		_, err = Dial(
+			ctx,
+			rpcServer.InstanceNames()[0],
+			logger.Named("unauthenticated2"),
+			WithInsecure(),
+			WithDialDebug(),
+			WithDialMulticastDNSOptions(DialMulticastDNSOptions{Disable: true}),
+		)
+		test.That(t, err, test.ShouldResemble, context.DeadlineExceeded)
+		logger.Info("Dial2 'success'")
+
+		test.That(t, rpcServer.Stop(), test.ShouldBeNil)
+
+		logger.Info("Dial2 server stopped")
+		rpcServer, err = NewServer(
 			logger.Named("server"),
 			WithUnauthenticated(),
 			WithWebRTCServerOptions(WebRTCServerOptions{Enable: true}),
@@ -1228,8 +1228,7 @@ func TestDialMulticastDNS(t *testing.T) {
 		test.That(t, rpcServer.Start(), test.ShouldBeNil)
 		logger.Info("Dial3 server started")
 
-		defer logger.Info("Test returning timestamp.")
-		conn, err := Dial(
+		conn, err = Dial(
 			context.Background(),
 			rpcServer.InstanceNames()[0],
 			logger.Named("unauthenticated3"),

@@ -138,11 +138,11 @@ func dial(
 	if !dOpts.mdnsOptions.Disable && tryLocal && isJustDomain {
 		wg.Add(1)
 		go func(dOpts dialOptions) {
+			mdnsLogger := logger.Named("mdns")
 			defer wg.Done()
-			if dOpts.debug {
-				logger.Debugw("trying mDNS", "address", address)
-			}
-			conn, cached, err := dialMulticastDNS(ctxParallel, address, logger.Named("mdns"), dOpts)
+
+			mdnsLogger.Debugw("trying mDNS", "address", address)
+			conn, cached, err := dialMulticastDNS(ctxParallel, address, mdnsLogger, dOpts)
 			if err != nil {
 				dialCh <- dialResult{err: err}
 			} else {
@@ -185,13 +185,11 @@ func dial(
 				}
 			}
 
-			if dOpts.debug {
-				webrtcLogger.Debugw(
-					"trying WebRTC",
-					"signaling_server", dOpts.webrtcOpts.SignalingServerAddress,
-					"host", originalAddress,
-				)
-			}
+			webrtcLogger.Debugw(
+				"trying WebRTC",
+				"signaling_server", dOpts.webrtcOpts.SignalingServerAddress,
+				"host", originalAddress,
+			)
 
 			conn, cached, err := dialFunc(
 				ctxParallel,
