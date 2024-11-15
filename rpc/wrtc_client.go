@@ -7,7 +7,6 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/viamrobotics/webrtc/v3"
-	"go.uber.org/multierr"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -98,7 +97,7 @@ func dialWebRTC(
 	host string,
 	dOpts dialOptions,
 	logger utils.ZapCompatibleLogger,
-) (ch *webrtcClientChannel, err error) {
+) (*webrtcClientChannel, error) {
 	dialStart := time.Now()
 
 	logger = utils.Sublogger(logger, "webrtc")
@@ -151,7 +150,7 @@ func dialWebRTC(
 	var successful bool
 	defer func() {
 		if !successful {
-			err = multierr.Combine(err, peerConn.GracefulClose())
+			peerConn.GracefulClose()
 		}
 	}()
 
@@ -182,8 +181,8 @@ func dialWebRTC(
 	//nolint:contextcheck
 	clientCh := newWebRTCClientChannel(peerConn, dataChannel, onICEConnected, logger, dOpts.unaryInterceptor, dOpts.streamInterceptor)
 
-	exchangeCtx, exchangeCancel := context.WithCancel(signalCtx)
-	defer exchangeCancel()
+	exchangeCtx, exchangeCancel := context.WithCancelCause(signalCtx)
+	defer exchangeCancel(nil)
 
 	// bool representing whether initial sdp exchange has occurred
 	haveInit := false
@@ -363,7 +362,10 @@ func dialWebRTC(
 				}
 				cand := iceCandidateFromProto(s.Update.Candidate)
 				if err := peerConn.AddICECandidate(cand); err != nil {
-					return err
+					// A PeerConnection only needs one valid candidate to succeed. It's unclear why
+					// only some* candidates would be malformed, so we'll log, but otherwise ignore.
+					logger.Warnw("Error adding candidate", "err", err)
+					continue
 				}
 			default:
 				return errors.Errorf("unexpected stage %T", s)
@@ -373,7 +375,12 @@ func dialWebRTC(
 
 	utils.PanicCapturingGo(func() {
 		if err := exchangeCandidates(); err != nil {
-			logger.Warn("Failed to exchange candidates", "err", err)
+			logger.Warnw("Failed to exchange candidates", "err", err)
+			exchangeCancel(err)
+		} else {
+			// Mark the `exchangeCtx` as done. Such that we can wait for this goroutine to exit
+			// before returning.
+			exchangeCancel(nil)
 		}
 	})
 
@@ -383,16 +390,19 @@ func dialWebRTC(
 		sendDone()
 		successful = true
 	case <-exchangeCtx.Done():
+		exchangeErr := context.Cause(exchangeCtx)
 		sendDoneOnce.Do(func() {
-			_, err = signalingClient.CallUpdate(exchangeCtx, &webrtcpb.CallUpdateRequest{
+			_, err = signalingClient.CallUpdate(signalCtx, &webrtcpb.CallUpdateRequest{
 				Uuid: uuid,
 				Update: &webrtcpb.CallUpdateRequest_Error{
-					Error: ErrorToStatus(exchangeCtx.Err()).Proto(),
+					Error: ErrorToStatus(exchangeErr).Proto(),
 				},
 			})
 		})
-		return nil, exchangeCtx.Err()
+		return nil, exchangeErr
 	}
+
+	<-exchangeCtx.Done()
 
 	return clientCh, nil
 }

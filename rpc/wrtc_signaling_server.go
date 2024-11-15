@@ -152,8 +152,37 @@ func HeartbeatsAllowedFromCtx(ctx context.Context) bool {
 	return md[HeartbeatsAllowedMetadataField][0] == "true"
 }
 
+func (srv *WebRTCSignalingServer) AsyncSetOfferError(host string, uuid string, offerErr error) {
+	srv.callMu.RLock()
+	// Atomically check if the cancelCtx was canceled, and if not, add to the `callWorkers`.
+	if err := srv.cancelCtx.Err(); err != nil {
+		srv.callMu.RUnlock()
+		return
+	}
+	srv.callWorkers.Add(1)
+	srv.callMu.RUnlock()
+
+	utils.PanicCapturingGo(func() {
+		defer srv.callWorkers.Done()
+
+		// Use a timeout to not block shutdown.
+		sendCtx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+		defer cancel()
+
+		sendErr := srv.callQueue.SendOfferError(sendCtx, host, uuid, offerErr)
+		if sendErr == nil {
+			return
+		}
+
+		var errInactive inactiveOfferError
+		if !errors.As(sendErr, &errInactive) {
+			srv.logger.Warnw("error sending offer error", "host", host, "id", uuid, "offerErr", offerErr, "sendErr", sendErr)
+		}
+	})
+}
+
 // Call is a request/offer to start a caller with the connected answerer.
-func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcpb.SignalingService_CallServer) (callErr error) {
+func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcpb.SignalingService_CallServer) error {
 	ctx := server.Context()
 	ctx, cancel := context.WithTimeout(ctx, getDefaultOfferDeadline())
 	defer cancel()
@@ -171,70 +200,27 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 	}
 	defer sendCancel()
 
-	defer func() {
-		var errToSend error
-
-		if callErr == nil {
-			// check if we had any cancel prior to completing
-			select {
-			case <-srv.cancelCtx.Done():
-				errToSend = srv.cancelCtx.Err()
-			case <-ctx.Done():
-				errToSend = ctx.Err()
-			default:
-				return
-			}
-		} else {
-			errToSend = callErr
-		}
-
-		srv.callMu.RLock()
-		// Atomically check if the cancelCtx was canceled, and if not, add to the `callWorkers`.
-		if err := srv.cancelCtx.Err(); err != nil {
-			srv.callMu.RUnlock()
-			return
-		}
-		srv.callWorkers.Add(1)
-		srv.callMu.RUnlock()
-
-		utils.PanicCapturingGo(func() {
-			srv.callWorkers.Done()
-
-			// we need a dedicated timeout since even if the server is shutting down,
-			// we want to notify other servers immediately, instead of waiting for a timeout.
-			sendCtx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-			defer cancel()
-
-			err := srv.callQueue.SendOfferError(sendCtx, host, uuid, errToSend)
-			if err == nil {
-				return
-			}
-			var errInactive inactiveOfferError
-			if !errors.As(err, &errInactive) {
-				srv.logger.Errorw("error sending offer error", "id", uuid, "error", err)
-			}
-		})
-	}()
-
 	var haveInit bool
 	for {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
 		var resp WebRTCCallAnswer
 		select {
 		case <-ctx.Done():
+			srv.AsyncSetOfferError(host, uuid, context.Cause(ctx))
 			return ctx.Err()
 		case <-respDone:
 			return nil
 		case resp = <-respCh:
 		}
 		if resp.Err != nil {
-			return fmt.Errorf("error from answerer: %w", resp.Err)
+			err := fmt.Errorf("error from answerer: %w", resp.Err)
+			srv.AsyncSetOfferError(host, uuid, err)
+			return err
 		}
 
 		if !haveInit && resp.InitialSDP == nil {
-			return errors.New("expected to have initial SDP if no error")
+			err := errors.New("expected to have initial SDP if no error")
+			srv.AsyncSetOfferError(host, uuid, err)
+			return err
 		}
 		if !haveInit {
 			haveInit = true
@@ -246,6 +232,7 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 					},
 				},
 			}); err != nil {
+				srv.AsyncSetOfferError(host, uuid, err)
 				return err
 			}
 		}
@@ -263,6 +250,8 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 				},
 			},
 		}); err != nil {
+			// Don't set an error for the connection attempt. Some candidates may have been
+			// exchanged that can result in a successful connection.
 			return err
 		}
 	}
