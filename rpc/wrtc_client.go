@@ -3,7 +3,6 @@ package rpc
 import (
 	"context"
 	"io"
-	"runtime/debug"
 	"sync"
 	"time"
 
@@ -199,7 +198,6 @@ func dialWebRTC(
 				},
 			}); err != nil {
 				logger.Warnw("Error sending CallUpdate", "err", err)
-				debug.PrintStack()
 			}
 		})
 	}
@@ -321,7 +319,7 @@ func dialWebRTC(
 
 	exchangeCandidates := func() error {
 		for {
-			if err := dialCtx.Err(); err != nil {
+			if err := exchangeCtx.Err(); err != nil {
 				if errors.Is(err, context.Canceled) {
 					return nil
 				}
