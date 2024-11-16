@@ -152,7 +152,7 @@ func HeartbeatsAllowedFromCtx(ctx context.Context) bool {
 	return md[HeartbeatsAllowedMetadataField][0] == "true"
 }
 
-func (srv *WebRTCSignalingServer) asyncSetOfferError(host string, uuid string, offerErr error) {
+func (srv *WebRTCSignalingServer) asyncSetOfferError(host, uuid string, offerErr error) {
 	srv.callMu.RLock()
 	// Atomically check if the cancelCtx was canceled, and if not, add to the `callWorkers`.
 	if err := srv.cancelCtx.Err(); err != nil {
