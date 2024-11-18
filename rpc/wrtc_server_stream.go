@@ -277,6 +277,7 @@ func (s *webrtcServerStream) processHeaders(headers *webrtcpb.RequestHeaders) {
 		}
 	}
 
+	s.ch.server.counters.HeadersProcessed.Add(1)
 	s.ch.server.processHeadersMu.RLock()
 	s.ch.server.processHeadersWorkers.Add(1)
 	s.ch.server.processHeadersMu.RUnlock()

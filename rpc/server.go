@@ -13,6 +13,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/edaniels/zeroconf"
@@ -102,6 +103,10 @@ type Server interface {
 	http.Handler
 
 	EnsureAuthed(ctx context.Context) (context.Context, error)
+
+	// Stats returns a structure containing numbers that can be interesting for graphing over time
+	// as a diagnostics tool.
+	Stats() any
 }
 
 type simpleServer struct {
@@ -146,6 +151,18 @@ type simpleServer struct {
 
 	// authIssuer is the JWT issuer (iss) that will be used for our service.
 	authIssuer string
+
+	// counters are for reporting FTDC metrics. A `simpleServer` sets up both a grpc server wrapping
+	// a standard http2 over TCP connection. And it also sets up grpc services for webrtc
+	// PeerConnections. These counters are specifically for requests coming in over TCP.
+	counters struct {
+		TCPGrpcRequestsStarted      atomic.Int64
+		TCPGrpcWebRequestsStarted   atomic.Int64
+		TCPOtherRequestsStarted     atomic.Int64
+		TCPGrpcRequestsCompleted    atomic.Int64
+		TCPGrpcWebRequestsCompleted atomic.Int64
+		TCPOtherRequestsCompleted   atomic.Int64
+	}
 }
 
 var errMixedUnauthAndAuth = errors.New("cannot use unauthenticated and auth handlers at same time")
@@ -721,13 +738,19 @@ func (ss *simpleServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r = requestWithHost(r)
 	switch ss.getRequestType(r) {
 	case requestTypeGRPC:
+		ss.counters.TCPGrpcRequestsStarted.Add(1)
 		ss.grpcServer.ServeHTTP(w, r)
+		ss.counters.TCPGrpcRequestsCompleted.Add(1)
 	case requestTypeGRPCWeb:
+		ss.counters.TCPGrpcWebRequestsStarted.Add(1)
 		ss.grpcWebServer.ServeHTTP(w, r)
+		ss.counters.TCPGrpcWebRequestsCompleted.Add(1)
 	case requestTypeNone:
 		fallthrough
 	default:
+		ss.counters.TCPOtherRequestsStarted.Add(1)
 		ss.grpcGatewayHandler.ServeHTTP(w, r)
+		ss.counters.TCPOtherRequestsCompleted.Add(1)
 	}
 }
 
@@ -859,6 +882,37 @@ func (ss *simpleServer) Stop() error {
 	ss.activeBackgroundWorkers.Wait()
 	ss.logger.Info("stopped cleanly")
 	return err
+}
+
+// SimpleServerStats are stats of the simple variety.
+type SimpleServerStats struct {
+	TCPGrpcStats    TCPGrpcStats
+	WebRTCGrpcStats WebRTCGrpcStats
+}
+
+// TCPGrpcStats are stats for the classic tcp/http2 webserver.
+type TCPGrpcStats struct {
+	RequestsStarted        int64
+	WebRequestsStarted     int64
+	OtherRequestsStarted   int64
+	RequestsCompleted      int64
+	WebRequestsCompleted   int64
+	OtherRequestsCompleted int64
+}
+
+// Stats returns stats. The return value of `any` is to satisfy the FTDC interface.
+func (ss *simpleServer) Stats() any {
+	return SimpleServerStats{
+		TCPGrpcStats: TCPGrpcStats{
+			RequestsStarted:        ss.counters.TCPGrpcRequestsStarted.Load(),
+			WebRequestsStarted:     ss.counters.TCPGrpcWebRequestsStarted.Load(),
+			OtherRequestsStarted:   ss.counters.TCPOtherRequestsStarted.Load(),
+			RequestsCompleted:      ss.counters.TCPGrpcRequestsCompleted.Load(),
+			WebRequestsCompleted:   ss.counters.TCPGrpcWebRequestsCompleted.Load(),
+			OtherRequestsCompleted: ss.counters.TCPOtherRequestsCompleted.Load(),
+		},
+		WebRTCGrpcStats: ss.webrtcServer.Stats(),
+	}
 }
 
 // A RegisterServiceHandlerFromEndpointFunc is a means to have a service attach itself to a gRPC gateway mux.
