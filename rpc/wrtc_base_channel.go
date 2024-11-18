@@ -172,7 +172,6 @@ func (ch *webrtcBaseChannel) Close() {
 	// - Observe the context being canceled, or
 	// - Call `Wait` before* the following `Broadcast` is invoked.
 	ch.bufferWriteMu.Lock()
-
 	ch.cancel()
 	ch.bufferWriteCond.Broadcast()
 	ch.bufferWriteMu.Unlock()
@@ -222,6 +221,7 @@ func (ch *webrtcBaseChannel) write(msg proto.Message) error {
 	ch.bufferWriteCond.L.Lock()
 	for {
 		if ch.ctx.Err() != nil {
+			ch.bufferWriteCond.L.Unlock()
 			return io.ErrClosedPipe
 		}
 
