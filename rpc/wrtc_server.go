@@ -78,7 +78,7 @@ func (srv *webrtcServer) Stats() WebRTCGrpcStats {
 		PeersDisconnected:         srv.counters.PeersDisconnected.Load(),
 		PeerConnectionErrors:      srv.counters.PeerConnectionErrors.Load(),
 		HeadersProcessed:          srv.counters.HeadersProcessed.Load(),
-		CallTicketsAvailable:      itn32(cap(srv.callTickets) - len(srv.callTickets)),
+		CallTicketsAvailable:      int32(cap(srv.callTickets) - len(srv.callTickets)),
 		TotalTimeConnectingMillis: srv.counters.TotalTimeConnectingMillis.Load(),
 	}
 	ret.PeersActive = ret.PeersConnected - ret.PeersDisconnected
@@ -129,7 +129,6 @@ func newWebRTCServerWithInterceptorsAndUnknownStreamHandler(
 		streamInt:         streamInt,
 		unknownStreamDesc: unknownStreamDesc,
 	}
-	srv.counters.CallTicketsAvailable.Store(int32(DefaultWebRTCMaxGRPCCalls))
 	srv.ctx, srv.cancel = context.WithCancel(context.Background())
 	return srv
 }

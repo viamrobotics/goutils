@@ -292,7 +292,6 @@ func (s *webrtcServerStream) processHeaders(headers *webrtcpb.RequestHeaders) {
 	// take a ticket
 	select {
 	case s.ch.server.callTickets <- struct{}{}:
-		s.ch.server.counters.CallTicketsAvailable.Add(-1)
 	default:
 		if err := s.closeWithSendError(status.Error(codes.ResourceExhausted, "too many in-flight requests")); err != nil {
 			s.logger.Errorw("error closing", "error", err)
@@ -305,7 +304,6 @@ func (s *webrtcServerStream) processHeaders(headers *webrtcpb.RequestHeaders) {
 		defer func() {
 			s.ch.server.processHeadersWorkers.Done()
 			<-s.ch.server.callTickets // return a ticket
-			s.ch.server.counters.CallTicketsAvailable.Add(1)
 		}()
 		if err := handlerFunc(s); err != nil {
 			if errors.Is(err, io.ErrClosedPipe) || isContextCanceled(err) {

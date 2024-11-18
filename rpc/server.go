@@ -156,12 +156,12 @@ type simpleServer struct {
 	// a standard http2 over TCP connection. And it also sets up grpc services for webrtc
 	// PeerConnections. These counters are specifically for requests coming in over TCP.
 	counters struct {
-		TCPpGrpcRequestsStarted      atomic.Int64
-		TCPpGrpcWebRequestsStarted   atomic.Int64
-		TCPpOtherRequestsStarted     atomic.Int64
-		TCPpGrpcRequestsCompleted    atomic.Int64
-		TCPpGrpcWebRequestsCompleted atomic.Int64
-		TCPpOtherRequestsCompleted   atomic.Int64
+		TCPGrpcRequestsStarted      atomic.Int64
+		TCPGrpcWebRequestsStarted   atomic.Int64
+		TCPOtherRequestsStarted     atomic.Int64
+		TCPGrpcRequestsCompleted    atomic.Int64
+		TCPGrpcWebRequestsCompleted atomic.Int64
+		TCPOtherRequestsCompleted   atomic.Int64
 	}
 }
 
@@ -738,19 +738,19 @@ func (ss *simpleServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r = requestWithHost(r)
 	switch ss.getRequestType(r) {
 	case requestTypeGRPC:
-		ss.counters.TCPpGrpcRequestsStarted.Add(1)
+		ss.counters.TCPGrpcRequestsStarted.Add(1)
 		ss.grpcServer.ServeHTTP(w, r)
-		ss.counters.TCPpGrpcRequestsCompleted.Add(1)
+		ss.counters.TCPGrpcRequestsCompleted.Add(1)
 	case requestTypeGRPCWeb:
-		ss.counters.TCPpGrpcWebRequestsStarted.Add(1)
+		ss.counters.TCPGrpcWebRequestsStarted.Add(1)
 		ss.grpcWebServer.ServeHTTP(w, r)
-		ss.counters.TCPpGrpcWebRequestsCompleted.Add(1)
+		ss.counters.TCPGrpcWebRequestsCompleted.Add(1)
 	case requestTypeNone:
 		fallthrough
 	default:
-		ss.counters.TCPpOtherRequestsStarted.Add(1)
+		ss.counters.TCPOtherRequestsStarted.Add(1)
 		ss.grpcGatewayHandler.ServeHTTP(w, r)
-		ss.counters.TCPpOtherRequestsCompleted.Add(1)
+		ss.counters.TCPOtherRequestsCompleted.Add(1)
 	}
 }
 
@@ -884,12 +884,14 @@ func (ss *simpleServer) Stop() error {
 	return err
 }
 
+// SimpleServerStats are stats of the simple variety.
 type SimpleServerStats struct {
-	TCPpGrpcStats   TCPpGrpcStats
+	TCPGrpcStats    TCPGrpcStats
 	WebRTCGrpcStats WebRTCGrpcStats
 }
 
-type TCPpGrpcStats struct {
+// TCPGrpcStats are stats for the classic tcp/http2 webserver.
+type TCPGrpcStats struct {
 	RequestsStarted        int64
 	WebRequestsStarted     int64
 	OtherRequestsStarted   int64
@@ -898,15 +900,16 @@ type TCPpGrpcStats struct {
 	OtherRequestsCompleted int64
 }
 
+// Stats returns stats. The return value of `any` is to satisfy the FTDC interface.
 func (ss *simpleServer) Stats() any {
 	return SimpleServerStats{
-		TCPpGrpcStats: TCPpGrpcStats{
-			RequestsStarted:        ss.counters.TCPpGrpcRequestsStarted.Load(),
-			WebRequestsStarted:     ss.counters.TCPpGrpcWebRequestsStarted.Load(),
-			OtherRequestsStarted:   ss.counters.TCPpOtherRequestsStarted.Load(),
-			RequestsCompleted:      ss.counters.TCPpGrpcRequestsCompleted.Load(),
-			WebRequestsCompleted:   ss.counters.TCPpGrpcWebRequestsCompleted.Load(),
-			OtherRequestsCompleted: ss.counters.TCPpOtherRequestsCompleted.Load(),
+		TCPGrpcStats: TCPGrpcStats{
+			RequestsStarted:        ss.counters.TCPGrpcRequestsStarted.Load(),
+			WebRequestsStarted:     ss.counters.TCPGrpcWebRequestsStarted.Load(),
+			OtherRequestsStarted:   ss.counters.TCPOtherRequestsStarted.Load(),
+			RequestsCompleted:      ss.counters.TCPGrpcRequestsCompleted.Load(),
+			WebRequestsCompleted:   ss.counters.TCPGrpcWebRequestsCompleted.Load(),
+			OtherRequestsCompleted: ss.counters.TCPOtherRequestsCompleted.Load(),
 		},
 		WebRTCGrpcStats: ss.webrtcServer.Stats(),
 	}
