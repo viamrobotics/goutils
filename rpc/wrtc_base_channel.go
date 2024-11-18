@@ -3,7 +3,9 @@ package rpc
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -49,6 +51,8 @@ func newBaseChannel(
 		ready:       make(chan struct{}),
 		logger:      utils.AddFieldsToLogger(logger, "ch", dataChannel.ID()),
 	}
+	fmt.Printf("DBG. Created new base channel: %p\n", ch)
+	debug.PrintStack()
 	ch.bufferWriteCond = sync.NewCond(ch.bufferWriteMu.RLocker())
 	dataChannel.OnOpen(ch.onChannelOpen)
 	dataChannel.OnClose(ch.onChannelClose)
@@ -156,8 +160,14 @@ func newBaseChannel(
 }
 
 func (ch *webrtcBaseChannel) Close() error {
+	defer fmt.Printf("DBG. Base channel done closing: %p\n", ch)
 	if !ch.closed.CompareAndSwap(false, true) {
+		fmt.Printf("DBG. Early exit: %p\n", ch)
+		_ = ch.peerConn.GracefulClose()
+		ch.activeBackgroundWorkers.Wait()
 		return nil
+	} else {
+		fmt.Printf("DBG. Base channel not already closed: %p\n", ch)
 	}
 
 	ch.mu.Lock()
