@@ -165,8 +165,17 @@ func (ch *webrtcBaseChannel) Close() {
 	ch.closed.CompareAndSwap(false, true)
 
 	ch.mu.Lock()
+	// APP-6839: We must hold the `bufferWriteMu` to avoid a "missed notification" that can happen
+	// when a `webrtcBaseChannel.write` happens concurrently with `closeWithReason`. Specifically,
+	// this lock makes atomic the `ch.cancel` with the broadcast. Such that a call to write that can
+	// `Wait` on this condition variable must either:
+	// - Observe the context being canceled, or
+	// - Call `Wait` before* the following `Broadcast` is invoked.
+	ch.bufferWriteMu.Lock()
+
 	ch.cancel()
 	ch.bufferWriteCond.Broadcast()
+	ch.bufferWriteMu.Unlock()
 	ch.mu.Unlock()
 
 	utils.UncheckedError(ch.peerConn.GracefulClose())
@@ -215,6 +224,7 @@ func (ch *webrtcBaseChannel) write(msg proto.Message) error {
 		if ch.ctx.Err() != nil {
 			return io.ErrClosedPipe
 		}
+
 		// RSDK-9239: Only wait when we're strictly over the threshold. Pion invokes the registered
 		// callback (notify `bufferWriteCond`) when moving from larger than bufferThreshold to less
 		// than or equal to.
