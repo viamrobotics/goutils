@@ -123,7 +123,7 @@ func TestTracingInterceptors(t *testing.T) {
 		t.Helper()
 		var mdResp metadata.MD
 		resp, err := client.Echo(ctx, &pb.EchoRequest{Message: "hello"}, grpc.Header(&mdResp))
-		test.That(t, resp.Message, test.ShouldEqual, "hello")
+		test.That(t, resp.GetMessage(), test.ShouldEqual, "hello")
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, mdResp.Get("captured-trace-id"),
 			test.ShouldResemble, []string{clientSpan.SpanContext().TraceID.String()})
@@ -141,7 +141,7 @@ func TestTracingInterceptors(t *testing.T) {
 			if err != nil {
 				break
 			}
-			fullResponse += resp.Message
+			fullResponse += resp.GetMessage()
 		}
 		test.That(t, fullResponse, test.ShouldEqual, "hello?")
 		test.That(t, capturedStreamTraceID.Load(), test.ShouldEqual, clientSpan.SpanContext().TraceID.String())
@@ -149,13 +149,13 @@ func TestTracingInterceptors(t *testing.T) {
 
 	// gRPC
 	grpcOpts := []grpc.DialOption{
-		grpc.WithBlock(),
+		grpc.WithBlock(), //nolint:staticcheck
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithUnaryInterceptor(UnaryClientTracingInterceptor()),
 		grpc.WithStreamInterceptor(StreamClientTracingInterceptor()),
 	}
 
-	conn, err := grpc.DialContext(ctx, listener.Addr().String(), grpcOpts...)
+	conn, err := grpc.DialContext(ctx, listener.Addr().String(), grpcOpts...) //nolint:staticcheck
 	test.That(t, err, test.ShouldBeNil)
 	defer func() {
 		test.That(t, conn.Close(), test.ShouldBeNil)

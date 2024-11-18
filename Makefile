@@ -37,6 +37,7 @@ buf-go: tool-install
 lint: tool-install lint-go
 
 lint-go: tool-install
+	go mod tidy
 	PATH=$(PATH_WITH_TOOLS) buf lint
 	export pkgs="`go list -f '{{.Dir}}' ./... | grep -v /proto/`" && echo "$$pkgs" | xargs go vet -vettool=$(TOOL_BIN)/combined
 	GOGC=50 $(TOOL_BIN)/golangci-lint run -v --fix --config=./etc/.golangci.yaml

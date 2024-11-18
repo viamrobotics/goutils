@@ -169,7 +169,7 @@ func UnmarshalFlags(flagSet *flag.FlagSet, into interface{}) error {
 		}
 		fieldV := v.Field(i)
 		if info.IsFlagVal && !flagValIsSet {
-			if reflect.PtrTo(fieldV.Type()).Implements(flagValueT) {
+			if reflect.PointerTo(fieldV.Type()).Implements(flagValueT) {
 				fieldV = fieldV.Addr()
 			}
 			if err := fieldV.Interface().(flag.Value).Set(val.(string)); err != nil { // will always be string
@@ -242,7 +242,7 @@ func parseFlagInfo(field reflect.StructField, val string) (flagInfo, error) {
 		info.Position = int(posIdx)
 		info.Name = fmt.Sprintf("positional_arg_%d", posIdx)
 	}
-	if field.Type.Implements(flagValueT) || reflect.PtrTo(field.Type).Implements(flagValueT) {
+	if field.Type.Implements(flagValueT) || reflect.PointerTo(field.Type).Implements(flagValueT) {
 		info.IsFlagVal = true
 	}
 	for _, part := range valParts[1:] {
@@ -363,7 +363,7 @@ func extractFlags(flagSet *flag.FlagSet, from interface{}) error {
 			if flagValue.Kind() == reflect.Ptr {
 				flagValue = reflect.New(fieldT).Elem()
 			}
-			if reflect.PtrTo(fieldT).Implements(flagValueT) {
+			if reflect.PointerTo(fieldT).Implements(flagValueT) {
 				flagValue = flagValue.Addr()
 			}
 			flagSet.Var(&flagValueProxy{Value: flagValue.Interface().(flag.Value)}, info.Name, info.Usage)
@@ -393,7 +393,7 @@ func extractFlags(flagSet *flag.FlagSet, from interface{}) error {
 		case reflect.Slice:
 			sliceElem := fieldT.Elem()
 			var ctor func(val string) (interface{}, error)
-			if sliceElem.Implements(flagValueT) || reflect.PtrTo(sliceElem).Implements(flagValueT) {
+			if sliceElem.Implements(flagValueT) || reflect.PointerTo(sliceElem).Implements(flagValueT) {
 				ctor = func(val string) (interface{}, error) {
 					newSliceElem := reflect.New(sliceElem)
 					if err := newSliceElem.Interface().(flag.Value).Set(val); err != nil {

@@ -125,7 +125,7 @@ func marshalSliceOfProtos(marshaler protojson.MarshalOptions, input interface{})
 			return nil, err
 		}
 
-		_, err = x.WriteString(string(jsItem))
+		_, err = x.Write(jsItem)
 		if err != nil {
 			return nil, err
 		}

@@ -79,7 +79,12 @@ func testWebRTCSignaling(t *testing.T, signalingCallQueue WebRTCCallQueue, logge
 			)
 			answerer.Start()
 
-			cc, err := grpc.Dial(grpcListener.Addr().String(), grpc.WithBlock(), grpc.WithTransportCredentials(insecure.NewCredentials()))
+			//nolint:staticcheck
+			cc, err := grpc.Dial(
+				grpcListener.Addr().String(),
+				grpc.WithBlock(),
+				grpc.WithTransportCredentials(insecure.NewCredentials()),
+			)
 			test.That(t, err, test.ShouldBeNil)
 			defer func() {
 				test.That(t, cc.Close(), test.ShouldBeNil)
@@ -144,7 +149,7 @@ func testWebRTCSignaling(t *testing.T, signalingCallQueue WebRTCCallQueue, logge
 					echoClient := echopb.NewEchoServiceClient(ch)
 					resp, err := echoClient.Echo(context.Background(), &echopb.EchoRequest{Message: "hello"})
 					test.That(t, err, test.ShouldBeNil)
-					test.That(t, resp.Message, test.ShouldEqual, "hello")
+					test.That(t, resp.GetMessage(), test.ShouldEqual, "hello")
 				})
 			}
 

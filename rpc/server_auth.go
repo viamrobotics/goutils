@@ -78,10 +78,10 @@ func (ss *simpleServer) Authenticate(ctx context.Context, req *rpcpb.Authenticat
 	if len(md[MetadataFieldAuthorization]) != 0 {
 		return nil, status.Error(codes.InvalidArgument, "already authenticated; cannot re-authenticate")
 	}
-	if req.Credentials == nil {
+	if req.GetCredentials() == nil {
 		return nil, status.Error(codes.InvalidArgument, "credentials required")
 	}
-	forType := CredentialsType(req.Credentials.Type)
+	forType := CredentialsType(req.GetCredentials().GetType())
 	handlers, err := ss.authHandlers(forType)
 	if err != nil {
 		return nil, err
@@ -89,7 +89,7 @@ func (ss *simpleServer) Authenticate(ctx context.Context, req *rpcpb.Authenticat
 	if handlers.AuthHandler == nil {
 		return nil, status.Errorf(codes.Unimplemented, "direct authentication not supported for %q", forType)
 	}
-	authMD, err := handlers.AuthHandler.Authenticate(ctx, req.Entity, req.Credentials.Payload)
+	authMD, err := handlers.AuthHandler.Authenticate(ctx, req.GetEntity(), req.GetCredentials().GetPayload())
 	if err != nil {
 		if _, ok := status.FromError(err); ok {
 			return nil, err
@@ -99,7 +99,7 @@ func (ss *simpleServer) Authenticate(ctx context.Context, req *rpcpb.Authenticat
 
 	// We sign tokens destined for ourselves. If they are not for ourselves but for the entity, then
 	// AuthenticateTo should be used.
-	token, err := ss.signAccessTokenForEntity(forType, ss.authAudience, req.Entity, authMD)
+	token, err := ss.signAccessTokenForEntity(forType, ss.authAudience, req.GetEntity(), authMD)
 	if err != nil {
 		return nil, err
 	}
@@ -116,12 +116,12 @@ func (ss *simpleServer) AuthenticateTo(ctx context.Context, req *rpcpb.Authentic
 		return nil, status.Error(codes.Internal, "entity should be available")
 	}
 
-	authMD, err := ss.authToHandler(ctx, req.Entity)
+	authMD, err := ss.authToHandler(ctx, req.GetEntity())
 	if err != nil {
 		return nil, err
 	}
 
-	token, err := ss.signAccessTokenForEntity(CredentialsTypeExternal, []string{req.Entity}, entity.Entity, authMD)
+	token, err := ss.signAccessTokenForEntity(CredentialsTypeExternal, []string{req.GetEntity()}, entity.Entity, authMD)
 	if err != nil {
 		return nil, err
 	}

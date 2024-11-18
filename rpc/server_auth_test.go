@@ -94,6 +94,7 @@ func TestServerAuth(t *testing.T) {
 
 	// standard grpc
 	t.Run("standard grpc", func(t *testing.T) {
+		//nolint:staticcheck
 		conn, err := grpc.DialContext(
 			context.Background(),
 			httpListener.Addr().String(),
@@ -171,7 +172,7 @@ func TestServerAuth(t *testing.T) {
 		test.That(t, err, test.ShouldBeNil)
 
 		md = make(metadata.MD)
-		bearer := fmt.Sprintf("Bearer %s", authResp.AccessToken)
+		bearer := fmt.Sprintf("Bearer %s", authResp.GetAccessToken())
 		md.Set("authorization", bearer)
 		ctx = metadata.NewOutgoingContext(context.Background(), md)
 
@@ -228,7 +229,7 @@ func TestServerAuth(t *testing.T) {
 		testMu.Lock()
 		fakeAuthWorks = true
 		testMu.Unlock()
-
+		//nolint:staticcheck
 		conn, err := grpc.DialContext(
 			context.Background(),
 			httpListener.Addr().String(),
@@ -246,7 +247,7 @@ func TestServerAuth(t *testing.T) {
 		}})
 		test.That(t, err, test.ShouldBeNil)
 
-		bearer := fmt.Sprintf("Bearer %s", authResp.AccessToken)
+		bearer := fmt.Sprintf("Bearer %s", authResp.GetAccessToken())
 
 		req, err = http.NewRequest(http.MethodPost, httpURL, strings.NewReader(grpcWebReq))
 		test.That(t, err, test.ShouldBeNil)
@@ -292,6 +293,7 @@ func TestServerAuth(t *testing.T) {
 		test.That(t, httpResp3.StatusCode, test.ShouldEqual, 401)
 
 		// works from here
+		//nolint:staticcheck
 		conn, err := grpc.DialContext(
 			context.Background(),
 			httpListener.Addr().String(),
@@ -309,7 +311,7 @@ func TestServerAuth(t *testing.T) {
 		}})
 		test.That(t, err, test.ShouldBeNil)
 
-		bearer := fmt.Sprintf("Bearer %s", authResp.AccessToken)
+		bearer := fmt.Sprintf("Bearer %s", authResp.GetAccessToken())
 
 		req, err = http.NewRequest(http.MethodPost, httpURL, strings.NewReader(`{"message": "world"}`))
 		test.That(t, err, test.ShouldBeNil)
@@ -362,7 +364,7 @@ func TestServerAuthJWTExpiration(t *testing.T) {
 	go func() {
 		errChan <- rpcServer.Serve(httpListener)
 	}()
-
+	//nolint:staticcheck
 	conn, err := grpc.DialContext(
 		context.Background(),
 		httpListener.Addr().String(),
@@ -457,6 +459,7 @@ func TestServerAuthJWTAudienceAndID(t *testing.T) {
 		errChan <- rpcServer.Serve(httpListener)
 	}()
 
+	//nolint:staticcheck
 	conn, err := grpc.DialContext(
 		context.Background(),
 		httpListener.Addr().String(),
@@ -557,7 +560,7 @@ func TestServerPublicMethods(t *testing.T) {
 		listener, err := net.Listen("tcp", "localhost:0")
 		test.That(t, err, test.ShouldBeNil)
 		grpcOpts := []grpc.DialOption{
-			grpc.WithBlock(),
+			grpc.WithBlock(), //nolint:staticcheck
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 		}
 
@@ -566,6 +569,7 @@ func TestServerPublicMethods(t *testing.T) {
 			errChan <- rpcServer.Serve(listener)
 		}()
 
+		//nolint:staticcheck
 		conn, err := grpc.DialContext(context.Background(), listener.Addr().String(), grpcOpts...)
 		test.That(t, err, test.ShouldBeNil)
 		defer func() {
@@ -575,7 +579,7 @@ func TestServerPublicMethods(t *testing.T) {
 		echoResp, err := client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, echoResp, test.ShouldNotBeNil)
-		test.That(t, echoResp.Message, test.ShouldEqual, "hello")
+		test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
 
 		// test the stream service
 		echoMultClient, err := client.EchoMultiple(context.Background(), &pb.EchoMultipleRequest{Message: "hello"})
@@ -617,7 +621,7 @@ func TestServerPublicMethods(t *testing.T) {
 		listener, err := net.Listen("tcp", "localhost:0")
 		test.That(t, err, test.ShouldBeNil)
 		grpcOpts := []grpc.DialOption{
-			grpc.WithBlock(),
+			grpc.WithBlock(), //nolint:staticcheck
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 		}
 
@@ -626,7 +630,7 @@ func TestServerPublicMethods(t *testing.T) {
 			errChan <- rpcServer.Serve(listener)
 		}()
 
-		conn, err := grpc.DialContext(context.Background(), listener.Addr().String(), grpcOpts...)
+		conn, err := grpc.DialContext(context.Background(), listener.Addr().String(), grpcOpts...) //nolint:staticcheck
 		test.That(t, err, test.ShouldBeNil)
 		defer func() {
 			test.That(t, conn.Close(), test.ShouldBeNil)
@@ -640,13 +644,13 @@ func TestServerPublicMethods(t *testing.T) {
 				Payload: "something",
 			}})
 		test.That(t, err, test.ShouldBeNil)
-		_, err = jwt.Parse(authResp.AccessToken, func(token *jwt.Token) (interface{}, error) {
+		_, err = jwt.Parse(authResp.GetAccessToken(), func(token *jwt.Token) (interface{}, error) {
 			return testPubKey, nil
 		})
 		test.That(t, err, test.ShouldBeNil)
 
 		md := make(metadata.MD)
-		bearer := fmt.Sprintf("Bearer %s", authResp.AccessToken)
+		bearer := fmt.Sprintf("Bearer %s", authResp.GetAccessToken())
 		md.Set("authorization", bearer)
 		ctx := metadata.NewOutgoingContext(context.Background(), md)
 
@@ -654,7 +658,7 @@ func TestServerPublicMethods(t *testing.T) {
 		echoResp, err := client.Echo(ctx, &pb.EchoRequest{Message: "hello"})
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, echoResp, test.ShouldNotBeNil)
-		test.That(t, echoResp.Message, test.ShouldEqual, "hello")
+		test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
 
 		// test the stream service
 		echoMultClient, err := client.EchoMultiple(context.Background(), &pb.EchoMultipleRequest{Message: "hello"})
@@ -710,7 +714,7 @@ func TestServerAuthKeyFunc(t *testing.T) {
 	go func() {
 		errChan <- rpcServer.Serve(httpListener)
 	}()
-
+	//nolint:staticcheck
 	conn, err := grpc.DialContext(
 		context.Background(),
 		httpListener.Addr().String(),
@@ -731,7 +735,7 @@ func TestServerAuthKeyFunc(t *testing.T) {
 	test.That(t, err, test.ShouldBeNil)
 
 	md := make(metadata.MD)
-	bearer := fmt.Sprintf("Bearer %s", authResp.AccessToken)
+	bearer := fmt.Sprintf("Bearer %s", authResp.GetAccessToken())
 	md.Set("authorization", bearer)
 	ctx := metadata.NewOutgoingContext(context.Background(), md)
 
@@ -812,7 +816,7 @@ func TestServerAuthToHandler(t *testing.T) {
 	go func() {
 		errChan <- rpcServer.Serve(httpListener)
 	}()
-
+	//nolint:staticcheck
 	conn, err := grpc.DialContext(
 		context.Background(),
 		httpListener.Addr().String(),
@@ -837,18 +841,18 @@ func TestServerAuthToHandler(t *testing.T) {
 	test.That(t, err, test.ShouldBeNil)
 
 	md := make(metadata.MD)
-	md.Set("authorization", fmt.Sprintf("Bearer %s", authResp.AccessToken))
+	md.Set("authorization", fmt.Sprintf("Bearer %s", authResp.GetAccessToken()))
 	authCtx := metadata.NewOutgoingContext(context.Background(), md)
 
 	// Use the credential bearer token from the Authenticate request to the AuthenticateTo the "foo" entity.
 	authToClient := rpcpb.NewExternalAuthServiceClient(conn)
 	authToResp, err := authToClient.AuthenticateTo(authCtx, &rpcpb.AuthenticateToRequest{Entity: "entity2"})
 	test.That(t, err, test.ShouldBeNil)
-	test.That(t, authToResp.AccessToken, test.ShouldNotBeEmpty)
+	test.That(t, authToResp.GetAccessToken(), test.ShouldNotBeEmpty)
 
 	// Verify the resulting claims match the expected values.
 	var claims JWTClaims
-	token, err := jwt.ParseWithClaims(authToResp.AccessToken, &claims, func(token *jwt.Token) (interface{}, error) {
+	token, err := jwt.ParseWithClaims(authToResp.GetAccessToken(), &claims, func(token *jwt.Token) (interface{}, error) {
 		return pubKey, nil
 	})
 	test.That(t, err, test.ShouldBeNil)
@@ -858,7 +862,7 @@ func TestServerAuthToHandler(t *testing.T) {
 	test.That(t, token.Header["kid"], test.ShouldEqual, thumbprint)
 
 	md = make(metadata.MD)
-	md.Set("authorization", fmt.Sprintf("Bearer %s", authToResp.AccessToken))
+	md.Set("authorization", fmt.Sprintf("Bearer %s", authToResp.GetAccessToken()))
 	authCtx = metadata.NewOutgoingContext(context.Background(), md)
 
 	client := pb.NewEchoServiceClient(conn)
@@ -963,7 +967,7 @@ func TestServerOptionWithAuthIssuer(t *testing.T) {
 					go func() {
 						errChan <- rpcServer.Serve(httpListener)
 					}()
-
+					//nolint:staticcheck
 					conn, err := grpc.DialContext(
 						context.Background(),
 						httpListener.Addr().String(),
@@ -989,32 +993,32 @@ func TestServerOptionWithAuthIssuer(t *testing.T) {
 
 					// Verify the resulting claims match the expected values.
 					var claims JWTClaims
-					_, err = jwt.ParseWithClaims(authResp.AccessToken, &claims, func(token *jwt.Token) (interface{}, error) {
+					_, err = jwt.ParseWithClaims(authResp.GetAccessToken(), &claims, func(token *jwt.Token) (interface{}, error) {
 						return pubKey, nil
 					})
 					test.That(t, err, test.ShouldBeNil)
 					test.That(t, claims.Issuer, test.ShouldEqual, expectedIss)
 
 					md := make(metadata.MD)
-					md.Set("authorization", fmt.Sprintf("Bearer %s", authResp.AccessToken))
+					md.Set("authorization", fmt.Sprintf("Bearer %s", authResp.GetAccessToken()))
 					authCtx := metadata.NewOutgoingContext(context.Background(), md)
 
 					// Use the credential bearer token from the Authenticate request to the AuthenticateTo the "foo" entity.
 					authToClient := rpcpb.NewExternalAuthServiceClient(conn)
 					authToResp, err := authToClient.AuthenticateTo(authCtx, &rpcpb.AuthenticateToRequest{Entity: "entity2"})
 					test.That(t, err, test.ShouldBeNil)
-					test.That(t, authToResp.AccessToken, test.ShouldNotBeEmpty)
+					test.That(t, authToResp.GetAccessToken(), test.ShouldNotBeEmpty)
 
 					// Verify the resulting claims match the expected values.
 					claims = JWTClaims{}
-					_, err = jwt.ParseWithClaims(authToResp.AccessToken, &claims, func(token *jwt.Token) (interface{}, error) {
+					_, err = jwt.ParseWithClaims(authToResp.GetAccessToken(), &claims, func(token *jwt.Token) (interface{}, error) {
 						return pubKey, nil
 					})
 					test.That(t, err, test.ShouldBeNil)
 					test.That(t, claims.Issuer, test.ShouldEqual, expectedIss)
 
 					md = make(metadata.MD)
-					md.Set("authorization", fmt.Sprintf("Bearer %s", authToResp.AccessToken))
+					md.Set("authorization", fmt.Sprintf("Bearer %s", authToResp.GetAccessToken()))
 					authCtx = metadata.NewOutgoingContext(context.Background(), md)
 
 					client := pb.NewEchoServiceClient(conn)
@@ -1098,7 +1102,7 @@ func TestServerAuthToHandlerWithJWKSetTokenVerifier(t *testing.T) {
 	go func() {
 		errChan <- rpcServer.Serve(httpListener)
 	}()
-
+	//nolint:staticcheck
 	conn, err := grpc.DialContext(
 		context.Background(),
 		httpListener.Addr().String(),
@@ -1123,18 +1127,18 @@ func TestServerAuthToHandlerWithJWKSetTokenVerifier(t *testing.T) {
 	test.That(t, err, test.ShouldBeNil)
 
 	md := make(metadata.MD)
-	md.Set("authorization", fmt.Sprintf("Bearer %s", authResp.AccessToken))
+	md.Set("authorization", fmt.Sprintf("Bearer %s", authResp.GetAccessToken()))
 	authCtx := metadata.NewOutgoingContext(context.Background(), md)
 
 	// Use the credential bearer token from the Authenticate request to the AuthenticateTo the "foo" entity.
 	authToClient := rpcpb.NewExternalAuthServiceClient(conn)
 	authToResp, err := authToClient.AuthenticateTo(authCtx, &rpcpb.AuthenticateToRequest{Entity: "entity2"})
 	test.That(t, err, test.ShouldBeNil)
-	test.That(t, authToResp.AccessToken, test.ShouldNotBeEmpty)
+	test.That(t, authToResp.GetAccessToken(), test.ShouldNotBeEmpty)
 
 	// Verify the resulting claims match the expected values.
 	var claims JWTClaims
-	token, err := jwt.ParseWithClaims(authToResp.AccessToken, &claims, func(token *jwt.Token) (interface{}, error) {
+	token, err := jwt.ParseWithClaims(authToResp.GetAccessToken(), &claims, func(token *jwt.Token) (interface{}, error) {
 		return pubKey, nil
 	})
 	test.That(t, err, test.ShouldBeNil)
@@ -1144,7 +1148,7 @@ func TestServerAuthToHandlerWithJWKSetTokenVerifier(t *testing.T) {
 	test.That(t, token.Header["kid"], test.ShouldEqual, thumbprint)
 
 	md = make(metadata.MD)
-	md.Set("authorization", fmt.Sprintf("Bearer %s", authToResp.AccessToken))
+	md.Set("authorization", fmt.Sprintf("Bearer %s", authToResp.GetAccessToken()))
 	authCtx = metadata.NewOutgoingContext(context.Background(), md)
 
 	client := pb.NewEchoServiceClient(conn)
@@ -1224,7 +1228,7 @@ func TestServerAuthToHandlerWithExternalAuthOIDCTokenVerifier(t *testing.T) {
 	go func() {
 		errChan <- rpcServer.Serve(httpListener)
 	}()
-
+	//nolint:staticcheck
 	conn, err := grpc.DialContext(
 		context.Background(),
 		httpListener.Addr().String(),
@@ -1249,18 +1253,18 @@ func TestServerAuthToHandlerWithExternalAuthOIDCTokenVerifier(t *testing.T) {
 	test.That(t, err, test.ShouldBeNil)
 
 	md := make(metadata.MD)
-	md.Set("authorization", fmt.Sprintf("Bearer %s", authResp.AccessToken))
+	md.Set("authorization", fmt.Sprintf("Bearer %s", authResp.GetAccessToken()))
 	authCtx := metadata.NewOutgoingContext(context.Background(), md)
 
 	// Use the credential bearer token from the Authenticate request to the AuthenticateTo the "foo" entity.
 	authToClient := rpcpb.NewExternalAuthServiceClient(conn)
 	authToResp, err := authToClient.AuthenticateTo(authCtx, &rpcpb.AuthenticateToRequest{Entity: "entity2"})
 	test.That(t, err, test.ShouldBeNil)
-	test.That(t, authToResp.AccessToken, test.ShouldNotBeEmpty)
+	test.That(t, authToResp.GetAccessToken(), test.ShouldNotBeEmpty)
 
 	// Verify the resulting claims match the expected values.
 	var claims JWTClaims
-	token, err := jwt.ParseWithClaims(authToResp.AccessToken, &claims, func(token *jwt.Token) (interface{}, error) {
+	token, err := jwt.ParseWithClaims(authToResp.GetAccessToken(), &claims, func(token *jwt.Token) (interface{}, error) {
 		return pubKey, nil
 	})
 	test.That(t, err, test.ShouldBeNil)
@@ -1270,7 +1274,7 @@ func TestServerAuthToHandlerWithExternalAuthOIDCTokenVerifier(t *testing.T) {
 	test.That(t, token.Header["kid"], test.ShouldEqual, thumbprint)
 
 	md = make(metadata.MD)
-	md.Set("authorization", fmt.Sprintf("Bearer %s", authToResp.AccessToken))
+	md.Set("authorization", fmt.Sprintf("Bearer %s", authToResp.GetAccessToken()))
 	authCtx = metadata.NewOutgoingContext(context.Background(), md)
 
 	client := pb.NewEchoServiceClient(conn)
@@ -1365,7 +1369,7 @@ func TestServerAuthMultiKey(t *testing.T) {
 			go func() {
 				errChan <- rpcServer.Serve(httpListener)
 			}()
-
+			//nolint:staticcheck
 			conn, err := grpc.DialContext(
 				context.Background(),
 				httpListener.Addr().String(),
@@ -1386,7 +1390,7 @@ func TestServerAuthMultiKey(t *testing.T) {
 
 			// Verify the resulting claims match the expected values.
 			var claims JWTClaims
-			token, err := jwt.ParseWithClaims(authResp.AccessToken, &claims, func(token *jwt.Token) (interface{}, error) {
+			token, err := jwt.ParseWithClaims(authResp.GetAccessToken(), &claims, func(token *jwt.Token) (interface{}, error) {
 				return privKeyChosen.Public(), nil
 			})
 			test.That(t, err, test.ShouldBeNil)
@@ -1395,7 +1399,7 @@ func TestServerAuthMultiKey(t *testing.T) {
 			test.That(t, token.Method.Alg(), test.ShouldEqual, signingMethodChosen.Alg())
 
 			md := make(metadata.MD)
-			bearer := fmt.Sprintf("Bearer %s", authResp.AccessToken)
+			bearer := fmt.Sprintf("Bearer %s", authResp.GetAccessToken())
 			md.Set("authorization", bearer)
 			ctx := metadata.NewOutgoingContext(context.Background(), md)
 
@@ -1504,7 +1508,7 @@ func TestServerAuthRSA(t *testing.T) {
 	go func() {
 		errChan <- rpcServer.Serve(httpListener)
 	}()
-
+	//nolint:staticcheck
 	conn, err := grpc.DialContext(
 		context.Background(),
 		httpListener.Addr().String(),
@@ -1525,7 +1529,7 @@ func TestServerAuthRSA(t *testing.T) {
 
 	// Verify the resulting claims match the expected values.
 	var claims JWTClaims
-	token, err := jwt.ParseWithClaims(authResp.AccessToken, &claims, func(token *jwt.Token) (interface{}, error) {
+	token, err := jwt.ParseWithClaims(authResp.GetAccessToken(), &claims, func(token *jwt.Token) (interface{}, error) {
 		return privKeyRSA.Public(), nil
 	})
 	test.That(t, err, test.ShouldBeNil)
@@ -1533,7 +1537,7 @@ func TestServerAuthRSA(t *testing.T) {
 	test.That(t, token.Method.Alg(), test.ShouldEqual, jwt.SigningMethodRS256.Alg())
 
 	md := make(metadata.MD)
-	bearer := fmt.Sprintf("Bearer %s", authResp.AccessToken)
+	bearer := fmt.Sprintf("Bearer %s", authResp.GetAccessToken())
 	md.Set("authorization", bearer)
 	ctx := metadata.NewOutgoingContext(context.Background(), md)
 

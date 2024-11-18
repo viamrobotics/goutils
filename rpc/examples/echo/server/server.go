@@ -47,14 +47,14 @@ func (srv *Server) SetAuthorized(authorized bool) {
 	srv.mu.Unlock()
 }
 
-// SetExpectedAuthEntity sets the expected auth entity
+// SetExpectedAuthEntity sets the expected auth entity.
 func (srv *Server) SetExpectedAuthEntity(entity string) {
 	srv.mu.Lock()
 	srv.expectedAuthEntity = entity
 	srv.mu.Unlock()
 }
 
-// SetExpectedAuthEntityData sets the expected auth entity data
+// SetExpectedAuthEntityData sets the expected auth entity data.
 func (srv *Server) SetExpectedAuthEntityData(data interface{}) {
 	srv.mu.Lock()
 	srv.expectedAuthEntityData = data
@@ -82,19 +82,19 @@ func (srv *Server) Echo(ctx context.Context, req *echopb.EchoRequest) (*echopb.E
 			return nil, errors.Errorf("expected auth entity data %q; got %q", srv.expectedAuthEntityData, entity.Data)
 		}
 	}
-	return &echopb.EchoResponse{Message: req.Message}, nil
+	return &echopb.EchoResponse{Message: req.GetMessage()}, nil
 }
 
 // EchoMultiple responds back with the same message one character at a time.
 func (srv *Server) EchoMultiple(req *echopb.EchoMultipleRequest, server echopb.EchoService_EchoMultipleServer) error {
-	cnt := len(req.Message)
+	cnt := len(req.GetMessage())
 	for i := 0; i < cnt; i++ {
 		select {
 		case <-server.Context().Done():
 			return server.Context().Err()
 		default:
 		}
-		if err := server.Send(&echopb.EchoMultipleResponse{Message: req.Message[i : i+1]}); err != nil {
+		if err := server.Send(&echopb.EchoMultipleResponse{Message: req.GetMessage()[i : i+1]}); err != nil {
 			return err
 		}
 	}
@@ -116,14 +116,14 @@ func (srv *Server) EchoBiDi(server echopb.EchoService_EchoBiDiServer) error {
 			}
 			return err
 		}
-		cnt := len(req.Message)
+		cnt := len(req.GetMessage())
 		for i := 0; i < cnt; i++ {
 			select {
 			case <-server.Context().Done():
 				return server.Context().Err()
 			default:
 			}
-			if err := server.Send(&echopb.EchoBiDiResponse{Message: req.Message[i : i+1]}); err != nil {
+			if err := server.Send(&echopb.EchoBiDiResponse{Message: req.GetMessage()[i : i+1]}); err != nil {
 				return err
 			}
 		}

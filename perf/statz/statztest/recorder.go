@@ -1,3 +1,4 @@
+// Package statztest is used for testing metric exporters
 package statztest
 
 import (

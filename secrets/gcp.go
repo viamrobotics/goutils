@@ -59,7 +59,7 @@ func (g *GCPSource) Get(ctx context.Context, name string) (string, error) {
 		}
 		return "", fmt.Errorf("failed to access secret version: %w", err)
 	}
-	return string(result.Payload.Data), nil
+	return string(result.GetPayload().GetData()), nil
 }
 
 // Type returns the type of this source (gcp).

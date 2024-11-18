@@ -59,7 +59,7 @@ func TestCachedDialer(t *testing.T) {
 		"",
 		closeChecker,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithBlock())
+		grpc.WithBlock()) //nolint:staticcheck
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, cached, test.ShouldBeFalse)
 	conn2, cached, err := cachedDialer.DialDirect(
@@ -68,7 +68,7 @@ func TestCachedDialer(t *testing.T) {
 		"",
 		closeChecker,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithBlock())
+		grpc.WithBlock()) //nolint:staticcheck
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, cached, test.ShouldBeTrue)
 	conn3, cached, err := cachedDialer.DialDirect(
@@ -77,7 +77,7 @@ func TestCachedDialer(t *testing.T) {
 		"more",
 		closeChecker2,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithBlock())
+		grpc.WithBlock()) //nolint:staticcheck
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, cached, test.ShouldBeFalse)
 	conn4, cached, err := cachedDialer.DialDirect(
@@ -86,7 +86,7 @@ func TestCachedDialer(t *testing.T) {
 		"",
 		closeChecker3,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithBlock())
+		grpc.WithBlock()) //nolint:staticcheck
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, cached, test.ShouldBeFalse)
 	test.That(t, conn1.(*reffedConn).ClientConn, test.ShouldEqual, conn2.(*reffedConn).ClientConn)
@@ -127,7 +127,7 @@ func TestCachedDialer(t *testing.T) {
 		"",
 		closeChecker,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithBlock())
+		grpc.WithBlock()) //nolint:staticcheck
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, cached, test.ShouldBeFalse)
 	test.That(t, conn1New.(*reffedConn).ClientConn, test.ShouldNotEqual, conn1.(*reffedConn).ClientConn)

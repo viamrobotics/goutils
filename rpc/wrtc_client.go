@@ -142,7 +142,7 @@ func dialWebRTC(
 	if dOpts.webrtcOpts.Config != nil {
 		config = *dOpts.webrtcOpts.Config
 	}
-	extendedConfig := extendWebRTCConfig(&config, configResp.Config, false)
+	extendedConfig := extendWebRTCConfig(&config, configResp.GetConfig(), false)
 	peerConn, dataChannel, err := newPeerConnectionForClient(ctx, extendedConfig, dOpts.webrtcOpts.DisableTrickleICE, logger)
 	if err != nil {
 		return nil, err
@@ -327,15 +327,15 @@ func dialWebRTC(
 			if err != nil {
 				return err
 			}
-			switch s := callResp.Stage.(type) {
+			switch s := callResp.GetStage().(type) {
 			case *webrtcpb.CallResponse_Init:
 				if haveInit {
 					return errors.New("got init stage more than once")
 				}
 				haveInit = true
-				uuid = callResp.Uuid
+				uuid = callResp.GetUuid()
 				answer := webrtc.SessionDescription{}
-				if err := DecodeSDP(s.Init.Sdp, &answer); err != nil {
+				if err := DecodeSDP(s.Init.GetSdp(), &answer); err != nil {
 					return err
 				}
 
@@ -352,10 +352,10 @@ func dialWebRTC(
 				if !haveInit {
 					return errors.New("got update stage before init stage")
 				}
-				if callResp.Uuid != uuid {
-					return errors.Errorf("uuid mismatch; have=%q want=%q", callResp.Uuid, uuid)
+				if callResp.GetUuid() != uuid {
+					return errors.Errorf("uuid mismatch; have=%q want=%q", callResp.GetUuid(), uuid)
 				}
-				cand := iceCandidateFromProto(s.Update.Candidate)
+				cand := iceCandidateFromProto(s.Update.GetCandidate())
 				if err := peerConn.AddICECandidate(cand); err != nil {
 					return err
 				}

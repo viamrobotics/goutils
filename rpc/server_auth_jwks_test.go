@@ -84,6 +84,7 @@ func TestJWKSKeyProviderAndEmailLoader(t *testing.T) {
 
 	// standard grpc
 	t.Run("standard grpc", func(t *testing.T) {
+		//nolint:staticcheck
 		conn, err := grpc.DialContext(
 			context.Background(),
 			httpListener.Addr().String(),
