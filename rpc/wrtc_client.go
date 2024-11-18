@@ -380,11 +380,13 @@ func dialWebRTC(
 	doCall := func() error {
 		select {
 		case <-exchangeCtx.Done():
-			return multierr.Combine(exchangeCtx.Err(), clientCh.Close())
+			clientCh.close()
+			return exchangeCtx.Err()
 		case <-clientCh.Ready():
 			return nil
 		case err := <-errCh:
-			return multierr.Combine(err, clientCh.Close())
+			clientCh.close()
+			return err
 		}
 	}
 

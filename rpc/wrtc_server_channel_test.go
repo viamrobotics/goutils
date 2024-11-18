@@ -41,9 +41,7 @@ func TestWebRTCServerChannel(t *testing.T) {
 	)
 
 	serverCh := newWebRTCServerChannel(server, pc2, dc2, []string{"one", "two"}, logger)
-	defer func() {
-		test.That(t, serverCh.Close(), test.ShouldBeNil)
-	}()
+	defer serverCh.Close()
 
 	<-clientCh.Ready()
 	<-serverCh.Ready()
@@ -273,9 +271,7 @@ func TestWebRTCServerChannelResetStream(t *testing.T) {
 	)
 
 	serverCh := newWebRTCServerChannel(server, pc2, dc2, []string{"one", "two"}, logger)
-	defer func() {
-		test.That(t, serverCh.Close(), test.ShouldBeNil)
-	}()
+	defer serverCh.Close()
 
 	<-clientCh.Ready()
 	<-serverCh.Ready()

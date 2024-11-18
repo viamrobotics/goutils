@@ -64,19 +64,20 @@ func TestWebRTCBaseChannel(t *testing.T) {
 	test.That(t, isClosed, test.ShouldBeFalse)
 	isClosed = bc2.Closed()
 	test.That(t, isClosed, test.ShouldBeFalse)
-	test.That(t, bc1.Close(), test.ShouldBeNil)
+	bc1.Close()
 	<-peer1Done
 	<-peer2Done
 	isClosed = bc1.Closed()
 	test.That(t, isClosed, test.ShouldBeTrue)
 	isClosed = bc2.Closed()
 	test.That(t, isClosed, test.ShouldBeTrue)
-	test.That(t, bc1.Close(), test.ShouldBeNil)
-	test.That(t, bc2.Close(), test.ShouldBeNil)
+	// Double calling close poses no problems.
+	bc1.Close()
+	bc2.Close()
 
 	bc1, bc2, peer1Done, peer2Done = setupWebRTCBaseChannels(t)
 	err1 := errors.New("whoops")
-	test.That(t, bc2.Close(), test.ShouldBeNil)
+	bc2.Close()
 	<-peer1Done
 	<-peer2Done
 	isClosed = bc1.Closed()

@@ -576,7 +576,8 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 		successful = true
 	case <-ctx.Done():
 		// Timed out or signaling server was closed.
-		aa.sendError(multierr.Combine(ctx.Err(), serverChannel.Close()))
+		serverChannel.Close()
+		aa.sendError(ctx.Err())
 		return ctx.Err()
 	}
 

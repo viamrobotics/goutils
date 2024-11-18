@@ -50,7 +50,7 @@ func newBaseChannel(
 	}
 	ch.bufferWriteCond = sync.NewCond(ch.bufferWriteMu.RLocker())
 	dataChannel.OnOpen(ch.onChannelOpen)
-	dataChannel.OnClose(ch.onChannelClose)
+	dataChannel.OnClose(ch.Close)
 	dataChannel.OnError(ch.onChannelError)
 	dataChannel.SetBufferedAmountLowThreshold(bufferThreshold)
 	dataChannel.OnBufferedAmountLow(func() {
@@ -159,7 +159,7 @@ func newBaseChannel(
 //
 // RSDK-8941: The above is a statement of expectations from existing code. Not a claim it is
 // factually correct.
-func (ch *webrtcBaseChannel) Close() error {
+func (ch *webrtcBaseChannel) Close() {
 	// RSDK-8941: Having this instead early return when `closed` is set will result in `TestServer`
 	// to leak goroutines created by `dialWebRTC`.
 	ch.closed.CompareAndSwap(false, true)
@@ -171,7 +171,6 @@ func (ch *webrtcBaseChannel) Close() error {
 
 	utils.UncheckedError(ch.peerConn.GracefulClose())
 	ch.activeBackgroundWorkers.Wait()
-	return nil
 }
 
 func (ch *webrtcBaseChannel) Closed() bool {
@@ -188,12 +187,6 @@ func (ch *webrtcBaseChannel) onChannelOpen() {
 
 var errDataChannelClosed = errors.New("data channel closed")
 
-func (ch *webrtcBaseChannel) onChannelClose() {
-	if err := ch.Close(); err != nil {
-		ch.logger.Errorw("error closing channel", "error", err)
-	}
-}
-
 // isUserInitiatedAbortChunkErr returns true if the error is an abort chunk
 // error that the user initiated through Close. Certain browsers (Safari,
 // Chrome and potentially others) close RTCPeerConnections with this type of
@@ -209,9 +202,7 @@ func (ch *webrtcBaseChannel) onChannelError(err error) {
 		return
 	}
 	ch.logger.Errorw("channel error", "error", err)
-	if err := ch.Close(); err != nil {
-		ch.logger.Errorw("error closing channel", "error", err)
-	}
+	ch.Close()
 }
 
 const maxDataChannelSize = 65535
