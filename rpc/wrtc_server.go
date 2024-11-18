@@ -50,9 +50,6 @@ type webrtcServer struct {
 		PeersDisconnected    atomic.Int64
 		PeerConnectionErrors atomic.Int64
 		HeadersProcessed     atomic.Int64
-		// CallTicketsAvailable is technically a guage. It increments and decrements. Rather than
-		// just going up.
-		CallTicketsAvailable atomic.Int32
 
 		// TotalTimeConnectingMillis just counts successful connection attempts.
 		TotalTimeConnectingMillis atomic.Int64
@@ -69,7 +66,7 @@ type WebRTCGrpcStats struct {
 	CallTicketsAvailable      int32
 	TotalTimeConnectingMillis int64
 
-	// When the FTDC frontend is more feature reach, we can remove this and let the frontend compute
+	// When the FTDC frontend is more feature rich, we can remove this and let the frontend compute
 	// the value.
 	AverageTimeConnectingMillis float64
 }
@@ -81,7 +78,7 @@ func (srv *webrtcServer) Stats() WebRTCGrpcStats {
 		PeersDisconnected:         srv.counters.PeersDisconnected.Load(),
 		PeerConnectionErrors:      srv.counters.PeerConnectionErrors.Load(),
 		HeadersProcessed:          srv.counters.HeadersProcessed.Load(),
-		CallTicketsAvailable:      srv.counters.CallTicketsAvailable.Load(),
+		CallTicketsAvailable:      itn32(cap(srv.callTickets) - len(srv.callTickets)),
 		TotalTimeConnectingMillis: srv.counters.TotalTimeConnectingMillis.Load(),
 	}
 	ret.PeersActive = ret.PeersConnected - ret.PeersDisconnected
