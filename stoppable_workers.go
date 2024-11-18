@@ -39,7 +39,6 @@ func NewBackgroundStoppableWorkers(workers ...func(context.Context)) *StoppableW
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	sw := &StoppableWorkers{ctx: ctx, cancelFunc: cancelFunc}
 	for _, worker := range workers {
-		worker := worker
 		sw.Add(worker)
 	}
 	return sw

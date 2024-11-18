@@ -305,12 +305,12 @@ func dialWebRTC(
 		return nil, err
 	}
 
-	// TODO(GOUT-11): do separate auth here
-	if dOpts.externalAuthAddr != "" {
-		// TODO(GOUT-11): prepare AuthenticateTo here
+	// TODO(RSDK-245): do separate auth here
+	if dOpts.externalAuthAddr != "" { //nolint:revive
+		// TODO(RSDK-245): prepare AuthenticateTo here
 		// for client channel.
-	} else if dOpts.creds.Type != "" { //nolint:staticcheck
-		// TODO(GOUT-11): prepare Authenticate here
+	} else if dOpts.creds.Type != "" { //nolint:staticcheck,revive
+		// TODO(RSDK-245): prepare Authenticate here
 		// for client channel
 	}
 

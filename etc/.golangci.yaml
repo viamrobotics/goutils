@@ -13,11 +13,9 @@ linters:
     - canonicalheader
     - containedctx
     - contextcheck
-    - copyloopvar # TODO(go1.23): reenable in follow-up
     - cyclop
     - depguard
     - exhaustruct
-    - fatcontext # TODO(go1.23): reenable in follow-up
     - forcetypeassert
     - funlen
     - gocognit
@@ -40,18 +38,14 @@ linters:
     - musttag
     - nakedret
     - nestif
-    - nilnil # TODO(go1.23): low-pri to reenable
     - nlreturn
     - nonamedreturns
     - nosprintfhostport
     - paralleltest
     - perfsprint
     - prealloc
-    - predeclared # TODO(go1.23): reenable in follow-up
-    - protogetter # TODO(go1.23): maybe reenable in the future but it's a big diff + buggy.
     - spancheck # TODO(go1.23): reenable in follow-up
     - tagliatelle
-    - tenv # TODO(go1.23): reenable in follow-up
     - testpackage
     - thelper # false positives
     - varnamelen
@@ -81,7 +75,7 @@ linters-settings:
   lll:
     line-length: 140
   revive:
-    # Unfortunately configuring a single rules disables all other rules, even
+    # Unfortunately disabling any single rules disables all other rules, even
     # if we set `enable-all: true`
     #
     # To get around this, we include default rules:
@@ -91,22 +85,22 @@ linters-settings:
       - name: context-as-argument
       - name: context-keys-type
       - name: dot-imports
-      # - name: empty-block
+      - name: empty-block
       - name: error-naming
       - name: error-return
       - name: error-strings
       - name: errorf
-      # - name: exported
+      - name: exported
       - name: increment-decrement
       - name: indent-error-flow
-      # - name: package-comments
+      - name: package-comments
       - name: range
       - name: receiver-naming
       - name: redefines-builtin-id
       - name: superfluous-else
       - name: time-naming
       - name: unexported-return
-      # - name: unused-parameter
+      # - name: unused-parameter # TODO(go1.23): maybe reenable
       - name: unreachable-code
       - name: var-declaration
       - name: var-naming
@@ -122,6 +116,11 @@ issues:
         - gosec
         - govet
         - noctx
+    # statztest has the only set of exported methods that do not have a comment
+    - path: perf/statz/statztest/
+      linters:
+        - revive
+      text: exported
   exclude-use-default: false
   max-per-linter: 0
   max-same-issues: 0
