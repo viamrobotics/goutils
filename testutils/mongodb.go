@@ -147,7 +147,6 @@ func backingMongoDBClientWithOptions(baseOptions *options.ClientOptions) (*mongo
 
 // BackingMongoDBClient returns a backing MongoDB client to use.
 func BackingMongoDBClient(tb testing.TB) *mongo.Client {
-	tb.Skip()
 	tb.Helper()
 	client, err := backingMongoDBClient()
 	if err != nil {

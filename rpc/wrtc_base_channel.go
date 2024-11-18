@@ -185,8 +185,6 @@ func (ch *webrtcBaseChannel) onChannelOpen() {
 	close(ch.ready)
 }
 
-var errDataChannelClosed = errors.New("data channel closed")
-
 // isUserInitiatedAbortChunkErr returns true if the error is an abort chunk
 // error that the user initiated through Close. Certain browsers (Safari,
 // Chrome and potentially others) close RTCPeerConnections with this type of
