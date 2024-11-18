@@ -6,6 +6,7 @@ import (
 	"io"
 	"strings"
 	"sync"
+	"testing"
 	"time"
 
 	"github.com/pkg/errors"
@@ -161,8 +162,12 @@ func dialWebRTC(
 	)
 	onICEConnected := func() {
 		// Delay by up to 5s to allow more caller updates/better stats.
+		waitTime := 5 * time.Second
+		if testing.Testing() {
+			waitTime = 100 * time.Millisecond
+		}
 		select {
-		case <-time.After(5 * time.Second):
+		case <-time.After(waitTime):
 		case <-ctx.Done():
 		}
 

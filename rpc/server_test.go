@@ -33,7 +33,7 @@ import (
 	"go.viam.com/utils/testutils"
 )
 
-func TestServerFoo(t *testing.T) {
+func TestServer(t *testing.T) {
 	t.Setenv(testDelayAnswererNegotiationVar, "t")
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
@@ -44,15 +44,12 @@ func TestServerFoo(t *testing.T) {
 	testPubKey, testPrivKey, err := ed25519.GenerateKey(rand.Reader)
 	test.That(t, err, test.ShouldBeNil)
 
-	//hosts := []string{"yeehaw", "woahthere"}
-	hosts := []string{"yeehaw"}
-	for _, secure := range []bool{false} {
-		//for _, secure := range []bool{false, true} {
+	hosts := []string{"yeehaw", "woahthere"}
+	for _, secure := range []bool{false, true} {
 		t.Run(fmt.Sprintf("with secure=%t", secure), func(t *testing.T) {
 			for _, host := range hosts {
 				t.Run(host, func(t *testing.T) {
-					//for _, withAuthentication := range []bool{false, true} {
-					for _, withAuthentication := range []bool{false} {
+					for _, withAuthentication := range []bool{false, true} {
 						t.Run(fmt.Sprintf("with authentication=%t", withAuthentication), func(t *testing.T) {
 							serverOpts := []ServerOption{
 								WithWebRTCServerOptions(WebRTCServerOptions{

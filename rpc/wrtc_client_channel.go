@@ -3,7 +3,6 @@ package rpc
 import (
 	"context"
 	"errors"
-	"fmt"
 	"path"
 	"sync"
 	"sync/atomic"
@@ -87,7 +86,6 @@ func (ch *webrtcClientChannel) Close() error {
 	for _, s := range streamsToClose {
 		s.cs.Close()
 	}
-	fmt.Printf("DBG. Closing base channel. This: %p Base: %p\n", ch, ch.webrtcBaseChannel)
 	return ch.webrtcBaseChannel.Close()
 }
 

@@ -3,14 +3,11 @@ package rpc
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
-	"runtime/debug"
 	"strings"
 	"sync"
 	"sync/atomic"
 
-	"github.com/pion/dtls/v2"
 	"github.com/pion/sctp"
 	"github.com/viamrobotics/webrtc/v3"
 	"google.golang.org/protobuf/proto"
@@ -51,8 +48,6 @@ func newBaseChannel(
 		ready:       make(chan struct{}),
 		logger:      utils.AddFieldsToLogger(logger, "ch", dataChannel.ID()),
 	}
-	fmt.Printf("DBG. Created new base channel: %p\n", ch)
-	debug.PrintStack()
 	ch.bufferWriteCond = sync.NewCond(ch.bufferWriteMu.RLocker())
 	dataChannel.OnOpen(ch.onChannelOpen)
 	dataChannel.OnClose(ch.onChannelClose)
@@ -159,27 +154,22 @@ func newBaseChannel(
 	return ch
 }
 
+// Close will always wait for background goroutines to exit before returning. It is safe to
+// concurrently call `Close`.
+//
+// RSDK-8941: The above is a statement of expectations from existing code. Not a claim it is
+// factually correct.
 func (ch *webrtcBaseChannel) Close() error {
-	defer fmt.Printf("DBG. Base channel done closing: %p\n", ch)
-	if !ch.closed.CompareAndSwap(false, true) {
-		fmt.Printf("DBG. Early exit: %p\n", ch)
-		_ = ch.peerConn.GracefulClose()
-		ch.activeBackgroundWorkers.Wait()
-		return nil
-	} else {
-		fmt.Printf("DBG. Base channel not already closed: %p\n", ch)
-	}
+	// RSDK-8941: Having this instead early return when `closed` is set will result in `TestServer`
+	// to leak goroutines created by `dialWebRTC`.
+	ch.closed.CompareAndSwap(false, true)
 
 	ch.mu.Lock()
 	ch.cancel()
 	ch.bufferWriteCond.Broadcast()
 	ch.mu.Unlock()
 
-	// Underlying connection may already be closed; ignore "conn is closed"
-	// errors.
-	if err := ch.peerConn.GracefulClose(); !errors.Is(err, dtls.ErrConnClosed) {
-		return err
-	}
+	utils.UncheckedError(ch.peerConn.GracefulClose())
 	ch.activeBackgroundWorkers.Wait()
 	return nil
 }
