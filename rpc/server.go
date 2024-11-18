@@ -152,13 +152,16 @@ type simpleServer struct {
 	// authIssuer is the JWT issuer (iss) that will be used for our service.
 	authIssuer string
 
+	// counters are for reporting FTDC metrics. A `simpleServer` sets up both a grpc server wrapping
+	// a standard http2 over TCP connection. And it also sets up grpc services for webrtc
+	// PeerConnections. These counters are specifically for requests coming in over TCP.
 	counters struct {
-		TcpGrpcRequestsStarted      atomic.Int64
-		TcpGrpcWebRequestsStarted   atomic.Int64
-		TcpOtherRequestsStarted     atomic.Int64
-		TcpGrpcRequestsCompleted    atomic.Int64
-		TcpGrpcWebRequestsCompleted atomic.Int64
-		TcpOtherRequestsCompleted   atomic.Int64
+		TCPpGrpcRequestsStarted      atomic.Int64
+		TCPpGrpcWebRequestsStarted   atomic.Int64
+		TCPpOtherRequestsStarted     atomic.Int64
+		TCPpGrpcRequestsCompleted    atomic.Int64
+		TCPpGrpcWebRequestsCompleted atomic.Int64
+		TCPpOtherRequestsCompleted   atomic.Int64
 	}
 }
 
@@ -735,19 +738,19 @@ func (ss *simpleServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r = requestWithHost(r)
 	switch ss.getRequestType(r) {
 	case requestTypeGRPC:
-		ss.counters.TcpGrpcRequestsStarted.Add(1)
+		ss.counters.TCPpGrpcRequestsStarted.Add(1)
 		ss.grpcServer.ServeHTTP(w, r)
-		ss.counters.TcpGrpcRequestsCompleted.Add(1)
+		ss.counters.TCPpGrpcRequestsCompleted.Add(1)
 	case requestTypeGRPCWeb:
-		ss.counters.TcpGrpcWebRequestsStarted.Add(1)
+		ss.counters.TCPpGrpcWebRequestsStarted.Add(1)
 		ss.grpcWebServer.ServeHTTP(w, r)
-		ss.counters.TcpGrpcWebRequestsCompleted.Add(1)
+		ss.counters.TCPpGrpcWebRequestsCompleted.Add(1)
 	case requestTypeNone:
 		fallthrough
 	default:
-		ss.counters.TcpOtherRequestsStarted.Add(1)
+		ss.counters.TCPpOtherRequestsStarted.Add(1)
 		ss.grpcGatewayHandler.ServeHTTP(w, r)
-		ss.counters.TcpOtherRequestsCompleted.Add(1)
+		ss.counters.TCPpOtherRequestsCompleted.Add(1)
 	}
 }
 
@@ -882,11 +885,11 @@ func (ss *simpleServer) Stop() error {
 }
 
 type SimpleServerStats struct {
-	TcpGrpcStats    TcpGrpcStats
+	TCPpGrpcStats   TCPpGrpcStats
 	WebRTCGrpcStats WebRTCGrpcStats
 }
 
-type TcpGrpcStats struct {
+type TCPpGrpcStats struct {
 	RequestsStarted        int64
 	WebRequestsStarted     int64
 	OtherRequestsStarted   int64
@@ -897,13 +900,13 @@ type TcpGrpcStats struct {
 
 func (ss *simpleServer) Stats() any {
 	return SimpleServerStats{
-		TcpGrpcStats: TcpGrpcStats{
-			RequestsStarted:        ss.counters.TcpGrpcRequestsStarted.Load(),
-			WebRequestsStarted:     ss.counters.TcpGrpcWebRequestsStarted.Load(),
-			OtherRequestsStarted:   ss.counters.TcpOtherRequestsStarted.Load(),
-			RequestsCompleted:      ss.counters.TcpGrpcRequestsCompleted.Load(),
-			WebRequestsCompleted:   ss.counters.TcpGrpcWebRequestsCompleted.Load(),
-			OtherRequestsCompleted: ss.counters.TcpOtherRequestsCompleted.Load(),
+		TCPpGrpcStats: TCPpGrpcStats{
+			RequestsStarted:        ss.counters.TCPpGrpcRequestsStarted.Load(),
+			WebRequestsStarted:     ss.counters.TCPpGrpcWebRequestsStarted.Load(),
+			OtherRequestsStarted:   ss.counters.TCPpOtherRequestsStarted.Load(),
+			RequestsCompleted:      ss.counters.TCPpGrpcRequestsCompleted.Load(),
+			WebRequestsCompleted:   ss.counters.TCPpGrpcWebRequestsCompleted.Load(),
+			OtherRequestsCompleted: ss.counters.TCPpOtherRequestsCompleted.Load(),
 		},
 		WebRTCGrpcStats: ss.webrtcServer.Stats(),
 	}

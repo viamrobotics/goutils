@@ -59,6 +59,7 @@ type webrtcServer struct {
 	}
 }
 
+// WebRTCGrpcStats are stats of the webrtc variety.
 type WebRTCGrpcStats struct {
 	PeersConnected            int64
 	PeersDisconnected         int64
