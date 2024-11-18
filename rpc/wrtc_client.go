@@ -195,7 +195,6 @@ func dialWebRTC(
 	errCh := make(chan error)
 	sendErr := func(err error) {
 		if haveInit && isEOF(err) {
-			logger.Warnf("caller swallowing err %v", err)
 			return
 		}
 		if s, ok := status.FromError(err); ok && strings.Contains(s.Message(), noActiveOfferStr) {
