@@ -276,7 +276,8 @@ func (srv *webrtcServer) unaryHandler(ss interface{}, handler methodHandler) han
 
 		response, err := handler(ss, ctx, s.webrtcBaseStream.RecvMsg, srv.unaryInt)
 		if err != nil {
-			return s.closeWithSendError(err)
+			s.closeWithSendError(err)
+			return err
 		}
 
 		err = s.SendMsg(response)
@@ -285,7 +286,8 @@ func (srv *webrtcServer) unaryHandler(ss interface{}, handler methodHandler) han
 			return err
 		}
 
-		return s.closeWithSendError(nil)
+		s.closeWithSendError(nil)
+		return nil
 	}
 }
 
@@ -308,6 +310,7 @@ func (srv *webrtcServer) streamHandler(ss interface{}, method string, desc grpc.
 		if errors.Is(err, io.EOF) {
 			return nil
 		}
-		return s.closeWithSendError(err)
+		s.closeWithSendError(err)
+		return nil
 	}
 }

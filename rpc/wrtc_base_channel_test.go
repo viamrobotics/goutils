@@ -60,46 +60,39 @@ func TestWebRTCBaseChannel(t *testing.T) {
 	someStatus, _ := status.FromError(errors.New("ouch"))
 	test.That(t, bc1.write(someStatus.Proto()), test.ShouldBeNil)
 
-	isClosed, reason := bc1.Closed()
+	isClosed := bc1.Closed()
 	test.That(t, isClosed, test.ShouldBeFalse)
-	test.That(t, reason, test.ShouldBeNil)
-	isClosed, reason = bc2.Closed()
+	isClosed = bc2.Closed()
 	test.That(t, isClosed, test.ShouldBeFalse)
-	test.That(t, reason, test.ShouldBeNil)
-	test.That(t, bc1.Close(), test.ShouldBeNil)
+	bc1.Close()
 	<-peer1Done
 	<-peer2Done
-	isClosed, reason = bc1.Closed()
+	isClosed = bc1.Closed()
 	test.That(t, isClosed, test.ShouldBeTrue)
-	test.That(t, reason, test.ShouldBeNil)
-	isClosed, reason = bc2.Closed()
+	isClosed = bc2.Closed()
 	test.That(t, isClosed, test.ShouldBeTrue)
-	test.That(t, reason, test.ShouldEqual, errDataChannelClosed)
-	test.That(t, bc1.Close(), test.ShouldBeNil)
-	test.That(t, bc2.Close(), test.ShouldBeNil)
+	// Double calling close poses no problems.
+	bc1.Close()
+	bc2.Close()
 
 	bc1, bc2, peer1Done, peer2Done = setupWebRTCBaseChannels(t)
 	err1 := errors.New("whoops")
-	test.That(t, bc2.closeWithReason(err1), test.ShouldBeNil)
+	bc2.Close()
 	<-peer1Done
 	<-peer2Done
-	isClosed, reason = bc1.Closed()
+	isClosed = bc1.Closed()
 	test.That(t, isClosed, test.ShouldBeTrue)
-	test.That(t, reason, test.ShouldEqual, errDataChannelClosed)
-	isClosed, reason = bc2.Closed()
+	isClosed = bc2.Closed()
 	test.That(t, isClosed, test.ShouldBeTrue)
-	test.That(t, reason, test.ShouldEqual, err1)
 
 	bc1, bc2, peer1Done, peer2Done = setupWebRTCBaseChannels(t)
 	bc2.onChannelError(err1)
 	<-peer1Done
 	<-peer2Done
-	isClosed, reason = bc1.Closed()
+	isClosed = bc1.Closed()
 	test.That(t, isClosed, test.ShouldBeTrue)
-	test.That(t, reason, test.ShouldEqual, errDataChannelClosed)
-	isClosed, reason = bc2.Closed()
+	isClosed = bc2.Closed()
 	test.That(t, isClosed, test.ShouldBeTrue)
-	test.That(t, reason, test.ShouldEqual, err1)
 
 	test.That(t, bc2.write(someStatus.Proto()), test.ShouldEqual, io.ErrClosedPipe)
 }

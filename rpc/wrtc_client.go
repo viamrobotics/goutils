@@ -6,6 +6,7 @@ import (
 	"io"
 	"strings"
 	"sync"
+	"testing"
 	"time"
 
 	"github.com/pkg/errors"
@@ -161,8 +162,12 @@ func dialWebRTC(
 	)
 	onICEConnected := func() {
 		// Delay by up to 5s to allow more caller updates/better stats.
+		waitTime := 5 * time.Second
+		if testing.Testing() {
+			waitTime = 100 * time.Millisecond
+		}
 		select {
-		case <-time.After(5 * time.Second):
+		case <-time.After(waitTime):
 		case <-ctx.Done():
 		}
 
@@ -190,7 +195,6 @@ func dialWebRTC(
 	errCh := make(chan error)
 	sendErr := func(err error) {
 		if haveInit && isEOF(err) {
-			logger.Warnf("caller swallowing err %v", err)
 			return
 		}
 		if s, ok := status.FromError(err); ok && strings.Contains(s.Message(), noActiveOfferStr) {
@@ -376,11 +380,13 @@ func dialWebRTC(
 	doCall := func() error {
 		select {
 		case <-exchangeCtx.Done():
-			return multierr.Combine(exchangeCtx.Err(), clientCh.Close())
+			clientCh.close()
+			return exchangeCtx.Err()
 		case <-clientCh.Ready():
 			return nil
 		case err := <-errCh:
-			return multierr.Combine(err, clientCh.Close())
+			clientCh.close()
+			return err
 		}
 	}
 

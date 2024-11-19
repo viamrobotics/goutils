@@ -588,7 +588,8 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 		aa.server.counters.TotalTimeConnectingMillis.Add(time.Since(connectionStartTime).Milliseconds())
 	case <-ctx.Done():
 		// Timed out or signaling server was closed.
-		aa.sendError(multierr.Combine(ctx.Err(), serverChannel.Close()))
+		serverChannel.Close()
+		aa.sendError(ctx.Err())
 		aa.server.counters.PeerConnectionErrors.Add(1)
 		return ctx.Err()
 	}
