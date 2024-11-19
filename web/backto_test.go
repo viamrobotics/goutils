@@ -50,7 +50,6 @@ func TestIsValidBacktoURL(t *testing.T) {
 	})
 
 	t.Run("rejects invalid local URLs", func(t *testing.T) {
-		test.That(t, IsValidBacktoURL("http://localhost"), test.ShouldBeFalse)
 		test.That(t, IsValidBacktoURL("ftp://localhost"), test.ShouldBeFalse)
 		test.That(t, IsValidBacktoURL("://localhost"), test.ShouldBeFalse)
 		test.That(t, IsValidBacktoURL("//localhost"), test.ShouldBeFalse)
@@ -62,5 +61,7 @@ func TestIsValidBacktoURL(t *testing.T) {
 	t.Run("accepts valid local URLs", func(t *testing.T) {
 		test.That(t, IsValidBacktoURL("https://localhost"), test.ShouldBeTrue)
 		test.That(t, IsValidBacktoURL("https://localhost/some/path"), test.ShouldBeTrue)
+		test.That(t, IsValidBacktoURL("http://localhost"), test.ShouldBeTrue)
+		test.That(t, IsValidBacktoURL("http://localhost/some/path"), test.ShouldBeTrue)
 	})
 }

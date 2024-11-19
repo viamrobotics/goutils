@@ -15,6 +15,18 @@ func isWhitelisted(hostname string) bool {
 	return hostnameWhitelist[hostname]
 }
 
+func isAllowedURLScheme(url *url.URL) bool {
+	if url.Scheme == "https" {
+		return true
+	}
+
+	if url.Hostname() == "localhost" && url.Scheme == "http" {
+		return true
+	}
+
+	return false
+}
+
 // IsValidBacktoURL returns true if the passed string is a secure URL to a whitelisted
 // hostname. The whitelisted hostnames are: "localhost", "app.viam.dev", and "app.viam.com".
 //
@@ -29,7 +41,7 @@ func IsValidBacktoURL(path string) bool {
 		return false
 	}
 
-	if url.Scheme != "" && url.Scheme != "https" {
+	if !isAllowedURLScheme(url) {
 		// ignore non-secure URLs
 		return false
 	}
