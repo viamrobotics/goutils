@@ -50,7 +50,7 @@ func isAllowedURLScheme(url *url.URL) bool {
 //   - http://localhost/path/name -> true
 func IsValidBacktoURL(path string) bool {
 	normalized := strings.ReplaceAll(path, "\\", "/")
-	url, err := url.ParseRequestURI(normalized)
+	url, err := url.Parse(normalized)
 	if err != nil {
 		// ignore invalid URLs/URL components
 		return false
