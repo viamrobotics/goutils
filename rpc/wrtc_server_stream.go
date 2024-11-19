@@ -8,9 +8,7 @@ import (
 	"sync/atomic"
 
 	protov1 "github.com/golang/protobuf/proto" //nolint:staticcheck
-	"github.com/pion/sctp"
 	"github.com/pkg/errors"
-	"go.uber.org/multierr"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -172,7 +170,7 @@ func (s *webrtcServerStream) SendMsg(m interface{}) (err error) {
 
 	defer func() {
 		if err != nil {
-			err = multierr.Combine(err, s.closeWithSendError(err))
+			s.closeWithSendError(err)
 		}
 	}()
 
@@ -221,32 +219,27 @@ func (s *webrtcServerStream) SendMsg(m interface{}) (err error) {
 }
 
 func (s *webrtcServerStream) onRequest(request *webrtcpb.Request) {
+	// Error cases here are logged at the warn level. It's not a server error to find client
+	// misbehavior during validation. Additionally, clients can go away at any time, so failing to
+	// respond is likewise not an error.
 	switch r := request.GetType().(type) {
 	case *webrtcpb.Request_Headers:
 		if s.headersReceived {
-			if err := s.closeWithSendError(status.Error(codes.InvalidArgument, "headers already received")); err != nil {
-				s.logger.Errorw("error closing", "error", err)
-			}
+			s.closeWithSendError(status.Error(codes.InvalidArgument, "headers already received"))
 			return
 		}
 		s.processHeaders(r.Headers)
 	case *webrtcpb.Request_Message:
 		if !s.headersReceived {
-			if err := s.closeWithSendError(status.Error(codes.InvalidArgument, "headers not yet received")); err != nil {
-				s.logger.Errorw("error closing", "error", err)
-			}
+			s.closeWithSendError(status.Error(codes.InvalidArgument, "headers not yet received"))
 			return
 		}
 		s.processMessage(r.Message)
 	case *webrtcpb.Request_RstStream:
-		if err := s.closeWithSendError(status.Error(codes.Canceled, "request cancelled")); err != nil {
-			s.logger.Errorw("error closing", "error", err)
-		}
+		s.closeWithSendError(status.Error(codes.Canceled, "request cancelled"))
 		return
 	default:
-		if err := s.closeWithSendError(status.Error(codes.InvalidArgument, fmt.Sprintf("unknown request type %T", r))); err != nil {
-			s.logger.Errorw("error closing", "error", err)
-		}
+		s.closeWithSendError(status.Error(codes.InvalidArgument, fmt.Sprintf("unknown request type %T", r)))
 	}
 }
 
@@ -270,9 +263,7 @@ func (s *webrtcServerStream) processHeaders(headers *webrtcpb.RequestHeaders) {
 		if s.ch.server.unknownStreamDesc != nil {
 			handlerFunc = s.ch.server.streamHandler(s.ch.server, headers.GetMethod(), *s.ch.server.unknownStreamDesc)
 		} else {
-			if err := s.closeWithSendError(status.Error(codes.Unimplemented, codes.Unimplemented.String())); err != nil {
-				s.logger.Errorw("error closing", "error", err)
-			}
+			s.closeWithSendError(status.Error(codes.Unimplemented, codes.Unimplemented.String()))
 			return
 		}
 	}
@@ -293,9 +284,7 @@ func (s *webrtcServerStream) processHeaders(headers *webrtcpb.RequestHeaders) {
 	select {
 	case s.ch.server.callTickets <- struct{}{}:
 	default:
-		if err := s.closeWithSendError(status.Error(codes.ResourceExhausted, "too many in-flight requests")); err != nil {
-			s.logger.Errorw("error closing", "error", err)
-		}
+		s.closeWithSendError(status.Error(codes.ResourceExhausted, "too many in-flight requests"))
 		return
 	}
 
@@ -352,44 +341,45 @@ func (s *webrtcServerStream) processMessage(msg *webrtcpb.RequestMessage) {
 }
 
 // Must not be called with the `s.webrtcBaseStream.mu` mutex held.
-func (s *webrtcServerStream) closeWithSendError(err error) (writeErr error) {
+func (s *webrtcServerStream) closeWithSendError(err error) {
 	if !s.sendClosed.CompareAndSwap(false, true) {
-		return nil
+		return
 	}
-	defer func() {
-		if writeErr == nil || errors.Is(writeErr, sctp.ErrStreamClosed) {
-			writeErr = nil
-		}
-	}()
+
 	defer func() {
 		s.webrtcBaseStream.mu.Lock()
 		defer s.webrtcBaseStream.mu.Unlock()
 		s.close()
 	}()
+
+	// If the error is a closed pipe error, there's no use trying to write headers/trailers.
 	if err != nil && (errors.Is(err, io.ErrClosedPipe)) {
-		return nil
+		return
 	}
-	chClosed, chClosedReason := s.ch.Closed()
-	if s.Closed() || chClosed {
-		if errors.Is(chClosedReason, errDataChannelClosed) &&
-			isContextCanceled(err) {
-			return nil
-		}
-		return errors.Wrap(err, "close called multiple times with error")
+
+	// If the data channel is closed, there's no use trying to write headers/trailers.
+	if s.ch.Closed() {
+		return
 	}
-	if err := s.writeHeaders(); err != nil {
-		return err
+
+	if headersErr := s.writeHeaders(); headersErr != nil {
+		s.logger.Warnw("Error writing headers", "err", headersErr)
+		return
 	}
+
 	var respStatus *status.Status
 	if err == nil {
 		respStatus = ErrorToStatus(s.ctx.Err())
 	} else {
 		respStatus = ErrorToStatus(err)
 	}
-	return s.ch.writeTrailers(s.stream, &webrtcpb.ResponseTrailers{
+
+	if trailersErr := s.ch.writeTrailers(s.stream, &webrtcpb.ResponseTrailers{
 		Status:   respStatus.Proto(),
 		Metadata: metadataToProto(s.trailer),
-	})
+	}); trailersErr != nil {
+		s.logger.Warnw("Error writing trailers", "err", trailersErr)
+	}
 }
 
 func (s *webrtcServerStream) writeHeaders() error {

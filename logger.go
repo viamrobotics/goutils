@@ -25,6 +25,10 @@ type ILogger interface {
 type ZapCompatibleLogger interface {
 	Desugar() *zap.Logger
 
+	// Not defined: Named(name string) *zap.SugaredLogger
+	//
+	// Use `Sublogger(logger, "name")` instead of calling `Named` directly.
+
 	Debug(args ...interface{})
 	Debugf(template string, args ...interface{})
 	Debugw(msg string, keysAndValues ...interface{})

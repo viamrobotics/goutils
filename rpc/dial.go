@@ -138,11 +138,11 @@ func dial(
 	if !dOpts.mdnsOptions.Disable && tryLocal && isJustDomain {
 		wg.Add(1)
 		go func(dOpts dialOptions) {
+			mdnsLogger := utils.Sublogger(logger, "mdns")
 			defer wg.Done()
-			if dOpts.debug {
-				logger.Debugw("trying mDNS", "address", address)
-			}
-			conn, cached, err := dialMulticastDNS(ctxParallel, address, logger, dOpts)
+
+			mdnsLogger.Debugw("trying mDNS", "address", address)
+			conn, cached, err := dialMulticastDNS(ctxParallel, address, mdnsLogger, dOpts)
 			if err != nil {
 				dialCh <- dialResult{err: err}
 			} else {
@@ -152,6 +152,7 @@ func dial(
 	}
 
 	if !dOpts.webrtcOpts.Disable {
+		webrtcLogger := utils.Sublogger(logger, "webrtc")
 		wg.Add(1)
 		go func(dOpts dialOptions) {
 			defer wg.Done()
@@ -168,7 +169,7 @@ func dial(
 					// that the direct dialing address might be different from the
 					// signaling address, but it seems better to fail fast and let the
 					// client fix any configuration issues.
-					logger.Errorw("failed to parse signaling address", "address", signalingAddress, "error", err)
+					webrtcLogger.Errorw("failed to parse signaling address", "address", signalingAddress, "error", err)
 					dialCh <- dialResult{err: err, skipDirect: true}
 					return
 				}
@@ -178,19 +179,17 @@ func dial(
 				// This path is also called by an mdns direct connection and ignores that case.
 				// This will skip all Authenticate/AuthenticateTo calls for the signaler.
 				if !dOpts.usingMDNS && dOpts.authMaterial == "" && dOpts.webrtcOpts.SignalingExternalAuthAuthMaterial != "" {
-					logger.Debug("using signaling's external auth as auth material")
+					webrtcLogger.Debug("using signaling's external auth as auth material")
 					dOpts.authMaterial = dOpts.webrtcOpts.SignalingExternalAuthAuthMaterial
 					dOpts.creds = Credentials{}
 				}
 			}
 
-			if dOpts.debug {
-				logger.Debugw(
-					"trying WebRTC",
-					"signaling_server", dOpts.webrtcOpts.SignalingServerAddress,
-					"host", originalAddress,
-				)
-			}
+			webrtcLogger.Debugw(
+				"trying WebRTC",
+				"signaling_server", dOpts.webrtcOpts.SignalingServerAddress,
+				"host", originalAddress,
+			)
 
 			conn, cached, err := dialFunc(
 				ctxParallel,
@@ -203,14 +202,14 @@ func dial(
 						dOpts.webrtcOpts.SignalingServerAddress,
 						originalAddress,
 						dOpts,
-						logger,
+						webrtcLogger,
 					)
 				})
 
 			switch {
 			case err == nil:
 				if dOpts.debug {
-					logger.Debugw("connected via WebRTC",
+					webrtcLogger.Debugw("connected via WebRTC",
 						"address", address,
 						"cached", cached,
 						"using mDNS", dOpts.usingMDNS,

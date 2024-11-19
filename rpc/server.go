@@ -614,7 +614,7 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 
 		if sOpts.webrtcOpts.ExternalSignalingAddress != "" {
 			logger.Infow(
-				"will run external signaling answerer",
+				"Running external signaling",
 				"signaling_address", sOpts.webrtcOpts.ExternalSignalingAddress,
 				"for_hosts", externalSignalingHosts,
 			)
@@ -631,7 +631,6 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 		}
 
 		if sOpts.webrtcOpts.EnableInternalSignaling {
-			logger.Debug("will run internal signaling service")
 			signalingCallQueue := NewMemoryWebRTCCallQueue(logger)
 			server.signalingCallQueue = signalingCallQueue
 			server.signalingServer = NewWebRTCSignalingServer(signalingCallQueue, nil, logger,
@@ -646,8 +645,8 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 			}
 
 			address := grpcListener.Addr().String()
-			logger.Debugw(
-				"will run internal signaling answerer",
+			logger.Infow(
+				"Running internal signaling",
 				"signaling_address", address,
 				"for_hosts", internalSignalingHosts,
 			)

@@ -11,7 +11,6 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/viamrobotics/webrtc/v3"
-	"go.uber.org/multierr"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -145,7 +144,8 @@ func checkExceptionalError(err error) error {
 				strings.Contains(s.Message(), "too_many_pings") ||
 				// RSDK-3025: Cloud Run has a max one hour timeout which will terminate gRPC
 				// streams, but leave the underlying connection open.
-				strings.Contains(s.Message(), "upstream max stream duration reached"))) {
+				strings.Contains(s.Message(), "upstream max stream duration reached") ||
+				strings.Contains(s.Message(), "server closed the stream without sending trailers"))) {
 		return nil
 	}
 	return err
@@ -408,7 +408,7 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 			)
 
 			// Close unhealthy connection.
-			err = multierr.Combine(err, pc.GracefulClose())
+			utils.UncheckedError(pc.GracefulClose())
 		}
 	}()
 
@@ -588,7 +588,8 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 		aa.server.counters.TotalTimeConnectingMillis.Add(time.Since(connectionStartTime).Milliseconds())
 	case <-ctx.Done():
 		// Timed out or signaling server was closed.
-		aa.sendError(multierr.Combine(ctx.Err(), serverChannel.Close()))
+		serverChannel.Close()
+		aa.sendError(ctx.Err())
 		aa.server.counters.PeerConnectionErrors.Add(1)
 		return ctx.Err()
 	}
