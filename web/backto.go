@@ -6,9 +6,9 @@ import (
 )
 
 var hostnameWhitelist = map[string]bool{
-	"localhost": true,
-	"viam.dev":  true,
-	"viam.com":  true,
+	"localhost":    true,
+	"app.viam.dev": true,
+	"app.viam.com": true,
 }
 
 func isWhitelisted(hostname string) bool {
@@ -16,11 +16,11 @@ func isWhitelisted(hostname string) bool {
 }
 
 // IsValidBacktoURL returns true if the passed string is a secure URL to a whitelisted
-// hostname. The whitelisted hostnames are: "localhost", "viam.dev", and "viam.com".
+// hostname. The whitelisted hostnames are: "localhost", "app.viam.dev", and "app.viam.com".
 //
 //   - https://example.com -> false
-//   - http://viam.com/path/name -> false
-//   - https://viam.com/path/name -> true
+//   - http://app.viam.com/path/name -> false
+//   - https://app.viam.com/path/name -> true
 func IsValidBacktoURL(path string) bool {
 	normalized := strings.ReplaceAll(path, "\\", "/")
 	url, err := url.ParseRequestURI(normalized)

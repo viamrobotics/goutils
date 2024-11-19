@@ -18,35 +18,35 @@ func TestIsValidBacktoURL(t *testing.T) {
 	})
 
 	t.Run("rejects invalid production URLs", func(t *testing.T) {
-		test.That(t, IsValidBacktoURL("http://viam.com"), test.ShouldBeFalse)
-		test.That(t, IsValidBacktoURL("ftp://viam.com"), test.ShouldBeFalse)
-		test.That(t, IsValidBacktoURL("://viam.com"), test.ShouldBeFalse)
-		test.That(t, IsValidBacktoURL("//viam.com"), test.ShouldBeFalse)
-		test.That(t, IsValidBacktoURL("//viam.com/some/path"), test.ShouldBeFalse)
-		test.That(t, IsValidBacktoURL("viam.com"), test.ShouldBeFalse)
-		test.That(t, IsValidBacktoURL("viam.com/some/path"), test.ShouldBeFalse)
-		test.That(t, IsValidBacktoURL("www.viam.com"), test.ShouldBeFalse)
+		test.That(t, IsValidBacktoURL("http://app.viam.com"), test.ShouldBeFalse)
+		test.That(t, IsValidBacktoURL("ftp://app.viam.com"), test.ShouldBeFalse)
+		test.That(t, IsValidBacktoURL("://app.viam.com"), test.ShouldBeFalse)
+		test.That(t, IsValidBacktoURL("//app.viam.com"), test.ShouldBeFalse)
+		test.That(t, IsValidBacktoURL("//app.viam.com/some/path"), test.ShouldBeFalse)
+		test.That(t, IsValidBacktoURL("app.viam.com"), test.ShouldBeFalse)
+		test.That(t, IsValidBacktoURL("app.viam.com/some/path"), test.ShouldBeFalse)
+		test.That(t, IsValidBacktoURL("www.app.viam.com"), test.ShouldBeFalse)
 	})
 
 	t.Run("accepts valid production URLs", func(t *testing.T) {
-		test.That(t, IsValidBacktoURL("https://viam.com"), test.ShouldBeTrue)
-		test.That(t, IsValidBacktoURL("https://viam.com/some/path"), test.ShouldBeTrue)
+		test.That(t, IsValidBacktoURL("https://app.viam.com"), test.ShouldBeTrue)
+		test.That(t, IsValidBacktoURL("https://app.viam.com/some/path"), test.ShouldBeTrue)
 	})
 
 	t.Run("rejects invalid staging URLs", func(t *testing.T) {
-		test.That(t, IsValidBacktoURL("http://viam.dev"), test.ShouldBeFalse)
-		test.That(t, IsValidBacktoURL("ftp://viam.dev"), test.ShouldBeFalse)
-		test.That(t, IsValidBacktoURL("://viam.dev"), test.ShouldBeFalse)
-		test.That(t, IsValidBacktoURL("//viam.dev"), test.ShouldBeFalse)
-		test.That(t, IsValidBacktoURL("//viam.dev/some/path"), test.ShouldBeFalse)
-		test.That(t, IsValidBacktoURL("viam.dev"), test.ShouldBeFalse)
-		test.That(t, IsValidBacktoURL("viam.dev/some/path"), test.ShouldBeFalse)
-		test.That(t, IsValidBacktoURL("www.viam.dev"), test.ShouldBeFalse)
+		test.That(t, IsValidBacktoURL("http://app.viam.dev"), test.ShouldBeFalse)
+		test.That(t, IsValidBacktoURL("ftp://app.viam.dev"), test.ShouldBeFalse)
+		test.That(t, IsValidBacktoURL("://app.viam.dev"), test.ShouldBeFalse)
+		test.That(t, IsValidBacktoURL("//app.viam.dev"), test.ShouldBeFalse)
+		test.That(t, IsValidBacktoURL("//app.viam.dev/some/path"), test.ShouldBeFalse)
+		test.That(t, IsValidBacktoURL("app.viam.dev"), test.ShouldBeFalse)
+		test.That(t, IsValidBacktoURL("app.viam.dev/some/path"), test.ShouldBeFalse)
+		test.That(t, IsValidBacktoURL("www.app.viam.dev"), test.ShouldBeFalse)
 	})
 
 	t.Run("accepts valid staging URLs", func(t *testing.T) {
-		test.That(t, IsValidBacktoURL("https://viam.dev"), test.ShouldBeTrue)
-		test.That(t, IsValidBacktoURL("https://viam.dev/some/path"), test.ShouldBeTrue)
+		test.That(t, IsValidBacktoURL("https://app.viam.dev"), test.ShouldBeTrue)
+		test.That(t, IsValidBacktoURL("https://app.viam.dev/some/path"), test.ShouldBeTrue)
 	})
 
 	t.Run("rejects invalid local URLs", func(t *testing.T) {
