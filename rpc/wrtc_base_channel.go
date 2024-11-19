@@ -6,8 +6,8 @@ import (
 	"io"
 	"strings"
 	"sync"
+	"sync/atomic"
 
-	"github.com/pion/dtls/v2"
 	"github.com/pion/sctp"
 	"github.com/viamrobotics/webrtc/v3"
 	"google.golang.org/protobuf/proto"
@@ -22,8 +22,7 @@ type webrtcBaseChannel struct {
 	ctx                     context.Context
 	cancel                  func()
 	ready                   chan struct{}
-	closed                  bool
-	closedReason            error
+	closed                  atomic.Bool
 	activeBackgroundWorkers sync.WaitGroup
 	logger                  utils.ZapCompatibleLogger
 	bufferWriteMu           sync.RWMutex
@@ -51,7 +50,7 @@ func newBaseChannel(
 	}
 	ch.bufferWriteCond = sync.NewCond(ch.bufferWriteMu.RLocker())
 	dataChannel.OnOpen(ch.onChannelOpen)
-	dataChannel.OnClose(ch.onChannelClose)
+	dataChannel.OnClose(ch.Close)
 	dataChannel.OnError(ch.onChannelError)
 	dataChannel.SetBufferedAmountLowThreshold(bufferThreshold)
 	dataChannel.OnBufferedAmountLow(func() {
@@ -75,16 +74,17 @@ func newBaseChannel(
 	}
 	connStateChanged := func(connectionState webrtc.ICEConnectionState) {
 		ch.activeBackgroundWorkers.Add(1)
+
 		utils.PanicCapturingGo(func() {
 			defer ch.activeBackgroundWorkers.Done()
 
-			ch.mu.Lock()
-			defer ch.mu.Unlock()
-			if ch.closed {
+			if ch.closed.Load() {
 				doPeerDone()
 				return
 			}
 
+			ch.mu.Lock()
+			defer ch.mu.Unlock()
 			switch connectionState {
 			case webrtc.ICEConnectionStateDisconnected,
 				webrtc.ICEConnectionStateFailed,
@@ -154,34 +154,35 @@ func newBaseChannel(
 	return ch
 }
 
-func (ch *webrtcBaseChannel) closeWithReason(err error) error {
+// Close will always wait for background goroutines to exit before returning. It is safe to
+// concurrently call `Close`.
+//
+// RSDK-8941: The above is a statement of expectations from existing code. Not a claim it is
+// factually correct.
+func (ch *webrtcBaseChannel) Close() {
+	// RSDK-8941: Having this instead early return when `closed` is set will result in `TestServer`
+	// to leak goroutines created by `dialWebRTC`.
+	ch.closed.CompareAndSwap(false, true)
+
 	ch.mu.Lock()
-	defer ch.mu.Unlock()
-	if ch.closed {
-		return nil
-	}
-	ch.closed = true
-	ch.closedReason = err
+	// APP-6839: We must hold the `bufferWriteMu` to avoid a "missed notification" that can happen
+	// when a `webrtcBaseChannel.write` happens concurrently with `closeWithReason`. Specifically,
+	// this lock makes atomic the `ch.cancel` with the broadcast. Such that a call to write that can
+	// `Wait` on this condition variable must either:
+	// - Observe the context being canceled, or
+	// - Call `Wait` before* the following `Broadcast` is invoked.
+	ch.bufferWriteMu.Lock()
 	ch.cancel()
 	ch.bufferWriteCond.Broadcast()
+	ch.bufferWriteMu.Unlock()
+	ch.mu.Unlock()
 
-	// Underlying connection may already be closed; ignore "conn is closed"
-	// errors.
-	if err := ch.peerConn.GracefulClose(); !errors.Is(err, dtls.ErrConnClosed) {
-		return err
-	}
-	return nil
+	utils.UncheckedError(ch.peerConn.GracefulClose())
+	ch.activeBackgroundWorkers.Wait()
 }
 
-func (ch *webrtcBaseChannel) Close() error {
-	defer ch.activeBackgroundWorkers.Wait()
-	return ch.closeWithReason(nil)
-}
-
-func (ch *webrtcBaseChannel) Closed() (bool, error) {
-	ch.mu.Lock()
-	defer ch.mu.Unlock()
-	return ch.closed, ch.closedReason
+func (ch *webrtcBaseChannel) Closed() bool {
+	return ch.closed.Load()
 }
 
 func (ch *webrtcBaseChannel) Ready() <-chan struct{} {
@@ -190,14 +191,6 @@ func (ch *webrtcBaseChannel) Ready() <-chan struct{} {
 
 func (ch *webrtcBaseChannel) onChannelOpen() {
 	close(ch.ready)
-}
-
-var errDataChannelClosed = errors.New("data channel closed")
-
-func (ch *webrtcBaseChannel) onChannelClose() {
-	if err := ch.closeWithReason(errDataChannelClosed); err != nil {
-		ch.logger.Errorw("error closing channel", "error", err)
-	}
 }
 
 // isUserInitiatedAbortChunkErr returns true if the error is an abort chunk
@@ -215,9 +208,7 @@ func (ch *webrtcBaseChannel) onChannelError(err error) {
 		return
 	}
 	ch.logger.Errorw("channel error", "error", err)
-	if err := ch.closeWithReason(err); err != nil {
-		ch.logger.Errorw("error closing channel", "error", err)
-	}
+	ch.Close()
 }
 
 const maxDataChannelSize = 65535
@@ -230,8 +221,10 @@ func (ch *webrtcBaseChannel) write(msg proto.Message) error {
 	ch.bufferWriteCond.L.Lock()
 	for {
 		if ch.ctx.Err() != nil {
+			ch.bufferWriteCond.L.Unlock()
 			return io.ErrClosedPipe
 		}
+
 		// RSDK-9239: Only wait when we're strictly over the threshold. Pion invokes the registered
 		// callback (notify `bufferWriteCond`) when moving from larger than bufferThreshold to less
 		// than or equal to.

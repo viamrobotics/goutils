@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"sync/atomic"
 
 	"github.com/viamrobotics/webrtc/v3"
 	"google.golang.org/grpc"
@@ -43,6 +44,49 @@ type webrtcServer struct {
 
 	onPeerAdded   func(pc *webrtc.PeerConnection)
 	onPeerRemoved func(pc *webrtc.PeerConnection)
+
+	counters struct {
+		PeersConnected       atomic.Int64
+		PeersDisconnected    atomic.Int64
+		PeerConnectionErrors atomic.Int64
+		HeadersProcessed     atomic.Int64
+
+		// TotalTimeConnectingMillis just counts successful connection attempts.
+		TotalTimeConnectingMillis atomic.Int64
+	}
+}
+
+// WebRTCGrpcStats are stats of the webrtc variety.
+type WebRTCGrpcStats struct {
+	PeersConnected            int64
+	PeersDisconnected         int64
+	PeerConnectionErrors      int64
+	PeersActive               int64
+	HeadersProcessed          int64
+	CallTicketsAvailable      int32
+	TotalTimeConnectingMillis int64
+
+	// When the FTDC frontend is more feature rich, we can remove this and let the frontend compute
+	// the value.
+	AverageTimeConnectingMillis float64
+}
+
+// Stats returns stats.
+func (srv *webrtcServer) Stats() WebRTCGrpcStats {
+	ret := WebRTCGrpcStats{
+		PeersConnected:            srv.counters.PeersConnected.Load(),
+		PeersDisconnected:         srv.counters.PeersDisconnected.Load(),
+		PeerConnectionErrors:      srv.counters.PeerConnectionErrors.Load(),
+		HeadersProcessed:          srv.counters.HeadersProcessed.Load(),
+		CallTicketsAvailable:      int32(cap(srv.callTickets) - len(srv.callTickets)),
+		TotalTimeConnectingMillis: srv.counters.TotalTimeConnectingMillis.Load(),
+	}
+	ret.PeersActive = ret.PeersConnected - ret.PeersDisconnected
+	if ret.PeersConnected > 0 {
+		ret.AverageTimeConnectingMillis = float64(ret.TotalTimeConnectingMillis) / float64(ret.PeersConnected)
+	}
+
+	return ret
 }
 
 // from grpc.
@@ -112,6 +156,7 @@ func (srv *webrtcServer) Stop() {
 	srv.peerConnsMu.Unlock()
 
 	for _, pc := range peerConns {
+		srv.counters.PeersDisconnected.Add(1)
 		if err := pc.GracefulClose(); err != nil {
 			srv.logger.Errorw("error closing peer connection", "error", err)
 		}
@@ -206,6 +251,7 @@ func (srv *webrtcServer) removePeer(peerConn *webrtc.PeerConnection) {
 	srv.peerConnsMu.Lock()
 	delete(srv.peerConns, peerConn)
 	srv.peerConnsMu.Unlock()
+	srv.counters.PeersDisconnected.Add(1)
 	if srv.onPeerRemoved != nil {
 		srv.onPeerRemoved(peerConn)
 	}
@@ -230,7 +276,8 @@ func (srv *webrtcServer) unaryHandler(ss interface{}, handler methodHandler) han
 
 		response, err := handler(ss, ctx, s.webrtcBaseStream.RecvMsg, srv.unaryInt)
 		if err != nil {
-			return s.closeWithSendError(err)
+			s.closeWithSendError(err)
+			return err
 		}
 
 		err = s.SendMsg(response)
@@ -239,7 +286,8 @@ func (srv *webrtcServer) unaryHandler(ss interface{}, handler methodHandler) han
 			return err
 		}
 
-		return s.closeWithSendError(nil)
+		s.closeWithSendError(nil)
+		return nil
 	}
 }
 
@@ -262,6 +310,7 @@ func (srv *webrtcServer) streamHandler(ss interface{}, method string, desc grpc.
 		if errors.Is(err, io.EOF) {
 			return nil
 		}
-		return s.closeWithSendError(err)
+		s.closeWithSendError(err)
+		return nil
 	}
 }

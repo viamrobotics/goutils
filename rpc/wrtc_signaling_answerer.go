@@ -11,7 +11,6 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/viamrobotics/webrtc/v3"
-	"go.uber.org/multierr"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -337,6 +336,8 @@ type answerAttempt struct {
 // the designated WebRTC data channel is passed off to the underlying Server which
 // is then used as the server end of a gRPC connection.
 func (aa *answerAttempt) connect(ctx context.Context) (err error) {
+	connectionStartTime := time.Now()
+
 	// If SOCKS proxy is indicated by environment, extend WebRTC config with an
 	// `OptionalWebRTCConfig` call to the signaling server. The usage of a SOCKS
 	// proxy indicates that the server may need a local TURN ICE candidate to
@@ -361,8 +362,10 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 			// Any error below indicates the signaling server is not present.
 			if s, ok := status.FromError(err); ok && (s.Code() == codes.Unimplemented ||
 				(s.Code() == codes.InvalidArgument && s.Message() == hostNotAllowedMsg)) {
+				aa.server.counters.PeerConnectionErrors.Add(1)
 				return ErrNoWebRTCSignaler
 			}
+			aa.server.counters.PeerConnectionErrors.Add(1)
 			return err
 		}
 		webrtcConfig = extendWebRTCConfig(&webrtcConfig, configResp.Config, true)
@@ -378,6 +381,7 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 	)
 	if err != nil {
 		aa.sendError(err)
+		aa.server.counters.PeerConnectionErrors.Add(1)
 		return err
 	}
 
@@ -413,6 +417,7 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 	if aa.trickleEnabled {
 		answer, err := pc.CreateAnswer(nil)
 		if err != nil {
+			aa.server.counters.PeerConnectionErrors.Add(1)
 			return err
 		}
 
@@ -491,6 +496,7 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 
 		err = pc.SetLocalDescription(answer)
 		if err != nil {
+			aa.server.counters.PeerConnectionErrors.Add(1)
 			return err
 		}
 
@@ -500,12 +506,14 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 			// candidate information. This is a Nagle's algorithm-esque batching optimization. I
 			// think.
 		case <-ctx.Done():
+			aa.server.counters.PeerConnectionErrors.Add(1)
 			return ctx.Err()
 		}
 	}
 
 	encodedSDP, err := EncodeSDP(pc.LocalDescription())
 	if err != nil {
+		aa.server.counters.PeerConnectionErrors.Add(1)
 		aa.sendError(err)
 		return err
 	}
@@ -518,6 +526,7 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 			},
 		},
 	}); err != nil {
+		aa.server.counters.PeerConnectionErrors.Add(1)
 		return err
 	}
 	close(initSent)
@@ -574,9 +583,13 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 	case <-serverChannel.Ready():
 		// Happy path
 		successful = true
+		aa.server.counters.PeersConnected.Add(1)
+		aa.server.counters.TotalTimeConnectingMillis.Add(time.Since(connectionStartTime).Milliseconds())
 	case <-ctx.Done():
 		// Timed out or signaling server was closed.
-		aa.sendError(multierr.Combine(ctx.Err(), serverChannel.Close()))
+		serverChannel.Close()
+		aa.sendError(ctx.Err())
+		aa.server.counters.PeerConnectionErrors.Add(1)
 		return ctx.Err()
 	}
 

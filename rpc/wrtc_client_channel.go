@@ -75,8 +75,16 @@ func (ch *webrtcClientChannel) PeerConn() *webrtc.PeerConnection {
 	return ch.webrtcBaseChannel.peerConn
 }
 
-// Close closes all streams and the underlying channel.
+// Close returns a nil error to satisfy ClientConn. Prefer `close` for the internal API that has no
+// return value. There's nothing to do when close "has an error". This choice simplifies error
+// handling.
 func (ch *webrtcClientChannel) Close() error {
+	ch.close()
+	return nil
+}
+
+// Close closes all streams and the underlying channel.
+func (ch *webrtcClientChannel) close() {
 	ch.mu.Lock()
 	streamsToClose := make(map[uint64]activeWebRTCClientStream, len(ch.streams))
 	for k, v := range ch.streams {
@@ -86,7 +94,7 @@ func (ch *webrtcClientChannel) Close() error {
 	for _, s := range streamsToClose {
 		s.cs.Close()
 	}
-	return ch.webrtcBaseChannel.Close()
+	ch.webrtcBaseChannel.Close()
 }
 
 // Invoke sends the RPC request on the wire and returns after response is

@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"sync"
+	"testing"
 	"time"
 
 	"github.com/pkg/errors"
@@ -147,13 +148,6 @@ func dialWebRTC(
 		return nil, err
 	}
 
-	var successful bool
-	defer func() {
-		if !successful {
-			utils.UncheckedError(peerConn.GracefulClose())
-		}
-	}()
-
 	var (
 		statsMu                                        sync.Mutex
 		callUpdates                                    int
@@ -161,8 +155,12 @@ func dialWebRTC(
 	)
 	onICEConnected := func() {
 		// Delay by up to 5s to allow more caller updates/better stats.
+		waitTime := 5 * time.Second
+		if testing.Testing() {
+			waitTime = 100 * time.Millisecond
+		}
 		select {
-		case <-time.After(5 * time.Second):
+		case <-time.After(waitTime):
 		case <-ctx.Done():
 		}
 
@@ -180,6 +178,14 @@ func dialWebRTC(
 
 	//nolint:contextcheck
 	clientCh := newWebRTCClientChannel(peerConn, dataChannel, onICEConnected, logger, dOpts.unaryInterceptor, dOpts.streamInterceptor)
+
+	var successful bool
+	defer func() {
+		if !successful {
+			clientCh.close()
+			utils.UncheckedError(peerConn.GracefulClose())
+		}
+	}()
 
 	exchangeCtx, exchangeCancel := context.WithCancelCause(signalCtx)
 
