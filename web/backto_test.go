@@ -64,4 +64,19 @@ func TestIsValidBacktoURL(t *testing.T) {
 		test.That(t, IsValidBacktoURL("http://localhost"), test.ShouldBeTrue)
 		test.That(t, IsValidBacktoURL("http://localhost/some/path"), test.ShouldBeTrue)
 	})
+
+	t.Run("rejects invalid temp PR env URLs", func(t *testing.T) {
+		test.That(t, IsValidBacktoURL("http://pr-1-appmain-bplesliplq-uc.a.run.app"), test.ShouldBeFalse)
+		test.That(t, IsValidBacktoURL("ftp://pr-12-appmain-bplesliplq-uc.a.run.app"), test.ShouldBeFalse)
+		test.That(t, IsValidBacktoURL("://pr-123-appmain-bplesliplq-uc.a.run.app"), test.ShouldBeFalse)
+		test.That(t, IsValidBacktoURL("//pr-1234-appmain-bplesliplq-uc.a.run.app"), test.ShouldBeFalse)
+		test.That(t, IsValidBacktoURL("//pr-12345-appmain-bplesliplq-uc.a.run.app/some/path"), test.ShouldBeFalse)
+		test.That(t, IsValidBacktoURL("pr-1234-appmain-bplesliplq-uc.a.run.app"), test.ShouldBeFalse)
+		test.That(t, IsValidBacktoURL("pr-123-appmain-bplesliplq-uc.a.run.app/some/path"), test.ShouldBeFalse)
+	})
+
+	t.Run("accepts valid temp PR env URLs", func(t *testing.T) {
+		test.That(t, IsValidBacktoURL("https://pr-12345-appmain-bplesliplq-uc.a.run.app"), test.ShouldBeTrue)
+		test.That(t, IsValidBacktoURL("https://pr-6789-appmain-bplesliplq-uc.a.run.app/some/path"), test.ShouldBeTrue)
+	})
 }

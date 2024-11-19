@@ -1,7 +1,9 @@
 package web
 
 import (
+	"fmt"
 	"net/url"
+	"regexp"
 	"strings"
 )
 
@@ -12,6 +14,18 @@ var hostnameWhitelist = map[string]bool{
 }
 
 func isWhitelisted(hostname string) bool {
+	fmt.Printf("hostname: %v\n", hostname)
+
+	regex, err := regexp.Compile("pr-(\\d+)-appmain-bplesliplq-uc.a.run.app")
+	if err != nil {
+		fmt.Errorf("Error compiling regex for whitelisted hostnames: %+v", err)
+		return false
+	}
+
+	if regex.MatchString(hostname) {
+		return true
+	}
+
 	return hostnameWhitelist[hostname]
 }
 
