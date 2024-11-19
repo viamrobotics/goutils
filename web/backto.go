@@ -1,7 +1,6 @@
 package web
 
 import (
-	"fmt"
 	"net/url"
 	"regexp"
 	"strings"
@@ -14,8 +13,6 @@ var hostnameWhitelist = map[string]bool{
 }
 
 func isWhitelisted(hostname string) bool {
-	fmt.Printf("hostname: %v\n", hostname)
-
 	isPRTempEnv, _ := regexp.MatchString("pr-(\\d+)-appmain-bplesliplq-uc.a.run.app", hostname)
 	if isPRTempEnv {
 		return true
