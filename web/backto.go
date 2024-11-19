@@ -13,7 +13,11 @@ var hostnameWhitelist = map[string]bool{
 }
 
 func isWhitelisted(hostname string) bool {
-	isPRTempEnv, _ := regexp.MatchString("pr-(\\d+)-appmain-bplesliplq-uc.a.run.app", hostname)
+	isPRTempEnv, err := regexp.MatchString("pr-(\\d+)-appmain-bplesliplq-uc.a.run.app", hostname)
+	if err != nil {
+		return false
+	}
+
 	if isPRTempEnv {
 		return true
 	}
