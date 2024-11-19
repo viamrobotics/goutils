@@ -39,7 +39,7 @@ type ManagedProcess interface {
 
 // NewManagedProcess returns a new, unstarted, from the given configuration.
 func NewManagedProcess(config ProcessConfig, logger utils.ZapCompatibleLogger) ManagedProcess {
-	logger = utils.Sublogger(logger, fmt.Sprintf("process.%s_%s", config.ID, config.Name))
+	logger = utils.Sublogger(logger, config.ID)
 
 	if config.StopSignal == 0 {
 		config.StopSignal = syscall.SIGTERM

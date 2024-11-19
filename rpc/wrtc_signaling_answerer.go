@@ -144,7 +144,8 @@ func checkExceptionalError(err error) error {
 				strings.Contains(s.Message(), "too_many_pings") ||
 				// RSDK-3025: Cloud Run has a max one hour timeout which will terminate gRPC
 				// streams, but leave the underlying connection open.
-				strings.Contains(s.Message(), "upstream max stream duration reached"))) {
+				strings.Contains(s.Message(), "upstream max stream duration reached") ||
+				strings.Contains(s.Message(), "server closed the stream without sending trailers"))) {
 		return nil
 	}
 	return err
