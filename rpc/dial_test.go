@@ -1150,10 +1150,11 @@ func TestDialMulticastDNS(t *testing.T) {
 
 	t.Run("fix mdns instance name", func(t *testing.T) {
 		rpcServer, err := NewServer(
-			logger,
+			logger.Named("server"),
 			WithUnauthenticated(),
 			WithInstanceNames("this.is.a.test.cloud"),
 		)
+		logger = logger.Named("fixmdns")
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, rpcServer.Start(), test.ShouldBeNil)
 		test.That(t, rpcServer.InstanceNames(), test.ShouldHaveLength, 1)
@@ -1182,7 +1183,7 @@ func TestDialMulticastDNS(t *testing.T) {
 
 	t.Run("unauthenticated", func(t *testing.T) {
 		rpcServer, err := NewServer(
-			logger,
+			logger.Named("server"),
 			WithUnauthenticated(),
 		)
 		test.That(t, err, test.ShouldBeNil)
@@ -1192,11 +1193,14 @@ func TestDialMulticastDNS(t *testing.T) {
 		conn, err := Dial(
 			context.Background(),
 			rpcServer.InstanceNames()[0],
-			logger,
+			logger.Named("unauthenticated1"),
 			WithInsecure(),
 			WithDialDebug(),
 		)
 		test.That(t, err, test.ShouldBeNil)
+		logger.Info("Dial1 success")
+		// There's no webrtc. The connection must not be backed by a PeerConn.
+		test.That(t, conn.PeerConn(), test.ShouldBeNil)
 		test.That(t, conn.Close(), test.ShouldBeNil)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -1204,32 +1208,36 @@ func TestDialMulticastDNS(t *testing.T) {
 		_, err = Dial(
 			ctx,
 			rpcServer.InstanceNames()[0],
-			logger,
+			logger.Named("unauthenticated2"),
 			WithInsecure(),
 			WithDialDebug(),
 			WithDialMulticastDNSOptions(DialMulticastDNSOptions{Disable: true}),
 		)
 		test.That(t, err, test.ShouldResemble, context.DeadlineExceeded)
+		logger.Info("Dial2 'success'")
 
 		test.That(t, rpcServer.Stop(), test.ShouldBeNil)
 
+		logger.Info("Dial2 server stopped")
 		rpcServer, err = NewServer(
-			logger,
+			logger.Named("server"),
 			WithUnauthenticated(),
 			WithWebRTCServerOptions(WebRTCServerOptions{Enable: true}),
 		)
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, rpcServer.Start(), test.ShouldBeNil)
+		logger.Info("Dial3 server started")
 
 		conn, err = Dial(
 			context.Background(),
 			rpcServer.InstanceNames()[0],
-			logger,
+			logger.Named("unauthenticated3"),
 			WithInsecure(),
 			WithDialDebug(),
 			WithDisableDirectGRPC(),
 		)
 		test.That(t, err, test.ShouldBeNil)
+		test.That(t, conn.PeerConn(), test.ShouldNotBeNil)
 		test.That(t, conn.Close(), test.ShouldBeNil)
 
 		test.That(t, rpcServer.Stop(), test.ShouldBeNil)
@@ -1237,13 +1245,14 @@ func TestDialMulticastDNS(t *testing.T) {
 
 	t.Run("authenticated", func(t *testing.T) {
 		rpcServer, err := NewServer(
-			logger,
+			logger.Named("server"),
 			WithAuthHandler("fake", AuthHandlerFunc(func(ctx context.Context, entity, payload string) (map[string]string, error) {
 				return map[string]string{}, nil
 			})),
 		)
 		test.That(t, err, test.ShouldBeNil)
 
+		logger = logger.Named("authenticated")
 		err = rpcServer.RegisterServiceServer(
 			context.Background(),
 			&pb.EchoService_ServiceDesc,
@@ -1309,7 +1318,7 @@ func TestDialMulticastDNS(t *testing.T) {
 	t.Run("authenticated with names", func(t *testing.T) {
 		names := []string{primitive.NewObjectID().Hex(), primitive.NewObjectID().Hex()}
 		rpcServer, err := NewServer(
-			logger,
+			logger.Named("server"),
 			WithAuthHandler("fake", AuthHandlerFunc(func(ctx context.Context, entity, payload string) (map[string]string, error) {
 				return map[string]string{}, nil
 			})),
@@ -1318,6 +1327,7 @@ func TestDialMulticastDNS(t *testing.T) {
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, rpcServer.InstanceNames(), test.ShouldResemble, names)
 
+		logger = logger.Named("authwithnames")
 		err = rpcServer.RegisterServiceServer(
 			context.Background(),
 			&pb.EchoService_ServiceDesc,

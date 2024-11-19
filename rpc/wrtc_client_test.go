@@ -329,7 +329,9 @@ func TestWebRTCClientDialConcurrentWithMongoDBQueue(t *testing.T) {
 //
 //nolint:thelper
 func testWebRTCClientDialConcurrent(t *testing.T, signalingCallQueue WebRTCCallQueue, logger utils.ZapCompatibleLogger) {
-	signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, logger,
+	logger = utils.Sublogger(logger, "test")
+
+	signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, utils.Sublogger(logger, "signaling-server"),
 		defaultHeartbeatInterval)
 	defer signalingServer.Close()
 
@@ -362,12 +364,12 @@ func testWebRTCClientDialConcurrent(t *testing.T, signalingCallQueue WebRTCCallQ
 
 	dialErrCh := make(chan error, 2)
 	go func() {
-		t.Log("starting dial 1")
+		logger.Info("starting dial 1")
 		cc, err := DialWebRTC(
 			context.Background(),
 			grpcListener.Addr().String(),
 			host,
-			logger,
+			utils.Sublogger(logger, "dial1"),
 			WithWebRTCOptions(DialWebRTCOptions{
 				SignalingInsecure: true,
 			}),
@@ -378,12 +380,12 @@ func testWebRTCClientDialConcurrent(t *testing.T, signalingCallQueue WebRTCCallQ
 		dialErrCh <- err
 	}()
 	go func() {
-		t.Log("starting dial 2")
+		logger.Info("starting dial 2")
 		cc, err := DialWebRTC(
 			context.Background(),
 			grpcListener.Addr().String(),
 			host,
-			logger,
+			utils.Sublogger(logger, "dial2"),
 			WithWebRTCOptions(DialWebRTCOptions{
 				SignalingInsecure: true,
 			}),
@@ -394,11 +396,11 @@ func testWebRTCClientDialConcurrent(t *testing.T, signalingCallQueue WebRTCCallQ
 		dialErrCh <- err
 	}()
 
-	t.Log("answer client 1 is receiving")
+	logger.Info("answer client 1 is receiving")
 	offer1, err := answerClient1.Recv()
 	test.That(t, err, test.ShouldBeNil)
 
-	t.Log("answer client 2 is receiving")
+	logger.Info("answer client 2 is receiving")
 	offer2, err := answerClient2.Recv()
 	test.That(t, err, test.ShouldBeNil)
 

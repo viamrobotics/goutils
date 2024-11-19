@@ -11,7 +11,6 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/viamrobotics/webrtc/v3"
-	"go.uber.org/multierr"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -408,7 +407,7 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 			)
 
 			// Close unhealthy connection.
-			err = multierr.Combine(err, pc.GracefulClose())
+			utils.UncheckedError(pc.GracefulClose())
 		}
 	}()
 

@@ -2,16 +2,13 @@ package rpc
 
 import (
 	"context"
-	"fmt"
 	"io"
-	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/pkg/errors"
 	"github.com/viamrobotics/webrtc/v3"
-	"go.uber.org/multierr"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -102,10 +99,9 @@ func dialWebRTC(
 	host string,
 	dOpts dialOptions,
 	logger utils.ZapCompatibleLogger,
-) (ch *webrtcClientChannel, err error) {
+) (*webrtcClientChannel, error) {
 	dialStart := time.Now()
 
-	logger = utils.Sublogger(logger, "webrtc")
 	dialCtx, timeoutCancel := context.WithTimeout(ctx, getDefaultOfferDeadline())
 	defer timeoutCancel()
 
@@ -120,7 +116,9 @@ func dialWebRTC(
 		return nil, err
 	}
 	defer func() {
-		err = multierr.Combine(err, conn.Close())
+		// Ignore any errors closing the signaling server connection. That step has no bearing on
+		// whether the PeerConnection was successfully made.
+		utils.UncheckedError(conn.Close())
 	}()
 
 	logger.Debugw("connected to signaling server", "signaling_server", signalingServer)
@@ -143,17 +141,12 @@ func dialWebRTC(
 	if dOpts.webrtcOpts.Config != nil {
 		config = *dOpts.webrtcOpts.Config
 	}
+
 	extendedConfig := extendWebRTCConfig(&config, configResp.Config, false)
 	peerConn, dataChannel, err := newPeerConnectionForClient(ctx, extendedConfig, dOpts.webrtcOpts.DisableTrickleICE, logger)
 	if err != nil {
 		return nil, err
 	}
-	var successful bool
-	defer func() {
-		if !successful {
-			err = multierr.Combine(err, peerConn.GracefulClose())
-		}
-	}()
 
 	var (
 		statsMu                                        sync.Mutex
@@ -186,40 +179,33 @@ func dialWebRTC(
 	//nolint:contextcheck
 	clientCh := newWebRTCClientChannel(peerConn, dataChannel, onICEConnected, logger, dOpts.unaryInterceptor, dOpts.streamInterceptor)
 
-	exchangeCtx, exchangeCancel := context.WithCancel(signalCtx)
-	defer exchangeCancel()
+	var successful bool
+	defer func() {
+		if !successful {
+			clientCh.close()
+			utils.UncheckedError(peerConn.GracefulClose())
+		}
+	}()
+
+	exchangeCtx, exchangeCancel := context.WithCancelCause(signalCtx)
 
 	// bool representing whether initial sdp exchange has occurred
 	haveInit := false
 
-	errCh := make(chan error)
-	sendErr := func(err error) {
-		if haveInit && isEOF(err) {
-			return
-		}
-		if s, ok := status.FromError(err); ok && strings.Contains(s.Message(), noActiveOfferStr) {
-			return
-		}
-		logger.Warnf("caller received err %v of type %T", err, err)
-		select {
-		case <-exchangeCtx.Done():
-		case errCh <- err:
-		}
-	}
 	var uuid string
 	// only send once since exchange may end or ICE may end
-	var sendDoneErrorOnce sync.Once
-	sendDone := func() error {
-		var err error
-		sendDoneErrorOnce.Do(func() {
-			_, err = signalingClient.CallUpdate(exchangeCtx, &webrtcpb.CallUpdateRequest{
+	var sendDoneOnce sync.Once
+	sendDone := func() {
+		sendDoneOnce.Do(func() {
+			if _, err = signalingClient.CallUpdate(signalCtx, &webrtcpb.CallUpdateRequest{
 				Uuid: uuid,
 				Update: &webrtcpb.CallUpdateRequest_Done{
 					Done: true,
 				},
-			})
+			}); err != nil {
+				logger.Warnw("Error sending CallUpdate", "err", err)
+			}
 		})
-		return err
 	}
 
 	// this channel blocks goroutines spawned for each ICE candidate in OnIceCandidate from sending a CallUpdateRequest
@@ -234,13 +220,22 @@ func dialWebRTC(
 		}
 
 		var pendingCandidates sync.WaitGroup
+
+		// waitOneHost is closed when the first ICE candidate of type `Host` (e.g: 127.0.0.1) is
+		// found.
 		waitOneHost := make(chan struct{})
 		var waitOneHostOnce sync.Once
 		peerConn.OnICECandidate(func(icecandidate *webrtc.ICECandidate) {
 			if exchangeCtx.Err() != nil {
+				// Caller has canceled the dial, or a timeout has occurred.
 				return
 			}
+
 			if icecandidate != nil {
+				// The last `icecandidate` called from pion will be nil. `nil` signifies that all
+				// candidates were created. We will still create a goroutine for this "empty"
+				// candidate to wait for all other candidates to complete. Thus we only increment
+				// `pendingCandidates` for non-nil values.
 				pendingCandidates.Add(1)
 				if icecandidate.Typ == webrtc.ICECandidateTypeHost {
 					waitOneHostOnce.Do(func() {
@@ -248,6 +243,7 @@ func dialWebRTC(
 					})
 				}
 			}
+
 			// must spin off to unblock the ICE gatherer
 			utils.PanicCapturingGo(func() {
 				if icecandidate != nil {
@@ -255,16 +251,20 @@ func dialWebRTC(
 				}
 				select {
 				case <-remoteDescSet:
+					// We've received the `init` answer and initialized `uuid`. We can now proceed
+					// with sending individual candidates.
 				case <-exchangeCtx.Done():
 					return
 				}
+
 				if icecandidate == nil {
+					// There are no more candidates to generate. Wait for all existing
+					// candidates/CallUpdate's to complete. Then "sendDone".
 					pendingCandidates.Wait()
-					if err := sendDone(); err != nil {
-						sendErr(err)
-					}
+					sendDone()
 					return
 				}
+
 				iProto := iceCandidateToProto(icecandidate)
 				callUpdateStart := time.Now()
 				if _, err := signalingClient.CallUpdate(exchangeCtx, &webrtcpb.CallUpdateRequest{
@@ -273,9 +273,10 @@ func dialWebRTC(
 						Candidate: iProto,
 					},
 				}); err != nil {
-					sendErr(err)
+					logger.Warnw("Error sending a CallUpdate", "err", err)
 					return
 				}
+
 				statsMu.Lock()
 				callUpdates++
 				callUpdateDuration := time.Since(callUpdateStart)
@@ -289,11 +290,13 @@ func dialWebRTC(
 
 		err = peerConn.SetLocalDescription(offer)
 		if err != nil {
+			logger.Errorw("Error setting local description with offer", "err", err)
 			return nil, err
 		}
 
 		select {
 		case <-exchangeCtx.Done():
+			logger.Errorw("Failed while waiting for first host to be generated", "err", err)
 			return nil, exchangeCtx.Err()
 		case <-waitOneHost:
 		}
@@ -301,11 +304,13 @@ func dialWebRTC(
 
 	encodedSDP, err := EncodeSDP(peerConn.LocalDescription())
 	if err != nil {
+		logger.Errorw("Error encoding local description", "err", err)
 		return nil, err
 	}
 
 	callClient, err := signalingClient.Call(signalCtx, &webrtcpb.CallRequest{Sdp: encodedSDP})
 	if err != nil {
+		logger.Errorw("Error calling with initial SDP", "err", err)
 		return nil, err
 	}
 
@@ -329,6 +334,10 @@ func dialWebRTC(
 
 			callResp, err := callClient.Recv()
 			if err != nil {
+				if errors.Is(err, io.EOF) {
+					return nil
+				}
+
 				return err
 			}
 			switch s := callResp.Stage.(type) {
@@ -350,7 +359,8 @@ func dialWebRTC(
 				close(remoteDescSet)
 
 				if dOpts.webrtcOpts.DisableTrickleICE {
-					return sendDone()
+					sendDone()
+					return nil
 				}
 			case *webrtcpb.CallResponse_Update:
 				if !haveInit {
@@ -361,7 +371,10 @@ func dialWebRTC(
 				}
 				cand := iceCandidateFromProto(s.Update.Candidate)
 				if err := peerConn.AddICECandidate(cand); err != nil {
-					return err
+					// A PeerConnection only needs one valid candidate to succeed. It's unclear why
+					// only some* candidates would be malformed, so we'll log, but otherwise ignore.
+					logger.Warnw("Error adding candidate", "err", err)
+					continue
 				}
 			default:
 				return errors.Errorf("unexpected stage %T", s)
@@ -369,43 +382,37 @@ func dialWebRTC(
 		}
 	}
 
-	utils.PanicCapturingGoWithCallback(func() {
+	utils.PanicCapturingGo(func() {
 		if err := exchangeCandidates(); err != nil {
-			sendErr(err)
+			logger.Warnw("Failed to exchange candidates", "err", err)
+			exchangeCancel(err)
 		}
-	}, func(err interface{}) {
-		sendErr(fmt.Errorf("%v", err))
 	})
 
-	doCall := func() error {
-		select {
-		case <-exchangeCtx.Done():
-			clientCh.close()
-			return exchangeCtx.Err()
-		case <-clientCh.Ready():
-			return nil
-		case err := <-errCh:
-			clientCh.close()
-			return err
-		}
-	}
+	select {
+	case <-clientCh.Ready():
+		// Happy path
+		sendDone()
+		successful = true
 
-	if callErr := doCall(); callErr != nil {
-		var err error
-		sendDoneErrorOnce.Do(func() {
-			_, err = signalingClient.CallUpdate(exchangeCtx, &webrtcpb.CallUpdateRequest{
+		// Ensure the exchange goroutine has exited.
+		exchangeCancel(nil)
+		<-exchangeCtx.Done()
+	case <-exchangeCtx.Done():
+		exchangeErr := context.Cause(exchangeCtx)
+		sendDoneOnce.Do(func() {
+			if _, err = signalingClient.CallUpdate(signalCtx, &webrtcpb.CallUpdateRequest{
 				Uuid: uuid,
 				Update: &webrtcpb.CallUpdateRequest_Error{
-					Error: ErrorToStatus(callErr).Proto(),
+					Error: ErrorToStatus(exchangeErr).Proto(),
 				},
-			})
+			}); err != nil {
+				logger.Warnw("Problem sending error to signaling server", "err", err)
+			}
 		})
-		return nil, multierr.Combine(callErr, err)
+		return nil, exchangeErr
 	}
-	if err := sendDone(); err != nil {
-		return nil, err
-	}
-	successful = true
+
 	return clientCh, nil
 }
 
@@ -445,12 +452,4 @@ func dialSignalingServer(
 
 	conn, _, err := dialDirectGRPC(ctx, signalingServer, dOpts, logger)
 	return conn, err
-}
-
-func isEOF(err error) bool {
-	s, isGRPCErr := status.FromError(err)
-	if errors.Is(err, io.EOF) || (isGRPCErr && (s.Code() == codes.Internal && strings.Contains(s.Message(), "EOF"))) {
-		return true
-	}
-	return false
 }
