@@ -39,6 +39,8 @@ type ManagedProcess interface {
 
 // NewManagedProcess returns a new, unstarted, from the given configuration.
 func NewManagedProcess(config ProcessConfig, logger utils.ZapCompatibleLogger) ManagedProcess {
+	// NOTE(benjirewis): config.ID maps to the module name in the module
+	// manager's usage of this method and the passed-in ProcessConfig.
 	logger = utils.Sublogger(logger, config.ID)
 
 	if config.StopSignal == 0 {
