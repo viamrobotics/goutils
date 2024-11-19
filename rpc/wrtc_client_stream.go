@@ -281,7 +281,7 @@ func (s *webrtcClientStream) writeMessage(m interface{}, eos bool) (err error) {
 }
 
 func (s *webrtcClientStream) onResponse(resp *webrtcpb.Response) {
-	switch r := resp.Type.(type) {
+	switch r := resp.GetType().(type) {
 	case *webrtcpb.Response_Headers:
 		select {
 		case <-s.headersReceived:
@@ -315,7 +315,7 @@ func (s *webrtcClientStream) onResponse(resp *webrtcpb.Response) {
 
 func (s *webrtcClientStream) processHeaders(headers *webrtcpb.ResponseHeaders) {
 	s.webrtcBaseStream.mu.Lock()
-	s.headers = metadataFromProto(headers.Metadata)
+	s.headers = metadataFromProto(headers.GetMetadata())
 	s.userCtx = metadata.NewIncomingContext(s.ctx, s.headers)
 	s.webrtcBaseStream.mu.Unlock()
 	close(s.headersReceived)
@@ -326,7 +326,7 @@ func (s *webrtcClientStream) processMessage(msg *webrtcpb.ResponseMessage) {
 		s.webrtcBaseStream.logger.Error("message received after trailers")
 		return
 	}
-	data, eop := s.webrtcBaseStream.processMessage(msg.PacketMessage)
+	data, eop := s.webrtcBaseStream.processMessage(msg.GetPacketMessage())
 	if !eop {
 		return
 	}
@@ -352,9 +352,9 @@ func (s *webrtcClientStream) processTrailers(trailers *webrtcpb.ResponseTrailers
 	s.webrtcBaseStream.mu.Lock()
 	defer s.webrtcBaseStream.mu.Unlock()
 	s.trailersReceived = true
-	if trailers.Metadata != nil {
-		s.trailers = metadataFromProto(trailers.Metadata)
+	if trailers.GetMetadata() != nil {
+		s.trailers = metadataFromProto(trailers.GetMetadata())
 	}
-	respStatus := status.FromProto(trailers.Status)
+	respStatus := status.FromProto(trailers.GetStatus())
 	s.webrtcBaseStream.closeFromTrailers(respStatus.Err())
 }

@@ -104,7 +104,7 @@ func TestServer(t *testing.T) {
 								RootCAs:    certPool,
 								ServerName: "localhost",
 							}
-							grpcOpts := []grpc.DialOption{grpc.WithBlock()}
+							grpcOpts := []grpc.DialOption{grpc.WithBlock()} //nolint:staticcheck
 							if secure {
 								grpcOpts = append(
 									grpcOpts,
@@ -113,7 +113,7 @@ func TestServer(t *testing.T) {
 							} else {
 								grpcOpts = append(grpcOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 							}
-							conn, err := grpc.DialContext(context.Background(), listener.Addr().String(), grpcOpts...)
+							conn, err := grpc.DialContext(context.Background(), listener.Addr().String(), grpcOpts...) //nolint:staticcheck
 							test.That(t, err, test.ShouldBeNil)
 							defer func() {
 								test.That(t, conn.Close(), test.ShouldBeNil)
@@ -142,7 +142,7 @@ func TestServer(t *testing.T) {
 								test.That(t, err, test.ShouldBeNil)
 
 								// Validate the JWT token/header from the Authenticate call.
-								token, err := jwt.Parse(authResp.AccessToken, func(token *jwt.Token) (interface{}, error) {
+								token, err := jwt.Parse(authResp.GetAccessToken(), func(token *jwt.Token) (interface{}, error) {
 									return testPubKey, nil
 								})
 								test.That(t, err, test.ShouldBeNil)
@@ -150,7 +150,7 @@ func TestServer(t *testing.T) {
 								test.That(t, token.Header["kid"], test.ShouldEqual, thumbprint)
 
 								md := make(metadata.MD)
-								bearer = fmt.Sprintf("Bearer %s", authResp.AccessToken)
+								bearer = fmt.Sprintf("Bearer %s", authResp.GetAccessToken())
 								md.Set("authorization", bearer)
 								ctx = metadata.NewOutgoingContext(context.Background(), md)
 							} else {
@@ -507,7 +507,9 @@ func TestWithStatsHandler(t *testing.T) {
 	)
 	test.That(t, err, test.ShouldBeNil)
 
+	handler.mu.Lock()
 	test.That(t, handler.serverConnections, test.ShouldBeGreaterThan, 1)
+	handler.mu.Unlock()
 
 	test.That(t, conn.Close(), test.ShouldBeNil)
 	test.That(t, rpcServer.Stop(), test.ShouldBeNil)

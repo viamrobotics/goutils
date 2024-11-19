@@ -8,7 +8,6 @@ import (
 	"crypto/ed25519"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/base64"
 	"encoding/pem"
 	"fmt"
 	"net"
@@ -17,7 +16,6 @@ import (
 	"strings"
 
 	"github.com/edaniels/golog"
-	"github.com/golang-jwt/jwt/v4"
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 	"goji.io"
@@ -98,9 +96,9 @@ func runServer(
 	authPrivateKeyFile string,
 	authPublicKeyFile string,
 	apiKey string,
-	externalAuthAddr string,
+	_ string,
 	externalAuth bool,
-	useAccesssToken bool,
+	_ bool,
 	logger utils.ZapCompatibleLogger,
 ) (err error) {
 	var serverOpts []rpc.ServerOption
@@ -234,7 +232,9 @@ func runServer(
 
 	mux := goji.NewMux()
 	mux.Handle(pat.Get("/"), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("go run make run-client"))
+		if _, err := w.Write([]byte("go run make run-client")); err != nil {
+			panic(err)
+		}
 	}))
 	mux.Handle(pat.New("/api/*"), http.StripPrefix("/api", rpcServer.GatewayHandler()))
 	mux.Handle(pat.New("/*"), rpcServer.GRPCHandler())
@@ -293,25 +293,4 @@ func runServer(
 		return serveErr
 	}
 	return nil
-}
-
-func computeAccessToken(pubKey ed25519.PublicKey, privKey ed25519.PrivateKey, aud, sub string, credType rpc.CredentialsType) (string, error) {
-	token := jwt.NewWithClaims(jwt.SigningMethodEdDSA, rpc.JWTClaims{
-		RegisteredClaims: jwt.RegisteredClaims{
-			Subject:  sub,
-			Audience: jwt.ClaimStrings{aud},
-		},
-		AuthCredentialsType: credType,
-		AuthMetadata: map[string]string{
-			"email": sub,
-		},
-	})
-
-	token.Header["kid"] = base64.RawURLEncoding.EncodeToString(pubKey)
-	tokenString, err := token.SignedString(privKey)
-	if err != nil {
-		return "", err
-	}
-
-	return tokenString, nil
 }

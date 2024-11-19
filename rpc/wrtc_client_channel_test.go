@@ -92,8 +92,8 @@ func TestWebRTCClientChannel(t *testing.T) {
 		test.That(t, expectedMessages, test.ShouldNotBeEmpty)
 		expected := expectedMessages[0]
 		if hasTimeout {
-			if header, ok := req.Type.(*webrtcpb.Request_Headers); ok {
-				test.That(t, header.Headers.Timeout.AsDuration(), test.ShouldNotBeZeroValue)
+			if header, ok := req.GetType().(*webrtcpb.Request_Headers); ok {
+				test.That(t, header.Headers.GetTimeout().AsDuration(), test.ShouldNotBeZeroValue)
 				header.Headers.Timeout = nil
 			}
 		}
@@ -477,8 +477,8 @@ func TestWebRTCClientChannelWithInterceptor(t *testing.T) {
 	serverCh.dataChannel.OnMessage(func(msg webrtc.DataChannelMessage) {
 		req := &webrtcpb.Request{}
 		test.That(t, proto.Unmarshal(msg.Data, req), test.ShouldBeNil)
-		if r, ok := req.Type.(*webrtcpb.Request_Headers); ok {
-			test.That(t, r.Headers.Metadata, test.ShouldNotBeNil)
+		if r, ok := req.GetType().(*webrtcpb.Request_Headers); ok {
+			test.That(t, r.Headers.GetMetadata(), test.ShouldNotBeNil)
 
 			var key, value string
 			switch headerCounter {
@@ -491,9 +491,9 @@ func TestWebRTCClientChannelWithInterceptor(t *testing.T) {
 			default:
 				panic("header counter too high")
 			}
-			test.That(t, r.Headers.Metadata.Md[key], test.ShouldNotBeNil)
-			test.That(t, r.Headers.Metadata.Md[key].Values, test.ShouldHaveLength, 1)
-			test.That(t, r.Headers.Metadata.Md[key].Values[0], test.ShouldEqual, value)
+			test.That(t, r.Headers.GetMetadata().GetMd()[key], test.ShouldNotBeNil)
+			test.That(t, r.Headers.GetMetadata().GetMd()[key].GetValues(), test.ShouldHaveLength, 1)
+			test.That(t, r.Headers.GetMetadata().GetMd()[key].GetValues()[0], test.ShouldEqual, value)
 			headerCounter++
 		}
 

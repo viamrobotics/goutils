@@ -19,7 +19,7 @@ func TestEnv(t *testing.T) {
 
 	key := primitive.NewObjectID().Hex()
 	value := "foo"
-	test.That(t, os.Setenv(key, value), test.ShouldBeNil)
+	t.Setenv(key, value)
 
 	u, err := s.Get(ctx, key)
 	test.That(t, err, test.ShouldBeNil)

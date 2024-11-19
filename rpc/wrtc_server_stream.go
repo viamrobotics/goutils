@@ -222,7 +222,7 @@ func (s *webrtcServerStream) onRequest(request *webrtcpb.Request) {
 	// Error cases here are logged at the warn level. It's not a server error to find client
 	// misbehavior during validation. Additionally, clients can go away at any time, so failing to
 	// respond is likewise not an error.
-	switch r := request.Type.(type) {
+	switch r := request.GetType().(type) {
 	case *webrtcpb.Request_Headers:
 		if s.headersReceived {
 			s.closeWithSendError(status.Error(codes.InvalidArgument, "headers already received"))
@@ -255,13 +255,13 @@ func isContextCanceled(err error) bool {
 }
 
 func (s *webrtcServerStream) processHeaders(headers *webrtcpb.RequestHeaders) {
-	s.logger = utils.AddFieldsToLogger(s.logger, "method", headers.Method)
+	s.logger = utils.AddFieldsToLogger(s.logger, "method", headers.GetMethod())
 	s.logger.Debug("incoming grpc request")
 
-	handlerFunc, ok := s.ch.server.handler(headers.Method)
+	handlerFunc, ok := s.ch.server.handler(headers.GetMethod())
 	if !ok {
 		if s.ch.server.unknownStreamDesc != nil {
-			handlerFunc = s.ch.server.streamHandler(s.ch.server, headers.Method, *s.ch.server.unknownStreamDesc)
+			handlerFunc = s.ch.server.streamHandler(s.ch.server, headers.GetMethod(), *s.ch.server.unknownStreamDesc)
 		} else {
 			s.closeWithSendError(status.Error(codes.Unimplemented, codes.Unimplemented.String()))
 			return
@@ -308,12 +308,12 @@ func (s *webrtcServerStream) processMessage(msg *webrtcpb.RequestMessage) {
 		s.logger.Error("message received after EOS")
 		return
 	}
-	if msg.HasMessage {
-		if msg.PacketMessage == nil {
+	if msg.GetHasMessage() {
+		if msg.GetPacketMessage() == nil {
 			s.closeWithError(errors.New("expected RequestMessage.PacketMessgae to not be nil but it was"), false)
 			return
 		}
-		data, eop := s.webrtcBaseStream.processMessage(msg.PacketMessage)
+		data, eop := s.webrtcBaseStream.processMessage(msg.GetPacketMessage())
 		if !eop {
 			return
 		}
@@ -335,7 +335,7 @@ func (s *webrtcServerStream) processMessage(msg *webrtcpb.RequestMessage) {
 			}
 		}()
 	}
-	if msg.Eos {
+	if msg.GetEos() {
 		s.CloseRecv()
 	}
 }

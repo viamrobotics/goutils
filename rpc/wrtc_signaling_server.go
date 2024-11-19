@@ -194,7 +194,7 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 	if err := srv.validateHosts(host); err != nil {
 		return err
 	}
-	uuid, respCh, respDone, sendCancel, err := srv.callQueue.SendOfferInit(ctx, host, req.Sdp, req.DisableTrickle)
+	uuid, respCh, respDone, sendCancel, err := srv.callQueue.SendOfferInit(ctx, host, req.GetSdp(), req.GetDisableTrickle())
 	if err != nil {
 		return err
 	}
@@ -270,18 +270,18 @@ func (srv *WebRTCSignalingServer) CallUpdate(ctx context.Context, req *webrtcpb.
 	if err := srv.validateHosts(host); err != nil {
 		return nil, err
 	}
-	switch u := req.Update.(type) {
+	switch u := req.GetUpdate().(type) {
 	case *webrtcpb.CallUpdateRequest_Candidate:
 		cand := iceCandidateFromProto(u.Candidate)
-		if err := srv.callQueue.SendOfferUpdate(ctx, host, req.Uuid, cand); err != nil {
+		if err := srv.callQueue.SendOfferUpdate(ctx, host, req.GetUuid(), cand); err != nil {
 			return nil, err
 		}
 	case *webrtcpb.CallUpdateRequest_Error:
-		if err := srv.callQueue.SendOfferError(ctx, host, req.Uuid, status.ErrorProto(req.GetError())); err != nil {
+		if err := srv.callQueue.SendOfferError(ctx, host, req.GetUuid(), status.ErrorProto(req.GetError())); err != nil {
 			return nil, err
 		}
 	case *webrtcpb.CallUpdateRequest_Done:
-		if err := srv.callQueue.SendOfferDone(ctx, host, req.Uuid); err != nil {
+		if err := srv.callQueue.SendOfferDone(ctx, host, req.GetUuid()); err != nil {
 			return nil, err
 		}
 	default:
@@ -468,11 +468,11 @@ func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 				return nil
 			}
 
-			if answer.Uuid != uuid {
-				return errors.Errorf("uuid mismatch; have=%q want=%q", answer.Uuid, uuid)
+			if answer.GetUuid() != uuid {
+				return errors.Errorf("uuid mismatch; have=%q want=%q", answer.GetUuid(), uuid)
 			}
 
-			switch s := answer.Stage.(type) {
+			switch s := answer.GetStage().(type) {
 			case *webrtcpb.AnswerResponse_Init:
 				if haveInit {
 					return errors.New("got init stage more than once")
@@ -488,7 +488,7 @@ func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 				if !haveInit {
 					return errors.New("got update stage before init stage")
 				}
-				cand := iceCandidateFromProto(s.Update.Candidate)
+				cand := iceCandidateFromProto(s.Update.GetCandidate())
 				if err := offer.AnswererRespond(server.Context(), WebRTCCallAnswer{
 					Candidate: &cand,
 				}); err != nil {
@@ -500,7 +500,7 @@ func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 				}
 				return nil
 			case *webrtcpb.AnswerResponse_Error:
-				respStatus := status.FromProto(s.Error.Status)
+				respStatus := status.FromProto(s.Error.GetStatus())
 				ans := WebRTCCallAnswer{Err: respStatus.Err()}
 				answererStoppedExchange = true
 				offerCtxCancel() // and stop exchange

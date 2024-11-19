@@ -633,18 +633,18 @@ func iceCandidateInitToProto(ij webrtc.ICECandidateInit) *webrtcpb.ICECandidate 
 
 func iceCandidateFromProto(i *webrtcpb.ICECandidate) webrtc.ICECandidateInit {
 	candidate := webrtc.ICECandidateInit{
-		Candidate: i.Candidate,
+		Candidate: i.GetCandidate(),
 	}
 	if i.SdpMid != nil {
-		val := *i.SdpMid
+		val := i.GetSdpMid()
 		candidate.SDPMid = &val
 	}
 	if i.SdpmLineIndex != nil {
-		val := uint16(*i.SdpmLineIndex)
+		val := uint16(i.GetSdpmLineIndex())
 		candidate.SDPMLineIndex = &val
 	}
 	if i.UsernameFragment != nil {
-		val := *i.UsernameFragment
+		val := i.GetUsernameFragment()
 		candidate.UsernameFragment = &val
 	}
 	return candidate

@@ -106,7 +106,7 @@ func mainWithArgs(ctx context.Context, args []string, logger utils.ZapCompatible
 	if err != nil {
 		return errors.WithStack(err)
 	}
-	logger.Infow("echo", "resp", resp.Message)
+	logger.Infow("echo", "resp", resp.GetMessage())
 
 	multiClient, err := echoClient.EchoMultiple(ctx, &echopb.EchoMultipleRequest{Message: "hello?"})
 	if err != nil {
@@ -120,7 +120,7 @@ func mainWithArgs(ctx context.Context, args []string, logger utils.ZapCompatible
 			}
 			break
 		}
-		logger.Infow("echo multi", "resp", resp.Message)
+		logger.Infow("echo multi", "resp", resp.GetMessage())
 	}
 
 	biDiClient, err := echoClient.EchoBiDi(ctx)
@@ -138,7 +138,7 @@ func mainWithArgs(ctx context.Context, args []string, logger utils.ZapCompatible
 			}
 			break
 		}
-		logger.Infow("echo bidi", "resp", resp.Message)
+		logger.Infow("echo bidi", "resp", resp.GetMessage())
 	}
 
 	if err := biDiClient.Send(&echopb.EchoBiDiRequest{Message: "two"}); err != nil {
@@ -152,7 +152,7 @@ func mainWithArgs(ctx context.Context, args []string, logger utils.ZapCompatible
 			}
 			break
 		}
-		logger.Infow("echo bidi", "resp", resp.Message)
+		logger.Infow("echo bidi", "resp", resp.GetMessage())
 	}
 
 	if err := biDiClient.CloseSend(); err != nil {

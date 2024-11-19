@@ -107,7 +107,7 @@ func (cd *cachedDialer) DialDirect(
 	opts ...grpc.DialOption,
 ) (ClientConn, bool, error) {
 	return cd.DialFunc("grpc", target, keyExtra, func() (ClientConn, func() error, error) {
-		conn, err := grpc.DialContext(ctx, target, opts...)
+		conn, err := grpc.DialContext(ctx, target, opts...) //nolint:staticcheck
 		if err != nil {
 			return nil, nil, err
 		}
@@ -243,7 +243,7 @@ func DialDirectGRPC(ctx context.Context, address string, logger utils.ZapCompati
 // dialDirectGRPC dials a gRPC server directly.
 func dialDirectGRPC(ctx context.Context, address string, dOpts dialOptions, logger utils.ZapCompatibleLogger) (ClientConn, bool, error) {
 	dialOpts := []grpc.DialOption{
-		grpc.WithBlock(),
+		grpc.WithBlock(), //nolint:staticcheck
 		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(MaxMessageSize)),
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{
 			Time:                keepAliveTime * 2, // a little extra buffer to try to avoid ENHANCE_YOUR_CALM
@@ -375,7 +375,7 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts dialOptions, logg
 		conn, cached, err = ctxDialer.DialDirect(ctx, address, dOpts.cacheKey(), closeCredsFunc, dialOpts...)
 	} else {
 		var grpcConn *grpc.ClientConn
-		grpcConn, err = grpc.DialContext(ctx, address, dialOpts...)
+		grpcConn, err = grpc.DialContext(ctx, address, dialOpts...) //nolint:staticcheck
 		if err == nil {
 			conn = GrpcOverHTTPClientConn{grpcConn}
 		}
@@ -592,7 +592,7 @@ func (creds *perRPCJWTCredentials) authenticate(ctx context.Context) (string, er
 				if err != nil {
 					return "", err
 				}
-				accessToken = resp.AccessToken
+				accessToken = resp.GetAccessToken()
 			} else {
 				accessToken = creds.externalAuthMaterial
 			}
@@ -625,8 +625,8 @@ func (creds *perRPCJWTCredentials) authenticate(ctx context.Context) (string, er
 					creds.logger.Debugw("external auth done", "auth_to", creds.externalAuthToEntity)
 				}
 
-				accessToken = externalResp.AccessToken
-				creds.accessToken = externalResp.AccessToken
+				accessToken = externalResp.GetAccessToken()
+				creds.accessToken = externalResp.GetAccessToken()
 			}
 		}
 	}

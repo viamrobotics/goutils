@@ -42,6 +42,7 @@ func TestChangeStreamBackground(t *testing.T) {
 	cancelCtx, ctxCancel = context.WithCancel(context.Background())
 	result, _, _ = mongoutils.ChangeStreamBackground(cancelCtx, cs)
 	defer func() {
+		//nolint:revive
 		for range result {
 		}
 	}()
@@ -86,6 +87,7 @@ func TestChangeStreamBackgroundResumeTokenAdvancement(t *testing.T) {
 	cancelCtx, ctxCancel := context.WithCancel(context.Background())
 	result, currentToken, currentClusterTime := mongoutils.ChangeStreamBackground(cancelCtx, cs)
 	defer func() {
+		//nolint:revive
 		for range result {
 		}
 	}()
@@ -146,6 +148,7 @@ func TestChangeStreamBackgroundInvalidate(t *testing.T) {
 	cancelCtx, ctxCancel := context.WithCancel(context.Background())
 	result, _, _ := mongoutils.ChangeStreamBackground(cancelCtx, cs)
 	defer func() {
+		//nolint:revive
 		for range result {
 		}
 	}()
@@ -158,6 +161,7 @@ func TestChangeStreamBackgroundInvalidate(t *testing.T) {
 	event := <-result
 	test.That(t, event.Error, test.ShouldResemble, mongoutils.ErrChangeStreamInvalidateEvent)
 
+	//nolint:revive
 	for range result {
 	}
 

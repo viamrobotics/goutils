@@ -50,14 +50,14 @@ func extendWebRTCConfig(original *webrtc.Configuration, optional *webrtcpb.WebRT
 	if optional == nil {
 		return configCopy
 	}
-	if len(optional.AdditionalIceServers) > 0 {
-		iceServers := make([]webrtc.ICEServer, len(original.ICEServers)+len(optional.AdditionalIceServers))
+	if len(optional.GetAdditionalIceServers()) > 0 {
+		iceServers := make([]webrtc.ICEServer, len(original.ICEServers)+len(optional.GetAdditionalIceServers()))
 		copy(iceServers, original.ICEServers)
-		for _, server := range optional.AdditionalIceServers {
-			urls := server.Urls
+		for _, server := range optional.GetAdditionalIceServers() {
+			urls := server.GetUrls()
 			if replaceUDPWithTCP {
 				urls = nil
-				for _, url := range server.Urls {
+				for _, url := range server.GetUrls() {
 					if strings.HasSuffix(url, "udp") {
 						newURL := url[:len(url)-len("udp")] + "tcp"
 						urls = append(urls, newURL)
@@ -69,8 +69,8 @@ func extendWebRTCConfig(original *webrtc.Configuration, optional *webrtcpb.WebRT
 
 			iceServers = append(iceServers, webrtc.ICEServer{
 				URLs:       urls,
-				Username:   server.Username,
-				Credential: server.Credential,
+				Username:   server.GetUsername(),
+				Credential: server.GetCredential(),
 			})
 		}
 		configCopy.ICEServers = iceServers

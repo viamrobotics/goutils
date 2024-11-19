@@ -102,13 +102,13 @@ func testWebRTCClientServer(t *testing.T, signalingCallQueue WebRTCCallQueue, lo
 					echoClient := echopb.NewEchoServiceClient(cc)
 					resp, err := echoClient.Echo(context.Background(), &echopb.EchoRequest{Message: "hello"})
 					test.That(t, err, test.ShouldBeNil)
-					test.That(t, resp.Message, test.ShouldEqual, "hello")
+					test.That(t, resp.GetMessage(), test.ShouldEqual, "hello")
 
 					// big message
 					bigZ := strings.Repeat("z", 1<<18)
 					resp, err = echoClient.Echo(context.Background(), &echopb.EchoRequest{Message: bigZ})
 					test.That(t, err, test.ShouldBeNil)
-					test.That(t, resp.Message, test.ShouldEqual, bigZ)
+					test.That(t, resp.GetMessage(), test.ShouldEqual, bigZ)
 				})
 			}
 		})
@@ -281,7 +281,7 @@ func testWebRTCClientDialReflectAnswererError(t *testing.T, signalingCallQueue W
 	test.That(t, err, test.ShouldBeNil)
 
 	test.That(t, answerClient.Send(&webrtcpb.AnswerResponse{
-		Uuid: offer.Uuid,
+		Uuid: offer.GetUuid(),
 		Stage: &webrtcpb.AnswerResponse_Init{
 			Init: &webrtcpb.AnswerResponseInitStage{
 				Sdp: "hehehee",
@@ -404,10 +404,10 @@ func testWebRTCClientDialConcurrent(t *testing.T, signalingCallQueue WebRTCCallQ
 	offer2, err := answerClient2.Recv()
 	test.That(t, err, test.ShouldBeNil)
 
-	test.That(t, offer1.Uuid, test.ShouldNotEqual, offer2.Uuid)
+	test.That(t, offer1.GetUuid(), test.ShouldNotEqual, offer2.GetUuid())
 
 	test.That(t, answerClient1.Send(&webrtcpb.AnswerResponse{
-		Uuid: offer1.Uuid,
+		Uuid: offer1.GetUuid(),
 		Stage: &webrtcpb.AnswerResponse_Init{
 			Init: &webrtcpb.AnswerResponseInitStage{
 				Sdp: "hehehee",
@@ -420,11 +420,11 @@ func testWebRTCClientDialConcurrent(t *testing.T, signalingCallQueue WebRTCCallQ
 
 	offerUpdate, err := answerClient1.Recv()
 	test.That(t, err, test.ShouldBeNil)
-	test.That(t, offerUpdate.Uuid, test.ShouldEqual, offer1.Uuid)
+	test.That(t, offerUpdate.GetUuid(), test.ShouldEqual, offer1.GetUuid())
 	test.That(t, offerUpdate.GetError().String(), test.ShouldContainSubstring, "illegal")
 
 	test.That(t, answerClient2.Send(&webrtcpb.AnswerResponse{
-		Uuid: offer2.Uuid,
+		Uuid: offer2.GetUuid(),
 		Stage: &webrtcpb.AnswerResponse_Error{
 			Error: &webrtcpb.AnswerResponseErrorStage{
 				Status: status.New(codes.DataLoss, "whoops").Proto(),
@@ -536,7 +536,7 @@ func testWebRTCClientAnswerConcurrent(t *testing.T, signalingCallQueue WebRTCCal
 	answer2, err := callClient2.Recv()
 	test.That(t, err, test.ShouldBeNil)
 
-	test.That(t, answer1.Uuid, test.ShouldNotEqual, answer2.Uuid)
+	test.That(t, answer1.GetUuid(), test.ShouldNotEqual, answer2.GetUuid())
 
 	webrtcServer.Stop()
 	answerer.Stop()
@@ -601,7 +601,7 @@ func TestWebRTCClientSubsequentStreams(t *testing.T) {
 	var echoMultiResp echopb.EchoMultipleResponse
 	for i := 0; i < 5; i++ {
 		test.That(t, echoClient.RecvMsg(&echoMultiResp), test.ShouldBeNil)
-		test.That(t, echoMultiResp.Message, test.ShouldEqual, msg[i:i+1])
+		test.That(t, echoMultiResp.GetMessage(), test.ShouldEqual, msg[i:i+1])
 	}
 	test.That(t, echoClient.RecvMsg(&echoMultiResp), test.ShouldBeError, io.EOF)
 
@@ -609,7 +609,7 @@ func TestWebRTCClientSubsequentStreams(t *testing.T) {
 	test.That(t, err, test.ShouldBeNil)
 	for i := 0; i < 5; i++ {
 		test.That(t, echoClient.RecvMsg(&echoMultiResp), test.ShouldBeNil)
-		test.That(t, echoMultiResp.Message, test.ShouldEqual, msg[i:i+1])
+		test.That(t, echoMultiResp.GetMessage(), test.ShouldEqual, msg[i:i+1])
 	}
 	test.That(t, echoClient.RecvMsg(&echoMultiResp), test.ShouldBeError, io.EOF)
 

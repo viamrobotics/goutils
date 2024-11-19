@@ -100,7 +100,7 @@ func (ch *webrtcServerChannel) onChannelMessage(msg webrtc.DataChannelMessage) {
 		return
 	}
 
-	id := stream.Id
+	id := stream.GetId()
 	logger := utils.AddFieldsToLogger(ch.webrtcBaseChannel.logger, "id", id)
 
 	ch.mu.Lock()
@@ -112,15 +112,15 @@ func (ch *webrtcServerChannel) onChannelMessage(msg webrtc.DataChannelMessage) {
 			return
 		}
 		// peek headers for timeout
-		headers, ok := req.Type.(*webrtcpb.Request_Headers)
+		headers, ok := req.GetType().(*webrtcpb.Request_Headers)
 		if !ok || headers.Headers == nil {
-			logger.Debugf("expected headers as first message but got %T, discard request", req.Type)
+			logger.Debugf("expected headers as first message but got %T, discard request", req.GetType())
 			ch.mu.Unlock()
 			return
 		}
 
-		handlerCtx := metadata.NewIncomingContext(ch.ctx, metadataFromProto(headers.Headers.Metadata))
-		timeout := headers.Headers.Timeout.AsDuration()
+		handlerCtx := metadata.NewIncomingContext(ch.ctx, metadataFromProto(headers.Headers.GetMetadata()))
+		timeout := headers.Headers.GetTimeout().AsDuration()
 		var cancelCtx func()
 		if timeout == 0 {
 			handlerCtx, cancelCtx = context.WithCancel(handlerCtx)
@@ -134,7 +134,7 @@ func (ch *webrtcServerChannel) onChannelMessage(msg webrtc.DataChannelMessage) {
 		// TODO(RSDK-890): use the correct entity (sub), not the audience (hosts)
 		handlerCtx = ContextWithAuthEntity(handlerCtx, EntityInfo{Entity: ch.authAudience})
 
-		serverStream = newWebRTCServerStream(handlerCtx, cancelCtx, headers.Headers.Method, ch, stream, ch.removeStreamByID, logger)
+		serverStream = newWebRTCServerStream(handlerCtx, cancelCtx, headers.Headers.GetMethod(), ch, stream, ch.removeStreamByID, logger)
 		ch.streams[id] = serverStream
 	}
 	ch.mu.Unlock()

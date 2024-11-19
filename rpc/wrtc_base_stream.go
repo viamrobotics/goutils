@@ -168,20 +168,20 @@ func (s *webrtcBaseStream) closeWithError(err error, expected bool) {
 		s.err = errExpectedClosure
 	}
 	s.cancel()
-	s.onDone(s.stream.Id)
+	s.onDone(s.stream.GetId())
 }
 
 func (s *webrtcBaseStream) processMessage(msg *webrtcpb.PacketMessage) ([]byte, bool) {
-	if len(msg.Data) == 0 && msg.Eom {
+	if len(msg.GetData()) == 0 && msg.GetEom() {
 		return []byte{}, true
 	}
-	if len(msg.Data)+s.packetBuf.Len() > MaxMessageSize {
+	if len(msg.GetData())+s.packetBuf.Len() > MaxMessageSize {
 		s.packetBuf.Reset()
 		s.logger.Errorf("message size larger than max %d; discarding", MaxMessageSize)
 		return nil, false
 	}
-	s.packetBuf.Write(msg.Data)
-	if msg.Eom {
+	s.packetBuf.Write(msg.GetData())
+	if msg.GetEom() {
 		data := make([]byte, s.packetBuf.Len())
 		copy(data, s.packetBuf.Bytes())
 		s.packetBuf.Reset()
@@ -206,13 +206,13 @@ func metadataToProto(md metadata.MD) *webrtcpb.Metadata {
 }
 
 func metadataFromProto(mdProto *webrtcpb.Metadata) metadata.MD {
-	if mdProto == nil || mdProto.Md == nil || len(mdProto.Md) == 0 {
+	if mdProto == nil || mdProto.Md == nil || len(mdProto.GetMd()) == 0 {
 		return nil
 	}
-	result := make(metadata.MD, len(mdProto.Md))
-	for key, values := range mdProto.Md {
-		valuesCopy := make([]string, len(values.Values))
-		copy(valuesCopy, values.Values)
+	result := make(metadata.MD, len(mdProto.GetMd()))
+	for key, values := range mdProto.GetMd() {
+		valuesCopy := make([]string, len(values.GetValues()))
+		copy(valuesCopy, values.GetValues())
 		result[key] = valuesCopy
 	}
 	return result

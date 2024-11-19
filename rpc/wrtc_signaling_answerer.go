@@ -231,7 +231,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 				if err != nil {
 					break
 				}
-				if _, ok := incomingCallerReq.Stage.(*webrtcpb.AnswerRequest_Heartbeat); ok {
+				if _, ok := incomingCallerReq.GetStage().(*webrtcpb.AnswerRequest_Heartbeat); ok {
 					ans.logger.Debug(heartbeatReceivedLog)
 					continue
 				}
@@ -251,27 +251,27 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 			// upcoming type check.
 			aa := &answerAttempt{
 				webrtcSignalingAnswerer: ans,
-				uuid:                    incomingCallerReq.Uuid,
+				uuid:                    incomingCallerReq.GetUuid(),
 				client:                  client,
 				trickleEnabled:          true,
 			}
 
-			initStage, ok := incomingCallerReq.Stage.(*webrtcpb.AnswerRequest_Init)
+			initStage, ok := incomingCallerReq.GetStage().(*webrtcpb.AnswerRequest_Init)
 			if !ok {
-				err := fmt.Errorf("expected first stage to be init or heartbeat; got %T", incomingCallerReq.Stage)
+				err := fmt.Errorf("expected first stage to be init or heartbeat; got %T", incomingCallerReq.GetStage())
 				aa.sendError(err)
 				ans.logger.Warn(err.Error())
 				continue
 			}
 
-			if cfg := initStage.Init.OptionalConfig; cfg != nil && cfg.DisableTrickle {
+			if cfg := initStage.Init.GetOptionalConfig(); cfg != nil && cfg.GetDisableTrickle() {
 				aa.trickleEnabled = false
 			}
-			aa.offerSDP = initStage.Init.Sdp
+			aa.offerSDP = initStage.Init.GetSdp()
 
 			var answerCtx context.Context
 			var answerCtxCancel func()
-			if deadline := initStage.Init.Deadline; deadline != nil {
+			if deadline := initStage.Init.GetDeadline(); deadline != nil {
 				answerCtx, answerCtxCancel = context.WithDeadline(aa.closeCtx, deadline.AsTime())
 			} else {
 				answerCtx, answerCtxCancel = context.WithTimeout(aa.closeCtx, getDefaultOfferDeadline())
@@ -369,7 +369,7 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 			aa.server.counters.PeerConnectionErrors.Add(1)
 			return err
 		}
-		webrtcConfig = extendWebRTCConfig(&webrtcConfig, configResp.Config, true)
+		webrtcConfig = extendWebRTCConfig(&webrtcConfig, configResp.GetConfig(), true)
 		aa.logger.Debugw("extended WebRTC config", "ICE servers", webrtcConfig.ICEServers)
 	}
 
@@ -550,14 +550,14 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 					return
 				}
 
-				switch stage := ansResp.Stage.(type) {
+				switch stage := ansResp.GetStage().(type) {
 				case *webrtcpb.AnswerRequest_Init:
 				case *webrtcpb.AnswerRequest_Update:
-					if ansResp.Uuid != aa.uuid {
-						aa.sendError(fmt.Errorf("uuid mismatch; have=%q want=%q", ansResp.Uuid, aa.uuid))
+					if ansResp.GetUuid() != aa.uuid {
+						aa.sendError(fmt.Errorf("uuid mismatch; have=%q want=%q", ansResp.GetUuid(), aa.uuid))
 						return
 					}
-					cand := iceCandidateFromProto(stage.Update.Candidate)
+					cand := iceCandidateFromProto(stage.Update.GetCandidate())
 					if err := pc.AddICECandidate(cand); err != nil {
 						aa.sendError(err)
 						return
@@ -565,7 +565,7 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 				case *webrtcpb.AnswerRequest_Done:
 					return
 				case *webrtcpb.AnswerRequest_Error:
-					respStatus := status.FromProto(stage.Error.Status)
+					respStatus := status.FromProto(stage.Error.GetStatus())
 					aa.sendError(fmt.Errorf("error from requester: %w", respStatus.Err()))
 					return
 				case *webrtcpb.AnswerRequest_Heartbeat:

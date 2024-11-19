@@ -263,7 +263,7 @@ func (ch *webrtcClientChannel) newStream(
 	ctx context.Context,
 	stream *webrtcpb.Stream,
 ) (*webrtcClientStream, error) {
-	id := stream.Id
+	id := stream.GetId()
 	ch.mu.Lock()
 	activeStream, ok := ch.streams[id]
 	if !ok {
@@ -293,13 +293,13 @@ func (ch *webrtcClientChannel) onChannelMessage(msg webrtc.DataChannelMessage) {
 		return
 	}
 
-	stream := resp.Stream
+	stream := resp.GetStream()
 	if stream == nil {
 		ch.webrtcBaseChannel.logger.Debug("no stream id; discarding")
 		return
 	}
 
-	id := stream.Id
+	id := stream.GetId()
 	ch.mu.Lock()
 	activeStream, ok := ch.streams[id]
 	if !ok {

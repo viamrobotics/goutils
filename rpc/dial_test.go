@@ -1662,13 +1662,13 @@ func (svc *externalAuthServer) AuthenticateTo(
 		return nil, errors.New("darn 1")
 	}
 	if svc.expectedEnt != "" {
-		if svc.expectedEnt != req.Entity {
+		if svc.expectedEnt != req.GetEntity() {
 			return nil, errors.New("nope unexpected")
 		}
 	} else if len(svc.expectedAud) != 0 {
 		var ok bool
 		for _, ent := range svc.expectedAud {
-			if ent == req.Entity {
+			if ent == req.GetEntity() {
 				ok = true
 				break
 			}
@@ -1687,7 +1687,7 @@ func (svc *externalAuthServer) AuthenticateTo(
 	token := jwt.NewWithClaims(jwt.SigningMethodEdDSA, JWTClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:  entity,
-			Audience: jwt.ClaimStrings{req.Entity},
+			Audience: jwt.ClaimStrings{req.GetEntity()},
 		},
 		AuthCredentialsType: CredentialsTypeExternal,
 		AuthMetadata:        authMetadata,
