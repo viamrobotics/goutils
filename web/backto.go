@@ -14,7 +14,7 @@ var hostnameWhitelist = map[string]bool{
 
 var prTempEnvPattern = "pr-(\\d+)-appmain-bplesliplq-uc.a.run.app"
 
-// isWhitelisted returns true if the passed hostname is whitelisted or a temporary PR environment
+// isWhitelisted returns true if the passed hostname is whitelisted or a temporary PR environment.
 func isWhitelisted(hostname string) bool {
 	isPRTempEnv, err := regexp.MatchString(prTempEnvPattern, hostname)
 	if err != nil {
@@ -28,7 +28,7 @@ func isWhitelisted(hostname string) bool {
 	return hostnameWhitelist[hostname]
 }
 
-// isAllowedURLScheme returns true if the passed URL is using a "https" schema, or "http" for "localhost" URLs
+// isAllowedURLScheme returns true if the passed URL is using a "https" schema, or "http" for "localhost" URLs.
 func isAllowedURLScheme(url *url.URL) bool {
 	if url.Scheme == "https" {
 		return true
