@@ -58,7 +58,9 @@ func newWebRTCClientStream(
 	// We could rely on eventual reads/writes from/to the stream failing with a
 	// `io.ErrClosedPipe`, but not checking the channel's context here will mean
 	// we can create a stream _while_ the channel is closing/closed, which can
-	// result in data races and undefined behavior.
+	// result in data races and undefined behavior. The caller to this function
+	// is holding the channel mutex that's also acquired in the "close" path that
+	// will cancel `channel.ctx`.
 	if channel.ctx.Err() != nil {
 		return nil, ErrDisconnected
 	}
