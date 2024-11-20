@@ -54,6 +54,11 @@ func newWebRTCClientStream(
 	// Assume that cancelation of the client channel's context means the peer
 	// connection and base channel have both closed, and the client is
 	// disconnected.
+	//
+	// We could rely on eventual reads/writes from/to the stream failing with a
+	// `io.ErrClosedPipe`, but not checking the channel's context here will mean
+	// we can create a stream _while_ the channel is closing/closed, which can
+	// result in data races and undefined behavior.
 	if channel.ctx.Err() != nil {
 		return nil, ErrDisconnected
 	}
