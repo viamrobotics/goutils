@@ -16,7 +16,12 @@ import (
 	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
 )
 
-var _ = grpc.ClientStream(&webrtcClientStream{})
+var (
+	_ = grpc.ClientStream(&webrtcClientStream{})
+	// ErrDisconnected indicates that the channel underlying the client stream
+	// has been closed, and the client is therefore disconnected.
+	ErrDisconnected = errors.New("client disconnected; underlying channel closed")
+)
 
 // A webrtcClientStream is the high level gRPC streaming interface used for both
 // unary and streaming call requests.
@@ -45,7 +50,21 @@ func newWebRTCClientStream(
 	stream *webrtcpb.Stream,
 	onDone func(id uint64),
 	logger utils.ZapCompatibleLogger,
-) *webrtcClientStream {
+) (*webrtcClientStream, error) {
+	// Assume that cancelation of the client channel's context means the peer
+	// connection and base channel have both closed, and the client is
+	// disconnected.
+	//
+	// We could rely on eventual reads/writes from/to the stream failing with a
+	// `io.ErrClosedPipe`, but not checking the channel's context here will mean
+	// we can create a stream _while_ the channel is closing/closed, which can
+	// result in data races and undefined behavior. The caller to this function
+	// is holding the channel mutex that's also acquired in the "close" path that
+	// will cancel `channel.ctx`.
+	if channel.ctx.Err() != nil {
+		return nil, ErrDisconnected
+	}
+
 	ctx, cancel := utils.MergeContext(channel.ctx, ctx)
 	bs := newWebRTCBaseStream(ctx, cancel, stream, onDone, logger)
 	s := &webrtcClientStream{
@@ -65,7 +84,7 @@ func newWebRTCClientStream(
 			}
 		}
 	})
-	return s
+	return s, nil
 }
 
 // SendMsg is generally called by generated code. On error, SendMsg aborts

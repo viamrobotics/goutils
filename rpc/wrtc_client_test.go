@@ -618,3 +618,66 @@ func TestWebRTCClientSubsequentStreams(t *testing.T) {
 	err = <-errChan
 	test.That(t, err, test.ShouldBeNil)
 }
+
+func TestErrDisconnected(t *testing.T) {
+	logger := golog.NewTestLogger(t)
+	serverOpts := []ServerOption{
+		WithWebRTCServerOptions(WebRTCServerOptions{
+			Enable: true,
+		}),
+		WithUnauthenticated(),
+	}
+	rpcServer, err := NewServer(
+		logger,
+		serverOpts...,
+	)
+	test.That(t, err, test.ShouldBeNil)
+
+	es := echoserver.Server{}
+	err = rpcServer.RegisterServiceServer(
+		context.Background(),
+		&echopb.EchoService_ServiceDesc,
+		&es,
+		echopb.RegisterEchoServiceHandlerFromEndpoint,
+	)
+	test.That(t, err, test.ShouldBeNil)
+
+	listener, err := net.Listen("tcp", "localhost:0")
+	test.That(t, err, test.ShouldBeNil)
+
+	errChan := make(chan error)
+	go func() {
+		errChan <- rpcServer.Serve(listener)
+	}()
+
+	rtcConn, err := DialWebRTC(
+		context.Background(),
+		listener.Addr().String(),
+		rpcServer.InstanceNames()[0],
+		logger,
+		WithDialDebug(),
+		WithInsecure(),
+	)
+	test.That(t, err, test.ShouldBeNil)
+
+	client := echopb.NewEchoServiceClient(rtcConn)
+
+	msg := "these-are-not-the-droids-you're-looking-for"
+	echoResp, err := client.Echo(context.Background(), &echopb.EchoRequest{Message: msg})
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, echoResp.GetMessage(), test.ShouldEqual, msg)
+
+	// Close underlying ClientConn and expect that further usages of the gRPC
+	// client will result in `ErrDisconnected`.
+	test.That(t, rtcConn.Close(), test.ShouldBeNil)
+	for i := 0; i < 2; i++ {
+		echoResp, err = client.Echo(context.Background(), &echopb.EchoRequest{Message: msg})
+		test.That(t, echoResp, test.ShouldBeNil)
+		test.That(t, err, test.ShouldNotBeNil)
+		test.That(t, err, test.ShouldBeError, ErrDisconnected)
+	}
+
+	test.That(t, rpcServer.Stop(), test.ShouldBeNil)
+	err = <-errChan
+	test.That(t, err, test.ShouldBeNil)
+}

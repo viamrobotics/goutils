@@ -265,23 +265,25 @@ func (ch *webrtcClientChannel) newStream(
 ) (*webrtcClientStream, error) {
 	id := stream.GetId()
 	ch.mu.Lock()
+	defer ch.mu.Unlock()
 	activeStream, ok := ch.streams[id]
 	if !ok {
 		if len(ch.streams) == WebRTCMaxStreamCount {
-			ch.mu.Unlock()
 			return nil, errWebRTCMaxStreams
 		}
-		clientStream := newWebRTCClientStream(
+		clientStream, err := newWebRTCClientStream(
 			ctx,
 			ch,
 			stream,
 			ch.removeStreamByID,
 			utils.AddFieldsToLogger(ch.webrtcBaseChannel.logger, "id", id),
 		)
+		if err != nil {
+			return nil, err
+		}
 		activeStream = activeWebRTCClientStream{clientStream}
 		ch.streams[id] = activeStream
 	}
-	ch.mu.Unlock()
 	return activeStream.cs, nil
 }
 
