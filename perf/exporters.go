@@ -122,9 +122,9 @@ func (e *sdExporter) Start() error {
 
 // Stop all exporting.
 func (e *sdExporter) Stop() {
+	e.sdExporter.Flush()
 	e.sdExporter.StopMetricsExporter()
 	trace.UnregisterExporter(e.sdExporter)
-	e.sdExporter.Flush()
 }
 
 type gaeResource struct {
