@@ -35,6 +35,10 @@ type ManagedProcess interface {
 	// Status return nil when the process is both alive and owned.
 	// If err is non-nil, process may be a) alive but not owned or b) dead.
 	Status() error
+
+	// UnixPid returns the pid of the process. This method returns an error if the pid is
+	// unknown. For example, if the process hasn't been `Start`ed yet. Or if not on a unix system.
+	UnixPid() (int, error)
 }
 
 // NewManagedProcess returns a new, unstarted, from the given configuration.
@@ -105,6 +109,13 @@ type managedProcess struct {
 
 func (p *managedProcess) ID() string {
 	return p.id
+}
+
+func (p *managedProcess) UnixPid() (int, error) {
+	if p.cmd == nil || p.cmd.Process == nil {
+		return 0, errors.New("Process not started")
+	}
+	return p.cmd.Process.Pid, nil
 }
 
 func (p *managedProcess) Status() error {
