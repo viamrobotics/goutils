@@ -42,6 +42,8 @@ func NewCloudExporter(opts CloudOptions) (Exporter, error) {
 		// ReportingInterval sets the frequency of reporting metrics to stackdriver backend.
 		ReportingInterval: 60 * time.Second,
 		MetricPrefix:      opts.MetricPrefix,
+		// TraceSpansBufferMaxBytes sets the maximum buffer size to 50MB before spans are dropped.
+		TraceSpansBufferMaxBytes: 50 << 20,
 	}
 
 	// Allow a custom stackdriver project.
