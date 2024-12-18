@@ -695,3 +695,10 @@ func (fp *fakeProcess) Status() error {
 	}
 	return nil
 }
+
+func (fp *fakeProcess) UnixPid() (int, error) {
+	return 0, errors.New(`the NewManagedProcess API needlessly returns an interface
+ instead of the structure itself. Thus tests depend on the returned interface. When
+in reality tests should just depend on the methods they rely on. UnixPid is not one
+of those methods (for better or worse)`)
+}
