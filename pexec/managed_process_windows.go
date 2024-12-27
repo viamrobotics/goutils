@@ -25,7 +25,6 @@ func parseSignal(sigStr, name string) (syscall.Signal, error) {
 	return 0, errors.New("signals not supported on Windows")
 }
 
-
 func (p *managedProcess) sysProcAttr() (*syscall.SysProcAttr, error) {
 	ret := &syscall.SysProcAttr{
 		CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP,
@@ -105,6 +104,13 @@ func (p *managedProcess) kill() (bool, error) {
 	}
 
 	return forceKilled, nil
+}
+
+// forceKill kills everything in the process tree. This will not wait for completion and may result in a zombie process.
+func (p *managedProcess) forceKill() error {
+	pidStr := strconv.Itoa(p.cmd.Process.Pid)
+	p.logger.Infof("force killing entire process tree %d", p.cmd.Process.Pid)
+	return exec.Command("taskkill", "/t", "/f", "/pid", pidStr).Start()
 }
 
 func isWaitErrUnknown(err string, forceKilled bool) bool {
