@@ -702,3 +702,5 @@ func (fp *fakeProcess) UnixPid() (int, error) {
 in reality tests should just depend on the methods they rely on. UnixPid is not one
 of those methods (for better or worse)`)
 }
+
+func (fp *fakeProcess) Kill() {}

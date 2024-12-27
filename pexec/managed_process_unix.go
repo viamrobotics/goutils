@@ -4,6 +4,7 @@ package pexec
 
 import (
 	"os"
+	"os/exec"
 	"os/user"
 	"strconv"
 	"syscall"
@@ -124,6 +125,14 @@ func (p *managedProcess) kill() (bool, error) {
 	}
 
 	return forceKilled, nil
+}
+
+// forceKill kills everything in the process group. This will not wait for completion and may result in a zombie process.
+func (p *managedProcess) forceKill() error {
+	pidStr := strconv.Itoa(-p.cmd.Process.Pid)
+	p.logger.Infof("killing entire process group %d", p.cmd.Process.Pid)
+	//nolint:gosec
+	return exec.Command("kill", "-9", pidStr).Start()
 }
 
 func isWaitErrUnknown(err string, forceKilled bool) bool {
