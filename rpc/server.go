@@ -342,7 +342,7 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 				logger.Errorw("panicked while calling unary server method", "error", errors.WithStack(err))
 				return err
 			}))),
-		grpc_zap.UnaryServerInterceptor(grpcLogger),
+		grpcUnaryServerInterceptor(grpcLogger), // Bashar: this is where the string "finished unary call with code Unknown" comes from
 		unaryServerCodeInterceptor(),
 	)
 	unaryInterceptors = append(unaryInterceptors, UnaryServerTracingInterceptor(grpcLogger))
