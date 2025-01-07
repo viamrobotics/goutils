@@ -4,11 +4,18 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"path"
 	"strconv"
+	"time"
 
 	"github.com/pkg/errors"
 	"go.opencensus.io/trace"
+
+	grpc_logging "github.com/grpc-ecosystem/go-grpc-middleware/logging"
+	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
+	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -119,3 +126,75 @@ func remoteSpanContextFromContext(ctx context.Context) (trace.SpanContext, error
 
 	return trace.SpanContext{TraceID: traceID, SpanID: spanID, TraceOptions: traceOptions, Tracestate: nil}, nil
 }
+
+// UnaryServerInterceptor returns a new unary server interceptors that adds zap.Logger to the context.
+func grpcUnaryServerInterceptor(logger *zap.Logger, opts ...grpcZapOption) grpc.UnaryServerInterceptor {
+	o := evaluateServerOpt(opts)
+	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+		startTime := time.Now()
+
+		newCtx := newLoggerForCall(ctx, logger, info.FullMethod, startTime)
+
+		resp, err := handler(newCtx, req)
+		if !o.shouldLog(info.FullMethod, err) {
+			return resp, err
+		}
+		code := o.codeFunc(err)
+		level := o.levelFunc(code)
+		duration := o.durationFunc(time.Since(startTime))
+
+		o.messageFunc(newCtx, "finished unary call with code "+code.String(), level, code, err, duration)
+		return resp, err
+	}
+}
+
+var (
+	defaultOptions = &grpcZapOptions{
+		levelFunc:    grpc_zap.DefaultCodeToLevel,
+		shouldLog:    grpc_logging.DefaultDeciderMethod,
+		codeFunc:     grpc_logging.DefaultErrorToCode,
+		durationFunc: grpc_zap.DefaultDurationToField,
+		messageFunc:  grpc_zap.DefaultMessageProducer,
+	}
+)
+
+func evaluateServerOpt(opts []grpcZapOption) *grpcZapOptions {
+	optCopy := &grpcZapOptions{}
+	*optCopy = *defaultOptions
+	optCopy.levelFunc = grpc_zap.DefaultCodeToLevel
+	for _, o := range opts {
+		o(optCopy)
+	}
+	return optCopy
+}
+
+func newLoggerForCall(ctx context.Context, logger *zap.Logger, fullMethodString string, start time.Time) context.Context {
+	var f []zapcore.Field
+	f = append(f, zap.String("grpc.start_time", start.Format(time.RFC3339)))
+	if d, ok := ctx.Deadline(); ok {
+		f = append(f, zap.String("grpc.request.deadline", d.Format(time.RFC3339)))
+	}
+	callLog := logger.With(append(f, serverCallFields(fullMethodString)...)...)
+	return ctxzap.ToContext(ctx, callLog)
+}
+
+func serverCallFields(fullMethodString string) []zapcore.Field {
+	service := path.Dir(fullMethodString)[1:]
+	method := path.Base(fullMethodString)
+	return []zapcore.Field{
+		grpc_zap.SystemField,
+		grpc_zap.ServerField,
+		zap.String("grpc.service", service),
+		zap.String("grpc.method", method),
+	}
+}
+
+type grpcZapOptions struct {
+	levelFunc    grpc_zap.CodeToLevel
+	shouldLog    grpc_logging.Decider
+	codeFunc     grpc_logging.ErrorToCode
+	durationFunc grpc_zap.DurationToField
+	messageFunc  grpc_zap.MessageProducer
+}
+
+type grpcZapOption func(*grpcZapOptions)
