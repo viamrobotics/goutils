@@ -2,9 +2,13 @@ package utils
 
 import (
 	"reflect"
+	"time"
 
 	"github.com/edaniels/golog"
+	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"google.golang.org/grpc/codes"
 )
 
 // Logger is used various parts of the package for informational/debugging purposes.
@@ -126,4 +130,31 @@ func AddFieldsToLogger(inp ZapCompatibleLogger, args ...interface{}) (loggerRet 
 	}
 
 	return loggerRet
+}
+
+// taken from
+// https://github.com/grpc-ecosystem/go-grpc-middleware/blob/560829fc74fcf9a69b7ab01d484f8b8961dc734b/logging/zap/client_interceptors.go
+func LogFinalLine(logger ZapCompatibleLogger, startTime time.Time, err error, msg string, code codes.Code) {
+	level := grpc_zap.DefaultCodeToLevel(code)
+
+	// this calculation is done because duration.Milliseconds() will return an integer, which is not precise enough.
+	duration := float32(time.Since(startTime).Nanoseconds()/1000) / 1000
+	fields := []any{}
+	if err == nil {
+		level = zap.DebugLevel
+	} else {
+		fields = append(fields, "error", err)
+	}
+	fields = append(fields, "grpc.code", code.String(), "grpc.time_ms", duration)
+	// grpc_zap.DefaultCodeToLevel will only return zap.DebugLevel, zap.InfoLevel, zap.ErrorLevel, zap.WarnLevel
+	switch level {
+	case zap.DebugLevel:
+		logger.Debugw(msg, fields...)
+	case zap.InfoLevel:
+		logger.Infow(msg, fields...)
+	case zap.ErrorLevel:
+		logger.Errorw(msg, fields...)
+	case zap.WarnLevel, zap.DPanicLevel, zap.PanicLevel, zap.FatalLevel, zapcore.InvalidLevel:
+		logger.Warnw(msg, fields...)
+	}
 }

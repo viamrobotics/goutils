@@ -16,7 +16,6 @@ import (
 	grpc_logging "github.com/grpc-ecosystem/go-grpc-middleware/logging"
 	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
 	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -128,12 +127,11 @@ func remoteSpanContextFromContext(ctx context.Context) (trace.SpanContext, error
 	return trace.SpanContext{TraceID: traceID, SpanID: spanID, TraceOptions: traceOptions, Tracestate: nil}, nil
 }
 
-// UnaryServerInterceptor returns a new unary server interceptors that adds zap.Logger to the context.
 func grpcUnaryServerInterceptor(logger utils.ZapCompatibleLogger, opts ...grpcZapOption) grpc.UnaryServerInterceptor {
 	o := evaluateServerOpt(opts)
+
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		startTime := time.Now()
-
 		newCtx := newLoggerForCall(ctx, logger, info.FullMethod, startTime)
 
 		resp, err := handler(newCtx, req)
@@ -142,29 +140,8 @@ func grpcUnaryServerInterceptor(logger utils.ZapCompatibleLogger, opts ...grpcZa
 		}
 
 		code := grpc_logging.DefaultErrorToCode(err)
-		level := grpc_zap.DefaultCodeToLevel(code)
-		// this calculation is done because duration.Milliseconds() will return an integer, which is not precise enough.
-		duration := float32(time.Since(startTime).Nanoseconds()/1000) / 1000
-		fields := []any{}
-		if err == nil {
-			level = zap.DebugLevel
-		} else {
-			fields = append(fields, "error", err)
-		}
-		fields = append(fields, "grpc.code", code.String(), "grpc.time_ms", duration)
-		msg := "finished unary call with code " + code.String()
 
-		// grpc_zap.DefaultCodeToLevel will only return zap.DebugLevel, zap.InfoLevel, zap.ErrorLevel, zap.WarnLevel
-		switch level {
-		case zap.DebugLevel:
-			logger.Debugw(msg, fields...)
-		case zap.InfoLevel:
-			logger.Infow(msg, fields...)
-		case zap.ErrorLevel:
-			logger.Errorw(msg, fields...)
-		case zap.WarnLevel, zap.DPanicLevel, zap.PanicLevel, zap.FatalLevel, zapcore.InvalidLevel:
-			logger.Warnw(msg, fields...)
-		}
+		utils.LogFinalLine(logger, startTime, err, "finished unary call with code "+code.String(), code)
 
 		return resp, err
 	}
@@ -172,57 +149,39 @@ func grpcUnaryServerInterceptor(logger utils.ZapCompatibleLogger, opts ...grpcZa
 
 func grpcStreamServerInterceptor(logger utils.ZapCompatibleLogger, opts ...grpcZapOption) grpc.StreamServerInterceptor {
 	o := evaluateServerOpt(opts)
+
 	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		startTime := time.Now()
 		newCtx := newLoggerForCall(stream.Context(), logger, info.FullMethod, startTime)
 		wrapped := grpc_middleware.WrapServerStream(stream)
+
 		wrapped.WrappedContext = newCtx
 
 		err := handler(srv, wrapped)
 		if !o.shouldLog(info.FullMethod, err) {
 			return err
 		}
-		code := grpc_logging.DefaultErrorToCode(err)
-		level := grpc_zap.DefaultCodeToLevel(code)
-		// this calculation is done because duration.Milliseconds() will return an integer, which is not precise enough.
-		duration := float32(time.Since(startTime).Nanoseconds()/1000) / 1000
-		fields := []any{}
-		if err == nil {
-			level = zap.DebugLevel
-		} else {
-			fields = append(fields, "error", err)
-		}
-		fields = append(fields, "grpc.code", code.String(), "grpc.time_ms", duration)
-		msg := "finished unary call with code " + code.String()
 
-		// grpc_zap.DefaultCodeToLevel will only return zap.DebugLevel, zap.InfoLevel, zap.ErrorLevel, zap.WarnLevel
-		switch level {
-		case zap.DebugLevel:
-			logger.Debugw(msg, fields...)
-		case zap.InfoLevel:
-			logger.Infow(msg, fields...)
-		case zap.ErrorLevel:
-			logger.Errorw(msg, fields...)
-		case zap.WarnLevel, zap.DPanicLevel, zap.PanicLevel, zap.FatalLevel, zapcore.InvalidLevel:
-			logger.Warnw(msg, fields...)
-		}
+		code := grpc_logging.DefaultErrorToCode(err)
+
+		utils.LogFinalLine(logger, startTime, err, "finished stream call with code "+code.String(), code)
 
 		return err
 	}
 }
 
-var (
-	defaultOptions = &grpcZapOptions{
-		levelFunc:    grpc_zap.DefaultCodeToLevel,
-		shouldLog:    grpc_logging.DefaultDeciderMethod,
-		codeFunc:     grpc_logging.DefaultErrorToCode,
-		durationFunc: grpc_zap.DefaultDurationToField,
-		messageFunc:  grpc_zap.DefaultMessageProducer,
-	}
-)
+type grpcZapOption func(*GrpcZapOptions)
 
-func evaluateServerOpt(opts []grpcZapOption) *grpcZapOptions {
-	optCopy := &grpcZapOptions{}
+type GrpcZapOptions struct {
+	levelFunc    grpc_zap.CodeToLevel
+	shouldLog    grpc_logging.Decider
+	codeFunc     grpc_logging.ErrorToCode
+	durationFunc grpc_zap.DurationToField
+	messageFunc  grpc_zap.MessageProducer
+}
+
+func evaluateServerOpt(opts []grpcZapOption) *GrpcZapOptions {
+	optCopy := &GrpcZapOptions{}
 	*optCopy = *defaultOptions
 	optCopy.levelFunc = grpc_zap.DefaultCodeToLevel
 	for _, o := range opts {
@@ -230,6 +189,16 @@ func evaluateServerOpt(opts []grpcZapOption) *grpcZapOptions {
 	}
 	return optCopy
 }
+
+var (
+	defaultOptions = &GrpcZapOptions{
+		levelFunc:    grpc_zap.DefaultCodeToLevel,
+		shouldLog:    grpc_logging.DefaultDeciderMethod,
+		codeFunc:     grpc_logging.DefaultErrorToCode,
+		durationFunc: grpc_zap.DefaultDurationToField,
+		messageFunc:  grpc_zap.DefaultMessageProducer,
+	}
+)
 
 func newLoggerForCall(ctx context.Context, logger utils.ZapCompatibleLogger, fullMethodString string, start time.Time) context.Context {
 	var f []any
@@ -252,16 +221,6 @@ func serverCallFields(fullMethodString string) []any {
 	}
 }
 
-type grpcZapOptions struct {
-	levelFunc    grpc_zap.CodeToLevel
-	shouldLog    grpc_logging.Decider
-	codeFunc     grpc_logging.ErrorToCode
-	durationFunc grpc_zap.DurationToField
-	messageFunc  grpc_zap.MessageProducer
-}
-
-type grpcZapOption func(*grpcZapOptions)
-
 // ToContext adds the zap.Logger to the context for extraction later.
 // Returning the new context that has been created.
 func toContext(ctx context.Context, logger utils.ZapCompatibleLogger) context.Context {
@@ -278,7 +237,6 @@ type ctxLogger struct {
 
 var (
 	ctxMarkerKey = &ctxMarker{}
-	nullLogger   = zap.NewNop()
 )
 
 type ctxMarker struct{}

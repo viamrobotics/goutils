@@ -324,10 +324,6 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 		logger:               logger,
 	}
 
-	grpcLogger := logger
-	if !(sOpts.debug || utils.Debug) {
-		// grpcLogger = grpcLogger.WithOptions(zap.IncreaseLevel(zap.LevelEnablerFunc(zapcore.ErrorLevel.Enabled)))
-	}
 	if sOpts.unknownStreamDesc != nil {
 		serverOpts = append(serverOpts, grpc.UnknownServiceHandler(sOpts.unknownStreamDesc.Handler))
 	}
@@ -339,10 +335,10 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 				logger.Errorw("panicked while calling unary server method", "error", errors.WithStack(err))
 				return err
 			}))),
-		grpcUnaryServerInterceptor(grpcLogger), // Bashar: this is where the string "finished unary call with code Unknown" comes from
+		grpcUnaryServerInterceptor(logger), // Bashar: this is where the string "finished unary call with code Unknown" comes from
 		unaryServerCodeInterceptor(),
 	)
-	unaryInterceptors = append(unaryInterceptors, UnaryServerTracingInterceptor(grpcLogger))
+	unaryInterceptors = append(unaryInterceptors, UnaryServerTracingInterceptor(logger))
 	unaryAuthIntPos := -1
 	if !sOpts.unauthenticated {
 		unaryInterceptors = append(unaryInterceptors, server.authUnaryInterceptor)
@@ -372,10 +368,10 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 				logger.Errorw("panicked while calling stream server method", "error", errors.WithStack(err))
 				return err
 			}))),
-		grpcStreamServerInterceptor(grpcLogger),
+		grpcStreamServerInterceptor(logger),
 		streamServerCodeInterceptor(),
 	)
-	streamInterceptors = append(streamInterceptors, StreamServerTracingInterceptor(grpcLogger))
+	streamInterceptors = append(streamInterceptors, StreamServerTracingInterceptor(logger))
 	streamAuthIntPos := -1
 	if !sOpts.unauthenticated {
 		streamInterceptors = append(streamInterceptors, server.authStreamInterceptor)
