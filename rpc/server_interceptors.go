@@ -10,6 +10,7 @@ import (
 
 	"github.com/pkg/errors"
 	"go.opencensus.io/trace"
+	"go.viam.com/utils"
 
 	grpc_logging "github.com/grpc-ecosystem/go-grpc-middleware/logging"
 	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
@@ -128,7 +129,7 @@ func remoteSpanContextFromContext(ctx context.Context) (trace.SpanContext, error
 }
 
 // UnaryServerInterceptor returns a new unary server interceptors that adds zap.Logger to the context.
-func grpcUnaryServerInterceptor(logger *zap.Logger, opts ...grpcZapOption) grpc.UnaryServerInterceptor {
+func grpcUnaryServerInterceptor(logger utils.ZapCompatibleLogger, opts ...grpcZapOption) grpc.UnaryServerInterceptor {
 	o := evaluateServerOpt(opts)
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		startTime := time.Now()
@@ -168,24 +169,24 @@ func evaluateServerOpt(opts []grpcZapOption) *grpcZapOptions {
 	return optCopy
 }
 
-func newLoggerForCall(ctx context.Context, logger *zap.Logger, fullMethodString string, start time.Time) context.Context {
-	var f []zapcore.Field
-	f = append(f, zap.String("grpc.start_time", start.Format(time.RFC3339)))
+func newLoggerForCall(ctx context.Context, logger utils.ZapCompatibleLogger, fullMethodString string, start time.Time) context.Context {
+	var f []any
+	f = append(f, "grpc.start_time", start.Format(time.RFC3339))
 	if d, ok := ctx.Deadline(); ok {
 		f = append(f, zap.String("grpc.request.deadline", d.Format(time.RFC3339)))
 	}
-	callLog := logger.With(append(f, serverCallFields(fullMethodString)...)...)
+	callLog := utils.AddFieldsToLogger(logger, append(f, serverCallFields(fullMethodString)...)...)
 	return ctxzap.ToContext(ctx, callLog)
 }
 
-func serverCallFields(fullMethodString string) []zapcore.Field {
+func serverCallFields(fullMethodString string) []any {
 	service := path.Dir(fullMethodString)[1:]
 	method := path.Base(fullMethodString)
-	return []zapcore.Field{
-		grpc_zap.SystemField,
-		grpc_zap.ServerField,
-		zap.String("grpc.service", service),
-		zap.String("grpc.method", method),
+	return []any{
+		"span.kind", "server",
+		"system", "grpc",
+		"grpc.service", service,
+		"grpc.method", method,
 	}
 }
 
