@@ -176,7 +176,7 @@ func newLoggerForCall(ctx context.Context, logger utils.ZapCompatibleLogger, ful
 		f = append(f, zap.String("grpc.request.deadline", d.Format(time.RFC3339)))
 	}
 	callLog := utils.AddFieldsToLogger(logger, append(f, serverCallFields(fullMethodString)...)...)
-	return ctxzap.ToContext(ctx, callLog)
+	return toContext(ctx, callLog)
 }
 
 func serverCallFields(fullMethodString string) []any {
@@ -199,3 +199,24 @@ type grpcZapOptions struct {
 }
 
 type grpcZapOption func(*grpcZapOptions)
+
+// ToContext adds the zap.Logger to the context for extraction later.
+// Returning the new context that has been created.
+func toContext(ctx context.Context, logger utils.ZapCompatibleLogger) context.Context {
+	l := &ctxLogger{
+		logger: logger,
+	}
+	return context.WithValue(ctx, ctxMarkerKey, l)
+}
+
+type ctxLogger struct {
+	logger utils.ZapCompatibleLogger
+	fields []any
+}
+
+var (
+	ctxMarkerKey = &ctxMarker{}
+	nullLogger   = zap.NewNop()
+)
+
+type ctxMarker struct{}
