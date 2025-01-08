@@ -22,7 +22,7 @@ import (
 )
 
 // UnaryServerTracingInterceptor starts a new Span if Span metadata exists in the context.
-func UnaryServerTracingInterceptor(logger utils.ZapCompatibleLogger) grpc.UnaryServerInterceptor {
+func UnaryServerTracingInterceptor() grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		if remoteSpanContext, err := remoteSpanContextFromContext(ctx); err == nil {
 			var span *trace.Span
@@ -45,7 +45,7 @@ func UnaryServerTracingInterceptor(logger utils.ZapCompatibleLogger) grpc.UnaryS
 }
 
 // StreamServerTracingInterceptor starts a new Span if Span metadata exists in the context.
-func StreamServerTracingInterceptor(logger utils.ZapCompatibleLogger) grpc.StreamServerInterceptor {
+func StreamServerTracingInterceptor() grpc.StreamServerInterceptor {
 	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		if remoteSpanContext, err := remoteSpanContextFromContext(stream.Context()); err == nil {
 			newCtx, span := trace.StartSpanWithRemoteParent(stream.Context(), "server_root", remoteSpanContext)

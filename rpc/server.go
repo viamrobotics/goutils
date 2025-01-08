@@ -338,7 +338,7 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 		grpcUnaryServerInterceptor(logger),
 		unaryServerCodeInterceptor(),
 	)
-	unaryInterceptors = append(unaryInterceptors, UnaryServerTracingInterceptor(logger))
+	unaryInterceptors = append(unaryInterceptors, UnaryServerTracingInterceptor())
 	unaryAuthIntPos := -1
 	if !sOpts.unauthenticated {
 		unaryInterceptors = append(unaryInterceptors, server.authUnaryInterceptor)
@@ -371,7 +371,7 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 		grpcStreamServerInterceptor(logger),
 		streamServerCodeInterceptor(),
 	)
-	streamInterceptors = append(streamInterceptors, StreamServerTracingInterceptor(logger))
+	streamInterceptors = append(streamInterceptors, StreamServerTracingInterceptor())
 	streamAuthIntPos := -1
 	if !sOpts.unauthenticated {
 		streamInterceptors = append(streamInterceptors, server.authStreamInterceptor)
