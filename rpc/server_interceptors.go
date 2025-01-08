@@ -12,9 +12,9 @@ import (
 	"go.opencensus.io/trace"
 	"go.viam.com/utils"
 
+	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpc_logging "github.com/grpc-ecosystem/go-grpc-middleware/logging"
 	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
-	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
@@ -23,7 +23,7 @@ import (
 )
 
 // UnaryServerTracingInterceptor starts a new Span if Span metadata exists in the context.
-func UnaryServerTracingInterceptor(logger *zap.Logger) grpc.UnaryServerInterceptor {
+func UnaryServerTracingInterceptor(logger utils.ZapCompatibleLogger) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		if remoteSpanContext, err := remoteSpanContextFromContext(ctx); err == nil {
 			var span *trace.Span
@@ -46,7 +46,7 @@ func UnaryServerTracingInterceptor(logger *zap.Logger) grpc.UnaryServerIntercept
 }
 
 // StreamServerTracingInterceptor starts a new Span if Span metadata exists in the context.
-func StreamServerTracingInterceptor(logger *zap.Logger) grpc.StreamServerInterceptor {
+func StreamServerTracingInterceptor(logger utils.ZapCompatibleLogger) grpc.StreamServerInterceptor {
 	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		if remoteSpanContext, err := remoteSpanContextFromContext(stream.Context()); err == nil {
 			newCtx, span := trace.StartSpanWithRemoteParent(stream.Context(), "server_root", remoteSpanContext)
@@ -140,12 +140,74 @@ func grpcUnaryServerInterceptor(logger utils.ZapCompatibleLogger, opts ...grpcZa
 		if !o.shouldLog(info.FullMethod, err) {
 			return resp, err
 		}
-		code := o.codeFunc(err)
-		level := o.levelFunc(code)
-		duration := o.durationFunc(time.Since(startTime))
 
-		o.messageFunc(newCtx, "finished unary call with code "+code.String(), level, code, err, duration)
+		code := grpc_logging.DefaultErrorToCode(err)
+		level := grpc_zap.DefaultCodeToLevel(code)
+		// this calculation is done because duration.Milliseconds() will return an integer, which is not precise enough.
+		duration := float32(time.Since(startTime).Nanoseconds()/1000) / 1000
+		fields := []any{}
+		if err == nil {
+			level = zap.DebugLevel
+		} else {
+			fields = append(fields, "error", err)
+		}
+		fields = append(fields, "grpc.code", code.String(), "grpc.time_ms", duration)
+		msg := "finished unary call with code " + code.String()
+
+		// grpc_zap.DefaultCodeToLevel will only return zap.DebugLevel, zap.InfoLevel, zap.ErrorLevel, zap.WarnLevel
+		switch level {
+		case zap.DebugLevel:
+			logger.Debugw(msg, fields...)
+		case zap.InfoLevel:
+			logger.Infow(msg, fields...)
+		case zap.ErrorLevel:
+			logger.Errorw(msg, fields...)
+		case zap.WarnLevel, zap.DPanicLevel, zap.PanicLevel, zap.FatalLevel, zapcore.InvalidLevel:
+			logger.Warnw(msg, fields...)
+		}
+
 		return resp, err
+	}
+}
+
+func grpcStreamServerInterceptor(logger utils.ZapCompatibleLogger, opts ...grpcZapOption) grpc.StreamServerInterceptor {
+	o := evaluateServerOpt(opts)
+	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+		startTime := time.Now()
+		newCtx := newLoggerForCall(stream.Context(), logger, info.FullMethod, startTime)
+		wrapped := grpc_middleware.WrapServerStream(stream)
+		wrapped.WrappedContext = newCtx
+
+		err := handler(srv, wrapped)
+		if !o.shouldLog(info.FullMethod, err) {
+			return err
+		}
+		code := grpc_logging.DefaultErrorToCode(err)
+		level := grpc_zap.DefaultCodeToLevel(code)
+		// this calculation is done because duration.Milliseconds() will return an integer, which is not precise enough.
+		duration := float32(time.Since(startTime).Nanoseconds()/1000) / 1000
+		fields := []any{}
+		if err == nil {
+			level = zap.DebugLevel
+		} else {
+			fields = append(fields, "error", err)
+		}
+		fields = append(fields, "grpc.code", code.String(), "grpc.time_ms", duration)
+		msg := "finished unary call with code " + code.String()
+
+		// grpc_zap.DefaultCodeToLevel will only return zap.DebugLevel, zap.InfoLevel, zap.ErrorLevel, zap.WarnLevel
+		switch level {
+		case zap.DebugLevel:
+			logger.Debugw(msg, fields...)
+		case zap.InfoLevel:
+			logger.Infow(msg, fields...)
+		case zap.ErrorLevel:
+			logger.Errorw(msg, fields...)
+		case zap.WarnLevel, zap.DPanicLevel, zap.PanicLevel, zap.FatalLevel, zapcore.InvalidLevel:
+			logger.Warnw(msg, fields...)
+		}
+
+		return err
 	}
 }
 
