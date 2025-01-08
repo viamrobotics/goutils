@@ -9,10 +9,7 @@ import (
 	"time"
 
 	grpc_logging "github.com/grpc-ecosystem/go-grpc-middleware/logging"
-	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
 	"github.com/viamrobotics/webrtc/v3"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/proto"
@@ -110,8 +107,9 @@ func (ch *webrtcClientChannel) Invoke(
 ) error {
 	startTime := time.Now()
 	err := ch.invokeWithInterceptor(ctx, method, args, reply, opts...)
+	code := grpc_logging.DefaultErrorToCode(err)
 	loggerWithFields := utils.AddFieldsToLogger(ch.webrtcBaseChannel.logger, newClientLoggerFields(method)...)
-	logFinalClientLine(loggerWithFields, startTime, err, "finished client unary call")
+	utils.LogFinalLine(loggerWithFields, startTime, err, "finished client unary call", code)
 	return err
 }
 
@@ -197,8 +195,9 @@ func (ch *webrtcClientChannel) NewStream(
 ) (grpc.ClientStream, error) {
 	startTime := time.Now()
 	clientStream, err := ch.streamWithInterceptor(ctx, method)
+	code := grpc_logging.DefaultErrorToCode(err)
 	loggerWithFields := utils.AddFieldsToLogger(ch.webrtcBaseChannel.logger, newClientLoggerFields(method)...)
-	logFinalClientLine(loggerWithFields, startTime, err, "finished client streaming call")
+	utils.LogFinalLine(loggerWithFields, startTime, err, "finished client streaming call", code)
 	return clientStream, err
 }
 
@@ -339,34 +338,6 @@ func (ch *webrtcClientChannel) writeReset(stream *webrtcpb.Stream) error {
 			RstStream: true,
 		},
 	})
-}
-
-// taken from
-// https://github.com/grpc-ecosystem/go-grpc-middleware/blob/560829fc74fcf9a69b7ab01d484f8b8961dc734b/logging/zap/client_interceptors.go
-func logFinalClientLine(logger utils.ZapCompatibleLogger, startTime time.Time, err error, msg string) {
-	code := grpc_logging.DefaultErrorToCode(err)
-	level := grpc_zap.DefaultCodeToLevel(code)
-
-	// this calculation is done because duration.Milliseconds() will return an integer, which is not precise enough.
-	duration := float32(time.Since(startTime).Nanoseconds()/1000) / 1000
-	fields := []any{}
-	if err == nil {
-		level = zap.DebugLevel
-	} else {
-		fields = append(fields, "error", err)
-	}
-	fields = append(fields, "grpc.code", code.String(), "grpc.time_ms", duration)
-	// grpc_zap.DefaultCodeToLevel will only return zap.DebugLevel, zap.InfoLevel, zap.ErrorLevel, zap.WarnLevel
-	switch level {
-	case zap.DebugLevel:
-		logger.Debugw(msg, fields...)
-	case zap.InfoLevel:
-		logger.Infow(msg, fields...)
-	case zap.ErrorLevel:
-		logger.Errorw(msg, fields...)
-	case zap.WarnLevel, zap.DPanicLevel, zap.PanicLevel, zap.FatalLevel, zapcore.InvalidLevel:
-		logger.Warnw(msg, fields...)
-	}
 }
 
 func newClientLoggerFields(fullMethodString string) []any {
