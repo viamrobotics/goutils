@@ -127,15 +127,13 @@ func remoteSpanContextFromContext(ctx context.Context) (trace.SpanContext, error
 	return trace.SpanContext{TraceID: traceID, SpanID: spanID, TraceOptions: traceOptions, Tracestate: nil}, nil
 }
 
-func grpcUnaryServerInterceptor(logger utils.ZapCompatibleLogger, opts ...grpcZapOption) grpc.UnaryServerInterceptor {
-	o := evaluateServerOpt(opts)
-
+func grpcUnaryServerInterceptor(logger utils.ZapCompatibleLogger) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		startTime := time.Now()
 		newCtx := newLoggerForCall(ctx, logger, info.FullMethod, startTime)
 
 		resp, err := handler(newCtx, req)
-		if !o.shouldLog(info.FullMethod, err) {
+		if !grpc_logging.DefaultDeciderMethod(info.FullMethod, err) {
 			return resp, err
 		}
 
@@ -147,9 +145,7 @@ func grpcUnaryServerInterceptor(logger utils.ZapCompatibleLogger, opts ...grpcZa
 	}
 }
 
-func grpcStreamServerInterceptor(logger utils.ZapCompatibleLogger, opts ...grpcZapOption) grpc.StreamServerInterceptor {
-	o := evaluateServerOpt(opts)
-
+func grpcStreamServerInterceptor(logger utils.ZapCompatibleLogger) grpc.StreamServerInterceptor {
 	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		startTime := time.Now()
 		newCtx := newLoggerForCall(stream.Context(), logger, info.FullMethod, startTime)
@@ -158,7 +154,7 @@ func grpcStreamServerInterceptor(logger utils.ZapCompatibleLogger, opts ...grpcZ
 		wrapped.WrappedContext = newCtx
 
 		err := handler(srv, wrapped)
-		if !o.shouldLog(info.FullMethod, err) {
+		if !grpc_logging.DefaultDeciderMethod(info.FullMethod, err) {
 			return err
 		}
 
@@ -169,36 +165,6 @@ func grpcStreamServerInterceptor(logger utils.ZapCompatibleLogger, opts ...grpcZ
 		return err
 	}
 }
-
-type grpcZapOption func(*GrpcZapOptions)
-
-type GrpcZapOptions struct {
-	levelFunc    grpc_zap.CodeToLevel
-	shouldLog    grpc_logging.Decider
-	codeFunc     grpc_logging.ErrorToCode
-	durationFunc grpc_zap.DurationToField
-	messageFunc  grpc_zap.MessageProducer
-}
-
-func evaluateServerOpt(opts []grpcZapOption) *GrpcZapOptions {
-	optCopy := &GrpcZapOptions{}
-	*optCopy = *defaultOptions
-	optCopy.levelFunc = grpc_zap.DefaultCodeToLevel
-	for _, o := range opts {
-		o(optCopy)
-	}
-	return optCopy
-}
-
-var (
-	defaultOptions = &GrpcZapOptions{
-		levelFunc:    grpc_zap.DefaultCodeToLevel,
-		shouldLog:    grpc_logging.DefaultDeciderMethod,
-		codeFunc:     grpc_logging.DefaultErrorToCode,
-		durationFunc: grpc_zap.DefaultDurationToField,
-		messageFunc:  grpc_zap.DefaultMessageProducer,
-	}
-)
 
 func newLoggerForCall(ctx context.Context, logger utils.ZapCompatibleLogger, fullMethodString string, start time.Time) context.Context {
 	var f []any
