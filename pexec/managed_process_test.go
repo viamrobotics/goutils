@@ -630,12 +630,22 @@ func TestManagedProcessStop(t *testing.T) {
 		test.That(t, file2SizeAfterKill, test.ShouldBeGreaterThan, file2SizeBeforeStart)
 		test.That(t, file3SizeAfterKill, test.ShouldBeGreaterThan, file3SizeBeforeStart)
 
-		// wait a short amount of time and check again - this time the size should not have increased.
-		time.Sleep(300 * time.Millisecond)
+		// since KillGroup does not wait, we might have to check file size a few times as the kill
+		// might take a little to propagate. We want to make sure that the file size stops increasing.
+		testutils.WaitForAssertionWithSleep(t, 300*time.Millisecond, 50, func(tb testing.TB) {
+			tempSize1 := getSize(tempFile1)
+			tempSize2 := getSize(tempFile2)
+			tempSize3 := getSize(tempFile3)
 
-		test.That(t, getSize(tempFile1), test.ShouldEqual, file1SizeAfterKill)
-		test.That(t, getSize(tempFile2), test.ShouldEqual, file2SizeAfterKill)
-		test.That(t, getSize(tempFile3), test.ShouldEqual, file3SizeAfterKill)
+			test.That(t, tempSize1, test.ShouldEqual, file1SizeAfterKill)
+			test.That(t, tempSize2, test.ShouldEqual, file2SizeAfterKill)
+			test.That(t, tempSize3, test.ShouldEqual, file3SizeAfterKill)
+
+			file1SizeAfterKill = tempSize1
+			file2SizeAfterKill = tempSize1
+			file3SizeAfterKill = tempSize1
+		})
+
 	})
 }
 
