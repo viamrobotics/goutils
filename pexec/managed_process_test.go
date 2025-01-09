@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -648,6 +649,12 @@ func TestManagedProcessStop(t *testing.T) {
 			file2SizeAfterKill = tempSize1
 			file3SizeAfterKill = tempSize1
 		})
+
+		// on certain systems, we have to send another signal to make sure the cmd.Wait() in
+		// the manage goroutine actually returns
+		if err := proc.(*managedProcess).cmd.Process.Signal(syscall.SIGTERM); err != nil {
+			test.That(t, errors.Is(err, os.ErrProcessDone), test.ShouldBeFalse)
+		}
 
 		// wait on the managingCh to close
 		<-proc.(*managedProcess).managingCh
