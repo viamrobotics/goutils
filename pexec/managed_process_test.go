@@ -455,13 +455,13 @@ func TestManagedProcessStop(t *testing.T) {
 		watcher1, tempFile := testutils.WatchedFile(t)
 
 		bashScript1 := fmt.Sprintf(`
-				trap "echo SIGTERM >> '%s'" SIGTERM
-				echo hello >> '%s'
-				while true
-				do echo hey
-				sleep 1
-				done
-			`, tempFile.Name(), tempFile.Name())
+			trap "echo SIGTERM >> '%s'" SIGTERM
+			echo hello >> '%s'
+			while true
+			do echo hey
+			sleep 1
+			done
+		`, tempFile.Name(), tempFile.Name())
 
 		proc := NewManagedProcess(ProcessConfig{
 			Name:        "bash",
@@ -496,20 +496,20 @@ func TestManagedProcessStop(t *testing.T) {
 		watcher3, tempFile3 := testutils.WatchedFile(t)
 
 		trapScript := `
-				trap "echo SIGTERM >> '%s'" SIGTERM
-				echo hello >> '%s'
-				while true
-				do echo hey
-				sleep 1
-				done
-			`
+			trap "echo SIGTERM >> '%s'" SIGTERM
+			echo hello >> '%s'
+			while true
+			do echo hey
+			sleep 1
+			done
+		`
 
 		bashScript1 := fmt.Sprintf(trapScript, tempFile1.Name(), tempFile1.Name())
 		bashScript2 := fmt.Sprintf(trapScript, tempFile2.Name(), tempFile2.Name())
 		bashScriptParent := fmt.Sprintf(`
-				bash -c '%s' &
-				bash -c '%s' &
-				`+trapScript,
+			bash -c '%s' &
+			bash -c '%s' &
+			`+trapScript,
 			bashScript1,
 			bashScript2,
 			tempFile3.Name(),
@@ -602,6 +602,9 @@ func TestManagedProcessStop(t *testing.T) {
 		proc := NewManagedProcess(ProcessConfig{
 			Name: "bash",
 			Args: []string{"-c", bashScriptParent},
+			// have to set Log to false so that open file descriptors do not cause the test to hang
+			// https://github.com/golang/go/issues/18874
+			Log: false,
 		}, logger)
 
 		// To confirm that the processes have died, confirm that the size of the file stopped increasing
