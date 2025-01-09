@@ -129,11 +129,15 @@ func (p *managedProcess) kill() (bool, error) {
 
 // forceKillGroup kills everything in the process group. This will not wait for completion and may result the
 // kill becoming a zombie process.
-func (p *managedProcess) forceKillGroup() error {
+func (p *managedProcess) forceKillGroup() (*exec.Cmd, error) {
 	pgidStr := strconv.Itoa(-p.cmd.Process.Pid)
 	p.logger.Infof("killing entire process group %d", p.cmd.Process.Pid)
 	//nolint:gosec
-	return exec.Command("kill", "-9", pgidStr).Start()
+	cmd := exec.Command("kill", "-9", pgidStr)
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+	return cmd, nil
 }
 
 func isWaitErrUnknown(err string, forceKilled bool) bool {

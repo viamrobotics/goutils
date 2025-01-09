@@ -34,7 +34,8 @@ type ManagedProcess interface {
 
 	// KillGroup will attempt to kill the process group and not wait for completion. Only use this if
 	// comfortable with leaking resources (in cases where exiting the program as quickly as possible is desired).
-	KillGroup()
+	// Returns kill process that can be waited on if desired.
+	KillGroup() (*exec.Cmd, error)
 
 	// Status return nil when the process is both alive and owned.
 	// If err is non-nil, process may be a) alive but not owned or b) dead.
@@ -438,7 +439,7 @@ func (p *managedProcess) Stop() error {
 }
 
 // KillGroup kills the process group.
-func (p *managedProcess) KillGroup() {
+func (p *managedProcess) KillGroup() (*exec.Cmd, error) {
 	// Minimally hold a lock here so that we can signal the
 	// management goroutine to stop. We will attempt to kill the
 	// process even if p.stopped is true.
@@ -450,7 +451,7 @@ func (p *managedProcess) KillGroup() {
 
 	if p.cmd == nil {
 		p.mu.Unlock()
-		return
+		return nil, errAlreadyStopped
 	}
 	p.mu.Unlock()
 
@@ -460,6 +461,5 @@ func (p *managedProcess) KillGroup() {
 	// without a lock held.
 	// We are intentionally not checking the error here, we are already
 	// in a bad state.
-	//nolint:errcheck,gosec
-	p.forceKillGroup()
+	return p.forceKillGroup()
 }
