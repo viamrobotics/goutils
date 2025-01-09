@@ -570,6 +570,9 @@ func TestManagedProcessStop(t *testing.T) {
 		<-watcher1.Events
 		test.That(t, proc.Stop(), test.ShouldBeNil)
 	})
+}
+
+func TestManagedProcessKillGroup(t *testing.T) {
 	t.Run("kill signaling with children", func(t *testing.T) {
 		if runtime.GOOS == "windows" {
 			t.Skip("cannot test this on windows")
@@ -582,18 +585,18 @@ func TestManagedProcessStop(t *testing.T) {
 
 		// this script writes a string to the specified file every 100ms
 		script := `
-			while true
-			do echo hello >> '%s'
-			sleep 0.1
-			done
-		`
+		while true
+		do echo hello >> '%s'
+		sleep 0.1
+		done
+	`
 
 		bashScript1 := fmt.Sprintf(script, tempFile1.Name())
 		bashScript2 := fmt.Sprintf(script, tempFile2.Name())
 		bashScriptParent := fmt.Sprintf(`
-			bash -c '%s' &
-			bash -c '%s' &
-			`+script,
+		bash -c '%s' &
+		bash -c '%s' &
+		`+script,
 			bashScript1,
 			bashScript2,
 			tempFile3.Name(),
@@ -603,9 +606,6 @@ func TestManagedProcessStop(t *testing.T) {
 		proc := NewManagedProcess(ProcessConfig{
 			Name: "bash",
 			Args: []string{"-c", bashScriptParent},
-			// have to set Log to false so that open file descriptors do not cause the test to hang
-			// https://github.com/golang/go/issues/18874
-			Log: false,
 		}, logger)
 
 		// To confirm that the processes have died, confirm that the size of the file stopped increasing
@@ -650,8 +650,10 @@ func TestManagedProcessStop(t *testing.T) {
 			file3SizeAfterKill = tempSize1
 		})
 
-		// on certain systems, we have to send another signal to make sure the cmd.Wait() in
-		// the manage goroutine actually returns
+		// in CI, we have to send another signal to make sure the cmd.Wait() in
+		// the manage goroutine actually returns.
+		// We do not care about the error if it is expected.
+		// maybe related to https://github.com/golang/go/issues/18874
 		if err := proc.(*managedProcess).cmd.Process.Signal(syscall.SIGTERM); err != nil {
 			test.That(t, errors.Is(err, os.ErrProcessDone), test.ShouldBeFalse)
 		}
