@@ -32,7 +32,7 @@ type ManagedProcess interface {
 	// there's any system level issue stopping the process.
 	Stop() error
 
-	// Kill will attempt to kill the process group and not wait for completion. Only use this if
+	// KillGroup will attempt to kill the process group and not wait for completion. Only use this if
 	// comfortable with leaking resources (in cases where exiting the program as quickly as possible is desired).
 	KillGroup()
 
@@ -437,6 +437,7 @@ func (p *managedProcess) Stop() error {
 	return errors.Errorf("non-successful exit code: %d", p.cmd.ProcessState.ExitCode())
 }
 
+// KillGroup kills the process group.
 func (p *managedProcess) KillGroup() {
 	// Minimally hold a lock here so that we can signal the
 	// management goroutine to stop. We will attempt to kill the

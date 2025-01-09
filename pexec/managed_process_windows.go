@@ -106,7 +106,7 @@ func (p *managedProcess) kill() (bool, error) {
 	return forceKilled, nil
 }
 
-// forceKill kills everything in the process tree. This will not wait for completion and may result in a zombie process.
+// forceKillGroup kills everything in the process tree. This will not wait for completion and may result in a zombie process.
 func (p *managedProcess) forceKillGroup() error {
 	pidStr := strconv.Itoa(p.cmd.Process.Pid)
 	p.logger.Infof("force killing entire process tree %d", p.cmd.Process.Pid)
