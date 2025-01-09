@@ -32,6 +32,10 @@ type ManagedProcess interface {
 	// there's any system level issue stopping the process.
 	Stop() error
 
+	// KillGroup will attempt to kill the process group and not wait for completion. Only use this if
+	// comfortable with leaking resources (in cases where exiting the program as quickly as possible is desired).
+	KillGroup()
+
 	// Status return nil when the process is both alive and owned.
 	// If err is non-nil, process may be a) alive but not owned or b) dead.
 	Status() error
@@ -431,4 +435,31 @@ func (p *managedProcess) Stop() error {
 		return p.lastWaitErr
 	}
 	return errors.Errorf("non-successful exit code: %d", p.cmd.ProcessState.ExitCode())
+}
+
+// KillGroup kills the process group.
+func (p *managedProcess) KillGroup() {
+	// Minimally hold a lock here so that we can signal the
+	// management goroutine to stop. We will attempt to kill the
+	// process even if p.stopped is true.
+	p.mu.Lock()
+	if !p.stopped {
+		close(p.killCh)
+		p.stopped = true
+	}
+
+	if p.cmd == nil {
+		p.mu.Unlock()
+		return
+	}
+	p.mu.Unlock()
+
+	// Since p.cmd is mutex guarded and we just signaled the manage
+	// goroutine to stop, no new Start can happen and therefore
+	// p.cmd can no longer be modified rendering it safe to read
+	// without a lock held.
+	// We are intentionally not checking the error here, we are already
+	// in a bad state.
+	//nolint:errcheck,gosec
+	p.forceKillGroup()
 }

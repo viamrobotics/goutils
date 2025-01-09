@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -411,10 +412,10 @@ func TestManagedProcessStop(t *testing.T) {
 			bashScriptBuilder.WriteString("\n")
 		}
 		bashScriptBuilder.WriteString(fmt.Sprintf(`echo hello >> '%s'
-while true
-do echo hey
-sleep 1
-done`, tempFile.Name()))
+	while true
+	do echo hey
+	sleep 1
+	done`, tempFile.Name()))
 		bashScriptBuilder.WriteString("\n")
 
 		bashScript := bashScriptBuilder.String()
@@ -571,6 +572,97 @@ done`, tempFile.Name()))
 	})
 }
 
+func TestManagedProcessKillGroup(t *testing.T) {
+	t.Run("kill signaling with children", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("cannot test this on windows")
+		}
+		logger := golog.NewTestLogger(t)
+
+		watcher1, tempFile1 := testutils.WatchedFile(t)
+		watcher2, tempFile2 := testutils.WatchedFile(t)
+		watcher3, tempFile3 := testutils.WatchedFile(t)
+
+		// this script writes a string to the specified file every 100ms
+		script := `
+		while true
+		do echo hello >> '%s'
+		sleep 0.1
+		done
+	`
+
+		bashScript1 := fmt.Sprintf(script, tempFile1.Name())
+		bashScript2 := fmt.Sprintf(script, tempFile2.Name())
+		bashScriptParent := fmt.Sprintf(`
+		bash -c '%s' &
+		bash -c '%s' &
+		`+script,
+			bashScript1,
+			bashScript2,
+			tempFile3.Name(),
+			tempFile3.Name(),
+		)
+
+		proc := NewManagedProcess(ProcessConfig{
+			Name: "bash",
+			Args: []string{"-c", bashScriptParent},
+		}, logger)
+
+		// To confirm that the processes have died, confirm that the size of the file stopped increasing
+		getSize := func(file *os.File) int64 {
+			info, _ := file.Stat()
+			return info.Size()
+		}
+
+		file1SizeBeforeStart := getSize(tempFile1)
+		file2SizeBeforeStart := getSize(tempFile2)
+		file3SizeBeforeStart := getSize(tempFile3)
+
+		test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
+
+		<-watcher1.Events
+		<-watcher2.Events
+		<-watcher3.Events
+
+		proc.KillGroup()
+
+		file1SizeAfterKill := getSize(tempFile1)
+		file2SizeAfterKill := getSize(tempFile2)
+		file3SizeAfterKill := getSize(tempFile3)
+
+		test.That(t, file1SizeAfterKill, test.ShouldBeGreaterThan, file1SizeBeforeStart)
+		test.That(t, file2SizeAfterKill, test.ShouldBeGreaterThan, file2SizeBeforeStart)
+		test.That(t, file3SizeAfterKill, test.ShouldBeGreaterThan, file3SizeBeforeStart)
+
+		// since KillGroup does not wait, we might have to check file size a few times as the kill
+		// might take a little to propagate. We want to make sure that the file size stops increasing.
+		testutils.WaitForAssertionWithSleep(t, 300*time.Millisecond, 50, func(tb testing.TB) {
+			tempSize1 := getSize(tempFile1)
+			tempSize2 := getSize(tempFile2)
+			tempSize3 := getSize(tempFile3)
+
+			test.That(t, tempSize1, test.ShouldEqual, file1SizeAfterKill)
+			test.That(t, tempSize2, test.ShouldEqual, file2SizeAfterKill)
+			test.That(t, tempSize3, test.ShouldEqual, file3SizeAfterKill)
+
+			file1SizeAfterKill = tempSize1
+			file2SizeAfterKill = tempSize1
+			file3SizeAfterKill = tempSize1
+		})
+
+		// in CI, we have to send another signal to make sure the cmd.Wait() in
+		// the manage goroutine actually returns.
+		// We do not care about the error if it is expected.
+		// maybe related to https://github.com/golang/go/issues/18874
+		if err := proc.(*managedProcess).cmd.Process.Signal(syscall.SIGTERM); err != nil {
+			test.That(t, errors.Is(err, os.ErrProcessDone), test.ShouldBeFalse)
+		}
+
+		// wait on the managingCh to close
+		<-proc.(*managedProcess).managingCh
+	})
+}
+
 func TestManagedProcessEnvironmentVariables(t *testing.T) {
 	t.Run("set an environment variable on one-shot process", func(t *testing.T) {
 		logger := golog.NewTestLogger(t)
@@ -702,3 +794,5 @@ func (fp *fakeProcess) UnixPid() (int, error) {
 in reality tests should just depend on the methods they rely on. UnixPid is not one
 of those methods (for better or worse)`)
 }
+
+func (fp *fakeProcess) KillGroup() {}
