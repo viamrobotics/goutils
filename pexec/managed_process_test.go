@@ -645,6 +645,9 @@ func TestManagedProcessStop(t *testing.T) {
 			file2SizeAfterKill = tempSize1
 			file3SizeAfterKill = tempSize1
 		})
+
+		// wait on the managingCh to close
+		<-proc.(*managedProcess).managingCh
 	})
 }
 
