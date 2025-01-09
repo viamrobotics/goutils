@@ -645,7 +645,6 @@ func TestManagedProcessStop(t *testing.T) {
 			file2SizeAfterKill = tempSize1
 			file3SizeAfterKill = tempSize1
 		})
-
 	})
 }
 
