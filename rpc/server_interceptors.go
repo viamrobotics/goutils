@@ -147,10 +147,7 @@ func grpcUnaryServerInterceptor(logger utils.ZapCompatibleLogger) grpc.UnaryServ
 func grpcStreamServerInterceptor(logger utils.ZapCompatibleLogger) grpc.StreamServerInterceptor {
 	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		startTime := time.Now()
-		newCtx := newLoggerForCall(stream.Context(), logger, info.FullMethod, startTime)
 		wrapped := grpc_middleware.WrapServerStream(stream)
-
-		wrapped.WrappedContext = newCtx
 
 		err := handler(srv, wrapped)
 		if !grpc_logging.DefaultDeciderMethod(info.FullMethod, err) {
