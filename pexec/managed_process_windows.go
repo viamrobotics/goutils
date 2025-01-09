@@ -89,7 +89,7 @@ func (p *managedProcess) kill() (bool, error) {
 		select {
 		case <-timer2.C:
 			p.logger.Infof("force killing entire process tree %d", p.cmd.Process.Pid)
-			if err := forceKillCmd(pidStr).Run(); err != nil {
+			if err := exec.Command("taskkill", "/t", "/f", "/pid", pidStr).Run(); err != nil {
 				return false, errors.Wrapf(err, "error force killing process tree %d", p.cmd.Process.Pid)
 			}
 			forceKilled = true
@@ -97,7 +97,7 @@ func (p *managedProcess) kill() (bool, error) {
 			timer2.Stop()
 		}
 	} else {
-		if err := forceKillCmd(pidStr).Run(); err != nil {
+		if err := exec.Command("taskkill", "/t", "/f", "/pid", pidStr).Run(); err != nil {
 			return false, errors.Wrapf(err, "error force killing process tree %d", p.cmd.Process.Pid)
 		}
 		forceKilled = true
@@ -106,20 +106,11 @@ func (p *managedProcess) kill() (bool, error) {
 	return forceKilled, nil
 }
 
-func forceKillCmd(pidStr string) *exec.Cmd {
-	return exec.Command("taskkill", "/t", "/f", "/pid", pidStr)
-}
-
-// forceKillGroup kills everything in the process group. This will not wait for completion and may result the
-// kill becoming a zombie process.
-func (p *managedProcess) forceKillGroup() (*exec.Cmd, error) {
-	pgidStr := strconv.Itoa(p.cmd.Process.Pid)
+// forceKillGroup kills everything in the process tree. This will not wait for completion and may result in a zombie process.
+func (p *managedProcess) forceKillGroup() error {
+	pidStr := strconv.Itoa(p.cmd.Process.Pid)
 	p.logger.Infof("force killing entire process tree %d", p.cmd.Process.Pid)
-	cmd := forceKillCmd(pgidStr)
-	if err := cmd.Start(); err != nil {
-		return nil, err
-	}
-	return cmd, nil
+	return exec.Command("taskkill", "/t", "/f", "/pid", pidStr).Start()
 }
 
 func isWaitErrUnknown(err string, forceKilled bool) bool {
