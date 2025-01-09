@@ -284,6 +284,7 @@ func (s *webrtcServerStream) processHeaders(headers *webrtcpb.RequestHeaders) {
 	select {
 	case s.ch.server.callTickets <- struct{}{}:
 	default:
+		s.ch.server.processHeadersWorkers.Done()
 		s.closeWithSendError(status.Error(codes.ResourceExhausted, "too many in-flight requests"))
 		return
 	}
