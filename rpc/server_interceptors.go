@@ -8,15 +8,15 @@ import (
 	"strconv"
 	"time"
 
+	grpc_logging "github.com/grpc-ecosystem/go-grpc-middleware/logging"
 	"github.com/pkg/errors"
 	"go.opencensus.io/trace"
-	"go.viam.com/utils"
-
-	grpc_logging "github.com/grpc-ecosystem/go-grpc-middleware/logging"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+
+	"go.viam.com/utils"
 )
 
 // UnaryServerTracingInterceptor starts a new Span if Span metadata exists in the context.
