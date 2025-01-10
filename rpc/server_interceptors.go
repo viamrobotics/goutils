@@ -130,8 +130,9 @@ func grpcUnaryServerInterceptor(logger utils.ZapCompatibleLogger) grpc.UnaryServ
 		startTime := time.Now()
 		resp, err := handler(ctx, req)
 		code := grpc_logging.DefaultErrorToCode(err)
+		loggerWithFields := utils.AddFieldsToLogger(logger, serverCallFields(ctx, info.FullMethod, startTime)...)
 
-		utils.LogFinalLine(utils.AddFieldsToLogger(logger, serverCallFields(ctx, info.FullMethod, startTime)...), startTime, err, "finished unary call with code "+code.String(), code)
+		utils.LogFinalLine(loggerWithFields, startTime, err, "finished unary call with code "+code.String(), code)
 
 		return resp, err
 	}
@@ -142,8 +143,9 @@ func grpcStreamServerInterceptor(logger utils.ZapCompatibleLogger) grpc.StreamSe
 		startTime := time.Now()
 		err := handler(srv, stream)
 		code := grpc_logging.DefaultErrorToCode(err)
+		loggerWithFields := utils.AddFieldsToLogger(logger, serverCallFields(stream.Context(), info.FullMethod, startTime)...)
 
-		utils.LogFinalLine(utils.AddFieldsToLogger(logger, serverCallFields(stream.Context(), info.FullMethod, startTime)...), startTime, err, "finished stream call with code "+code.String(), code)
+		utils.LogFinalLine(loggerWithFields, startTime, err, "finished stream call with code "+code.String(), code)
 
 		return err
 	}
