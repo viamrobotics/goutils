@@ -12,7 +12,6 @@ import (
 	"go.opencensus.io/trace"
 	"go.viam.com/utils"
 
-	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpc_logging "github.com/grpc-ecosystem/go-grpc-middleware/logging"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -129,16 +128,10 @@ func remoteSpanContextFromContext(ctx context.Context) (trace.SpanContext, error
 func grpcUnaryServerInterceptor(logger utils.ZapCompatibleLogger) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		startTime := time.Now()
-		newCtx := newLoggerForCall(ctx, logger, info.FullMethod, startTime)
-
-		resp, err := handler(newCtx, req)
-		if !grpc_logging.DefaultDeciderMethod(info.FullMethod, err) {
-			return resp, err
-		}
-
+		resp, err := handler(ctx, req)
 		code := grpc_logging.DefaultErrorToCode(err)
 
-		utils.LogFinalLine(logger, startTime, err, "finished unary call with code "+code.String(), code)
+		utils.LogFinalLine(utils.AddFieldsToLogger(logger, serverCallFields(ctx, info.FullMethod, startTime)...), startTime, err, "finished unary call with code "+code.String(), code)
 
 		return resp, err
 	}
@@ -147,58 +140,27 @@ func grpcUnaryServerInterceptor(logger utils.ZapCompatibleLogger) grpc.UnaryServ
 func grpcStreamServerInterceptor(logger utils.ZapCompatibleLogger) grpc.StreamServerInterceptor {
 	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		startTime := time.Now()
-		wrapped := grpc_middleware.WrapServerStream(stream)
-
-		err := handler(srv, wrapped)
-		if !grpc_logging.DefaultDeciderMethod(info.FullMethod, err) {
-			return err
-		}
-
+		err := handler(srv, stream)
 		code := grpc_logging.DefaultErrorToCode(err)
 
-		utils.LogFinalLine(logger, startTime, err, "finished stream call with code "+code.String(), code)
+		utils.LogFinalLine(utils.AddFieldsToLogger(logger, serverCallFields(stream.Context(), info.FullMethod, startTime)...), startTime, err, "finished stream call with code "+code.String(), code)
 
 		return err
 	}
 }
 
-func newLoggerForCall(ctx context.Context, logger utils.ZapCompatibleLogger, fullMethodString string, start time.Time) context.Context {
+func serverCallFields(ctx context.Context, fullMethodString string, start time.Time) []any {
 	var f []any
 	f = append(f, "grpc.start_time", start.Format(time.RFC3339))
 	if d, ok := ctx.Deadline(); ok {
 		f = append(f, zap.String("grpc.request.deadline", d.Format(time.RFC3339)))
 	}
-	callLog := utils.AddFieldsToLogger(logger, append(f, serverCallFields(fullMethodString)...)...)
-	return toContext(ctx, callLog)
-}
-
-func serverCallFields(fullMethodString string) []any {
 	service := path.Dir(fullMethodString)[1:]
 	method := path.Base(fullMethodString)
-	return []any{
+	return append(f, []any{
 		"span.kind", "server",
 		"system", "grpc",
 		"grpc.service", service,
 		"grpc.method", method,
-	}
+	})
 }
-
-// ToContext adds the zap.Logger to the context for extraction later.
-// Returning the new context that has been created.
-func toContext(ctx context.Context, logger utils.ZapCompatibleLogger) context.Context {
-	l := &ctxLogger{
-		logger: logger,
-	}
-	return context.WithValue(ctx, ctxMarkerKey, l)
-}
-
-type ctxLogger struct {
-	logger utils.ZapCompatibleLogger
-	fields []any
-}
-
-var (
-	ctxMarkerKey = &ctxMarker{}
-)
-
-type ctxMarker struct{}
