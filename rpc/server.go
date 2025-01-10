@@ -25,6 +25,8 @@ import (
 	"github.com/improbable-eng/grpc-web/go/grpcweb"
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"golang.org/x/net/http2/h2c"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -324,6 +326,10 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 		logger:               logger,
 	}
 
+	grpcLogger := logger
+	if !(sOpts.debug || utils.Debug) {
+		grpcLogger = grpcLogger.Desugar().WithOptions(zap.IncreaseLevel(zap.LevelEnablerFunc(zapcore.ErrorLevel.Enabled))).Sugar()
+	}
 	if sOpts.unknownStreamDesc != nil {
 		serverOpts = append(serverOpts, grpc.UnknownServiceHandler(sOpts.unknownStreamDesc.Handler))
 	}
@@ -335,7 +341,7 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 				logger.Errorw("panicked while calling unary server method", "error", errors.WithStack(err))
 				return err
 			}))),
-		grpcUnaryServerInterceptor(logger),
+		grpcUnaryServerInterceptor(grpcLogger),
 		unaryServerCodeInterceptor(),
 	)
 	unaryInterceptors = append(unaryInterceptors, UnaryServerTracingInterceptor())
@@ -368,7 +374,7 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 				logger.Errorw("panicked while calling stream server method", "error", errors.WithStack(err))
 				return err
 			}))),
-		grpcStreamServerInterceptor(logger),
+		grpcStreamServerInterceptor(grpcLogger),
 		streamServerCodeInterceptor(),
 	)
 	streamInterceptors = append(streamInterceptors, StreamServerTracingInterceptor())
