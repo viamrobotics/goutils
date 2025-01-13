@@ -7,7 +7,7 @@ import (
 	"math"
 	"sync/atomic"
 
-	protov1 "github.com/golang/protobuf/proto" //nolint::staticcheck
+	protov1 "github.com/golang/protobuf/proto" //nolint:staticcheck
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
