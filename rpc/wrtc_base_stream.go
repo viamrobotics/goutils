@@ -8,7 +8,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	protov1 "github.com/golang/protobuf/proto" 
+	protov1 "github.com/golang/protobuf/proto" //nolint::staticcheck
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/proto"
 
