@@ -6,7 +6,7 @@ import (
 	"io"
 	"math"
 
-	protov1 "github.com/golang/protobuf/proto" //nolint::staticcheck
+	protov1 "github.com/golang/protobuf/proto" //nolint:staticcheck
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
