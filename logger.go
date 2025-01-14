@@ -132,6 +132,8 @@ func AddFieldsToLogger(inp ZapCompatibleLogger, args ...interface{}) (loggerRet 
 	return loggerRet
 }
 
+// LogFinalLine is used to log the final status of a gRPC request along with its execution time, an associated error (if any), and the
+// gRPC status code. If there is an error, the log level is upgraded (if necessary) to ERROR. Otherwise, it is set to DEBUG. This code is
 // taken from
 // https://github.com/grpc-ecosystem/go-grpc-middleware/blob/560829fc74fcf9a69b7ab01d484f8b8961dc734b/logging/zap/client_interceptors.go
 func LogFinalLine(logger ZapCompatibleLogger, startTime time.Time, err error, msg string, code codes.Code) {
