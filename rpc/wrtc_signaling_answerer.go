@@ -422,28 +422,8 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 				}
 			}
 
-			// The answerer may be stopped (canceling the context and waiting on background workers)
-			// concurrently to executing the below code. In that circumstance we must guarantee
-			// either:
-			// * `Stop` waiting on the `bgWorkers` WaitGroup observes our `bgWorkers.Add` or
-			// * Our code observes `Stop`s closing of the `closeCtx`
-			//
-			// We use a mutex to make the read of the `closeCtx` and write to the `bgWorkers`
-			// atomic. `Stop` takes a competing mutex around canceling the `closeCtx`.
-			aa.bgWorkersMu.RLock()
-			select {
-			case <-aa.closeCtx.Done():
-				aa.bgWorkersMu.RUnlock()
-				return
-			default:
-			}
-			aa.bgWorkers.Add(1)
-			aa.bgWorkersMu.RUnlock()
-
 			// must spin off to unblock the ICE gatherer
-			utils.PanicCapturingGo(func() {
-				defer aa.bgWorkers.Done()
-
+			aa.sw.Add(func(ctx context.Context) {
 				if icecandidate != nil {
 					defer pendingCandidates.Done()
 				}
