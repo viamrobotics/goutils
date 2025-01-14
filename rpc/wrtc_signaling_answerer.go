@@ -96,11 +96,8 @@ func (ans *webrtcSignalingAnswerer) Start() {
 	ans.startStopMu.Lock()
 	defer ans.startStopMu.Unlock()
 
-	// No lock is necessary here. It is illegal to call `ans.Stop` before `ans.Start` returns.
-	ans.bgWorkers.Add(1)
-
 	// attempt to make connection in a loop
-	utils.ManagedGo(func() {
+	ans.sw.Add(func(ctx context.Context) {
 		for ans.conn == nil {
 			select {
 			case <-ans.closeCtx.Done():
@@ -132,8 +129,6 @@ func (ans *webrtcSignalingAnswerer) Start() {
 		for i := 0; i < defaultMaxAnswerers; i++ {
 			ans.startAnswerer()
 		}
-	}, func() {
-		ans.bgWorkers.Done()
 	})
 }
 
