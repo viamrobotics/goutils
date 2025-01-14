@@ -171,24 +171,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 		return answerClient, nil
 	}
 
-	// The answerer may be stopped (canceling the context and waiting on background workers)
-	// concurrently to executing the below code. In that circumstance we must guarantee either:
-	// * `Stop` waiting on the `bgWorkers` WaitGroup observes our `bgWorkers.Add` or
-	// * Our code observes `Stop`s closing of the `closeCtx`
-	//
-	// We use a mutex to make the read of the `closeCtx` and write to the `bgWorkers` atomic. `Stop`
-	// takes a competing mutex around canceling the `closeCtx`.
-	ans.bgWorkersMu.RLock()
-	select {
-	case <-ans.closeCtx.Done():
-		ans.bgWorkersMu.RUnlock()
-		return
-	default:
-	}
-	ans.bgWorkers.Add(1)
-	ans.bgWorkersMu.RUnlock()
-
-	utils.ManagedGo(func() {
+	ans.sw.Add(func(ctx context.Context) {
 		var client webrtcpb.SignalingService_AnswerClient
 		defer func() {
 			if client == nil {
@@ -290,8 +273,6 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 			}
 			answerCtxCancel()
 		}
-	}, func() {
-		ans.bgWorkers.Done()
 	})
 }
 
