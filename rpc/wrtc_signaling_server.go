@@ -147,7 +147,6 @@ func HeartbeatsAllowedFromCtx(ctx context.Context) bool {
 
 func (srv *WebRTCSignalingServer) asyncSendOfferError(host, uuid string, offerErr error) {
 	srv.sw.Add(func(ctx context.Context) {
-
 		// Use a timeout to not block shutdown.
 		sendCtx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 		defer cancel()
