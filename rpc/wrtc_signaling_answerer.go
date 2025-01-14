@@ -38,9 +38,10 @@ type webrtcSignalingAnswerer struct {
 	// bgWorkersMu should be `Lock`ed in `Stop` to `Wait` on ongoing background workers in startAnswerer/answer.
 	// bgWorkersMu should be `RLock`ed when starting a new background worker (allow concurrent background workers) to
 	// `Add` to bgWorkers.
-	bgWorkersMu     sync.RWMutex
-	bgWorkers       sync.WaitGroup
-	cancelBgWorkers func()
+	bgWorkersMu     sync.RWMutex   // TODO(Bashar): remove after removing deadlock
+	bgWorkers       sync.WaitGroup // TODO(Bashar): remove after removing deadlock
+	cancelBgWorkers func()         // TODO(Bashar): remove after removing deadlock
+	sw              *utils.StoppableWorkers
 
 	// conn is used to share the direct gRPC connection used by the answerer workers. As direct gRPC connections
 	// reconnect on their own, custom reconnect logic is not needed. However, keepalives are necessary for the connection
@@ -48,7 +49,7 @@ type webrtcSignalingAnswerer struct {
 	connMu sync.Mutex
 	conn   ClientConn
 
-	closeCtx context.Context
+	closeCtx context.Context // TODO(Bashar): is this necessary?
 	logger   utils.ZapCompatibleLogger
 }
 
@@ -68,12 +69,14 @@ func newWebRTCSignalingAnswerer(
 	copy(dialOptsCopy, dialOpts)
 	dialOptsCopy = append(dialOptsCopy, WithWebRTCOptions(DialWebRTCOptions{Disable: true}))
 	closeCtx, cancel := context.WithCancel(context.Background())
+	sw := utils.NewStoppableWorkers(closeCtx)
 	return &webrtcSignalingAnswerer{
 		address:         address,
 		hosts:           hosts,
 		server:          server,
 		dialOpts:        dialOptsCopy,
 		webrtcConfig:    webrtcConfig,
+		sw:              sw,
 		cancelBgWorkers: cancel,
 		closeCtx:        closeCtx,
 		logger:          logger,
@@ -93,14 +96,11 @@ func (ans *webrtcSignalingAnswerer) Start() {
 	ans.startStopMu.Lock()
 	defer ans.startStopMu.Unlock()
 
-	// No lock is necessary here. It is illegal to call `ans.Stop` before `ans.Start` returns.
-	ans.bgWorkers.Add(1)
-
 	// attempt to make connection in a loop
-	utils.ManagedGo(func() {
+	ans.sw.Add(func(ctx context.Context) {
 		for ans.conn == nil {
 			select {
-			case <-ans.closeCtx.Done():
+			case <-ctx.Done():
 				return
 			default:
 			}
@@ -111,12 +111,12 @@ func (ans *webrtcSignalingAnswerer) Start() {
 			if proxyAddr := os.Getenv(SocksProxyEnvVar); proxyAddr != "" {
 				timeout = answererConnectTimeoutBehindProxy
 			}
-			setupCtx, timeoutCancel := context.WithTimeout(ans.closeCtx, timeout)
+			setupCtx, timeoutCancel := context.WithTimeout(ctx, timeout)
 			conn, err := Dial(setupCtx, ans.address, ans.logger, ans.dialOpts...)
 			timeoutCancel()
 			if err != nil {
 				ans.logger.Errorw("error connecting answer client", "error", err)
-				if !utils.SelectContextOrWait(ans.closeCtx, answererReconnectWait) {
+				if !utils.SelectContextOrWait(ctx, answererReconnectWait) {
 					return
 				}
 				continue
@@ -129,8 +129,6 @@ func (ans *webrtcSignalingAnswerer) Start() {
 		for i := 0; i < defaultMaxAnswerers; i++ {
 			ans.startAnswerer()
 		}
-	}, func() {
-		ans.bgWorkers.Done()
 	})
 }
 
@@ -160,7 +158,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 		md := metadata.New(nil)
 		md.Append(RPCHostMetadataField, ans.hosts...)
 		md.Append(HeartbeatsAllowedMetadataField, "true")
-		answerCtx := metadata.NewOutgoingContext(ans.closeCtx, md)
+		answerCtx := metadata.NewOutgoingContext(ans.closeCtx, md) // TODO(Bashar): can we use a different context here
 		answerClient, err := client.Answer(answerCtx)
 		if err != nil {
 			return nil, err
@@ -168,24 +166,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 		return answerClient, nil
 	}
 
-	// The answerer may be stopped (canceling the context and waiting on background workers)
-	// concurrently to executing the below code. In that circumstance we must guarantee either:
-	// * `Stop` waiting on the `bgWorkers` WaitGroup observes our `bgWorkers.Add` or
-	// * Our code observes `Stop`s closing of the `closeCtx`
-	//
-	// We use a mutex to make the read of the `closeCtx` and write to the `bgWorkers` atomic. `Stop`
-	// takes a competing mutex around canceling the `closeCtx`.
-	ans.bgWorkersMu.RLock()
-	select {
-	case <-ans.closeCtx.Done():
-		ans.bgWorkersMu.RUnlock()
-		return
-	default:
-	}
-	ans.bgWorkers.Add(1)
-	ans.bgWorkersMu.RUnlock()
-
-	utils.ManagedGo(func() {
+	ans.sw.Add(func(ctx context.Context) {
 		var client webrtcpb.SignalingService_AnswerClient
 		defer func() {
 			if client == nil {
@@ -197,7 +178,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 		}()
 		for {
 			select {
-			case <-ans.closeCtx.Done():
+			case <-ctx.Done():
 				return
 			default:
 			}
@@ -208,7 +189,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 			if err != nil {
 				if checkExceptionalError(err) != nil {
 					ans.logger.Warnw("error communicating with signaling server", "error", err)
-					if !utils.SelectContextOrWait(ans.closeCtx, answererReconnectWait) {
+					if !utils.SelectContextOrWait(ctx, answererReconnectWait) {
 						return
 					}
 				}
@@ -240,7 +221,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 			if err != nil {
 				if checkExceptionalError(err) != nil {
 					ans.logger.Warnw("error communicating with signaling server", "error", err)
-					if !utils.SelectContextOrWait(ans.closeCtx, answererReconnectWait) {
+					if !utils.SelectContextOrWait(ctx, answererReconnectWait) {
 						return
 					}
 				}
@@ -272,23 +253,21 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 			var answerCtx context.Context
 			var answerCtxCancel func()
 			if deadline := initStage.Init.GetDeadline(); deadline != nil {
-				answerCtx, answerCtxCancel = context.WithDeadline(aa.closeCtx, deadline.AsTime())
+				answerCtx, answerCtxCancel = context.WithDeadline(ctx, deadline.AsTime())
 			} else {
-				answerCtx, answerCtxCancel = context.WithTimeout(aa.closeCtx, getDefaultOfferDeadline())
+				answerCtx, answerCtxCancel = context.WithTimeout(ctx, getDefaultOfferDeadline())
 			}
 
 			if err = aa.connect(answerCtx); err != nil {
 				answerCtxCancel()
 				// We received an error while trying to connect to a caller/peer.
 				ans.logger.Errorw("error connecting to peer", "error", err)
-				if !utils.SelectContextOrWait(ans.closeCtx, answererReconnectWait) {
+				if !utils.SelectContextOrWait(ctx, answererReconnectWait) {
 					return
 				}
 			}
 			answerCtxCancel()
 		}
-	}, func() {
-		ans.bgWorkers.Done()
 	})
 }
 
@@ -300,11 +279,17 @@ func (ans *webrtcSignalingAnswerer) Stop() {
 	// Code adding workers must atomically check the `closeCtx` before adding to the `bgWorkers`
 	// wait group. Canceling the context must not split those two operations. We ensure this
 	// atomicity by acquiring the `bgWorkersMu` write lock.
+
+	// TODO(Bashar): investigate deadlock
+
 	ans.bgWorkersMu.Lock()
 	ans.cancelBgWorkers()
 	// Background workers require the `bgWorkersMu`. Release the mutex before calling `Wait`.
 	ans.bgWorkersMu.Unlock()
 	ans.bgWorkers.Wait()
+
+	// TODO(Bashar)
+	// ans.sw.Stop()
 
 	ans.connMu.Lock()
 	defer ans.connMu.Unlock()
@@ -438,28 +423,8 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 				}
 			}
 
-			// The answerer may be stopped (canceling the context and waiting on background workers)
-			// concurrently to executing the below code. In that circumstance we must guarantee
-			// either:
-			// * `Stop` waiting on the `bgWorkers` WaitGroup observes our `bgWorkers.Add` or
-			// * Our code observes `Stop`s closing of the `closeCtx`
-			//
-			// We use a mutex to make the read of the `closeCtx` and write to the `bgWorkers`
-			// atomic. `Stop` takes a competing mutex around canceling the `closeCtx`.
-			aa.bgWorkersMu.RLock()
-			select {
-			case <-aa.closeCtx.Done():
-				aa.bgWorkersMu.RUnlock()
-				return
-			default:
-			}
-			aa.bgWorkers.Add(1)
-			aa.bgWorkersMu.RUnlock()
-
 			// must spin off to unblock the ICE gatherer
-			utils.PanicCapturingGo(func() {
-				defer aa.bgWorkers.Done()
-
+			aa.sw.Add(func(ctx context.Context) {
 				if icecandidate != nil {
 					defer pendingCandidates.Done()
 				}
