@@ -151,13 +151,13 @@ func grpcStreamServerInterceptor(logger utils.ZapCompatibleLogger) grpc.StreamSe
 	}
 }
 
-const ISO8601 = "2006-01-02T15:04:05.000Z0700" // keep timestamp formatting constant
+const iso8601 = "2006-01-02T15:04:05.000Z0700" // keep timestamp formatting constant
 
 func serverCallFields(ctx context.Context, fullMethodString string, start time.Time) []any {
 	var f []any
-	f = append(f, "grpc.start_time", start.UTC().Format(ISO8601))
+	f = append(f, "grpc.start_time", start.UTC().Format(iso8601))
 	if d, ok := ctx.Deadline(); ok {
-		f = append(f, zap.String("grpc.request.deadline", d.UTC().Format(ISO8601)))
+		f = append(f, zap.String("grpc.request.deadline", d.UTC().Format(iso8601)))
 	}
 	service := path.Dir(fullMethodString)[1:]
 	method := path.Base(fullMethodString)
