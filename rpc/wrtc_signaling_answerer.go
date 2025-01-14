@@ -41,6 +41,7 @@ type webrtcSignalingAnswerer struct {
 	bgWorkersMu     sync.RWMutex
 	bgWorkers       sync.WaitGroup
 	cancelBgWorkers func()
+	sw              *utils.StoppableWorkers
 
 	// conn is used to share the direct gRPC connection used by the answerer workers. As direct gRPC connections
 	// reconnect on their own, custom reconnect logic is not needed. However, keepalives are necessary for the connection
@@ -68,12 +69,14 @@ func newWebRTCSignalingAnswerer(
 	copy(dialOptsCopy, dialOpts)
 	dialOptsCopy = append(dialOptsCopy, WithWebRTCOptions(DialWebRTCOptions{Disable: true}))
 	closeCtx, cancel := context.WithCancel(context.Background())
+	sw := utils.NewStoppableWorkers(closeCtx)
 	return &webrtcSignalingAnswerer{
 		address:         address,
 		hosts:           hosts,
 		server:          server,
 		dialOpts:        dialOptsCopy,
 		webrtcConfig:    webrtcConfig,
+		sw:              sw,
 		cancelBgWorkers: cancel,
 		closeCtx:        closeCtx,
 		logger:          logger,
