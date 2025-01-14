@@ -38,9 +38,9 @@ type webrtcSignalingAnswerer struct {
 	// bgWorkersMu should be `Lock`ed in `Stop` to `Wait` on ongoing background workers in startAnswerer/answer.
 	// bgWorkersMu should be `RLock`ed when starting a new background worker (allow concurrent background workers) to
 	// `Add` to bgWorkers.
-	bgWorkersMu     sync.RWMutex
-	bgWorkers       sync.WaitGroup
-	cancelBgWorkers func()
+	bgWorkersMu     sync.RWMutex   // TODO(Bashar): remove after removing deadlock
+	bgWorkers       sync.WaitGroup // TODO(Bashar): remove after removing deadlock
+	cancelBgWorkers func()         // TODO(Bashar): remove after removing deadlock
 	sw              *utils.StoppableWorkers
 
 	// conn is used to share the direct gRPC connection used by the answerer workers. As direct gRPC connections
@@ -49,7 +49,7 @@ type webrtcSignalingAnswerer struct {
 	connMu sync.Mutex
 	conn   ClientConn
 
-	closeCtx context.Context
+	closeCtx context.Context // TODO(Bashar): is this necessary?
 	logger   utils.ZapCompatibleLogger
 }
 
@@ -158,7 +158,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 		md := metadata.New(nil)
 		md.Append(RPCHostMetadataField, ans.hosts...)
 		md.Append(HeartbeatsAllowedMetadataField, "true")
-		answerCtx := metadata.NewOutgoingContext(ans.closeCtx, md)
+		answerCtx := metadata.NewOutgoingContext(ans.closeCtx, md) // TODO(Bashar): can we use a different context here
 		answerClient, err := client.Answer(answerCtx)
 		if err != nil {
 			return nil, err
@@ -279,11 +279,17 @@ func (ans *webrtcSignalingAnswerer) Stop() {
 	// Code adding workers must atomically check the `closeCtx` before adding to the `bgWorkers`
 	// wait group. Canceling the context must not split those two operations. We ensure this
 	// atomicity by acquiring the `bgWorkersMu` write lock.
+
+	// TODO(Bashar): investigate deadlock
+
 	ans.bgWorkersMu.Lock()
 	ans.cancelBgWorkers()
 	// Background workers require the `bgWorkersMu`. Release the mutex before calling `Wait`.
 	ans.bgWorkersMu.Unlock()
 	ans.bgWorkers.Wait()
+
+	// TODO(Bashar)
+	// ans.sw.Stop()
 
 	ans.connMu.Lock()
 	defer ans.connMu.Unlock()
