@@ -100,7 +100,7 @@ func (ans *webrtcSignalingAnswerer) Start() {
 	ans.sw.Add(func(ctx context.Context) {
 		for ans.conn == nil {
 			select {
-			case <-ans.closeCtx.Done():
+			case <-ctx.Done():
 				return
 			default:
 			}
@@ -111,12 +111,12 @@ func (ans *webrtcSignalingAnswerer) Start() {
 			if proxyAddr := os.Getenv(SocksProxyEnvVar); proxyAddr != "" {
 				timeout = answererConnectTimeoutBehindProxy
 			}
-			setupCtx, timeoutCancel := context.WithTimeout(ans.closeCtx, timeout)
+			setupCtx, timeoutCancel := context.WithTimeout(ctx, timeout)
 			conn, err := Dial(setupCtx, ans.address, ans.logger, ans.dialOpts...)
 			timeoutCancel()
 			if err != nil {
 				ans.logger.Errorw("error connecting answer client", "error", err)
-				if !utils.SelectContextOrWait(ans.closeCtx, answererReconnectWait) {
+				if !utils.SelectContextOrWait(ctx, answererReconnectWait) {
 					return
 				}
 				continue
@@ -178,7 +178,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 		}()
 		for {
 			select {
-			case <-ans.closeCtx.Done():
+			case <-ctx.Done():
 				return
 			default:
 			}
@@ -189,7 +189,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 			if err != nil {
 				if checkExceptionalError(err) != nil {
 					ans.logger.Warnw("error communicating with signaling server", "error", err)
-					if !utils.SelectContextOrWait(ans.closeCtx, answererReconnectWait) {
+					if !utils.SelectContextOrWait(ctx, answererReconnectWait) {
 						return
 					}
 				}
@@ -221,7 +221,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 			if err != nil {
 				if checkExceptionalError(err) != nil {
 					ans.logger.Warnw("error communicating with signaling server", "error", err)
-					if !utils.SelectContextOrWait(ans.closeCtx, answererReconnectWait) {
+					if !utils.SelectContextOrWait(ctx, answererReconnectWait) {
 						return
 					}
 				}
@@ -253,16 +253,16 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 			var answerCtx context.Context
 			var answerCtxCancel func()
 			if deadline := initStage.Init.GetDeadline(); deadline != nil {
-				answerCtx, answerCtxCancel = context.WithDeadline(aa.closeCtx, deadline.AsTime())
+				answerCtx, answerCtxCancel = context.WithDeadline(ctx, deadline.AsTime())
 			} else {
-				answerCtx, answerCtxCancel = context.WithTimeout(aa.closeCtx, getDefaultOfferDeadline())
+				answerCtx, answerCtxCancel = context.WithTimeout(ctx, getDefaultOfferDeadline())
 			}
 
 			if err = aa.connect(answerCtx); err != nil {
 				answerCtxCancel()
 				// We received an error while trying to connect to a caller/peer.
 				ans.logger.Errorw("error connecting to peer", "error", err)
-				if !utils.SelectContextOrWait(ans.closeCtx, answererReconnectWait) {
+				if !utils.SelectContextOrWait(ctx, answererReconnectWait) {
 					return
 				}
 			}
