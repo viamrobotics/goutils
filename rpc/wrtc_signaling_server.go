@@ -36,9 +36,7 @@ type WebRTCSignalingServer struct {
 
 	sw *utils.StoppableWorkers
 
-	cancelCtx  context.Context
-	cancelFunc func()
-	logger     utils.ZapCompatibleLogger
+	logger utils.ZapCompatibleLogger
 
 	// Interval at which to send heartbeats.
 	heartbeatInterval time.Duration
@@ -62,16 +60,13 @@ func NewWebRTCSignalingServer(
 		forHostsSet[host] = struct{}{}
 	}
 
-	cancelCtx, cancelFunc := context.WithCancel(context.Background())
-	sw := utils.NewStoppableWorkers(cancelCtx) // TODO(Bashar): reuse cancelCtx?
+	sw := utils.NewBackgroundStoppableWorkers()
 	return &WebRTCSignalingServer{
 		callQueue:            callQueue,
 		hostICEServers:       map[string]hostICEServers{},
 		webrtcConfigProvider: webrtcConfigProvider,
 		forHosts:             forHostsSet,
 		sw:                   sw,
-		cancelCtx:            cancelCtx,
-		cancelFunc:           cancelFunc,
 		logger:               logger,
 		heartbeatInterval:    heartbeatInterval,
 	}
