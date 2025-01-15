@@ -266,18 +266,6 @@ func (ans *webrtcSignalingAnswerer) Stop() {
 	ans.startStopMu.Lock()
 	defer ans.startStopMu.Unlock()
 
-	// Code adding workers must atomically check the `closeCtx` before adding to the `bgWorkers`
-	// wait group. Canceling the context must not split those two operations. We ensure this
-	// atomicity by acquiring the `bgWorkersMu` write lock.
-
-	// ans.bgWorkersMu.Lock()
-	// ans.cancelBgWorkers()
-
-	// Background workers require the `bgWorkersMu`. Release the mutex before calling `Wait`.
-
-	// ans.bgWorkersMu.Unlock()
-	// ans.bgWorkers.Wait()
-
 	ans.bgWorkers.Stop()
 
 	ans.connMu.Lock()
