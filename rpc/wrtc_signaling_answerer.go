@@ -35,13 +35,7 @@ type webrtcSignalingAnswerer struct {
 	dialOpts     []DialOption
 	webrtcConfig webrtc.Configuration
 
-	// bgWorkersMu should be `Lock`ed in `Stop` to `Wait` on ongoing background workers in startAnswerer/answer.
-	// bgWorkersMu should be `RLock`ed when starting a new background worker (allow concurrent background workers) to
-	// `Add` to bgWorkers.
-	bgWorkersMu     sync.RWMutex   // TODO(Bashar): remove after removing deadlock
-	bgWorkers       sync.WaitGroup // TODO(Bashar): remove after removing deadlock
-	cancelBgWorkers func()         // TODO(Bashar): remove after removing deadlock
-	sw              *utils.StoppableWorkers
+	bgWorkers *utils.StoppableWorkers
 
 	// conn is used to share the direct gRPC connection used by the answerer workers. As direct gRPC connections
 	// reconnect on their own, custom reconnect logic is not needed. However, keepalives are necessary for the connection
@@ -49,8 +43,7 @@ type webrtcSignalingAnswerer struct {
 	connMu sync.Mutex
 	conn   ClientConn
 
-	closeCtx context.Context // TODO(Bashar): is this necessary?
-	logger   utils.ZapCompatibleLogger
+	logger utils.ZapCompatibleLogger
 }
 
 // newWebRTCSignalingAnswerer makes an answerer that will connect to and listen for calls at the given
@@ -68,18 +61,15 @@ func newWebRTCSignalingAnswerer(
 	dialOptsCopy := make([]DialOption, len(dialOpts))
 	copy(dialOptsCopy, dialOpts)
 	dialOptsCopy = append(dialOptsCopy, WithWebRTCOptions(DialWebRTCOptions{Disable: true}))
-	closeCtx, cancel := context.WithCancel(context.Background())
-	sw := utils.NewStoppableWorkers(closeCtx)
+	bgWorkers := utils.NewBackgroundStoppableWorkers()
 	return &webrtcSignalingAnswerer{
-		address:         address,
-		hosts:           hosts,
-		server:          server,
-		dialOpts:        dialOptsCopy,
-		webrtcConfig:    webrtcConfig,
-		sw:              sw,
-		cancelBgWorkers: cancel,
-		closeCtx:        closeCtx,
-		logger:          logger,
+		address:      address,
+		hosts:        hosts,
+		server:       server,
+		dialOpts:     dialOptsCopy,
+		webrtcConfig: webrtcConfig,
+		bgWorkers:    bgWorkers,
+		logger:       logger,
 	}
 }
 
@@ -97,7 +87,7 @@ func (ans *webrtcSignalingAnswerer) Start() {
 	defer ans.startStopMu.Unlock()
 
 	// attempt to make connection in a loop
-	ans.sw.Add(func(ctx context.Context) {
+	ans.bgWorkers.Add(func(ctx context.Context) {
 		for ans.conn == nil {
 			select {
 			case <-ctx.Done():
@@ -158,7 +148,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 		md := metadata.New(nil)
 		md.Append(RPCHostMetadataField, ans.hosts...)
 		md.Append(HeartbeatsAllowedMetadataField, "true")
-		answerCtx := metadata.NewOutgoingContext(ans.closeCtx, md) // TODO(Bashar): can we use a different context here
+		answerCtx := metadata.NewOutgoingContext(ans.bgWorkers.Context(), md)
 		answerClient, err := client.Answer(answerCtx)
 		if err != nil {
 			return nil, err
@@ -166,7 +156,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 		return answerClient, nil
 	}
 
-	ans.sw.Add(func(ctx context.Context) {
+	ans.bgWorkers.Add(func(ctx context.Context) {
 		var client webrtcpb.SignalingService_AnswerClient
 		defer func() {
 			if client == nil {
@@ -280,16 +270,15 @@ func (ans *webrtcSignalingAnswerer) Stop() {
 	// wait group. Canceling the context must not split those two operations. We ensure this
 	// atomicity by acquiring the `bgWorkersMu` write lock.
 
-	// TODO(Bashar): investigate deadlock
+	// ans.bgWorkersMu.Lock()
+	// ans.cancelBgWorkers()
 
-	ans.bgWorkersMu.Lock()
-	ans.cancelBgWorkers()
 	// Background workers require the `bgWorkersMu`. Release the mutex before calling `Wait`.
-	ans.bgWorkersMu.Unlock()
-	ans.bgWorkers.Wait()
 
-	// TODO(Bashar)
-	// ans.sw.Stop()
+	// ans.bgWorkersMu.Unlock()
+	// ans.bgWorkers.Wait()
+
+	ans.bgWorkers.Stop()
 
 	ans.connMu.Lock()
 	defer ans.connMu.Unlock()
@@ -424,7 +413,7 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 			}
 
 			// must spin off to unblock the ICE gatherer
-			aa.sw.Add(func(ctx context.Context) {
+			aa.bgWorkers.Add(func(ctx context.Context) {
 				if icecandidate != nil {
 					defer pendingCandidates.Done()
 				}

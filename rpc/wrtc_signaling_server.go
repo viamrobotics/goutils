@@ -34,7 +34,7 @@ type WebRTCSignalingServer struct {
 	webrtcConfigProvider WebRTCConfigProvider
 	forHosts             map[string]struct{}
 
-	sw *utils.StoppableWorkers
+	bgWorkers *utils.StoppableWorkers
 
 	logger utils.ZapCompatibleLogger
 
@@ -60,13 +60,13 @@ func NewWebRTCSignalingServer(
 		forHostsSet[host] = struct{}{}
 	}
 
-	sw := utils.NewBackgroundStoppableWorkers()
+	bgWorkers := utils.NewBackgroundStoppableWorkers()
 	return &WebRTCSignalingServer{
 		callQueue:            callQueue,
 		hostICEServers:       map[string]hostICEServers{},
 		webrtcConfigProvider: webrtcConfigProvider,
 		forHosts:             forHostsSet,
-		sw:                   sw,
+		bgWorkers:            bgWorkers,
 		logger:               logger,
 		heartbeatInterval:    heartbeatInterval,
 	}
@@ -146,7 +146,7 @@ func HeartbeatsAllowedFromCtx(ctx context.Context) bool {
 }
 
 func (srv *WebRTCSignalingServer) asyncSendOfferError(host, uuid string, offerErr error) {
-	srv.sw.Add(func(ctx context.Context) {
+	srv.bgWorkers.Add(func(ctx context.Context) {
 		// Use a timeout to not block shutdown.
 		sendCtx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 		defer cancel()
@@ -494,7 +494,7 @@ func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 	}
 
 	callerErrCh := make(chan error, 1)
-	srv.sw.Add(func(ctx context.Context) {
+	srv.bgWorkers.Add(func(ctx context.Context) {
 		defer func() {
 			close(callerErrCh)
 		}()
@@ -546,5 +546,5 @@ func (srv *WebRTCSignalingServer) OptionalWebRTCConfig(
 
 // Close cancels all active workers and waits to cleanly close all background workers.
 func (srv *WebRTCSignalingServer) Close() {
-	srv.sw.Stop()
+	srv.bgWorkers.Stop()
 }
