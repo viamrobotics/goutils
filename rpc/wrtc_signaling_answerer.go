@@ -148,6 +148,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 		md := metadata.New(nil)
 		md.Append(RPCHostMetadataField, ans.hosts...)
 		md.Append(HeartbeatsAllowedMetadataField, "true")
+		// use StoppableWorkers.Context() so that instantiation of answer client responds to StoppableWorkers.Stop()
 		answerCtx := metadata.NewOutgoingContext(ans.bgWorkers.Context(), md)
 		answerClient, err := client.Answer(answerCtx)
 		if err != nil {
