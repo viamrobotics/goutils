@@ -3,7 +3,6 @@ package utils
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"os/signal"
 	"runtime"
@@ -19,13 +18,6 @@ import (
 // context via SIGTERM. This should be called once per process so as
 // to not clobber the signals from Notify.
 func ContextualMain[L ILogger](main func(ctx context.Context, args []string, logger L) error, logger L) {
-	// This will only run on a successful exit due to the fatal error
-	// logic in contextualMain.
-	defer func() {
-		if err := FindGoroutineLeaks(); err != nil {
-			fmt.Fprintf(os.Stderr, "goroutine leak(s) detected: %v\n", err)
-		}
-	}()
 	contextualMain(main, false, logger)
 }
 
