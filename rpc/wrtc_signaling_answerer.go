@@ -120,7 +120,7 @@ func (ans *webrtcSignalingAnswerer) Start() {
 	})
 }
 
-func checkExceptionalError(err error) error {
+func isNetworkError(err error) bool {
 	s, isGRPCErr := status.FromError(err)
 	if err == nil || errors.Is(err, io.EOF) ||
 		utils.FilterOutError(err, context.Canceled) == nil ||
@@ -132,9 +132,9 @@ func checkExceptionalError(err error) error {
 				// streams, but leave the underlying connection open.
 				strings.Contains(s.Message(), "upstream max stream duration reached") ||
 				strings.Contains(s.Message(), "server closed the stream without sending trailers"))) {
-		return nil
+		return false
 	}
-	return err
+	return true
 }
 
 func (ans *webrtcSignalingAnswerer) startAnswerer() {
@@ -176,7 +176,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 			// `newAnswer` opens a bidi grpc stream to the signaling server. But otherwise sends no requests.
 			client, err = newAnswer()
 			if err != nil {
-				if checkExceptionalError(err) != nil {
+				if isNetworkError(err) {
 					ans.logger.Warnw("error communicating with signaling server", "error", err)
 					if !utils.SelectContextOrWait(ctx, answererReconnectWait) {
 						return
@@ -208,7 +208,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 				break // not a heartbeat
 			}
 			if err != nil {
-				if checkExceptionalError(err) != nil {
+				if isNetworkError(err) {
 					ans.logger.Warnw("error communicating with signaling server", "error", err)
 					if !utils.SelectContextOrWait(ctx, answererReconnectWait) {
 						return
@@ -270,7 +270,8 @@ func (ans *webrtcSignalingAnswerer) Stop() {
 	ans.connMu.Lock()
 	defer ans.connMu.Unlock()
 	if ans.conn != nil {
-		if err := checkExceptionalError(ans.conn.Close()); err != nil {
+		err := ans.conn.Close()
+		if isNetworkError(err) {
 			ans.logger.Errorw("error closing signaling connection", "error", err)
 		}
 		ans.conn = nil
