@@ -104,9 +104,7 @@ func (ans *webrtcSignalingAnswerer) Start() {
 			timeoutCancel()
 			if err != nil {
 				ans.logger.Errorw("error connecting answer client", "error", err)
-				if !utils.SelectContextOrWait(ctx, answererReconnectWait) {
-					return
-				}
+				utils.SelectContextOrWait(ctx, answererReconnectWait)
 				continue
 			}
 			ans.connMu.Lock()
@@ -166,10 +164,8 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 			}
 		}()
 		for {
-			select {
-			case <-ctx.Done():
+			if ctx.Err() != nil {
 				return
-			default:
 			}
 
 			var err error
@@ -178,9 +174,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 			if err != nil {
 				if isNetworkError(err) {
 					ans.logger.Warnw("error communicating with signaling server", "error", err)
-					if !utils.SelectContextOrWait(ctx, answererReconnectWait) {
-						return
-					}
+					utils.SelectContextOrWait(ctx, answererReconnectWait)
 				}
 				continue
 			}
@@ -210,9 +204,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 			if err != nil {
 				if isNetworkError(err) {
 					ans.logger.Warnw("error communicating with signaling server", "error", err)
-					if !utils.SelectContextOrWait(ctx, answererReconnectWait) {
-						return
-					}
+					utils.SelectContextOrWait(ctx, answererReconnectWait)
 				}
 				continue
 			}
@@ -251,9 +243,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 				answerCtxCancel()
 				// We received an error while trying to connect to a caller/peer.
 				ans.logger.Errorw("error connecting to peer", "error", err)
-				if !utils.SelectContextOrWait(ctx, answererReconnectWait) {
-					return
-				}
+				utils.SelectContextOrWait(ctx, answererReconnectWait)
 			}
 			answerCtxCancel()
 		}
