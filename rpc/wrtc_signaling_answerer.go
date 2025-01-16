@@ -89,10 +89,8 @@ func (ans *webrtcSignalingAnswerer) Start() {
 	// attempt to make connection in a loop
 	ans.bgWorkers.Add(func(ctx context.Context) {
 		for ans.conn == nil {
-			select {
-			case <-ctx.Done():
+			if ctx.Err() != nil {
 				return
-			default:
 			}
 
 			timeout := answererConnectTimeout
