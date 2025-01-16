@@ -20,11 +20,14 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/google/uuid"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
+	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
 	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/recovery"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/improbable-eng/grpc-web/go/grpcweb"
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"golang.org/x/net/http2/h2c"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -324,6 +327,10 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 		logger:               logger,
 	}
 
+	grpcLogger := logger.Desugar()
+	if !(sOpts.debug || utils.Debug) {
+		grpcLogger = grpcLogger.WithOptions(zap.IncreaseLevel(zap.LevelEnablerFunc(zapcore.ErrorLevel.Enabled)))
+	}
 	if sOpts.unknownStreamDesc != nil {
 		serverOpts = append(serverOpts, grpc.UnknownServiceHandler(sOpts.unknownStreamDesc.Handler))
 	}
@@ -335,10 +342,10 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 				logger.Errorw("panicked while calling unary server method", "error", errors.WithStack(err))
 				return err
 			}))),
-		grpcUnaryServerInterceptor(logger),
+		grpc_zap.UnaryServerInterceptor(grpcLogger),
 		unaryServerCodeInterceptor(),
 	)
-	unaryInterceptors = append(unaryInterceptors, UnaryServerTracingInterceptor())
+	unaryInterceptors = append(unaryInterceptors, UnaryServerTracingInterceptor(grpcLogger))
 	unaryAuthIntPos := -1
 	if !sOpts.unauthenticated {
 		unaryInterceptors = append(unaryInterceptors, server.authUnaryInterceptor)
@@ -368,10 +375,10 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 				logger.Errorw("panicked while calling stream server method", "error", errors.WithStack(err))
 				return err
 			}))),
-		grpcStreamServerInterceptor(logger),
+		grpc_zap.StreamServerInterceptor(grpcLogger),
 		streamServerCodeInterceptor(),
 	)
-	streamInterceptors = append(streamInterceptors, StreamServerTracingInterceptor())
+	streamInterceptors = append(streamInterceptors, StreamServerTracingInterceptor(grpcLogger))
 	streamAuthIntPos := -1
 	if !sOpts.unauthenticated {
 		streamInterceptors = append(streamInterceptors, server.authStreamInterceptor)
