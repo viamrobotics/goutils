@@ -31,8 +31,6 @@ func NewStoppableWorkers(ctx context.Context) *StoppableWorkers {
 // in workers will be `Add`ed. Workers:
 //
 //   - MUST respond appropriately to errors on the context parameter.
-//   - MUST NOT add more workers to the `StoppableWorkers` group to which
-//     they belong.
 //
 // Any `panic`s from workers will be `recover`ed and logged.
 func NewBackgroundStoppableWorkers(workers ...func(context.Context)) *StoppableWorkers {
