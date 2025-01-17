@@ -22,9 +22,6 @@ type memoryWebRTCCallQueue struct {
 	activeBackgroundWorkers sync.WaitGroup
 	hostQueues              map[string]*singleWebRTCHostQueue
 
-	// cancelCtx  context.Context
-	// cancelFunc func()
-
 	uuidDeterministic        bool
 	uuidDeterministicCounter int64
 	logger                   utils.ZapCompatibleLogger
