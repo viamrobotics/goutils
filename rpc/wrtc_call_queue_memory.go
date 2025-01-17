@@ -211,7 +211,6 @@ func (queue *memoryWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []strin
 // Close cancels all active offers and waits to cleanly close all background workers.
 func (queue *memoryWebRTCCallQueue) Close() error {
 	queue.sw.Stop()
-	queue.activeBackgroundWorkers.Wait()
 	return nil
 }
 
