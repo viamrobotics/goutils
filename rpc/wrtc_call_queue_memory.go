@@ -122,12 +122,10 @@ func (queue *memoryWebRTCCallQueue) SendOfferInit(
 	hostQueueForSend.activeOffers[offer.uuid] = exchange
 	hostQueueForSend.mu.Unlock()
 
-	queue.activeBackgroundWorkers.Add(1)
-	utils.PanicCapturingGo(func() {
-		queue.activeBackgroundWorkers.Done()
+	queue.sw.Add(func(ctx context.Context) {
 		select {
 		case <-sendCtx.Done():
-		case <-ctx.Done():
+		case <-ctx.Done(): // TODO(RSDK-8666): [qu] should we be using the StoppableWorkers context.Context here?
 		case hostQueueForSend.exchangeCh <- exchange:
 		}
 	})
