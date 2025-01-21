@@ -35,12 +35,7 @@ type webrtcSignalingAnswerer struct {
 	dialOpts     []DialOption
 	webrtcConfig webrtc.Configuration
 
-	// bgWorkersMu should be `Lock`ed in `Stop` to `Wait` on ongoing background workers in startAnswerer/answer.
-	// bgWorkersMu should be `RLock`ed when starting a new background worker (allow concurrent background workers) to
-	// `Add` to bgWorkers.
-	bgWorkersMu     sync.RWMutex
-	bgWorkers       sync.WaitGroup
-	cancelBgWorkers func()
+	bgWorkers *utils.StoppableWorkers
 
 	// conn is used to share the direct gRPC connection used by the answerer workers. As direct gRPC connections
 	// reconnect on their own, custom reconnect logic is not needed. However, keepalives are necessary for the connection
@@ -48,8 +43,7 @@ type webrtcSignalingAnswerer struct {
 	connMu sync.Mutex
 	conn   ClientConn
 
-	closeCtx context.Context
-	logger   utils.ZapCompatibleLogger
+	logger utils.ZapCompatibleLogger
 }
 
 // newWebRTCSignalingAnswerer makes an answerer that will connect to and listen for calls at the given
@@ -67,16 +61,15 @@ func newWebRTCSignalingAnswerer(
 	dialOptsCopy := make([]DialOption, len(dialOpts))
 	copy(dialOptsCopy, dialOpts)
 	dialOptsCopy = append(dialOptsCopy, WithWebRTCOptions(DialWebRTCOptions{Disable: true}))
-	closeCtx, cancel := context.WithCancel(context.Background())
+	bgWorkers := utils.NewBackgroundStoppableWorkers()
 	return &webrtcSignalingAnswerer{
-		address:         address,
-		hosts:           hosts,
-		server:          server,
-		dialOpts:        dialOptsCopy,
-		webrtcConfig:    webrtcConfig,
-		cancelBgWorkers: cancel,
-		closeCtx:        closeCtx,
-		logger:          logger,
+		address:      address,
+		hosts:        hosts,
+		server:       server,
+		dialOpts:     dialOptsCopy,
+		webrtcConfig: webrtcConfig,
+		bgWorkers:    bgWorkers,
+		logger:       logger,
 	}
 }
 
@@ -93,16 +86,11 @@ func (ans *webrtcSignalingAnswerer) Start() {
 	ans.startStopMu.Lock()
 	defer ans.startStopMu.Unlock()
 
-	// No lock is necessary here. It is illegal to call `ans.Stop` before `ans.Start` returns.
-	ans.bgWorkers.Add(1)
-
 	// attempt to make connection in a loop
-	utils.ManagedGo(func() {
+	ans.bgWorkers.Add(func(ctx context.Context) {
 		for ans.conn == nil {
-			select {
-			case <-ans.closeCtx.Done():
+			if ctx.Err() != nil {
 				return
-			default:
 			}
 
 			timeout := answererConnectTimeout
@@ -111,14 +99,12 @@ func (ans *webrtcSignalingAnswerer) Start() {
 			if proxyAddr := os.Getenv(SocksProxyEnvVar); proxyAddr != "" {
 				timeout = answererConnectTimeoutBehindProxy
 			}
-			setupCtx, timeoutCancel := context.WithTimeout(ans.closeCtx, timeout)
+			setupCtx, timeoutCancel := context.WithTimeout(ctx, timeout)
 			conn, err := Dial(setupCtx, ans.address, ans.logger, ans.dialOpts...)
 			timeoutCancel()
 			if err != nil {
 				ans.logger.Errorw("error connecting answer client", "error", err)
-				if !utils.SelectContextOrWait(ans.closeCtx, answererReconnectWait) {
-					return
-				}
+				utils.SelectContextOrWait(ctx, answererReconnectWait)
 				continue
 			}
 			ans.connMu.Lock()
@@ -129,12 +115,10 @@ func (ans *webrtcSignalingAnswerer) Start() {
 		for i := 0; i < defaultMaxAnswerers; i++ {
 			ans.startAnswerer()
 		}
-	}, func() {
-		ans.bgWorkers.Done()
 	})
 }
 
-func checkExceptionalError(err error) error {
+func isNetworkError(err error) bool {
 	s, isGRPCErr := status.FromError(err)
 	if err == nil || errors.Is(err, io.EOF) ||
 		utils.FilterOutError(err, context.Canceled) == nil ||
@@ -146,9 +130,9 @@ func checkExceptionalError(err error) error {
 				// streams, but leave the underlying connection open.
 				strings.Contains(s.Message(), "upstream max stream duration reached") ||
 				strings.Contains(s.Message(), "server closed the stream without sending trailers"))) {
-		return nil
+		return false
 	}
-	return err
+	return true
 }
 
 func (ans *webrtcSignalingAnswerer) startAnswerer() {
@@ -160,7 +144,8 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 		md := metadata.New(nil)
 		md.Append(RPCHostMetadataField, ans.hosts...)
 		md.Append(HeartbeatsAllowedMetadataField, "true")
-		answerCtx := metadata.NewOutgoingContext(ans.closeCtx, md)
+		// use StoppableWorkers.Context() so that instantiation of answer client responds to StoppableWorkers.Stop()
+		answerCtx := metadata.NewOutgoingContext(ans.bgWorkers.Context(), md)
 		answerClient, err := client.Answer(answerCtx)
 		if err != nil {
 			return nil, err
@@ -168,24 +153,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 		return answerClient, nil
 	}
 
-	// The answerer may be stopped (canceling the context and waiting on background workers)
-	// concurrently to executing the below code. In that circumstance we must guarantee either:
-	// * `Stop` waiting on the `bgWorkers` WaitGroup observes our `bgWorkers.Add` or
-	// * Our code observes `Stop`s closing of the `closeCtx`
-	//
-	// We use a mutex to make the read of the `closeCtx` and write to the `bgWorkers` atomic. `Stop`
-	// takes a competing mutex around canceling the `closeCtx`.
-	ans.bgWorkersMu.RLock()
-	select {
-	case <-ans.closeCtx.Done():
-		ans.bgWorkersMu.RUnlock()
-		return
-	default:
-	}
-	ans.bgWorkers.Add(1)
-	ans.bgWorkersMu.RUnlock()
-
-	utils.ManagedGo(func() {
+	ans.bgWorkers.Add(func(ctx context.Context) {
 		var client webrtcpb.SignalingService_AnswerClient
 		defer func() {
 			if client == nil {
@@ -196,21 +164,17 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 			}
 		}()
 		for {
-			select {
-			case <-ans.closeCtx.Done():
+			if ctx.Err() != nil {
 				return
-			default:
 			}
 
 			var err error
 			// `newAnswer` opens a bidi grpc stream to the signaling server. But otherwise sends no requests.
 			client, err = newAnswer()
 			if err != nil {
-				if checkExceptionalError(err) != nil {
+				if isNetworkError(err) {
 					ans.logger.Warnw("error communicating with signaling server", "error", err)
-					if !utils.SelectContextOrWait(ans.closeCtx, answererReconnectWait) {
-						return
-					}
+					utils.SelectContextOrWait(ctx, answererReconnectWait)
 				}
 				continue
 			}
@@ -238,11 +202,9 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 				break // not a heartbeat
 			}
 			if err != nil {
-				if checkExceptionalError(err) != nil {
+				if isNetworkError(err) {
 					ans.logger.Warnw("error communicating with signaling server", "error", err)
-					if !utils.SelectContextOrWait(ans.closeCtx, answererReconnectWait) {
-						return
-					}
+					utils.SelectContextOrWait(ctx, answererReconnectWait)
 				}
 				continue
 			}
@@ -272,23 +234,19 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 			var answerCtx context.Context
 			var answerCtxCancel func()
 			if deadline := initStage.Init.GetDeadline(); deadline != nil {
-				answerCtx, answerCtxCancel = context.WithDeadline(aa.closeCtx, deadline.AsTime())
+				answerCtx, answerCtxCancel = context.WithDeadline(ctx, deadline.AsTime())
 			} else {
-				answerCtx, answerCtxCancel = context.WithTimeout(aa.closeCtx, getDefaultOfferDeadline())
+				answerCtx, answerCtxCancel = context.WithTimeout(ctx, getDefaultOfferDeadline())
 			}
 
 			if err = aa.connect(answerCtx); err != nil {
 				answerCtxCancel()
 				// We received an error while trying to connect to a caller/peer.
 				ans.logger.Errorw("error connecting to peer", "error", err)
-				if !utils.SelectContextOrWait(ans.closeCtx, answererReconnectWait) {
-					return
-				}
+				utils.SelectContextOrWait(ctx, answererReconnectWait)
 			}
 			answerCtxCancel()
 		}
-	}, func() {
-		ans.bgWorkers.Done()
 	})
 }
 
@@ -297,19 +255,13 @@ func (ans *webrtcSignalingAnswerer) Stop() {
 	ans.startStopMu.Lock()
 	defer ans.startStopMu.Unlock()
 
-	// Code adding workers must atomically check the `closeCtx` before adding to the `bgWorkers`
-	// wait group. Canceling the context must not split those two operations. We ensure this
-	// atomicity by acquiring the `bgWorkersMu` write lock.
-	ans.bgWorkersMu.Lock()
-	ans.cancelBgWorkers()
-	// Background workers require the `bgWorkersMu`. Release the mutex before calling `Wait`.
-	ans.bgWorkersMu.Unlock()
-	ans.bgWorkers.Wait()
+	ans.bgWorkers.Stop()
 
 	ans.connMu.Lock()
 	defer ans.connMu.Unlock()
 	if ans.conn != nil {
-		if err := checkExceptionalError(ans.conn.Close()); err != nil {
+		err := ans.conn.Close()
+		if isNetworkError(err) {
 			ans.logger.Errorw("error closing signaling connection", "error", err)
 		}
 		ans.conn = nil
@@ -438,28 +390,8 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 				}
 			}
 
-			// The answerer may be stopped (canceling the context and waiting on background workers)
-			// concurrently to executing the below code. In that circumstance we must guarantee
-			// either:
-			// * `Stop` waiting on the `bgWorkers` WaitGroup observes our `bgWorkers.Add` or
-			// * Our code observes `Stop`s closing of the `closeCtx`
-			//
-			// We use a mutex to make the read of the `closeCtx` and write to the `bgWorkers`
-			// atomic. `Stop` takes a competing mutex around canceling the `closeCtx`.
-			aa.bgWorkersMu.RLock()
-			select {
-			case <-aa.closeCtx.Done():
-				aa.bgWorkersMu.RUnlock()
-				return
-			default:
-			}
-			aa.bgWorkers.Add(1)
-			aa.bgWorkersMu.RUnlock()
-
 			// must spin off to unblock the ICE gatherer
-			utils.PanicCapturingGo(func() {
-				defer aa.bgWorkers.Done()
-
+			aa.bgWorkers.Add(func(ctx context.Context) {
 				if icecandidate != nil {
 					defer pendingCandidates.Done()
 				}

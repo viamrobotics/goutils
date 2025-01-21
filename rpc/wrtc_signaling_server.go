@@ -34,15 +34,9 @@ type WebRTCSignalingServer struct {
 	webrtcConfigProvider WebRTCConfigProvider
 	forHosts             map[string]struct{}
 
-	// callMu should be `Lock`ed in `Close` to `Wait` on ongoing Calls (incoming
-	// callers). callMu should be `RLock`ed in processHeaders (allow concurrent
-	// processHeaders) to `Add` to processHeadersWorkers.
-	callMu      sync.RWMutex
-	callWorkers sync.WaitGroup
+	bgWorkers *utils.StoppableWorkers
 
-	cancelCtx  context.Context
-	cancelFunc func()
-	logger     utils.ZapCompatibleLogger
+	logger utils.ZapCompatibleLogger
 
 	// Interval at which to send heartbeats.
 	heartbeatInterval time.Duration
@@ -66,14 +60,13 @@ func NewWebRTCSignalingServer(
 		forHostsSet[host] = struct{}{}
 	}
 
-	cancelCtx, cancelFunc := context.WithCancel(context.Background())
+	bgWorkers := utils.NewBackgroundStoppableWorkers()
 	return &WebRTCSignalingServer{
 		callQueue:            callQueue,
 		hostICEServers:       map[string]hostICEServers{},
 		webrtcConfigProvider: webrtcConfigProvider,
 		forHosts:             forHostsSet,
-		cancelCtx:            cancelCtx,
-		cancelFunc:           cancelFunc,
+		bgWorkers:            bgWorkers,
 		logger:               logger,
 		heartbeatInterval:    heartbeatInterval,
 	}
@@ -153,18 +146,7 @@ func HeartbeatsAllowedFromCtx(ctx context.Context) bool {
 }
 
 func (srv *WebRTCSignalingServer) asyncSendOfferError(host, uuid string, offerErr error) {
-	srv.callMu.RLock()
-	// Atomically check if the cancelCtx was canceled, and if not, add to the `callWorkers`.
-	if err := srv.cancelCtx.Err(); err != nil {
-		srv.callMu.RUnlock()
-		return
-	}
-	srv.callWorkers.Add(1)
-	srv.callMu.RUnlock()
-
-	utils.PanicCapturingGo(func() {
-		defer srv.callWorkers.Done()
-
+	srv.bgWorkers.Add(func(ctx context.Context) {
 		// Use a timeout to not block shutdown.
 		sendCtx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 		defer cancel()
@@ -511,20 +493,10 @@ func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 		}
 	}
 
-	srv.callMu.RLock()
-	// Atomically check if the cancelCtx was canceled, and if not, add to the `callWorkers`.
-	if err := srv.cancelCtx.Err(); err != nil {
-		srv.callMu.RUnlock()
-		return srv.cancelCtx.Err()
-	}
-	srv.callWorkers.Add(1)
-	srv.callMu.RUnlock()
-
 	callerErrCh := make(chan error, 1)
-	utils.PanicCapturingGo(func() {
+	srv.bgWorkers.Add(func(ctx context.Context) {
 		defer func() {
 			close(callerErrCh)
-			srv.callWorkers.Done()
 		}()
 		if err := callerLoop(); err != nil {
 			callerErrCh <- err
@@ -574,8 +546,5 @@ func (srv *WebRTCSignalingServer) OptionalWebRTCConfig(
 
 // Close cancels all active workers and waits to cleanly close all background workers.
 func (srv *WebRTCSignalingServer) Close() {
-	srv.callMu.Lock()
-	srv.cancelFunc()
-	srv.callMu.Unlock()
-	srv.callWorkers.Wait()
+	srv.bgWorkers.Stop()
 }
