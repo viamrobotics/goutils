@@ -72,6 +72,8 @@ type serverOptions struct {
 	ensureAuthedHandler func(ctx context.Context) (context.Context, error)
 
 	unknownStreamDesc *grpc.StreamDesc
+
+	waitForHandlers bool
 }
 
 type authKeyData struct {
@@ -532,6 +534,13 @@ func WithAllowUnauthenticatedHealthCheck() ServerOption {
 func WithPublicMethods(fullMethods []string) ServerOption {
 	return newFuncServerOption(func(o *serverOptions) error {
 		o.publicMethods = fullMethods
+		return nil
+	})
+}
+
+func WaitForHandlers(w bool) ServerOption {
+	return newFuncServerOption(func(o *serverOptions) error {
+		o.waitForHandlers = w
 		return nil
 	})
 }
