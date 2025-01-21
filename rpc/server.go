@@ -856,7 +856,7 @@ func (ss *simpleServer) Stop() error {
 		err = multierr.Combine(err, ss.signalingCallQueue.Close())
 	}
 	ss.logger.Debug("stopping gRPC server")
-	defer ss.grpcServer.Stop()
+	defer ss.grpcServer.GracefulStop()
 	ss.logger.Debug("canceling service servers for gateway")
 	for _, cancel := range ss.serviceServerCancels {
 		cancel()
