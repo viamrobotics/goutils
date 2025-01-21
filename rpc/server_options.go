@@ -538,6 +538,7 @@ func WithPublicMethods(fullMethods []string) ServerOption {
 	})
 }
 
+// WaitForHandlers returns a ServerOption that ensures the graceful exit of a server.
 func WaitForHandlers(w bool) ServerOption {
 	return newFuncServerOption(func(o *serverOptions) error {
 		o.waitForHandlers = w
