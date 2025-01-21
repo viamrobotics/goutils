@@ -4,18 +4,23 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"path"
 	"strconv"
+	"time"
 
+	grpc_logging "github.com/grpc-ecosystem/go-grpc-middleware/logging"
 	"github.com/pkg/errors"
 	"go.opencensus.io/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+
+	"go.viam.com/utils"
 )
 
 // UnaryServerTracingInterceptor starts a new Span if Span metadata exists in the context.
-func UnaryServerTracingInterceptor(logger *zap.Logger) grpc.UnaryServerInterceptor {
+func UnaryServerTracingInterceptor() grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		if remoteSpanContext, err := remoteSpanContextFromContext(ctx); err == nil {
 			var span *trace.Span
@@ -38,7 +43,7 @@ func UnaryServerTracingInterceptor(logger *zap.Logger) grpc.UnaryServerIntercept
 }
 
 // StreamServerTracingInterceptor starts a new Span if Span metadata exists in the context.
-func StreamServerTracingInterceptor(logger *zap.Logger) grpc.StreamServerInterceptor {
+func StreamServerTracingInterceptor() grpc.StreamServerInterceptor {
 	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		if remoteSpanContext, err := remoteSpanContextFromContext(stream.Context()); err == nil {
 			newCtx, span := trace.StartSpanWithRemoteParent(stream.Context(), "server_root", remoteSpanContext)
@@ -118,4 +123,48 @@ func remoteSpanContextFromContext(ctx context.Context) (trace.SpanContext, error
 	traceOptions := trace.TraceOptions(traceOptionsUint)
 
 	return trace.SpanContext{TraceID: traceID, SpanID: spanID, TraceOptions: traceOptions, Tracestate: nil}, nil
+}
+
+func grpcUnaryServerInterceptor(logger utils.ZapCompatibleLogger) grpc.UnaryServerInterceptor {
+	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+		startTime := time.Now()
+		resp, err := handler(ctx, req)
+		code := grpc_logging.DefaultErrorToCode(err)
+		loggerWithFields := utils.AddFieldsToLogger(logger, serverCallFields(ctx, info.FullMethod, startTime)...)
+
+		utils.LogFinalLine(loggerWithFields, startTime, err, "finished unary call with code "+code.String(), code)
+
+		return resp, err
+	}
+}
+
+func grpcStreamServerInterceptor(logger utils.ZapCompatibleLogger) grpc.StreamServerInterceptor {
+	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+		startTime := time.Now()
+		err := handler(srv, stream)
+		code := grpc_logging.DefaultErrorToCode(err)
+		loggerWithFields := utils.AddFieldsToLogger(logger, serverCallFields(stream.Context(), info.FullMethod, startTime)...)
+
+		utils.LogFinalLine(loggerWithFields, startTime, err, "finished stream call with code "+code.String(), code)
+
+		return err
+	}
+}
+
+const iso8601 = "2006-01-02T15:04:05.000Z0700" // keep timestamp formatting constant
+
+func serverCallFields(ctx context.Context, fullMethodString string, start time.Time) []any {
+	var f []any
+	f = append(f, "grpc.start_time", start.UTC().Format(iso8601))
+	if d, ok := ctx.Deadline(); ok {
+		f = append(f, zap.String("grpc.request.deadline", d.UTC().Format(iso8601)))
+	}
+	service := path.Dir(fullMethodString)[1:]
+	method := path.Base(fullMethodString)
+	return append(f, []any{
+		"span.kind", "server",
+		"system", "grpc",
+		"grpc.service", service,
+		"grpc.method", method,
+	})
 }
