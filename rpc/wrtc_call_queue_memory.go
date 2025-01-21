@@ -17,10 +17,12 @@ import (
 // A memoryWebRTCCallQueue is an in-memory implementation of a call queue designed to be used for
 // testing and single node/host deployments.
 type memoryWebRTCCallQueue struct {
-	sw                      *utils.StoppableWorkers
 	mu                      sync.Mutex
 	activeBackgroundWorkers sync.WaitGroup
 	hostQueues              map[string]*singleWebRTCHostQueue
+
+	cancelCtx  context.Context
+	cancelFunc func()
 
 	uuidDeterministic        bool
 	uuidDeterministicCounter int64
@@ -39,18 +41,28 @@ func newMemoryWebRTCCallQueueTest(logger utils.ZapCompatibleLogger) *memoryWebRT
 }
 
 func newMemoryWebRTCCallQueue(uuidDeterministic bool, logger utils.ZapCompatibleLogger) *memoryWebRTCCallQueue {
+	cancelCtx, cancelFunc := context.WithCancel(context.Background())
 	queue := &memoryWebRTCCallQueue{
 		hostQueues:        map[string]*singleWebRTCHostQueue{},
+		cancelCtx:         cancelCtx,
+		cancelFunc:        cancelFunc,
 		uuidDeterministic: uuidDeterministic,
 		logger:            logger,
 	}
-	queue.sw = utils.NewStoppableWorkerWithTicker(5*time.Second, func(ctx context.Context) {
+	queue.activeBackgroundWorkers.Add(1)
+	ticker := time.NewTicker(5 * time.Second)
+	utils.ManagedGo(func() {
 		for {
-			if queue.sw.Context().Err() != nil {
+			if cancelCtx.Err() != nil {
 				return
 			}
-
+			select {
+			case <-cancelCtx.Done():
+				return
+			case <-ticker.C:
+			}
 			now := time.Now()
+			queue.mu.Lock()
 			for _, hostQueue := range queue.hostQueues {
 				hostQueue.mu.Lock()
 				for offerID, offer := range hostQueue.activeOffers {
@@ -60,7 +72,11 @@ func newMemoryWebRTCCallQueue(uuidDeterministic bool, logger utils.ZapCompatible
 				}
 				hostQueue.mu.Unlock()
 			}
+			queue.mu.Unlock()
 		}
+	}, func() {
+		defer queue.activeBackgroundWorkers.Done()
+		defer ticker.Stop()
 	})
 	return queue
 }
@@ -97,7 +113,7 @@ func (queue *memoryWebRTCCallQueue) SendOfferInit(
 	}
 	answererResponses := make(chan WebRTCCallAnswer)
 	offerDeadline := time.Now().Add(getDefaultOfferDeadline())
-	sendCtx, sendCtxCancel := context.WithDeadline(queue.sw.Context(), offerDeadline)
+	sendCtx, sendCtxCancel := context.WithDeadline(queue.cancelCtx, offerDeadline)
 	offer := memoryWebRTCCallOfferInit{
 		uuid:               newUUID,
 		sdp:                sdp,
@@ -119,10 +135,12 @@ func (queue *memoryWebRTCCallQueue) SendOfferInit(
 	hostQueueForSend.activeOffers[offer.uuid] = exchange
 	hostQueueForSend.mu.Unlock()
 
-	queue.sw.Add(func(ctx context.Context) {
+	queue.activeBackgroundWorkers.Add(1)
+	utils.PanicCapturingGo(func() {
+		queue.activeBackgroundWorkers.Done()
 		select {
 		case <-sendCtx.Done():
-		case <-ctx.Done(): // TODO(RSDK-8666): [qu] should we be using the StoppableWorkers context.Context here?
+		case <-ctx.Done():
 		case hostQueueForSend.exchangeCh <- exchange:
 		}
 	})
@@ -195,7 +213,7 @@ func (queue *memoryWebRTCCallQueue) SendOfferError(ctx context.Context, host, uu
 func (queue *memoryWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []string) (WebRTCCallOfferExchange, error) {
 	hostQueue := queue.getOrMakeHostsQueue(hosts)
 
-	recvCtx, recvCtxCancel := context.WithCancel(queue.sw.Context())
+	recvCtx, recvCtxCancel := context.WithCancel(queue.cancelCtx)
 	defer recvCtxCancel()
 
 	select {
@@ -210,7 +228,8 @@ func (queue *memoryWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []strin
 
 // Close cancels all active offers and waits to cleanly close all background workers.
 func (queue *memoryWebRTCCallQueue) Close() error {
-	queue.sw.Stop()
+	queue.cancelFunc()
+	queue.activeBackgroundWorkers.Wait()
 	return nil
 }
 
