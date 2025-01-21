@@ -397,7 +397,7 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 		serverOpts = append(serverOpts, grpc.StatsHandler(sOpts.statsHandler))
 	}
 
-	serverOpts = append(serverOpts, grpc.WaitForHandlers(sOpts.waitForHandlers))
+	serverOpts = append(serverOpts, grpc.WaitForHandlers(true))
 
 	grpcServer := grpc.NewServer(
 		serverOpts...,
