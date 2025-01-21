@@ -397,6 +397,8 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 		serverOpts = append(serverOpts, grpc.StatsHandler(sOpts.statsHandler))
 	}
 
+	serverOpts = append(serverOpts, grpc.WaitForHandlers(true))
+
 	grpcServer := grpc.NewServer(
 		serverOpts...,
 	)
@@ -854,7 +856,7 @@ func (ss *simpleServer) Stop() error {
 		err = multierr.Combine(err, ss.signalingCallQueue.Close())
 	}
 	ss.logger.Debug("stopping gRPC server")
-	defer ss.grpcServer.GracefulStop()
+	defer ss.grpcServer.Stop()
 	ss.logger.Debug("canceling service servers for gateway")
 	for _, cancel := range ss.serviceServerCancels {
 		cancel()
