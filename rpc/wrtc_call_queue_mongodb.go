@@ -71,6 +71,7 @@ type mongoDBWebRTCCallQueue struct {
 	hostCallerQueueSizeMatchAggStage   bson.D
 	hostAnswererQueueSizeMatchAggStage bson.D
 	activeBackgroundWorkers            sync.WaitGroup
+	activeStoppableWorkers             *utils.StoppableWorkers
 	callsColl                          *mongo.Collection
 	operatorsColl                      *mongo.Collection
 	logger                             utils.ZapCompatibleLogger
@@ -1360,6 +1361,7 @@ func iceCandidateToMongo(i *webrtc.ICECandidateInit) mongodbICECandidate {
 func (queue *mongoDBWebRTCCallQueue) Close() error {
 	queue.cancelFunc()
 	queue.activeBackgroundWorkers.Wait()
+	queue.activeStoppableWorkers.Stop()
 	return nil
 }
 
