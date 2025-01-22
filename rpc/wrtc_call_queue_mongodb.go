@@ -926,9 +926,7 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 			return true
 		}
 	}
-	queue.activeBackgroundWorkers.Add(1)
-	utils.PanicCapturingGo(func() {
-		defer queue.activeBackgroundWorkers.Done()
+	queue.activeStoppableWorkers.Add(func(ctx context.Context) {
 		defer cleanup()
 		defer close(answererResponses)
 
