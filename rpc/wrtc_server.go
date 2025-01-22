@@ -22,8 +22,6 @@ var DefaultWebRTCMaxGRPCCalls = 256
 
 // A webrtcServer translates gRPC frames over WebRTC data channels into gRPC calls.
 type webrtcServer struct {
-	// ctx      context.Context
-	// cancel   context.CancelFunc
 	handlers map[string]handlerFunc
 	services map[string]*serviceInfo
 	logger   utils.ZapCompatibleLogger
