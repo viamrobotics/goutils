@@ -1,5 +1,6 @@
-// TODO(RSDK-8666): use stoppable workers
 package rpc
+
+// TODO(RSDK-8666): use stoppable workers
 
 import (
 	"context"
