@@ -49,6 +49,7 @@ func newMemoryWebRTCCallQueue(uuidDeterministic bool, logger utils.ZapCompatible
 				return
 			}
 			now := time.Now()
+			queue.mu.Lock()
 			for _, hostQueue := range queue.hostQueues {
 				hostQueue.mu.Lock()
 				for offerID, offer := range hostQueue.activeOffers {
@@ -58,6 +59,7 @@ func newMemoryWebRTCCallQueue(uuidDeterministic bool, logger utils.ZapCompatible
 				}
 				hostQueue.mu.Unlock()
 			}
+			queue.mu.Unlock()
 		}
 	})
 	return queue
