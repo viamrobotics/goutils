@@ -215,9 +215,8 @@ func NewMongoDBWebRTCCallQueue(
 		activeAnswerersfunc:   &activeAnswerersfunc,
 	}
 
-	queue.activeBackgroundWorkers.Add(2)
-	utils.ManagedGo(queue.operatorLivenessLoop, queue.activeBackgroundWorkers.Done)
-	utils.ManagedGo(queue.changeStreamManager, queue.activeBackgroundWorkers.Done)
+	queue.activeStoppableWorkers.Add(func(ctx context.Context) { queue.operatorLivenessLoop() })
+	queue.activeStoppableWorkers.Add(func(ctx context.Context) { queue.changeStreamManager() })
 
 	// wait for change stream to startup once before we start processing anything
 	// since we need good track of resume tokens / cluster times initially
@@ -225,8 +224,7 @@ func NewMongoDBWebRTCCallQueue(
 	startOnce := make(chan struct{})
 	var startOnceSync sync.Once
 
-	queue.activeBackgroundWorkers.Add(1)
-	utils.ManagedGo(func() {
+	queue.activeStoppableWorkers.Add(func(ctx context.Context) {
 		defer queue.csManagerSeq.Add(1) // helpful on panicked restart
 		select {
 		case <-queue.cancelCtx.Done():
@@ -238,7 +236,7 @@ func NewMongoDBWebRTCCallQueue(
 			})
 			queue.subscriptionManager(newState.ChangeStream)
 		}
-	}, queue.activeBackgroundWorkers.Done)
+	})
 
 	select {
 	case <-queue.cancelCtx.Done():
