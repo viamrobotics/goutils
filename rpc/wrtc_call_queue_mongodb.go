@@ -1217,9 +1217,7 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 			queue.logger.Errorw("error in RecvOffer", "error", errToSet, "id", callReq.ID)
 		}
 		// we assume the number of goroutines is bounded by the gRPC server invoking this method.
-		queue.activeBackgroundWorkers.Add(1)
-		utils.PanicCapturingGo(func() {
-			queue.activeBackgroundWorkers.Done()
+		queue.activeStoppableWorkers.Add(func(ctx context.Context) {
 
 			// we need a dedicated timeout since even if the server is shutting down,
 			// we want to notify other servers immediately, instead of waiting for a timeout.
