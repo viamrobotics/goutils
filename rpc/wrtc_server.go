@@ -31,12 +31,7 @@ type webrtcServer struct {
 	peerConnsMu sync.Mutex
 	peerConns   map[*webrtc.PeerConnection]struct{}
 
-	// processHeadersMu should be `Lock`ed in `Stop` to `Wait` on ongoing
-	// processHeaders calls (incoming method invocations). processHeaderMu should
-	// be `RLock`ed in processHeaders (allow concurrent processHeaders) to `Add`
-	// to processHeadersWorkers.
-	processHeadersMu      sync.RWMutex
-	processHeadersWorkers sync.WaitGroup
+	processHeadersWorkers *utils.StoppableWorkers
 
 	callTickets chan struct{}
 
@@ -132,6 +127,7 @@ func newWebRTCServerWithInterceptorsAndUnknownStreamHandler(
 		unknownStreamDesc: unknownStreamDesc,
 	}
 	srv.ctx, srv.cancel = context.WithCancel(context.Background())
+	srv.processHeadersWorkers = utils.NewStoppableWorkers(srv.ctx)
 	return srv
 }
 
@@ -139,10 +135,8 @@ func newWebRTCServerWithInterceptorsAndUnknownStreamHandler(
 // are done executing.
 func (srv *webrtcServer) Stop() {
 	srv.cancel()
-	srv.processHeadersMu.Lock()
 	srv.logger.Info("waiting for handlers to complete")
-	srv.processHeadersWorkers.Wait()
-	srv.processHeadersMu.Unlock()
+	srv.processHeadersWorkers.Stop()
 	srv.logger.Info("handlers complete")
 	srv.logger.Info("closing lingering peer connections")
 

@@ -269,14 +269,10 @@ func (s *webrtcServerStream) processHeaders(headers *webrtcpb.RequestHeaders) {
 	}
 
 	s.ch.server.counters.HeadersProcessed.Add(1)
-	s.ch.server.processHeadersMu.RLock()
-	s.ch.server.processHeadersWorkers.Add(1)
-	s.ch.server.processHeadersMu.RUnlock()
 
 	// Check if context has errored: underlying server may have been `Stop`ped,
-	// in which case we mark this processHeaders worker as `Done` and return.
+	// in which case we return.
 	if err := s.ch.server.ctx.Err(); err != nil {
-		s.ch.server.processHeadersWorkers.Done()
 		return
 	}
 
@@ -284,7 +280,6 @@ func (s *webrtcServerStream) processHeaders(headers *webrtcpb.RequestHeaders) {
 	select {
 	case s.ch.server.callTickets <- struct{}{}:
 	default:
-		s.ch.server.processHeadersWorkers.Done()
 		s.closeWithSendError(status.Error(codes.ResourceExhausted, "too many in-flight requests"))
 		return
 	}
@@ -292,7 +287,6 @@ func (s *webrtcServerStream) processHeaders(headers *webrtcpb.RequestHeaders) {
 	s.headersReceived = true
 	utils.PanicCapturingGo(func() {
 		defer func() {
-			s.ch.server.processHeadersWorkers.Done()
 			<-s.ch.server.callTickets // return a ticket
 		}()
 		if err := handlerFunc(s); err != nil {
