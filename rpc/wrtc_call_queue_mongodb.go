@@ -215,11 +215,11 @@ func NewMongoDBWebRTCCallQueue(
 		activeAnswerersfunc:   &activeAnswerersfunc,
 	}
 
-	queue.activeBackgroundWorkers.Add(2)                                            // TODO(RSDK-866): remove
+	queue.activeBackgroundWorkers.Add(1)                                            // TODO(RSDK-866): remove
 	utils.ManagedGo(queue.operatorLivenessLoop, queue.activeBackgroundWorkers.Done) // TODO(RSDK-866): remove
-	utils.ManagedGo(queue.changeStreamManager, queue.activeBackgroundWorkers.Done)  // TODO(RSDK-866): remove
+	//utils.ManagedGo(queue.changeStreamManager, queue.activeBackgroundWorkers.Done)  // TODO(RSDK-866): remove
 	// queue.activeStoppableWorkers.Add(func(ctx context.Context) { queue.operatorLivenessLoop() })
-	// queue.activeStoppableWorkers.Add(func(ctx context.Context) { queue.changeStreamManager() })
+	queue.activeStoppableWorkers.Add(func(ctx context.Context) { queue.changeStreamManager() })
 
 	// wait for change stream to startup once before we start processing anything
 	// since we need good track of resume tokens / cluster times initially
