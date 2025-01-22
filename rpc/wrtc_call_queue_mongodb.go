@@ -226,8 +226,7 @@ func NewMongoDBWebRTCCallQueue(
 	startOnce := make(chan struct{})
 	var startOnceSync sync.Once
 
-	queue.activeBackgroundWorkers.Add(1)
-	utils.ManagedGo(func() {
+	queue.activeStoppableWorkers.Add(func(ctx context.Context) {
 		defer queue.csManagerSeq.Add(1) // helpful on panicked restart
 		select {
 		case <-queue.cancelCtx.Done():
@@ -239,7 +238,7 @@ func NewMongoDBWebRTCCallQueue(
 			})
 			queue.subscriptionManager(newState.ChangeStream)
 		}
-	}, queue.activeBackgroundWorkers.Done)
+	})
 
 	select {
 	case <-queue.cancelCtx.Done():
