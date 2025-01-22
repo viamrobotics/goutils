@@ -128,9 +128,7 @@ func (queue *memoryWebRTCCallQueue) SendOfferInit(
 	hostQueueForSend.activeOffers[offer.uuid] = exchange
 	hostQueueForSend.mu.Unlock()
 
-	queue.activeBackgroundWorkers.Add(1)
-	utils.PanicCapturingGo(func() {
-		queue.activeBackgroundWorkers.Done()
+	queue.activeStoppableWorkers.Add(func(ctx context.Context) {
 		select {
 		case <-sendCtx.Done():
 		case <-ctx.Done():
