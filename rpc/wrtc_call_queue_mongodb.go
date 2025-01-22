@@ -215,8 +215,11 @@ func NewMongoDBWebRTCCallQueue(
 		activeAnswerersfunc:   &activeAnswerersfunc,
 	}
 
-	queue.activeStoppableWorkers.Add(func(ctx context.Context) { queue.operatorLivenessLoop() })
-	queue.activeStoppableWorkers.Add(func(ctx context.Context) { queue.changeStreamManager() })
+	queue.activeBackgroundWorkers.Add(2)                                            // TODO(RSDK-866): remove
+	utils.ManagedGo(queue.operatorLivenessLoop, queue.activeBackgroundWorkers.Done) // TODO(RSDK-866): remove
+	utils.ManagedGo(queue.changeStreamManager, queue.activeBackgroundWorkers.Done)  // TODO(RSDK-866): remove
+	// queue.activeStoppableWorkers.Add(func(ctx context.Context) { queue.operatorLivenessLoop() })
+	// queue.activeStoppableWorkers.Add(func(ctx context.Context) { queue.changeStreamManager() })
 
 	// wait for change stream to startup once before we start processing anything
 	// since we need good track of resume tokens / cluster times initially
@@ -224,7 +227,9 @@ func NewMongoDBWebRTCCallQueue(
 	startOnce := make(chan struct{})
 	var startOnceSync sync.Once
 
-	queue.activeStoppableWorkers.Add(func(ctx context.Context) {
+	queue.activeBackgroundWorkers.Add(1) // TODO(RSDK-866): remove
+	utils.ManagedGo(func() {             // TODO(RSDK-866): remove
+		//queue.activeStoppableWorkers.Add(func(ctx context.Context) {
 		defer queue.csManagerSeq.Add(1) // helpful on panicked restart
 		select {
 		case <-queue.cancelCtx.Done():
@@ -236,7 +241,7 @@ func NewMongoDBWebRTCCallQueue(
 			})
 			queue.subscriptionManager(newState.ChangeStream)
 		}
-	})
+	}, queue.activeBackgroundWorkers.Done)
 
 	select {
 	case <-queue.cancelCtx.Done():
@@ -924,9 +929,7 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 			return true
 		}
 	}
-	queue.activeBackgroundWorkers.Add(1)
-	utils.PanicCapturingGo(func() {
-		defer queue.activeBackgroundWorkers.Done()
+	queue.activeStoppableWorkers.Add(func(ctx context.Context) {
 		defer cleanup()
 		defer close(answererResponses)
 
