@@ -1218,7 +1218,6 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 		}
 		// we assume the number of goroutines is bounded by the gRPC server invoking this method.
 		queue.activeStoppableWorkers.Add(func(ctx context.Context) {
-
 			// we need a dedicated timeout since even if the server is shutting down,
 			// we want to notify other servers immediately, instead of waiting for a timeout.
 			updateCtx, cancel := context.WithTimeout(context.Background(), time.Second*5)
