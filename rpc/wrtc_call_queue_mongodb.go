@@ -215,8 +215,8 @@ func NewMongoDBWebRTCCallQueue(
 		activeAnswerersfunc:   &activeAnswerersfunc,
 	}
 
-	queue.activeStoppableWorkers.Add(queue.operatorLivenessLoop)
-	queue.activeStoppableWorkers.Add(queue.changeStreamManager)
+	queue.activeStoppableWorkers.Add(func(ctx context.Context) { queue.operatorLivenessLoop() })
+	queue.activeStoppableWorkers.Add(func(ctx context.Context) { queue.changeStreamManager() })
 
 	// wait for change stream to startup once before we start processing anything
 	// since we need good track of resume tokens / cluster times initially
@@ -341,7 +341,7 @@ const (
 // The operatorLivenessLoop keeps the distributed queue aware of this operator's existence, in
 // addition to the hosts its listening to calls for, in order to keep track of eventually
 // consistent queue maximums.
-func (queue *mongoDBWebRTCCallQueue) operatorLivenessLoop(ctx context.Context) {
+func (queue *mongoDBWebRTCCallQueue) operatorLivenessLoop() {
 	ticker := time.NewTicker(operatorStateUpdateInterval)
 	defer ticker.Stop()
 	for {
@@ -415,7 +415,7 @@ func (queue *mongoDBWebRTCCallQueue) operatorLivenessLoop(ctx context.Context) {
 // its query in response to new answerers making themselves available for calls. It helps
 // efficiently swap out new change streams while an old one may still be in use by the subscriptionManager.
 // It also is resilient to crashes so long as the idempotency principles of the queue stay in place.
-func (queue *mongoDBWebRTCCallQueue) changeStreamManager(ctx context.Context) {
+func (queue *mongoDBWebRTCCallQueue) changeStreamManager() {
 	ticker := time.NewTicker(operatorStateUpdateInterval)
 	defer ticker.Stop()
 	defer func() {
