@@ -191,6 +191,7 @@ func NewMongoDBWebRTCCallQueue(
 	}
 
 	cancelCtx, cancelFunc := context.WithCancel(context.Background())
+	activeStoppableWorkers := utils.NewStoppableWorkers(cancelCtx)
 	queue := &mongoDBWebRTCCallQueue{
 		operatorID: operatorID,
 		hostCallerQueueSizeMatchAggStage: bson.D{{"$match", bson.D{
@@ -201,11 +202,12 @@ func NewMongoDBWebRTCCallQueue(
 		hostAnswererQueueSizeMatchAggStage: bson.D{{"$match", bson.D{
 			{"answerer_size", bson.D{{"$gte", maxHostAnswerersSize * 2}}},
 		}}},
-		callsColl:     callsColl,
-		operatorsColl: operatorsColl,
-		cancelCtx:     cancelCtx,
-		cancelFunc:    cancelFunc,
-		logger:        utils.AddFieldsToLogger(logger, "operator_id", operatorID),
+		activeStoppableWorkers: activeStoppableWorkers,
+		callsColl:              callsColl,
+		operatorsColl:          operatorsColl,
+		cancelCtx:              cancelCtx,
+		cancelFunc:             cancelFunc,
+		logger:                 utils.AddFieldsToLogger(logger, "operator_id", operatorID),
 
 		csStateUpdates:        make(chan changeStreamStateUpdate),
 		callExchangeSubs:      map[string]map[*mongodbCallExchange]struct{}{},
