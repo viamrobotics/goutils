@@ -19,9 +19,8 @@ import (
 // A memoryWebRTCCallQueue is an in-memory implementation of a call queue designed to be used for
 // testing and single node/host deployments.
 type memoryWebRTCCallQueue struct {
-	activeStoppableWorkers  *utils.StoppableWorkers
 	mu                      sync.Mutex
-	activeBackgroundWorkers sync.WaitGroup
+	activeBackgroundWorkers *utils.StoppableWorkers
 	hostQueues              map[string]*singleWebRTCHostQueue
 
 	cancelCtx  context.Context
@@ -52,7 +51,7 @@ func newMemoryWebRTCCallQueue(uuidDeterministic bool, logger utils.ZapCompatible
 		uuidDeterministic: uuidDeterministic,
 		logger:            logger,
 	}
-	queue.activeStoppableWorkers = utils.NewStoppableWorkerWithTicker(5*time.Second, func(ctx context.Context) {
+	queue.activeBackgroundWorkers = utils.NewStoppableWorkerWithTicker(5*time.Second, func(ctx context.Context) {
 		for {
 			if cancelCtx.Err() != nil {
 				return
@@ -128,7 +127,7 @@ func (queue *memoryWebRTCCallQueue) SendOfferInit(
 	hostQueueForSend.activeOffers[offer.uuid] = exchange
 	hostQueueForSend.mu.Unlock()
 
-	queue.activeStoppableWorkers.Add(func(ctx context.Context) {
+	queue.activeBackgroundWorkers.Add(func(ctx context.Context) {
 		select {
 		case <-sendCtx.Done():
 		case <-ctx.Done():
@@ -220,8 +219,7 @@ func (queue *memoryWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []strin
 // Close cancels all active offers and waits to cleanly close all background workers.
 func (queue *memoryWebRTCCallQueue) Close() error {
 	queue.cancelFunc()
-	queue.activeBackgroundWorkers.Wait()
-	queue.activeStoppableWorkers.Stop()
+	queue.activeBackgroundWorkers.Stop()
 	return nil
 }
 
