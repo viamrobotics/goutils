@@ -73,6 +73,7 @@ type mongoDBWebRTCCallQueue struct {
 	hostCallerQueueSizeMatchAggStage   bson.D
 	hostAnswererQueueSizeMatchAggStage bson.D
 	activeBackgroundWorkers            sync.WaitGroup
+	activeStoppableWorkers             *utils.StoppableWorkers
 	callsColl                          *mongo.Collection
 	operatorsColl                      *mongo.Collection
 	logger                             utils.ZapCompatibleLogger
@@ -192,6 +193,7 @@ func NewMongoDBWebRTCCallQueue(
 	}
 
 	cancelCtx, cancelFunc := context.WithCancel(context.Background())
+	activeStoppableWorkers := utils.NewStoppableWorkers(cancelCtx)
 	queue := &mongoDBWebRTCCallQueue{
 		operatorID: operatorID,
 		hostCallerQueueSizeMatchAggStage: bson.D{{"$match", bson.D{
@@ -202,11 +204,12 @@ func NewMongoDBWebRTCCallQueue(
 		hostAnswererQueueSizeMatchAggStage: bson.D{{"$match", bson.D{
 			{"answerer_size", bson.D{{"$gte", maxHostAnswerersSize * 2}}},
 		}}},
-		callsColl:     callsColl,
-		operatorsColl: operatorsColl,
-		cancelCtx:     cancelCtx,
-		cancelFunc:    cancelFunc,
-		logger:        utils.AddFieldsToLogger(logger, "operator_id", operatorID),
+		activeStoppableWorkers: activeStoppableWorkers,
+		callsColl:              callsColl,
+		operatorsColl:          operatorsColl,
+		cancelCtx:              cancelCtx,
+		cancelFunc:             cancelFunc,
+		logger:                 utils.AddFieldsToLogger(logger, "operator_id", operatorID),
 
 		csStateUpdates:        make(chan changeStreamStateUpdate),
 		callExchangeSubs:      map[string]map[*mongodbCallExchange]struct{}{},
@@ -214,9 +217,8 @@ func NewMongoDBWebRTCCallQueue(
 		activeAnswerersfunc:   &activeAnswerersfunc,
 	}
 
-	queue.activeBackgroundWorkers.Add(2)
-	utils.ManagedGo(queue.operatorLivenessLoop, queue.activeBackgroundWorkers.Done)
-	utils.ManagedGo(queue.changeStreamManager, queue.activeBackgroundWorkers.Done)
+	queue.activeStoppableWorkers.Add(func(ctx context.Context) { queue.operatorLivenessLoop() })
+	queue.activeStoppableWorkers.Add(func(ctx context.Context) { queue.changeStreamManager() })
 
 	// wait for change stream to startup once before we start processing anything
 	// since we need good track of resume tokens / cluster times initially
@@ -1362,6 +1364,7 @@ func iceCandidateToMongo(i *webrtc.ICECandidateInit) mongodbICECandidate {
 func (queue *mongoDBWebRTCCallQueue) Close() error {
 	queue.cancelFunc()
 	queue.activeBackgroundWorkers.Wait()
+	queue.activeStoppableWorkers.Stop()
 	return nil
 }
 
