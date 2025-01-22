@@ -1,7 +1,5 @@
 package rpc
 
-// TODO(RSDK-8666): use stoppable workers
-
 import (
 	"context"
 	"fmt"
@@ -23,9 +21,6 @@ type memoryWebRTCCallQueue struct {
 	activeBackgroundWorkers *utils.StoppableWorkers
 	hostQueues              map[string]*singleWebRTCHostQueue
 
-	cancelCtx  context.Context
-	cancelFunc func()
-
 	uuidDeterministic        bool
 	uuidDeterministicCounter int64
 	logger                   utils.ZapCompatibleLogger
@@ -43,17 +38,14 @@ func newMemoryWebRTCCallQueueTest(logger utils.ZapCompatibleLogger) *memoryWebRT
 }
 
 func newMemoryWebRTCCallQueue(uuidDeterministic bool, logger utils.ZapCompatibleLogger) *memoryWebRTCCallQueue {
-	cancelCtx, cancelFunc := context.WithCancel(context.Background())
 	queue := &memoryWebRTCCallQueue{
 		hostQueues:        map[string]*singleWebRTCHostQueue{},
-		cancelCtx:         cancelCtx,
-		cancelFunc:        cancelFunc,
 		uuidDeterministic: uuidDeterministic,
 		logger:            logger,
 	}
 	queue.activeBackgroundWorkers = utils.NewStoppableWorkerWithTicker(5*time.Second, func(ctx context.Context) {
 		for {
-			if cancelCtx.Err() != nil {
+			if ctx.Err() != nil {
 				return
 			}
 			now := time.Now()
@@ -105,7 +97,7 @@ func (queue *memoryWebRTCCallQueue) SendOfferInit(
 	}
 	answererResponses := make(chan WebRTCCallAnswer)
 	offerDeadline := time.Now().Add(getDefaultOfferDeadline())
-	sendCtx, sendCtxCancel := context.WithDeadline(queue.cancelCtx, offerDeadline)
+	sendCtx, sendCtxCancel := context.WithDeadline(queue.activeBackgroundWorkers.Context(), offerDeadline)
 	offer := memoryWebRTCCallOfferInit{
 		uuid:               newUUID,
 		sdp:                sdp,
@@ -203,7 +195,7 @@ func (queue *memoryWebRTCCallQueue) SendOfferError(ctx context.Context, host, uu
 func (queue *memoryWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []string) (WebRTCCallOfferExchange, error) {
 	hostQueue := queue.getOrMakeHostsQueue(hosts)
 
-	recvCtx, recvCtxCancel := context.WithCancel(queue.cancelCtx)
+	recvCtx, recvCtxCancel := context.WithCancel(queue.activeBackgroundWorkers.Context())
 	defer recvCtxCancel()
 
 	select {
@@ -218,7 +210,6 @@ func (queue *memoryWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []strin
 
 // Close cancels all active offers and waits to cleanly close all background workers.
 func (queue *memoryWebRTCCallQueue) Close() error {
-	queue.cancelFunc()
 	queue.activeBackgroundWorkers.Stop()
 	return nil
 }
