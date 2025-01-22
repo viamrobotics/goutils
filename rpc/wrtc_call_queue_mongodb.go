@@ -1256,9 +1256,7 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 	// and trying to connect to each other
 	// as both are doing trickle ice and generating new candidates with SDPs that are being updated in the
 	// table we try each of them as they come in to make a match
-	queue.activeBackgroundWorkers.Add(1)
-	utils.PanicCapturingGo(func() {
-		defer queue.activeBackgroundWorkers.Done()
+	queue.activeStoppableWorkers.Add(func(ctx context.Context) {
 		defer callerDoneCancel()
 		defer cleanup()
 
