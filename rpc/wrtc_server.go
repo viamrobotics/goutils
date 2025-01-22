@@ -22,8 +22,8 @@ var DefaultWebRTCMaxGRPCCalls = 256
 
 // A webrtcServer translates gRPC frames over WebRTC data channels into gRPC calls.
 type webrtcServer struct {
-	ctx      context.Context
-	cancel   context.CancelFunc
+	// ctx      context.Context
+	// cancel   context.CancelFunc
 	handlers map[string]handlerFunc
 	services map[string]*serviceInfo
 	logger   utils.ZapCompatibleLogger
@@ -126,15 +126,13 @@ func newWebRTCServerWithInterceptorsAndUnknownStreamHandler(
 		streamInt:         streamInt,
 		unknownStreamDesc: unknownStreamDesc,
 	}
-	srv.ctx, srv.cancel = context.WithCancel(context.Background())
-	srv.processHeadersWorkers = utils.NewStoppableWorkers(srv.ctx)
+	srv.processHeadersWorkers = utils.NewBackgroundStoppableWorkers()
 	return srv
 }
 
 // Stop instructs the server and all handlers to stop. It returns when all handlers
 // are done executing.
 func (srv *webrtcServer) Stop() {
-	srv.cancel()
 	srv.logger.Info("waiting for handlers to complete")
 	srv.processHeadersWorkers.Stop()
 	srv.logger.Info("handlers complete")

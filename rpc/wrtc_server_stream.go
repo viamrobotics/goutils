@@ -272,7 +272,7 @@ func (s *webrtcServerStream) processHeaders(headers *webrtcpb.RequestHeaders) {
 
 	// Check if context has errored: underlying server may have been `Stop`ped,
 	// in which case we return.
-	if err := s.ch.server.ctx.Err(); err != nil {
+	if err := s.ch.server.processHeadersWorkers.Context().Err(); err != nil {
 		return
 	}
 
