@@ -44,23 +44,21 @@ func newMemoryWebRTCCallQueue(uuidDeterministic bool, logger utils.ZapCompatible
 		logger:            logger,
 	}
 	queue.activeBackgroundWorkers = utils.NewStoppableWorkerWithTicker(5*time.Second, func(ctx context.Context) {
-		for {
-			if ctx.Err() != nil {
-				return
-			}
-			now := time.Now()
-			queue.mu.Lock()
-			for _, hostQueue := range queue.hostQueues {
-				hostQueue.mu.Lock()
-				for offerID, offer := range hostQueue.activeOffers {
-					if d, ok := offer.offer.answererDoneCtx.Deadline(); ok && d.Before(now) {
-						delete(hostQueue.activeOffers, offerID)
-					}
-				}
-				hostQueue.mu.Unlock()
-			}
-			queue.mu.Unlock()
+		if ctx.Err() != nil {
+			return
 		}
+		now := time.Now()
+		queue.mu.Lock()
+		for _, hostQueue := range queue.hostQueues {
+			hostQueue.mu.Lock()
+			for offerID, offer := range hostQueue.activeOffers {
+				if d, ok := offer.offer.answererDoneCtx.Deadline(); ok && d.Before(now) {
+					delete(hostQueue.activeOffers, offerID)
+				}
+			}
+			hostQueue.mu.Unlock()
+		}
+		queue.mu.Unlock()
 	})
 	return queue
 }
