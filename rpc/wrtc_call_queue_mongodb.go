@@ -215,9 +215,10 @@ func NewMongoDBWebRTCCallQueue(
 		activeAnswerersfunc:   &activeAnswerersfunc,
 	}
 
-	// queue.activeBackgroundWorkers.Add(1)                                            // TODO(RSDK-8666): remove
-	// utils.ManagedGo(queue.operatorLivenessLoop, queue.activeBackgroundWorkers.Done) // TODO(RSDK-8666): remove
-	queue.activeStoppableWorkers.Add(func(ctx context.Context) { queue.operatorLivenessLoop() })
+	// TODO(RSDK-8666): using StoppableWorkers is causing a data race
+	queue.activeBackgroundWorkers.Add(1)
+	utils.ManagedGo(queue.operatorLivenessLoop, queue.activeBackgroundWorkers.Done)
+	// queue.activeStoppableWorkers.Add(func(ctx context.Context) { queue.operatorLivenessLoop() })
 	queue.activeStoppableWorkers.Add(func(ctx context.Context) { queue.changeStreamManager() })
 
 	// wait for change stream to startup once before we start processing anything
