@@ -285,7 +285,7 @@ func (s *webrtcServerStream) processHeaders(headers *webrtcpb.RequestHeaders) {
 	}
 
 	s.headersReceived = true
-	utils.PanicCapturingGo(func() {
+	s.ch.server.processHeadersWorkers.Add(func(ctx context.Context) {
 		defer func() {
 			<-s.ch.server.callTickets // return a ticket
 		}()
