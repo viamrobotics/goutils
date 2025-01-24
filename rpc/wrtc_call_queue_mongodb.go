@@ -385,15 +385,16 @@ func (queue *mongoDBWebRTCCallQueue) operatorLivenessLoop() {
 			})
 		}
 
-		if _, err := queue.operatorsColl.UpdateOne(queue.activeStoppableWorkers.Context(), bson.D{{webrtcOperatorIDField, queue.operatorID}}, bson.D{
-			{
-				"$set",
-				bson.D{
-					{webrtcOperatorExpireAtField, time.Now().Add(operatorHeartbeatWindow)},
-					{webrtcOperatorHostsField, hostSizes},
+		if _, err := queue.operatorsColl.UpdateOne(queue.activeStoppableWorkers.Context(), bson.D{{webrtcOperatorIDField, queue.operatorID}},
+			bson.D{
+				{
+					"$set",
+					bson.D{
+						{webrtcOperatorExpireAtField, time.Now().Add(operatorHeartbeatWindow)},
+						{webrtcOperatorHostsField, hostSizes},
+					},
 				},
-			},
-		}); err != nil {
+			}); err != nil {
 			if !errors.Is(err, context.Canceled) {
 				queue.logger.Errorw("failed to update operator document for self", "error", err)
 			}
