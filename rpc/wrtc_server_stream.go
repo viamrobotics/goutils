@@ -243,17 +243,6 @@ func (s *webrtcServerStream) onRequest(request *webrtcpb.Request) {
 	}
 }
 
-func isContextCanceled(err error) bool {
-	if err == nil {
-		return false
-	}
-	if utils.FilterOutError(err, context.Canceled) == nil {
-		return true
-	}
-	gStatus, isGRPCErr := status.FromError(err)
-	return isGRPCErr && gStatus.Code() == codes.Canceled
-}
-
 func (s *webrtcServerStream) processHeaders(headers *webrtcpb.RequestHeaders) {
 	s.logger = utils.AddFieldsToLogger(s.logger, "method", headers.GetMethod())
 	s.logger.Debug("incoming grpc request")
@@ -295,12 +284,10 @@ func (s *webrtcServerStream) processHeaders(headers *webrtcpb.RequestHeaders) {
 			s.ch.server.processHeadersWorkers.Done()
 			<-s.ch.server.callTickets // return a ticket
 		}()
-		if err := handlerFunc(s); err != nil {
-			if errors.Is(err, io.ErrClosedPipe) || isContextCanceled(err) {
-				return
-			}
-			s.logger.Errorw("error calling handler", "error", err)
-		}
+		// we're not checking/logging the error here because it is handled
+		// by [rpc.grpcUnaryServerInterceptor] and [rpc.grpcStreamServerInterceptor].
+		//nolint:errcheck,gosec
+		handlerFunc(s)
 	})
 }
 

@@ -11,7 +11,6 @@ import (
 	grpc_logging "github.com/grpc-ecosystem/go-grpc-middleware/logging"
 	"github.com/pkg/errors"
 	"go.opencensus.io/trace"
-	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -157,7 +156,7 @@ func serverCallFields(ctx context.Context, fullMethodString string, start time.T
 	var f []any
 	f = append(f, "grpc.start_time", start.UTC().Format(iso8601))
 	if d, ok := ctx.Deadline(); ok {
-		f = append(f, zap.String("grpc.request.deadline", d.UTC().Format(iso8601)))
+		f = append(f, "grpc.request.deadline", d.UTC().Format(iso8601))
 	}
 	service := path.Dir(fullMethodString)[1:]
 	method := path.Base(fullMethodString)
@@ -166,5 +165,5 @@ func serverCallFields(ctx context.Context, fullMethodString string, start time.T
 		"system", "grpc",
 		"grpc.service", service,
 		"grpc.method", method,
-	})
+	}...)
 }
