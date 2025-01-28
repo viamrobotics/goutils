@@ -44,9 +44,6 @@ func newMemoryWebRTCCallQueue(uuidDeterministic bool, logger utils.ZapCompatible
 		logger:            logger,
 	}
 	queue.activeBackgroundWorkers = utils.NewStoppableWorkerWithTicker(5*time.Second, func(ctx context.Context) {
-		if ctx.Err() != nil {
-			return
-		}
 		now := time.Now()
 		queue.mu.Lock()
 		for _, hostQueue := range queue.hostQueues {
