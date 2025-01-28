@@ -114,7 +114,7 @@ func (queue *memoryWebRTCCallQueue) SendOfferInit(
 	hostQueueForSend.activeOffers[offer.uuid] = exchange
 	hostQueueForSend.mu.Unlock()
 
-	queue.activeBackgroundWorkers.Add(func(ctx context.Context) {
+	queue.activeBackgroundWorkers.Add(func(_ context.Context) {
 		select {
 		case <-sendCtx.Done():
 		case <-ctx.Done():
