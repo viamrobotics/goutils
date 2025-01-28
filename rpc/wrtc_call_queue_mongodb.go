@@ -70,10 +70,13 @@ type mongoDBWebRTCCallQueue struct {
 	operatorID                         string
 	hostCallerQueueSizeMatchAggStage   bson.D
 	hostAnswererQueueSizeMatchAggStage bson.D
-	activeStoppableWorkers             *utils.StoppableWorkers
+	activeBackgroundWorkers            sync.WaitGroup
 	callsColl                          *mongo.Collection
 	operatorsColl                      *mongo.Collection
 	logger                             utils.ZapCompatibleLogger
+
+	cancelCtx  context.Context
+	cancelFunc func()
 
 	csStateMu sync.RWMutex
 	// this is a counter that increases based on errors / answerers or callers coming live
@@ -186,7 +189,7 @@ func NewMongoDBWebRTCCallQueue(
 		return nil, err
 	}
 
-	activeStoppableWorkers := utils.NewBackgroundStoppableWorkers()
+	cancelCtx, cancelFunc := context.WithCancel(context.Background())
 	queue := &mongoDBWebRTCCallQueue{
 		operatorID: operatorID,
 		hostCallerQueueSizeMatchAggStage: bson.D{{"$match", bson.D{
@@ -197,10 +200,11 @@ func NewMongoDBWebRTCCallQueue(
 		hostAnswererQueueSizeMatchAggStage: bson.D{{"$match", bson.D{
 			{"answerer_size", bson.D{{"$gte", maxHostAnswerersSize * 2}}},
 		}}},
-		activeStoppableWorkers: activeStoppableWorkers,
-		callsColl:              callsColl,
-		operatorsColl:          operatorsColl,
-		logger:                 utils.AddFieldsToLogger(logger, "operator_id", operatorID),
+		callsColl:     callsColl,
+		operatorsColl: operatorsColl,
+		cancelCtx:     cancelCtx,
+		cancelFunc:    cancelFunc,
+		logger:        utils.AddFieldsToLogger(logger, "operator_id", operatorID),
 
 		csStateUpdates:        make(chan changeStreamStateUpdate),
 		callExchangeSubs:      map[string]map[*mongodbCallExchange]struct{}{},
@@ -208,9 +212,9 @@ func NewMongoDBWebRTCCallQueue(
 		activeAnswerersfunc:   &activeAnswerersfunc,
 	}
 
-	// TODO(RSDK-8666): using StoppableWorkers is causing a data race
-	queue.activeStoppableWorkers.Add(func(ctx context.Context) { queue.operatorLivenessLoop() })
-	queue.activeStoppableWorkers.Add(func(ctx context.Context) { queue.changeStreamManager() })
+	queue.activeBackgroundWorkers.Add(2)
+	utils.ManagedGo(queue.operatorLivenessLoop, queue.activeBackgroundWorkers.Done)
+	utils.ManagedGo(queue.changeStreamManager, queue.activeBackgroundWorkers.Done)
 
 	// wait for change stream to startup once before we start processing anything
 	// since we need good track of resume tokens / cluster times initially
@@ -218,10 +222,11 @@ func NewMongoDBWebRTCCallQueue(
 	startOnce := make(chan struct{})
 	var startOnceSync sync.Once
 
-	queue.activeStoppableWorkers.Add(func(ctx context.Context) {
+	queue.activeBackgroundWorkers.Add(1)
+	utils.ManagedGo(func() {
 		defer queue.csManagerSeq.Add(1) // helpful on panicked restart
 		select {
-		case <-queue.activeStoppableWorkers.Context().Done():
+		case <-queue.cancelCtx.Done():
 			return
 		case newState := <-queue.csStateUpdates:
 			queue.processClusterEventState(newState.ResumeToken, newState.ClusterTime)
@@ -230,11 +235,11 @@ func NewMongoDBWebRTCCallQueue(
 			})
 			queue.subscriptionManager(newState.ChangeStream)
 		}
-	})
+	}, queue.activeBackgroundWorkers.Done)
 
 	select {
-	case <-queue.activeStoppableWorkers.Context().Done():
-		return nil, multierr.Combine(queue.Close(), queue.activeStoppableWorkers.Context().Err())
+	case <-queue.cancelCtx.Done():
+		return nil, multierr.Combine(queue.Close(), queue.cancelCtx.Err())
 	case <-startOnce:
 	}
 
@@ -339,7 +344,7 @@ func (queue *mongoDBWebRTCCallQueue) operatorLivenessLoop() {
 	ticker := time.NewTicker(operatorStateUpdateInterval)
 	defer ticker.Stop()
 	for {
-		if !utils.SelectContextOrWaitChan(queue.activeStoppableWorkers.Context(), ticker.C) {
+		if !utils.SelectContextOrWaitChan(queue.cancelCtx, ticker.C) {
 			return
 		}
 		type callerAnswererQueueSizes struct {
@@ -385,16 +390,15 @@ func (queue *mongoDBWebRTCCallQueue) operatorLivenessLoop() {
 			})
 		}
 
-		if _, err := queue.operatorsColl.UpdateOne(queue.activeStoppableWorkers.Context(), bson.D{{webrtcOperatorIDField, queue.operatorID}},
-			bson.D{
-				{
-					"$set",
-					bson.D{
-						{webrtcOperatorExpireAtField, time.Now().Add(operatorHeartbeatWindow)},
-						{webrtcOperatorHostsField, hostSizes},
-					},
+		if _, err := queue.operatorsColl.UpdateOne(queue.cancelCtx, bson.D{{webrtcOperatorIDField, queue.operatorID}}, bson.D{
+			{
+				"$set",
+				bson.D{
+					{webrtcOperatorExpireAtField, time.Now().Add(operatorHeartbeatWindow)},
+					{webrtcOperatorHostsField, hostSizes},
 				},
-			}); err != nil {
+			},
+		}); err != nil {
 			if !errors.Is(err, context.Canceled) {
 				queue.logger.Errorw("failed to update operator document for self", "error", err)
 			}
@@ -423,7 +427,7 @@ func (queue *mongoDBWebRTCCallQueue) changeStreamManager() {
 	for {
 		// Note(erd): this could use condition variables instead in order to be efficient about
 		// change stream restarts, but it does not feel worth the complexity right now :o)
-		if !utils.SelectContextOrWaitChan(queue.activeStoppableWorkers.Context(), ticker.C) {
+		if !utils.SelectContextOrWaitChan(queue.cancelCtx, ticker.C) {
 			return
 		}
 		currSeq := queue.csManagerSeq.Load()
@@ -456,7 +460,7 @@ func (queue *mongoDBWebRTCCallQueue) changeStreamManager() {
 
 		// note(roxy): this is updating the changestream based on whether there is a new
 		// answerer that is coming online or if there is a new caller that is coming online
-		cs, err := queue.callsColl.Watch(queue.activeStoppableWorkers.Context(), []bson.D{
+		cs, err := queue.callsColl.Watch(queue.cancelCtx, []bson.D{
 			{
 				{"$match", bson.D{
 					{"operationType", bson.D{{"$in", []interface{}{
@@ -496,11 +500,11 @@ func (queue *mongoDBWebRTCCallQueue) changeStreamManager() {
 		queue.csStateMu.Unlock()
 		activeHosts.Set(queue.operatorID, int64(len(hosts)))
 
-		nextCSCtx, nextCSCtxCancel := context.WithCancel(queue.activeStoppableWorkers.Context())
+		nextCSCtx, nextCSCtxCancel := context.WithCancel(queue.cancelCtx)
 		csNext, resumeToken, clusterTime := mongoutils.ChangeStreamBackground(nextCSCtx, cs)
 
 		select {
-		case <-queue.activeStoppableWorkers.Context().Done():
+		case <-queue.cancelCtx.Done():
 			// note(roxy): this is the server's cancelCtx being called
 			// should stop the entire call queue managed by CS, not just a single CS
 			nextCSCtxCancel()
@@ -673,14 +677,14 @@ func (queue *mongoDBWebRTCCallQueue) processNextSubscriptionEvent(next mongoutil
 func (queue *mongoDBWebRTCCallQueue) subscriptionManager(currentCS <-chan mongoutils.ChangeEventResult) {
 	var waitForNextCS bool
 	for {
-		if queue.activeStoppableWorkers.Context().Err() != nil {
+		if queue.cancelCtx.Err() != nil {
 			return
 		}
 		if waitForNextCS {
 			// we want to block here so that we do not keep receiving bad events.
 			waitForNextCS = false
 			select {
-			case <-queue.activeStoppableWorkers.Context().Done():
+			case <-queue.cancelCtx.Done():
 				return
 			case newState := <-queue.csStateUpdates:
 				currentCS = newState.ChangeStream
@@ -689,7 +693,7 @@ func (queue *mongoDBWebRTCCallQueue) subscriptionManager(currentCS <-chan mongou
 		} else {
 			// otherwise we can do a quick check.
 			select {
-			case <-queue.activeStoppableWorkers.Context().Done():
+			case <-queue.cancelCtx.Done():
 				return
 			case next, ok := <-currentCS: // try and make some progress at least once
 				waitForNextCS = queue.processNextSubscriptionEvent(next, ok)
@@ -702,7 +706,7 @@ func (queue *mongoDBWebRTCCallQueue) subscriptionManager(currentCS <-chan mongou
 
 		// finally allow accepting a new change stream while checking for events.
 		select {
-		case <-queue.activeStoppableWorkers.Context().Done():
+		case <-queue.cancelCtx.Done():
 			return
 		case newState := <-queue.csStateUpdates:
 			currentCS = newState.ChangeStream
@@ -885,7 +889,7 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 	sendCtx, sendCtxCancel := context.WithDeadline(ctx, offerDeadline)
 
 	// need to watch before insertion to avoid a race
-	sendAndQueueCtx, sendAndQueueCtxCancel := utils.MergeContext(sendCtx, queue.activeStoppableWorkers.Context())
+	sendAndQueueCtx, sendAndQueueCtxCancel := utils.MergeContext(sendCtx, queue.cancelCtx)
 
 	cleanup := func() {
 		sendAndQueueCtxCancel()
@@ -919,7 +923,9 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 			return true
 		}
 	}
-	queue.activeStoppableWorkers.Add(func(ctx context.Context) {
+	queue.activeBackgroundWorkers.Add(1)
+	utils.PanicCapturingGo(func() {
+		defer queue.activeBackgroundWorkers.Done()
 		defer cleanup()
 		defer close(answererResponses)
 
@@ -1034,7 +1040,7 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 		return nil, err
 	}
 
-	recvOfferCtx, recvOfferCtxCancel := utils.MergeContext(ctx, queue.activeStoppableWorkers.Context())
+	recvOfferCtx, recvOfferCtxCancel := utils.MergeContext(ctx, queue.cancelCtx)
 	waitForNewCall := func() (mongodbWebRTCCall, bool, error) {
 		events, callUnsubscribe, err := queue.subscribeForNewCallOnHosts(recvOfferCtx, hosts)
 		if err != nil {
@@ -1180,7 +1186,7 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 
 	offerDeadline := callReq.StartedAt.Add(getDefaultOfferDeadline())
 
-	recvCtx, recvCtxCancel := utils.MergeContextWithDeadline(ctx, queue.activeStoppableWorkers.Context(), offerDeadline)
+	recvCtx, recvCtxCancel := utils.MergeContextWithDeadline(ctx, queue.cancelCtx, offerDeadline)
 
 	cleanup := func() {
 		recvCtxCancel()
@@ -1207,7 +1213,10 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 			queue.logger.Errorw("error in RecvOffer", "error", errToSet, "id", callReq.ID)
 		}
 		// we assume the number of goroutines is bounded by the gRPC server invoking this method.
-		queue.activeStoppableWorkers.Add(func(ctx context.Context) {
+		queue.activeBackgroundWorkers.Add(1)
+		utils.PanicCapturingGo(func() {
+			queue.activeBackgroundWorkers.Done()
+
 			// we need a dedicated timeout since even if the server is shutting down,
 			// we want to notify other servers immediately, instead of waiting for a timeout.
 			updateCtx, cancel := context.WithTimeout(context.Background(), time.Second*5)
@@ -1246,7 +1255,9 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 	// and trying to connect to each other
 	// as both are doing trickle ice and generating new candidates with SDPs that are being updated in the
 	// table we try each of them as they come in to make a match
-	queue.activeStoppableWorkers.Add(func(ctx context.Context) {
+	queue.activeBackgroundWorkers.Add(1)
+	utils.PanicCapturingGo(func() {
+		defer queue.activeBackgroundWorkers.Done()
 		defer callerDoneCancel()
 		defer cleanup()
 
@@ -1347,7 +1358,8 @@ func iceCandidateToMongo(i *webrtc.ICECandidateInit) mongodbICECandidate {
 
 // Close cancels all active offers and waits to cleanly close all background workers.
 func (queue *mongoDBWebRTCCallQueue) Close() error {
-	queue.activeStoppableWorkers.Stop()
+	queue.cancelFunc()
+	queue.activeBackgroundWorkers.Wait()
 	return nil
 }
 
