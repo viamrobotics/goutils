@@ -270,12 +270,6 @@ func (s *webrtcServerStream) processHeaders(headers *webrtcpb.RequestHeaders) {
 
 	s.ch.server.counters.HeadersProcessed.Add(1)
 
-	// Check if context has errored: underlying server may have been `Stop`ped,
-	// in which case we return.
-	if err := s.ch.server.processHeadersWorkers.Context().Err(); err != nil {
-		return
-	}
-
 	// take a ticket
 	select {
 	case s.ch.server.callTickets <- struct{}{}:
