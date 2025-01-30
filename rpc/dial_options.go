@@ -283,3 +283,10 @@ func WithForceDirectGRPC() DialOption {
 		o.disableDirect = false
 	})
 }
+
+// WithConn provides a preexisting connection to use. This option forces the webrtcSignalingAnswerer to not dial or manage a connection
+func WithConn(conn ClientConn) DialOption {
+	return newFuncDialOption(func(o *dialOptions) {
+		o.conn = conn
+	})
+}
