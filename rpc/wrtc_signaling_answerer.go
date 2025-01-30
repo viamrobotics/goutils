@@ -40,8 +40,9 @@ type webrtcSignalingAnswerer struct {
 	// conn is used to share the direct gRPC connection used by the answerer workers. As direct gRPC connections
 	// reconnect on their own, custom reconnect logic is not needed. However, keepalives are necessary for the connection
 	// to realize it's been disconnected quickly and start reconnecting.
-	connMu sync.Mutex
-	conn   ClientConn
+	connMu     sync.Mutex
+	conn       ClientConn
+	sharedConn bool
 
 	logger utils.ZapCompatibleLogger
 }
@@ -61,8 +62,12 @@ func newWebRTCSignalingAnswerer(
 	dialOptsCopy := make([]DialOption, len(dialOpts))
 	copy(dialOptsCopy, dialOpts)
 	dialOptsCopy = append(dialOptsCopy, WithWebRTCOptions(DialWebRTCOptions{Disable: true}))
+	options := &dialOptions{}
+	for _, opt := range dialOptsCopy {
+		opt.apply(options)
+	}
 	bgWorkers := utils.NewBackgroundStoppableWorkers()
-	return &webrtcSignalingAnswerer{
+	ans := &webrtcSignalingAnswerer{
 		address:      address,
 		hosts:        hosts,
 		server:       server,
@@ -71,6 +76,11 @@ func newWebRTCSignalingAnswerer(
 		bgWorkers:    bgWorkers,
 		logger:       logger,
 	}
+	if options.conn != nil {
+		ans.conn = options.conn
+		ans.sharedConn = true
+	}
+	return ans
 }
 
 const (
@@ -88,28 +98,30 @@ func (ans *webrtcSignalingAnswerer) Start() {
 
 	// attempt to make connection in a loop
 	ans.bgWorkers.Add(func(ctx context.Context) {
-		for ans.conn == nil {
-			if ctx.Err() != nil {
-				return
-			}
+		if ans.sharedConn == false {
+			for ans.conn == nil {
+				if ctx.Err() != nil {
+					return
+				}
 
-			timeout := answererConnectTimeout
-			// Bump timeout from 10 seconds to 1 minute if behind a SOCKS proxy. It
-			// may take longer to connect to the signaling server in that case.
-			if proxyAddr := os.Getenv(SocksProxyEnvVar); proxyAddr != "" {
-				timeout = answererConnectTimeoutBehindProxy
+				timeout := answererConnectTimeout
+				// Bump timeout from 10 seconds to 1 minute if behind a SOCKS proxy. It
+				// may take longer to connect to the signaling server in that case.
+				if proxyAddr := os.Getenv(SocksProxyEnvVar); proxyAddr != "" {
+					timeout = answererConnectTimeoutBehindProxy
+				}
+				setupCtx, timeoutCancel := context.WithTimeout(ctx, timeout)
+				conn, err := Dial(setupCtx, ans.address, ans.logger, ans.dialOpts...)
+				timeoutCancel()
+				if err != nil {
+					ans.logger.Errorw("error connecting answer client", "error", err)
+					utils.SelectContextOrWait(ctx, answererReconnectWait)
+					continue
+				}
+				ans.connMu.Lock()
+				ans.conn = conn
+				ans.connMu.Unlock()
 			}
-			setupCtx, timeoutCancel := context.WithTimeout(ctx, timeout)
-			conn, err := Dial(setupCtx, ans.address, ans.logger, ans.dialOpts...)
-			timeoutCancel()
-			if err != nil {
-				ans.logger.Errorw("error connecting answer client", "error", err)
-				utils.SelectContextOrWait(ctx, answererReconnectWait)
-				continue
-			}
-			ans.connMu.Lock()
-			ans.conn = conn
-			ans.connMu.Unlock()
 		}
 		// spin off the actual answerer workers
 		for i := 0; i < defaultMaxAnswerers; i++ {
