@@ -270,9 +270,11 @@ func (ans *webrtcSignalingAnswerer) Stop() {
 	ans.connMu.Lock()
 	defer ans.connMu.Unlock()
 	if ans.conn != nil {
-		err := ans.conn.Close()
-		if isNetworkError(err) {
-			ans.logger.Errorw("error closing signaling connection", "error", err)
+		if !ans.sharedConn {
+			err := ans.conn.Close()
+			if isNetworkError(err) {
+				ans.logger.Errorw("error closing signaling connection", "error", err)
+			}
 		}
 		ans.conn = nil
 	}
