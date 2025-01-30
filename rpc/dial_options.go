@@ -64,6 +64,9 @@ type dialOptions struct {
 	// interceptors
 	unaryInterceptor  grpc.UnaryClientInterceptor
 	streamInterceptor grpc.StreamClientInterceptor
+
+	// conn can be used to force the webrtcSignalingAnswerer to use a preexisting connection instead of dialing and managing its own.
+	conn ClientConn
 }
 
 // DialMulticastDNSOptions dictate any special settings to apply while dialing via mDNS.
