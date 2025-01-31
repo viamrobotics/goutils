@@ -76,8 +76,8 @@ func newWebRTCSignalingAnswerer(
 		bgWorkers:    bgWorkers,
 		logger:       logger,
 	}
-	if options.conn != nil {
-		ans.conn = options.conn
+	if options.externalSignalingConn != nil {
+		ans.conn = options.externalSignalingConn
 		ans.sharedConn = true
 	}
 	return ans
