@@ -284,7 +284,8 @@ func WithForceDirectGRPC() DialOption {
 	})
 }
 
-// WithExternalSignalingConn provides a preexisting connection to use. This option forces the webrtcSignalingAnswerer to not dial or manage a connection.
+// WithExternalSignalingConn provides a preexisting connection to use. This option forces the webrtcSignalingAnswerer to not dial or manage
+// a connection.
 func WithExternalSignalingConn(externalSignalingConn ClientConn) DialOption {
 	return newFuncDialOption(func(o *dialOptions) {
 		o.externalSignalingConn = externalSignalingConn
