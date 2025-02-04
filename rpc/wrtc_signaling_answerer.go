@@ -44,6 +44,7 @@ type webrtcSignalingAnswerer struct {
 	// connection to the signaling server. If this option is not set, the answerer will oversee the lifecycle of its own connection by
 	// continuosly dialing in the background until a successful connection emerges and closing said connection when done. In the shared
 	// connection case, the answerer will not close the connection.	connMu     sync.Mutex
+	connMu     sync.Mutex
 	conn       ClientConn
 	sharedConn bool
 
