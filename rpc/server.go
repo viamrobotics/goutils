@@ -656,6 +656,8 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 			if !sOpts.unauthenticated {
 				answererDialOpts = append(answererDialOpts, WithEntityCredentials(server.internalUUID, server.internalCreds))
 			}
+			// this answerer uses an internal signaling server that runs locally as a separate process and so does not get a shared
+			// connection to App as a dial option
 			server.webrtcAnswerers = append(server.webrtcAnswerers, newWebRTCSignalingAnswerer(
 				address,
 				internalSignalingHosts,
