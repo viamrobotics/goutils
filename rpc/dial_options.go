@@ -66,7 +66,7 @@ type dialOptions struct {
 	streamInterceptor grpc.StreamClientInterceptor
 
 	// conn can be used to force the webrtcSignalingAnswerer to use a preexisting connection instead of dialing and managing its own.
-	externalSignalingConn ClientConn
+	signalingConn ClientConn
 }
 
 // DialMulticastDNSOptions dictate any special settings to apply while dialing via mDNS.
@@ -286,8 +286,8 @@ func WithForceDirectGRPC() DialOption {
 
 // WithExternalSignalingConn provides a preexisting connection to use. This option forces the webrtcSignalingAnswerer to not dial or manage
 // a connection.
-func WithExternalSignalingConn(externalSignalingConn ClientConn) DialOption {
+func withSignalingConn(signalingConn ClientConn) DialOption {
 	return newFuncDialOption(func(o *dialOptions) {
-		o.externalSignalingConn = externalSignalingConn
+		o.signalingConn = signalingConn
 	})
 }

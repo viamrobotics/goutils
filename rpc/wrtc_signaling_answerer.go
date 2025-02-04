@@ -80,8 +80,8 @@ func newWebRTCSignalingAnswerer(
 		bgWorkers:    bgWorkers,
 		logger:       logger,
 	}
-	if options.externalSignalingConn != nil {
-		ans.conn = options.externalSignalingConn
+	if options.signalingConn != nil {
+		ans.conn = options.signalingConn
 		ans.sharedConn = true
 	}
 	return ans
