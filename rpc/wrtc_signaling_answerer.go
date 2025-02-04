@@ -42,7 +42,7 @@ type webrtcSignalingAnswerer struct {
 	// to realize it's been disconnected quickly and start reconnecting. conn can be set to a pre-existing gRPC connection that's used by
 	// other consumers via a dial option. In this scenario, sharedConn will be true, and the answerer will not attempt to establish a new
 	// connection to the signaling server. If this option is not set, the answerer will oversee the lifecycle of its own connection by
-	// continuosly dialing in the background until a successful connection emerges and closing said connection when done. In the shared
+	// continuously dialing in the background until a successful connection emerges and closing said connection when done. In the shared
 	// connection case, the answerer will not close the connection.	connMu     sync.Mutex
 	connMu     sync.Mutex
 	conn       ClientConn
