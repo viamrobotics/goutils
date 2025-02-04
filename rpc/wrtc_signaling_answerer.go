@@ -43,8 +43,7 @@ type webrtcSignalingAnswerer struct {
 	// other consumers via a dial option. In this scenario, sharedConn will be true, and the answerer will not attempt to establish a new
 	// connection to the signaling server. If this option is not set, the answerer will oversee the lifecycle of its own connection by
 	// continuosly dialing in the background until a successful connection emerges and closing said connection when done. In the shared
-	// connection case, the answerer will not close the connection.
-	connMu     sync.Mutex
+	// connection case, the answerer will not close the connection.	connMu     sync.Mutex
 	conn       ClientConn
 	sharedConn bool
 
@@ -80,8 +79,8 @@ func newWebRTCSignalingAnswerer(
 		bgWorkers:    bgWorkers,
 		logger:       logger,
 	}
-	if options.signalingConn != nil {
-		ans.conn = options.signalingConn
+	if options.externalSignalingConn != nil {
+		ans.conn = options.externalSignalingConn
 		ans.sharedConn = true
 	}
 	return ans
@@ -234,10 +233,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 
 			initStage, ok := incomingCallerReq.GetStage().(*webrtcpb.AnswerRequest_Init)
 			if !ok {
-				err := fmt.Errorf(
-					"expected first stage to be init or heartbeat; got %T",
-					incomingCallerReq.GetStage(),
-				)
+				err := fmt.Errorf("expected first stage to be init or heartbeat; got %T", incomingCallerReq.GetStage())
 				aa.sendError(err)
 				ans.logger.Warn(err.Error())
 				continue
@@ -496,11 +492,7 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 				ansResp, err := aa.client.Recv()
 				if err != nil {
 					if !errors.Is(err, io.EOF) {
-						aa.logger.Warn(
-							"Error receiving initial message from signaling server",
-							"err",
-							err,
-						)
+						aa.logger.Warn("Error receiving initial message from signaling server", "err", err)
 					}
 					return
 				}
@@ -540,9 +532,7 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 		// Happy path
 		successful = true
 		aa.server.counters.PeersConnected.Add(1)
-		aa.server.counters.TotalTimeConnectingMillis.Add(
-			time.Since(connectionStartTime).Milliseconds(),
-		)
+		aa.server.counters.TotalTimeConnectingMillis.Add(time.Since(connectionStartTime).Milliseconds())
 	case <-ctx.Done():
 		// Timed out or signaling server was closed.
 		serverChannel.Close()
@@ -567,11 +557,7 @@ func (aa *answerAttempt) sendDone() {
 		if sendErr != nil {
 			// Errors communicating with the signaling server have no bearing on whether the
 			// PeerConnection is usable. Log and ignore the send error.
-			aa.logger.Warnw(
-				"Failed to send connection success message to signaling server",
-				"sendErr",
-				sendErr,
-			)
+			aa.logger.Warnw("Failed to send connection success message to signaling server", "sendErr", sendErr)
 		}
 	})
 }
