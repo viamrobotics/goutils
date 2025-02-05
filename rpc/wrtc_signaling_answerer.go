@@ -39,9 +39,14 @@ type webrtcSignalingAnswerer struct {
 
 	// conn is used to share the direct gRPC connection used by the answerer workers. As direct gRPC connections
 	// reconnect on their own, custom reconnect logic is not needed. However, keepalives are necessary for the connection
-	// to realize it's been disconnected quickly and start reconnecting.
-	connMu sync.Mutex
-	conn   ClientConn
+	// to realize it's been disconnected quickly and start reconnecting. conn can be set to a pre-existing gRPC connection that's used by
+	// other consumers via a dial option. In this scenario, sharedConn will be true, and the answerer will not attempt to establish a new
+	// connection to the signaling server. If this option is not set, the answerer will oversee the lifecycle of its own connection by
+	// continuously dialing in the background until a successful connection emerges and closing said connection when done. In the shared
+	// connection case, the answerer will not close the connection.	connMu     sync.Mutex
+	connMu     sync.Mutex
+	conn       ClientConn
+	sharedConn bool
 
 	logger utils.ZapCompatibleLogger
 }
@@ -61,8 +66,12 @@ func newWebRTCSignalingAnswerer(
 	dialOptsCopy := make([]DialOption, len(dialOpts))
 	copy(dialOptsCopy, dialOpts)
 	dialOptsCopy = append(dialOptsCopy, WithWebRTCOptions(DialWebRTCOptions{Disable: true}))
+	options := &dialOptions{}
+	for _, opt := range dialOptsCopy {
+		opt.apply(options)
+	}
 	bgWorkers := utils.NewBackgroundStoppableWorkers()
-	return &webrtcSignalingAnswerer{
+	ans := &webrtcSignalingAnswerer{
 		address:      address,
 		hosts:        hosts,
 		server:       server,
@@ -71,6 +80,11 @@ func newWebRTCSignalingAnswerer(
 		bgWorkers:    bgWorkers,
 		logger:       logger,
 	}
+	if options.signalingConn != nil {
+		ans.conn = options.signalingConn
+		ans.sharedConn = true
+	}
+	return ans
 }
 
 const (
@@ -260,9 +274,11 @@ func (ans *webrtcSignalingAnswerer) Stop() {
 	ans.connMu.Lock()
 	defer ans.connMu.Unlock()
 	if ans.conn != nil {
-		err := ans.conn.Close()
-		if isNetworkError(err) {
-			ans.logger.Errorw("error closing signaling connection", "error", err)
+		if !ans.sharedConn {
+			err := ans.conn.Close()
+			if isNetworkError(err) {
+				ans.logger.Errorw("error closing signaling connection", "error", err)
+			}
 		}
 		ans.conn = nil
 	}
