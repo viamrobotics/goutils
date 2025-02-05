@@ -65,7 +65,7 @@ type dialOptions struct {
 	unaryInterceptor  grpc.UnaryClientInterceptor
 	streamInterceptor grpc.StreamClientInterceptor
 
-	// conn can be used to force the webrtcSignalingAnswerer to use a preexisting connection instead of dialing and managing its own.
+	// signalingConn can be used to force the webrtcSignalingAnswerer to use a preexisting connection instead of dialing and managing its own.
 	signalingConn ClientConn
 }
 
@@ -268,7 +268,10 @@ func WithUnaryClientInterceptor(interceptor grpc.UnaryClientInterceptor) DialOpt
 func WithStreamClientInterceptor(interceptor grpc.StreamClientInterceptor) DialOption {
 	return newFuncDialOption(func(o *dialOptions) {
 		if o.streamInterceptor != nil {
-			o.streamInterceptor = grpc_middleware.ChainStreamClient(o.streamInterceptor, interceptor)
+			o.streamInterceptor = grpc_middleware.ChainStreamClient(
+				o.streamInterceptor,
+				interceptor,
+			)
 		} else {
 			o.streamInterceptor = interceptor
 		}
