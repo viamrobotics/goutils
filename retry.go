@@ -35,7 +35,7 @@ func RetryNTimesWithSleep[T any](
 	var lastError error
 	var emptyT T
 
-	for numRetries := 0; numRetries < retryAttempts; numRetries++ {
+	for range retryAttempts {
 		val, err := fallibleFunc()
 		if err == nil || (len(retryableErrors) != 0 &&
 			!slices.ContainsFunc(retryableErrors, func(target error) bool { return errors.Is(err, target) })) {
