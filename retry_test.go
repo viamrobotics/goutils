@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -8,12 +9,13 @@ import (
 )
 
 func TestRetryNTimes(t *testing.T) {
+	ctxBg := context.Background()
 	t.Run("success on first try", func(t *testing.T) {
 		attempts := 0
-		result, err := RetryNTimes(func() (string, error) {
+		result, err := RetryNTimesWithSleep(ctxBg, func() (string, error) {
 			attempts++
 			return "success", nil
-		}, 3)
+		}, 3, 0)
 
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, result, test.ShouldEqual, "success")
@@ -22,13 +24,13 @@ func TestRetryNTimes(t *testing.T) {
 
 	t.Run("success after retries", func(t *testing.T) {
 		attempts := 0
-		result, err := RetryNTimes(func() (string, error) {
+		result, err := RetryNTimesWithSleep(ctxBg, func() (string, error) {
 			attempts++
 			if attempts < 3 {
 				return "", errors.New("temporary error")
 			}
 			return "success", nil
-		}, 3)
+		}, 3, 0)
 
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, result, test.ShouldEqual, "success")
@@ -37,10 +39,10 @@ func TestRetryNTimes(t *testing.T) {
 
 	t.Run("failure after all retries", func(t *testing.T) {
 		attempts := 0
-		result, err := RetryNTimes(func() (string, error) {
+		result, err := RetryNTimesWithSleep(ctxBg, func() (string, error) {
 			attempts++
 			return "", errors.New("persistent error")
-		}, 3)
+		}, 3, 0)
 
 		test.That(t, err, test.ShouldNotBeNil)
 		var retryErr *RetryError
@@ -56,13 +58,13 @@ func TestRetryNTimes(t *testing.T) {
 		nonRetryableErr := errors.New("non-retryable")
 
 		attempts := 0
-		result, err := RetryNTimes(func() (string, error) {
+		result, err := RetryNTimesWithSleep(ctxBg, func() (string, error) {
 			attempts++
 			if attempts == 1 {
 				return "", retryableErr
 			}
 			return "", nonRetryableErr
-		}, 3, retryableErr)
+		}, 3, 0, retryableErr)
 
 		test.That(t, err, test.ShouldNotBeNil)
 		test.That(t, errors.Is(err, nonRetryableErr), test.ShouldBeTrue)
@@ -76,7 +78,7 @@ func TestRetryNTimes(t *testing.T) {
 		nonRetryableErr := errors.New("non-retryable")
 
 		attempts := 0
-		result, err := RetryNTimes(func() (string, error) {
+		result, err := RetryNTimesWithSleep(ctxBg, func() (string, error) {
 			attempts++
 			switch attempts {
 			case 1:
@@ -86,7 +88,7 @@ func TestRetryNTimes(t *testing.T) {
 			default:
 				return "", nonRetryableErr
 			}
-		}, 3, err1, err2)
+		}, 3, 0, err1, err2)
 
 		test.That(t, err, test.ShouldNotBeNil)
 		test.That(t, errors.Is(err, nonRetryableErr), test.ShouldBeTrue)
@@ -96,10 +98,10 @@ func TestRetryNTimes(t *testing.T) {
 
 	t.Run("zero retries", func(t *testing.T) {
 		attempts := 0
-		result, err := RetryNTimes(func() (string, error) {
+		result, err := RetryNTimesWithSleep(ctxBg, func() (string, error) {
 			attempts++
 			return "", errors.New("error")
-		}, 0)
+		}, 0, 0)
 
 		test.That(t, err, test.ShouldNotBeNil)
 		var retryErr *RetryError
