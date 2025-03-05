@@ -27,8 +27,8 @@ func RetryNTimes[T any](fallibleFunc func() (T, error), retryAttempts int, retry
 
 	for numRetries := 0; numRetries < retryAttempts; numRetries++ {
 		val, err := fallibleFunc()
-		if err == nil || len(retryableErrors) != 0 &&
-			!slices.ContainsFunc(retryableErrors, func(target error) bool { return errors.Is(err, target) }) {
+		if err == nil || (len(retryableErrors) != 0 &&
+			!slices.ContainsFunc(retryableErrors, func(target error) bool { return errors.Is(err, target) })) {
 			return val, err
 		}
 		lastError = err
