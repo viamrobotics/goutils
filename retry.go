@@ -22,7 +22,7 @@ func (e *RetryError) Unwrap() error {
 	return e.inner
 }
 
-// RetryNTimes will run `fallibleFunc` `retryAttempts` times before failing with the last error it got from the function.
+// RetryNTimesWithSleep will run `fallibleFunc` `retryAttempts` times before failing with the last error it got from the function.
 // If `retryableErrors` is supplied, only those errors will be retried.
 // It will wait for `retryDelay` between attempts
 func RetryNTimesWithSleep[T any](
