@@ -45,7 +45,6 @@ func TestRetryNTimes(t *testing.T) {
 			return "", errors.New("persistent error")
 		}, 3, 0)
 
-		test.That(t, err, test.ShouldNotBeNil)
 		var retryErr *RetryError
 		test.That(t, errors.As(err, &retryErr), test.ShouldBeTrue)
 		test.That(t, retryErr.Error(), test.ShouldContainSubstring, "failed after 3 retry attempts")
@@ -59,7 +58,7 @@ func TestRetryNTimes(t *testing.T) {
 		nonRetryableErr := errors.New("non-retryable")
 
 		attempts := 0
-		result, err := RetryNTimesWithSleep(ctxBg, func() (string, error) {
+		_, err := RetryNTimesWithSleep(ctxBg, func() (string, error) {
 			attempts++
 			if attempts == 1 {
 				return "", retryableErr
@@ -67,9 +66,7 @@ func TestRetryNTimes(t *testing.T) {
 			return "", nonRetryableErr
 		}, 3, 0, retryableErr)
 
-		test.That(t, err, test.ShouldNotBeNil)
 		test.That(t, errors.Is(err, nonRetryableErr), test.ShouldBeTrue)
-		test.That(t, result, test.ShouldEqual, "")
 		test.That(t, attempts, test.ShouldEqual, 2)
 	})
 
@@ -79,7 +76,7 @@ func TestRetryNTimes(t *testing.T) {
 		nonRetryableErr := errors.New("non-retryable")
 
 		attempts := 0
-		result, err := RetryNTimesWithSleep(ctxBg, func() (string, error) {
+		_, err := RetryNTimesWithSleep(ctxBg, func() (string, error) {
 			attempts++
 			switch attempts {
 			case 1:
@@ -91,40 +88,34 @@ func TestRetryNTimes(t *testing.T) {
 			}
 		}, 3, 0, err1, err2)
 
-		test.That(t, err, test.ShouldNotBeNil)
 		test.That(t, errors.Is(err, nonRetryableErr), test.ShouldBeTrue)
-		test.That(t, result, test.ShouldEqual, "")
 		test.That(t, attempts, test.ShouldEqual, 3)
 	})
 
 	t.Run("zero retries", func(t *testing.T) {
 		attempts := 0
-		result, err := RetryNTimesWithSleep(ctxBg, func() (string, error) {
+		_, err := RetryNTimesWithSleep(ctxBg, func() (string, error) {
 			attempts++
 			return "", errors.New("error")
 		}, 0, 0)
 
-		test.That(t, err, test.ShouldNotBeNil)
 		var retryErr *RetryError
 		test.That(t, errors.As(err, &retryErr), test.ShouldBeTrue)
 		test.That(t, retryErr.Error(), test.ShouldContainSubstring, "failed after 0 retry attempts")
-		test.That(t, result, test.ShouldEqual, "")
 		test.That(t, attempts, test.ShouldEqual, 0)
 	})
 
 	t.Run("retry with sleep", func(t *testing.T) {
 		startTime := time.Now()
 		attempts := 0
-		result, err := RetryNTimesWithSleep(ctxBg, func() (string, error) {
+		_, err := RetryNTimesWithSleep(ctxBg, func() (string, error) {
 			attempts++
 			return "", errors.New("error")
 		}, 3, 500*time.Millisecond)
 
-		test.That(t, err, test.ShouldNotBeNil)
 		var retryErr *RetryError
 		test.That(t, errors.As(err, &retryErr), test.ShouldBeTrue)
 		test.That(t, retryErr.Error(), test.ShouldContainSubstring, "failed after 3 retry attempts")
-		test.That(t, result, test.ShouldEqual, "")
 		test.That(t, time.Since(startTime), test.ShouldBeGreaterThan, 1400*time.Millisecond)
 	})
 

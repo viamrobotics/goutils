@@ -24,7 +24,7 @@ func (e *RetryError) Unwrap() error {
 
 // RetryNTimesWithSleep will run `fallibleFunc` `retryAttempts` times before failing with the last error it got from the function.
 // If `retryableErrors` is supplied, only those errors will be retried.
-// It will wait for `retryDelay` between attempts
+// It will wait for `retryDelay` between attempts.
 func RetryNTimesWithSleep[T any](
 	ctx context.Context,
 	fallibleFunc func() (T, error),
