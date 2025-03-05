@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"go.viam.com/test"
 )
@@ -109,5 +110,35 @@ func TestRetryNTimes(t *testing.T) {
 		test.That(t, retryErr.Error(), test.ShouldContainSubstring, "failed after 0 retry attempts")
 		test.That(t, result, test.ShouldEqual, "")
 		test.That(t, attempts, test.ShouldEqual, 0)
+	})
+
+	t.Run("retry with sleep", func(t *testing.T) {
+		startTime := time.Now()
+		attempts := 0
+		result, err := RetryNTimesWithSleep(ctxBg, func() (string, error) {
+			attempts++
+			return "", errors.New("error")
+		}, 3, 500*time.Millisecond)
+
+		test.That(t, err, test.ShouldNotBeNil)
+		var retryErr *RetryError
+		test.That(t, errors.As(err, &retryErr), test.ShouldBeTrue)
+		test.That(t, retryErr.Error(), test.ShouldContainSubstring, "failed after 3 retry attempts")
+		test.That(t, result, test.ShouldEqual, "")
+		test.That(t, time.Since(startTime), test.ShouldBeGreaterThan, 1400*time.Millisecond)
+	})
+
+	t.Run("retry with context cancellation", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		attempts := 0
+		_, err := RetryNTimesWithSleep(ctx, func() (string, error) {
+			attempts++
+			if attempts == 2 {
+				cancel()
+			}
+			return "", errors.New("error")
+		}, 3, 0)
+
+		test.That(t, errors.Is(err, context.Canceled), test.ShouldBeTrue)
 	})
 }
