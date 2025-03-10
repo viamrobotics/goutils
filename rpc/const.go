@@ -13,4 +13,8 @@ var (
 	// proxies to indicate the address through which to route all network traffic
 	// via SOCKS5.
 	SocksProxyEnvVar = "SOCKS_PROXY"
+
+	// OnlySocksProxyEnvVar is the name of an environment variable used if all network
+	// traffic should be done through SOCKS5.
+	OnlySocksProxyEnvVar = "ONLY_SOCKS_PROXY"
 )

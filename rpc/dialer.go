@@ -10,6 +10,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/edaniels/golog"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
@@ -240,6 +241,145 @@ func DialDirectGRPC(ctx context.Context, address string, logger utils.ZapCompati
 	return dialInner(ctx, address, logger, dOpts)
 }
 
+func socksProxyDialContext(ctx context.Context, network, proxyAddr, addr string) (net.Conn, error) {
+	dialer, err := proxy.SOCKS5(network, proxyAddr, nil, proxy.Direct)
+	if err != nil {
+		return nil, fmt.Errorf("error creating SOCKS proxy dialer to address %q from environment: %w",
+			proxyAddr, err)
+	}
+	conn, err := dialer.(proxy.ContextDialer).DialContext(ctx, network, addr)
+	if err != nil {
+		return nil, err
+	}
+	return conn, nil
+}
+
+// SocksProxyFallbackDialContext will return nil if SocksProxyEnvVar is not set or if trying to connect to a local address,
+// which will allow dialers to use the default DialContext.
+// If SocksProxyEnvVar is set, it will prioritize a connection made without a proxy but will fall back to a SOCKS proxy connection.
+func SocksProxyFallbackDialContext(
+	ctx context.Context,
+	network, addr string,
+	logger utils.ZapCompatibleLogger,
+) func(ctx context.Context, network, addr string) (net.Conn, error) {
+	// Use SOCKS proxy from environment as gRPC proxy dialer. Do not use SOCKS proxy if trying to connect to a local address.
+	localAddr := strings.HasPrefix(addr, "[::]") || strings.HasPrefix(addr, "localhost") || strings.HasPrefix(addr, "unix")
+	proxyAddr := os.Getenv(SocksProxyEnvVar)
+	if localAddr || proxyAddr == "" {
+		// return nil in these cases so that the default dialer gets used instead.
+		return nil
+	}
+
+	return func(ctx context.Context, network, addr string) (net.Conn, error) {
+		// if ONLY_SOCKS_PROXY specified, no need for a parallel dial - only dial through
+		// the SOCKS proxy directly.
+		if os.Getenv(OnlySocksProxyEnvVar) != "" {
+			logger.Infow("Both SOCKS_PROXY and ONLY_SOCKS_PROXY specified, only SOCKS proxy will be used for outgoing connection")
+			conn, err := socksProxyDialContext(ctx, network, proxyAddr, addr)
+			if err == nil {
+				logger.Infow("connected with SOCKS proxy")
+			}
+			return conn, err
+		}
+
+		type dialResult struct {
+			net.Conn
+			error
+			primary bool
+			done    bool
+		}
+		results := make(chan dialResult) // unbuffered
+
+		var primary, fallback dialResult
+		var wg sync.WaitGroup
+		defer wg.Wait()
+
+		// otherwise, do a parallel dial with a slight delay for the fallback option.
+		returned := make(chan struct{})
+		defer close(returned)
+
+		dialer := func(ctx context.Context, dialFunc func(context.Context) (net.Conn, error), primary bool) {
+			defer wg.Done()
+			conn, err := dialFunc(ctx)
+			select {
+			case results <- dialResult{Conn: conn, error: err, primary: primary, done: true}:
+			case <-returned:
+				if conn != nil {
+					conn.Close()
+				}
+			}
+		}
+
+		logger.Infow("SOCKS_PROXY specified, SOCKS proxy will be used as a fallback for outgoing connection")
+		// Start the main dial attempt.
+		primaryCtx, primaryCancel := context.WithCancel(ctx)
+		defer primaryCancel()
+		wg.Add(1)
+		primaryDial := func(ctx context.Context) (net.Conn, error) {
+			var zeroDialer net.Dialer
+			return zeroDialer.DialContext(primaryCtx, network, addr)
+		}
+		go dialer(primaryCtx, primaryDial, true)
+
+		// Wait a small amount before starting the fallback dial (to prioritize the primary connection method).
+		fallbackTimer := time.NewTimer(time.Second)
+		defer fallbackTimer.Stop()
+
+		for {
+			select {
+			case <-fallbackTimer.C:
+				fallbackCtx, fallbackCancel := context.WithCancel(ctx)
+				defer fallbackCancel()
+				wg.Add(1)
+				fallbackDial := func(ctx context.Context) (net.Conn, error) {
+					return socksProxyDialContext(ctx, network, proxyAddr, addr)
+				}
+				go dialer(fallbackCtx, fallbackDial, false)
+			case res := <-results:
+				if res.error == nil {
+					if res.primary {
+						logger.Infow("connected without SOCKS proxy")
+					} else {
+						logger.Infow("connected with SOCKS proxy")
+					}
+					return res.Conn, nil
+				}
+				if res.primary {
+					primary = res
+				} else {
+					fallback = res
+				}
+				if primary.done && fallback.done {
+					return nil, primary.error
+				}
+				if res.primary && fallbackTimer.Stop() {
+					// If we were able to stop the timer, that means it
+					// was running (hadn't yet started the fallback), but
+					// we just got an error on the primary path, so start
+					// the fallback immediately (in 0 nanoseconds).
+					fallbackTimer.Reset(0)
+				}
+			}
+		}
+	}
+}
+
+// SocksProxyFallbackGrpcDialContext will return nil if SocksProxyEnvVar is not set or if trying to connect to a local address,
+// which will allow dialers to use the default DialContext.
+// If SocksProxyEnvVar is set, it will prioritize a connection made without a proxy but will fall back to a SOCKS proxy connection.
+func SocksProxyFallbackGrpcDialContext(
+	ctx context.Context, addr string, logger utils.ZapCompatibleLogger,
+) func(ctx context.Context, addr string) (net.Conn, error) {
+	// use "tcp" since gRPC uses HTTP/2, which is built on top of TCP.
+	dialContext := SocksProxyFallbackDialContext(ctx, "tcp", addr, logger)
+	if dialContext == nil {
+		return nil
+	}
+	return func(ctx context.Context, addr string) (net.Conn, error) {
+		return dialContext(ctx, "tcp", addr)
+	}
+}
+
 // dialDirectGRPC dials a gRPC server directly.
 func dialDirectGRPC(ctx context.Context, address string, dOpts dialOptions, logger utils.ZapCompatibleLogger) (ClientConn, bool, error) {
 	dialOpts := []grpc.DialOption{
@@ -251,22 +391,8 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts dialOptions, logg
 		}),
 	}
 
-	// Use SOCKS proxy from environment as gRPC proxy dialer. Do not use
-	// if trying to connect to a local address.
-	if proxyAddr := os.Getenv(SocksProxyEnvVar); proxyAddr != "" &&
-		!(strings.HasPrefix(address, "[::]") || strings.HasPrefix(address, "localhost") ||
-			strings.HasPrefix(address, "unix")) {
-		dialer, err := proxy.SOCKS5("tcp", proxyAddr, nil, proxy.Direct)
-		if err != nil {
-			return nil, false, fmt.Errorf("error creating SOCKS proxy dialer to address %q from environment: %w",
-				proxyAddr, err)
-		}
-
-		dialOpts = append(dialOpts, grpc.WithContextDialer(func(_ context.Context, addr string) (net.Conn, error) {
-			logger.Info("behind SOCKS proxy; routing direct dial through proxy")
-			return dialer.Dial("tcp", addr)
-		}))
-	}
+	// Use custom dialer that will use the SOCKS proxy as a fallback dialer if available.
+	dialOpts = append(dialOpts, grpc.WithContextDialer(SocksProxyFallbackGrpcDialContext(ctx, address, logger)))
 
 	if dOpts.insecure {
 		dialOpts = append(dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
