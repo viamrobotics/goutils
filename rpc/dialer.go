@@ -305,31 +305,33 @@ func SocksProxyFallbackDialContext(
 			case results <- dialResult{Conn: conn, error: err, primary: primary, done: true}:
 			case <-returned:
 				if conn != nil {
-					conn.Close()
+					utils.UncheckedError(conn.Close())
 				}
 			}
 		}
 
 		logger.Infow("SOCKS_PROXY specified, SOCKS proxy will be used as a fallback for outgoing connection")
-		// Start the main dial attempt.
+		// start the main dial attempt.
 		primaryCtx, primaryCancel := context.WithCancel(ctx)
 		defer primaryCancel()
 		wg.Add(1)
 		primaryDial := func(ctx context.Context) (net.Conn, error) {
 			var zeroDialer net.Dialer
-			return zeroDialer.DialContext(primaryCtx, network, addr)
+			return zeroDialer.DialContext(ctx, network, addr)
 		}
 		go dialer(primaryCtx, primaryDial, true)
 
-		// Wait a small amount before starting the fallback dial (to prioritize the primary connection method).
+		// wait a small amount before starting the fallback dial (to prioritize the primary connection method).
 		fallbackTimer := time.NewTimer(time.Second)
 		defer fallbackTimer.Stop()
 
+		// fallbackCtx is defined here because this fails `go vet` otherwise. The intent is for fallbackCancel
+		// to be called as this function exits, which will cancel the ongoing SOCKS proxy if it is still running.
+		fallbackCtx, fallbackCancel := context.WithCancel(ctx)
+		defer fallbackCancel()
 		for {
 			select {
 			case <-fallbackTimer.C:
-				fallbackCtx, fallbackCancel := context.WithCancel(ctx)
-				defer fallbackCancel()
 				wg.Add(1)
 				fallbackDial := func(ctx context.Context) (net.Conn, error) {
 					return socksProxyDialContext(ctx, network, proxyAddr, addr)
