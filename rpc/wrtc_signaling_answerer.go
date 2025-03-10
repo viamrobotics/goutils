@@ -141,8 +141,10 @@ func isNetworkError(err error) bool {
 				s.Code() == codes.Canceled ||
 				strings.Contains(s.Message(), "too_many_pings") ||
 				// RSDK-3025: Cloud Run has a max one hour timeout which will terminate gRPC
-				// streams, but leave the underlying connection open.
+				// streams, but leave the underlying connection open. That situation can
+				// manifest in a few different errors (also see RSDK-10156.)
 				strings.Contains(s.Message(), "upstream max stream duration reached") ||
+				strings.Contains(s.Message(), "stream terminated by RST_STREAM") ||
 				strings.Contains(s.Message(), "server closed the stream without sending trailers"))) {
 		return false
 	}
