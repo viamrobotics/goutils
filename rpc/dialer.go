@@ -282,6 +282,7 @@ func SocksProxyFallbackDialContext(
 			return conn, err
 		}
 
+		// the block below heavily references https://go.dev/src/net/dial.go#L585
 		type dialResult struct {
 			net.Conn
 			error
@@ -316,6 +317,7 @@ func SocksProxyFallbackDialContext(
 		defer primaryCancel()
 		wg.Add(1)
 		primaryDial := func(ctx context.Context) (net.Conn, error) {
+			// create a zero-valued net.Dialer to use net.Dialer's default DialContext method
 			var zeroDialer net.Dialer
 			return zeroDialer.DialContext(ctx, network, addr)
 		}
@@ -356,6 +358,8 @@ func SocksProxyFallbackDialContext(
 				} else {
 					fallback = res
 				}
+				// if both primary and fallback are done with errors, this means neither connection attempt succeeded.
+				// return the error from the primary dial attempt in that case.
 				if primary.done && fallback.done {
 					return nil, primary.error
 				}
