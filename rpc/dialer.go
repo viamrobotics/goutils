@@ -329,6 +329,11 @@ func SocksProxyFallbackDialContext(
 		// to be called as this function exits, which will cancel the ongoing SOCKS proxy if it is still running.
 		fallbackCtx, fallbackCancel := context.WithCancel(ctx)
 		defer fallbackCancel()
+
+		// a for loop is used here so that we wait on both results and the fallback timer at the same time.
+		// if the timer expires, we should start the fallback dial and then wait for results.
+		// if the results channel receives a message, the message should be processed and either return
+		// or continue waiting (and reset the timer if it hasn't already expired).
 		for {
 			select {
 			case <-fallbackTimer.C:
