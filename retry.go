@@ -44,6 +44,10 @@ func RetryNTimesWithSleep[T any](
 
 		lastError = err
 
+		if ctx.Err() != nil {
+			return emptyT, ctx.Err()
+		}
+
 		select {
 		case <-ctx.Done():
 			return emptyT, ctx.Err()
