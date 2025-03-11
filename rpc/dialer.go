@@ -345,7 +345,7 @@ func SocksProxyFallbackDialContext(
 			case res := <-results:
 				if res.error == nil {
 					if res.primary {
-						logger.Infow("connected without SOCKS proxy")
+						logger.Infow("connected with ethernet/wifi")
 					} else {
 						logger.Infow("connected with SOCKS proxy")
 					}
