@@ -61,108 +61,99 @@ func newBaseChannel(
 
 	var connID string
 	var connIDMu sync.Mutex
-	var peerDoneOnce bool
-	doPeerDone := func() {
-		// Cancel base channel context so streams on the channel will stop trying
-		// to receive messages when the peer is done.
-		ch.cancel()
-
-		// RSDK-9969: Go through `webrtcBaseChannel.Close` before `onPeerDone` which may
-		// (additionally) call `PeerConnection.GracefulClose`. `webrtcBaseChannel.Close` will, among
-		// other things, poke condition variables with the appropriate locks to ensure that any
-		// goroutines blocked on sending data/servicing a request will wake up and exit. Returning
-		// their resources (e.g: call ticket).
-		//
-		// See RSDK-9969 for reproduction steps.
-		ch.Close()
-
-		if !peerDoneOnce && onPeerDone != nil {
-			peerDoneOnce = true
-			onPeerDone()
+	var peerDoneOnce sync.Once
+	peerConn.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
+		if ch.closed.Load() {
+			logger.Debugw("connection state changed -- again? ",
+				"conn_state", connectionState.String(),
+			)
+			return
 		}
-	}
-	connStateChanged := func(connectionState webrtc.ICEConnectionState) {
-		ch.activeBackgroundWorkers.Add(1)
 
-		utils.PanicCapturingGo(func() {
-			defer ch.activeBackgroundWorkers.Done()
+		switch connectionState {
+		case webrtc.ICEConnectionStateDisconnected,
+			webrtc.ICEConnectionStateFailed,
+			webrtc.ICEConnectionStateClosed:
 
-			if ch.closed.Load() {
-				doPeerDone()
+			// The Disconnected/Failed/Closed states are all interpreted as terminal. In theory,
+			// WebRTC allows for moving from the disconnected -> connected state if the network
+			// heals or new candidates are presented. We forgo that optimization of preserving an
+			// existing PeerConnection object and instead opt for clients to redial and perform a
+			// new round of signaling/answering.
+			connIDMu.Lock()
+			currConnID := connID
+			connIDMu.Unlock()
+			if currConnID == "" { // make sure we've gathered information before
 				return
 			}
 
-			switch connectionState {
-			case webrtc.ICEConnectionStateDisconnected,
-				webrtc.ICEConnectionStateFailed,
-				webrtc.ICEConnectionStateClosed:
-				connIDMu.Lock()
-				currConnID := connID
-				connIDMu.Unlock()
-				if currConnID == "" { // make sure we've gathered information before
-					return
-				}
+			if connectionState == webrtc.ICEConnectionStateDisconnected {
+				// Disconnections happen when the client and server are no longer communicating. But
+				// neither side has closed the peer connection. These events can happen in more
+				// interesting states than typical shutdown (e.g: there may be a bunch of data that
+				// has been queued up to send due to the network problem) such that we feel it's
+				// warranted to log at a higher level.
+				logger.Warnw("connection state changed",
+					"conn_id", currConnID,
+					"conn_state", connectionState.String(),
+				)
+			} else {
 				logger.Debugw("connection state changed",
 					"conn_id", currConnID,
 					"conn_state", connectionState.String(),
 				)
-				doPeerDone()
-				// The `Disconnected` state change implies the other side has closed the peer
-				// connection. Despite learning the other side has gone away, pion does not close
-				// its internal resources. Notably, things like `TrackRemote.ReadRTP` can hang. We'd
-				// instead prefer for that to receive an EOF, so it can close normally. Therefore
-				// upon reaching the `Disconnected` state, we explicitly call `Close` on our side of
-				// the `PeerConnection`.
-				//
-				// We chose here to call close for all cases of `Disconnected`, `Failed` and
-				// `Closed`. We rely on pion's `PeerConnection.GracefulClose` method being idempotent.
-				// We "gracefully" close to wait for the read loop to complete.
-				if err := peerConn.GracefulClose(); err != nil {
-					logger.Debugw("Error closing peer connection",
-						"conn_id", currConnID,
-						"conn_state", connectionState.String(),
-						"err", err,
-					)
-				}
-			case webrtc.ICEConnectionStateConnected:
-				if onICEConnected != nil {
-					onICEConnected()
-				}
-				fallthrough
-			case webrtc.ICEConnectionStateChecking, webrtc.ICEConnectionStateCompleted,
-				webrtc.ICEConnectionStateNew:
-				fallthrough
-			default:
-				candPair, hasCandPair := webrtcPeerConnCandPair(peerConn)
-				connInfo := getWebRTCPeerConnectionStats(peerConn)
-				connIDMu.Lock()
-				connID = connInfo.ID
-				connIDMu.Unlock()
-				connectionStateChangedLogFields := []interface{}{
-					"conn_id", connInfo.ID,
-					"conn_local_candidates", connInfo.LocalCandidates,
-					"conn_remote_candidates", connInfo.RemoteCandidates,
-				}
-				if hasCandPair {
-					// Use info level when there is a selected candidate pair, as a
-					// connection has been established.
-					connectionStateChangedLogFields = append(connectionStateChangedLogFields,
-						"candidate_pair", candPair.String())
-					logger.Infow("Connection establishment succeeded", connectionStateChangedLogFields...)
-				} else {
-					// Use debug level when there is no selected candidate pair to avoid
-					// noise.
-					connectionStateChangedLogFields = append(connectionStateChangedLogFields,
-						"conn_state", connectionState.String())
-					logger.Debugw("Connection state changed", connectionStateChangedLogFields...)
-				}
 			}
-		})
-	}
-	peerConn.OnICEConnectionStateChange(connStateChanged)
 
-	// fire once
-	connStateChanged(peerConn.ICEConnectionState())
+			// We will close+wait on all of the channel related resources. We will additionally
+			// close the PeerConnection, but not wait on that to drain its resources. Any desired
+			// PeerConnection waiting will be performed by the client connection object or server
+			// object.
+			ch.Close()
+			peerDoneOnce.Do(func() {
+				if onPeerDone != nil {
+					onPeerDone()
+				}
+			})
+		case webrtc.ICEConnectionStateConnected:
+			if onICEConnected != nil {
+				// The user of `onICEConnected` waits for a few seconds before enumerating/logging
+				// candidates. Spin off a goroutine to avoid consequences of sleeping.
+				ch.activeBackgroundWorkers.Add(1)
+				go func() {
+					defer ch.activeBackgroundWorkers.Done()
+					onICEConnected()
+				}()
+			}
+			fallthrough
+		case webrtc.ICEConnectionStateChecking, webrtc.ICEConnectionStateCompleted,
+			webrtc.ICEConnectionStateNew:
+			fallthrough
+		default:
+			candPair, hasCandPair := webrtcPeerConnCandPair(peerConn)
+			connInfo := getWebRTCPeerConnectionStats(peerConn)
+			connIDMu.Lock()
+			connID = connInfo.ID
+			connIDMu.Unlock()
+			connectionStateChangedLogFields := []interface{}{
+				"conn_id", connInfo.ID,
+				"conn_local_candidates", connInfo.LocalCandidates,
+				"conn_remote_candidates", connInfo.RemoteCandidates,
+			}
+			if hasCandPair {
+				// Use info level when there is a selected candidate pair, as a
+				// connection has been established.
+				connectionStateChangedLogFields = append(connectionStateChangedLogFields,
+					"candidate_pair", candPair.String())
+				logger.Infow("Connection establishment succeeded", connectionStateChangedLogFields...)
+			} else {
+				// Use debug level when there is no selected candidate pair to avoid
+				// noise.
+				connectionStateChangedLogFields = append(connectionStateChangedLogFields,
+					"conn_state", connectionState.String())
+				logger.Debugw("Connection state changed", connectionStateChangedLogFields...)
+			}
+		}
+	})
 
 	return ch
 }
@@ -190,7 +181,11 @@ func (ch *webrtcBaseChannel) Close() {
 	ch.bufferWriteMu.Unlock()
 	ch.mu.Unlock()
 
-	utils.UncheckedError(ch.peerConn.GracefulClose())
+	// We use `PeerConnection.Close` here rather than `GracefulClose`. The data channel is owned by
+	// the PeerConnection. Let's not have the data channel wait for the peer connection to
+	// completely clean up. We only wish to ensure that no requests/response (i.e:
+	// webrtc[Server/Client]Streams) are in operation.
+	utils.UncheckedError(ch.peerConn.Close())
 	ch.activeBackgroundWorkers.Wait()
 }
 
