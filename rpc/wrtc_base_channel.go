@@ -67,11 +67,13 @@ func newBaseChannel(
 		// to receive messages when the peer is done.
 		ch.cancel()
 
-		// Go through `webrtcBaseChannel.Close` before `onPeerDone` which may (additionally) call
-		// `PeerConnection.GracefulClose`. `webrtcBaseChannel.Close` will, among other things, poke
-		// condition variables with the appropriate locks to ensure that any goroutines blocked on
-		// sending data/servicing a request will wake up and exit. Returning their resources (e.g:
-		// call ticket).
+		// RSDK-9969: Go through `webrtcBaseChannel.Close` before `onPeerDone` which may
+		// (additionally) call `PeerConnection.GracefulClose`. `webrtcBaseChannel.Close` will, among
+		// other things, poke condition variables with the appropriate locks to ensure that any
+		// goroutines blocked on sending data/servicing a request will wake up and exit. Returning
+		// their resources (e.g: call ticket).
+		//
+		// See RSDK-9969 for reproduction steps.
 		ch.Close()
 
 		if !peerDoneOnce && onPeerDone != nil {
