@@ -92,8 +92,6 @@ func newBaseChannel(
 				return
 			}
 
-			ch.mu.Lock()
-			defer ch.mu.Unlock()
 			switch connectionState {
 			case webrtc.ICEConnectionStateDisconnected,
 				webrtc.ICEConnectionStateFailed,
