@@ -247,11 +247,7 @@ func socksProxyDialContext(ctx context.Context, network, proxyAddr, addr string)
 		return nil, fmt.Errorf("error creating SOCKS proxy dialer to address %q from environment: %w",
 			proxyAddr, err)
 	}
-	conn, err := dialer.(proxy.ContextDialer).DialContext(ctx, network, addr)
-	if err != nil {
-		return nil, err
-	}
-	return conn, nil
+	return dialer.(proxy.ContextDialer).DialContext(ctx, network, addr)
 }
 
 // SocksProxyFallbackDialContext will return nil if SocksProxyEnvVar is not set or if trying to connect to a local address,
@@ -324,7 +320,7 @@ func SocksProxyFallbackDialContext(
 		go dialer(primaryCtx, primaryDial, true)
 
 		// wait a small amount before starting the fallback dial (to prioritize the primary connection method).
-		fallbackTimer := time.NewTimer(time.Second)
+		fallbackTimer := time.NewTimer(300 * time.Millisecond)
 		defer fallbackTimer.Stop()
 
 		// fallbackCtx is defined here because this fails `go vet` otherwise. The intent is for fallbackCancel
@@ -375,22 +371,6 @@ func SocksProxyFallbackDialContext(
 	}
 }
 
-// SocksProxyFallbackGrpcDialContext will return nil if SocksProxyEnvVar is not set or if trying to connect to a local address,
-// which will allow dialers to use the default DialContext.
-// If SocksProxyEnvVar is set, it will prioritize a connection made without a proxy but will fall back to a SOCKS proxy connection.
-func SocksProxyFallbackGrpcDialContext(
-	ctx context.Context, addr string, logger utils.ZapCompatibleLogger,
-) func(ctx context.Context, addr string) (net.Conn, error) {
-	// use "tcp" since gRPC uses HTTP/2, which is built on top of TCP.
-	dialContext := SocksProxyFallbackDialContext(ctx, "tcp", addr, logger)
-	if dialContext == nil {
-		return nil
-	}
-	return func(ctx context.Context, addr string) (net.Conn, error) {
-		return dialContext(ctx, "tcp", addr)
-	}
-}
-
 // dialDirectGRPC dials a gRPC server directly.
 func dialDirectGRPC(ctx context.Context, address string, dOpts dialOptions, logger utils.ZapCompatibleLogger) (ClientConn, bool, error) {
 	dialOpts := []grpc.DialOption{
@@ -402,8 +382,16 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts dialOptions, logg
 		}),
 	}
 
-	// Use custom dialer that will use the SOCKS proxy as a fallback dialer if available.
-	dialOpts = append(dialOpts, grpc.WithContextDialer(SocksProxyFallbackGrpcDialContext(ctx, address, logger)))
+	// check if we should use a custom dialer that will use the SOCKS proxy as a fallback. Only attach a new context dialer
+	// if the returned function is not nil.
+	//
+	// use "tcp" since gRPC uses HTTP/2, which is built on top of TCP.
+	socksProxydialContext := SocksProxyFallbackDialContext(ctx, "tcp", address, logger)
+	if socksProxydialContext != nil {
+		dialOpts = append(dialOpts, grpc.WithContextDialer(func(ctx context.Context, addr string) (net.Conn, error) {
+			return socksProxydialContext(ctx, "tcp", addr)
+		}))
+	}
 
 	if dOpts.insecure {
 		dialOpts = append(dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
