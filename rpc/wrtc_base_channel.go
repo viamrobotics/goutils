@@ -64,9 +64,6 @@ func newBaseChannel(
 	var peerDoneOnce sync.Once
 	peerConn.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
 		if ch.closed.Load() {
-			logger.Debugw("connection state changed -- again? ",
-				"conn_state", connectionState.String(),
-			)
 			return
 		}
 
