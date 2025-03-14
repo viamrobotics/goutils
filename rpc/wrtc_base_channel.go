@@ -63,10 +63,6 @@ func newBaseChannel(
 	var connIDMu sync.Mutex
 	var peerDoneOnce sync.Once
 	peerConn.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
-		if ch.closed.Load() {
-			return
-		}
-
 		switch connectionState {
 		case webrtc.ICEConnectionStateDisconnected,
 			webrtc.ICEConnectionStateFailed,
@@ -80,7 +76,9 @@ func newBaseChannel(
 			connIDMu.Lock()
 			currConnID := connID
 			connIDMu.Unlock()
-			if currConnID == "" { // make sure we've gathered information before
+			if currConnID == "" {
+				// `connID` is initialized when we first connect. Don't bother with handling these
+				// "dead connection" if we never connected.
 				return
 			}
 
@@ -90,12 +88,12 @@ func newBaseChannel(
 				// interesting states than typical shutdown (e.g: there may be a bunch of data that
 				// has been queued up to send due to the network problem) such that we feel it's
 				// warranted to log at a higher level.
-				logger.Warnw("connection state changed",
+				logger.Infow("connection state changed",
 					"conn_id", currConnID,
 					"conn_state", connectionState.String(),
 				)
 			} else {
-				logger.Debugw("connection state changed",
+				logger.Infow("connection state changed",
 					"conn_id", currConnID,
 					"conn_state", connectionState.String(),
 				)
