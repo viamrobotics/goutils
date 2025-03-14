@@ -83,6 +83,8 @@ func NewManagedProcess(config ProcessConfig, logger utils.ZapCompatibleLogger) M
 		stopWaitInterval: config.StopTimeout / time.Duration(3),
 		logger:           logger,
 		logWriter:        config.LogWriter,
+		stdoutLogger:     config.StdOutLogger,
+		stderrLogger:     config.StdErrLogger,
 	}
 }
 
@@ -107,8 +109,10 @@ type managedProcess struct {
 	stopWaitInterval time.Duration
 	lastWaitErr      error
 
-	logger    utils.ZapCompatibleLogger
-	logWriter io.Writer
+	logger       utils.ZapCompatibleLogger
+	logWriter    io.Writer
+	stdoutLogger utils.ZapCompatibleLogger
+	stderrLogger utils.ZapCompatibleLogger
 }
 
 func (p *managedProcess) ID() string {
@@ -269,8 +273,7 @@ func (p *managedProcess) manage(stdOut, stdErr io.ReadCloser) {
 	stopLogging := make(chan struct{})
 	var activeLoggers sync.WaitGroup
 	if p.shouldLog || p.logWriter != nil {
-		logPipe := func(name string, pipe io.ReadCloser, isErr bool) {
-			logger := utils.Sublogger(p.logger, name)
+		logPipe := func(name string, pipe io.ReadCloser, isErr bool, logger utils.ZapCompatibleLogger) {
 			defer activeLoggers.Done()
 			pipeR := bufio.NewReader(pipe)
 			logWriterError := false
@@ -313,10 +316,24 @@ func (p *managedProcess) manage(stdOut, stdErr io.ReadCloser) {
 		}
 		activeLoggers.Add(2)
 		utils.PanicCapturingGo(func() {
-			logPipe("StdOut", stdOut, false)
+			name := "StdOut"
+			var logger utils.ZapCompatibleLogger
+			if p.stdoutLogger != nil {
+				logger = p.stdoutLogger
+			} else {
+				logger = utils.Sublogger(p.logger, name)
+			}
+			logPipe(name, stdOut, false, logger)
 		})
 		utils.PanicCapturingGo(func() {
-			logPipe("StdErr", stdErr, true)
+			name := "StdErr"
+			var logger utils.ZapCompatibleLogger
+			if p.stderrLogger != nil {
+				logger = p.stderrLogger
+			} else {
+				logger = utils.Sublogger(p.logger, name)
+			}
+			logPipe(name, stdErr, true, logger)
 		})
 	}
 
