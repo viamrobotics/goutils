@@ -46,6 +46,12 @@ type ProcessConfig struct {
 	// NOTE(benjirewis): use `jsonschema:"-"` struct tag to avoid issues with
 	// jsonschema reflection (go functions cannot be encoded to JSON).
 	OnUnexpectedExit func(int) bool `jsonschema:"-"`
+	// The logger to use for STDOUT of this process. If not specified, will use
+	// a sublogger of the `logger` parameter given to `NewManagedProcess`.
+	StdOutLogger utils.ZapCompatibleLogger
+	// The logger to use for STDERR of this process. If not specified, will use
+	// a sublogger of the `logger` parameter given to `NewManagedProcess`.
+	StdErrLogger utils.ZapCompatibleLogger
 
 	alreadyValidated bool
 	cachedErr        error
