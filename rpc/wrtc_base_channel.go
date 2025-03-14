@@ -82,22 +82,10 @@ func newBaseChannel(
 				return
 			}
 
-			if connectionState == webrtc.ICEConnectionStateDisconnected {
-				// Disconnections happen when the client and server are no longer communicating. But
-				// neither side has closed the peer connection. These events can happen in more
-				// interesting states than typical shutdown (e.g: there may be a bunch of data that
-				// has been queued up to send due to the network problem) such that we feel it's
-				// warranted to log at a higher level.
-				logger.Infow("connection state changed",
-					"conn_id", currConnID,
-					"conn_state", connectionState.String(),
-				)
-			} else {
-				logger.Infow("connection state changed",
-					"conn_id", currConnID,
-					"conn_state", connectionState.String(),
-				)
-			}
+			logger.Infow("connection state changed",
+				"conn_id", currConnID,
+				"conn_state", connectionState.String(),
+			)
 
 			// We will close+wait on all of the channel related resources. We will additionally
 			// close the PeerConnection, but not wait on that to drain its resources. Any desired
