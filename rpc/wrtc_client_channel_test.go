@@ -635,6 +635,7 @@ func TestClientStreamCancel(t *testing.T) {
 	}()
 
 	server := newWebRTCServer(logger)
+	defer server.Stop()
 	server.RegisterService(&grpc.ServiceDesc{
 		ServiceName: "service_name",
 		Streams: []grpc.StreamDesc{
