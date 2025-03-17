@@ -213,6 +213,9 @@ func (rc *reffedConn) Close() error {
 			if utils.Debug {
 				golog.Global().Debugw("close referenced conn", "proto", rc.proto)
 			}
+			if pc := rc.ClientConn.PeerConn(); pc != nil {
+				utils.UncheckedErrorFunc(pc.GracefulClose)
+			}
 			if closeErr := rc.ClientConn.Close(); closeErr != nil && status.Convert(closeErr).Code() != codes.Canceled {
 				err = closeErr
 			}
@@ -609,6 +612,9 @@ func (cc *clientConnWithCloseFunc) Close() (err error) {
 		}
 		err = multierr.Combine(err, cc.closeFunc())
 	}()
+	if pc := cc.ClientConn.PeerConn(); pc != nil {
+		utils.UncheckedErrorFunc(pc.GracefulClose)
+	}
 	return cc.ClientConn.Close()
 }
 

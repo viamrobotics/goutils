@@ -33,29 +33,27 @@ func setupWebRTCPeers(t *testing.T) (client, server *webrtc.PeerConnection, clie
 }
 
 func setupWebRTCBaseChannels(t *testing.T) (
+	clientPC *webrtc.PeerConnection,
+	serverPC *webrtc.PeerConnection,
 	client *webrtcBaseChannel,
 	server *webrtcBaseChannel,
-	clientDone <-chan struct{},
-	serverDone <-chan struct{},
 ) {
 	t.Helper()
 	logger := golog.NewTestLogger(t)
 	pc1, pc2, dc1, dc2 := setupWebRTCPeers(t)
 
-	peer1Done := make(chan struct{})
-	peer2Done := make(chan struct{})
-	bc1 := newBaseChannel(context.Background(), pc1, dc1, func() { close(peer1Done) }, nil, logger)
-	bc2 := newBaseChannel(context.Background(), pc2, dc2, func() { close(peer2Done) }, nil, logger)
+	bc1 := newBaseChannel(context.Background(), pc1, dc1, nil, nil, logger)
+	bc2 := newBaseChannel(context.Background(), pc2, dc2, nil, nil, logger)
 
 	<-bc1.Ready()
 	<-bc2.Ready()
 
-	return bc1, bc2, peer1Done, peer2Done
+	return pc1, pc2, bc1, bc2
 }
 
 func TestWebRTCBaseChannel(t *testing.T) {
 	testutils.SkipUnlessInternet(t)
-	bc1, bc2, peer1Done, peer2Done := setupWebRTCBaseChannels(t)
+	pc1, pc2, bc1, bc2 := setupWebRTCBaseChannels(t)
 
 	someStatus, _ := status.FromError(errors.New("ouch"))
 	test.That(t, bc1.write(someStatus.Proto()), test.ShouldBeNil)
@@ -65,8 +63,9 @@ func TestWebRTCBaseChannel(t *testing.T) {
 	isClosed = bc2.Closed()
 	test.That(t, isClosed, test.ShouldBeFalse)
 	bc1.Close()
-	<-peer1Done
-	<-peer2Done
+	pc1.GracefulClose()
+	pc2.GracefulClose()
+
 	isClosed = bc1.Closed()
 	test.That(t, isClosed, test.ShouldBeTrue)
 	isClosed = bc2.Closed()
@@ -75,20 +74,21 @@ func TestWebRTCBaseChannel(t *testing.T) {
 	bc1.Close()
 	bc2.Close()
 
-	bc1, bc2, peer1Done, peer2Done = setupWebRTCBaseChannels(t)
+	pc1, pc2, bc1, bc2 = setupWebRTCBaseChannels(t)
 	err1 := errors.New("whoops")
 	bc2.Close()
-	<-peer1Done
-	<-peer2Done
+	pc1.GracefulClose()
+	pc2.GracefulClose()
+
 	isClosed = bc1.Closed()
 	test.That(t, isClosed, test.ShouldBeTrue)
 	isClosed = bc2.Closed()
 	test.That(t, isClosed, test.ShouldBeTrue)
 
-	bc1, bc2, peer1Done, peer2Done = setupWebRTCBaseChannels(t)
+	pc1, pc2, bc1, bc2 = setupWebRTCBaseChannels(t)
 	bc2.onChannelError(err1)
-	<-peer1Done
-	<-peer2Done
+	pc1.GracefulClose()
+	pc2.GracefulClose()
 	isClosed = bc1.Closed()
 	test.That(t, isClosed, test.ShouldBeTrue)
 	isClosed = bc2.Closed()

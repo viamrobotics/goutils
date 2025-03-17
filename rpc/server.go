@@ -585,12 +585,6 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 				sOpts.unknownStreamDesc,
 			)
 		}
-		if sOpts.webrtcOpts.OnPeerAdded != nil {
-			server.webrtcServer.onPeerAdded = sOpts.webrtcOpts.OnPeerAdded
-		}
-		if sOpts.webrtcOpts.OnPeerRemoved != nil {
-			server.webrtcServer.onPeerRemoved = sOpts.webrtcOpts.OnPeerRemoved
-		}
 		reflection.Register(server.webrtcServer)
 
 		config := DefaultWebRTCConfiguration
