@@ -28,6 +28,7 @@ type webrtcServer struct {
 	peerConnsMu      sync.Mutex
 	peerConns        map[*webrtc.PeerConnection]struct{}
 	peerConnsToClose []*webrtc.PeerConnection
+	peerConnsClosing sync.WaitGroup
 
 	workers *utils.StoppableWorkers
 
@@ -132,6 +133,9 @@ func newWebRTCServerWithInterceptorsAndUnknownStreamHandler(
 func (srv *webrtcServer) Stop() {
 	srv.logger.Info("waiting for handlers to complete")
 	srv.workers.Stop()
+	// `workers` must be stopped first, followed by waiting on `peerConnsClosing`. Such that we know
+	// no more background GracefulClose goroutines will be created.
+	srv.peerConnsClosing.Wait()
 	srv.logger.Info("handlers complete")
 	srv.logger.Info("closing lingering peer connections")
 
@@ -289,12 +293,17 @@ func (srv *webrtcServer) streamHandler(ss interface{}, method string, desc grpc.
 	}
 }
 
+// AddPeerConnToClose is called when a goutils Datachannel (via webrtc callbacks) discovers it is no
+// longer connected to its peer. We add the webrtc PeerConnection object the Datachannel was bound
+// to, to a list. The `pcCloseLoop` background worker will close items in that list.
 func (srv *webrtcServer) AddPeerConnToClose(pc *webrtc.PeerConnection) {
 	srv.peerConnsMu.Lock()
 	srv.peerConnsToClose = append(srv.peerConnsToClose, pc)
 	srv.peerConnsMu.Unlock()
 }
 
+// pcCloseLoop closes items in the `peerConnsToClose` list. It also removes them from the
+// `webrtcServer.peerConns` map.
 func (srv *webrtcServer) pcCloseLoop(ctx context.Context) {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
@@ -315,7 +324,15 @@ func (srv *webrtcServer) pcCloseLoop(ctx context.Context) {
 		srv.peerConnsToClose = make([]*webrtc.PeerConnection, 0)
 		for _, pc := range cpy {
 			delete(srv.peerConns, pc)
-			go utils.UncheckedErrorFunc(pc.GracefulClose)
+			srv.peerConnsClosing.Add(1)
+
+			// Dan: We spin off a goroutine such that one bugged `GracefulClose` does not inhibit
+			// others from being processed. But there's no strong conviction that it must be this
+			// way. A synchronous GracefulClose also seems acceptable.
+			go func() {
+				defer srv.peerConnsClosing.Done()
+				utils.UncheckedErrorFunc(pc.GracefulClose)
+			}()
 		}
 
 		srv.peerConnsMu.Unlock()
