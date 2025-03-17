@@ -230,13 +230,6 @@ func (srv *webrtcServer) NewChannel(
 	return serverCh
 }
 
-func (srv *webrtcServer) removePeer(peerConn *webrtc.PeerConnection) {
-	srv.peerConnsMu.Lock()
-	delete(srv.peerConns, peerConn)
-	srv.peerConnsMu.Unlock()
-	srv.counters.PeersDisconnected.Add(1)
-}
-
 type (
 	handlerFunc   func(s *webrtcServerStream) error
 	methodHandler func(

@@ -76,7 +76,7 @@ func (ch *webrtcClientChannel) PeerConn() *webrtc.PeerConnection {
 // handling.
 func (ch *webrtcClientChannel) Close() error {
 	ch.close()
-	ch.webrtcBaseChannel.peerConn.GracefulClose()
+	utils.UncheckedErrorFunc(ch.webrtcBaseChannel.peerConn.GracefulClose)
 	return nil
 }
 

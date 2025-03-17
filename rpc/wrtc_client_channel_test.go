@@ -11,7 +11,6 @@ import (
 	"github.com/edaniels/golog"
 	"github.com/viamrobotics/webrtc/v3"
 	"go.viam.com/test"
-	"go.viam.com/utils"
 	pbstatus "google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -20,6 +19,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 
+	"go.viam.com/utils"
 	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
 	"go.viam.com/utils/testutils"
 )
@@ -469,7 +469,13 @@ func TestWebRTCClientChannelWithInterceptor(t *testing.T) {
 		return streamer(ctx, desc, cc, method, opts...)
 	}
 
-	clientCh := newWebRTCClientChannel(clientPC, clientDataChannel, nil, utils.Sublogger(logger, "client"), unaryInterceptor, streamInterceptor)
+	clientCh := newWebRTCClientChannel(
+		clientPC,
+		clientDataChannel,
+		nil,
+		utils.Sublogger(logger, "client"),
+		unaryInterceptor,
+		streamInterceptor)
 	defer func() {
 		test.That(t, clientCh.Close(), test.ShouldBeNil)
 	}()

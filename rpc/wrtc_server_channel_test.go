@@ -9,12 +9,12 @@ import (
 	"github.com/edaniels/golog"
 	"github.com/viamrobotics/webrtc/v3"
 	"go.viam.com/test"
-	"go.viam.com/utils"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
+	"go.viam.com/utils"
 	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
 	"go.viam.com/utils/testutils"
 )

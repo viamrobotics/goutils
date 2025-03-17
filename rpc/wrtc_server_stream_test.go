@@ -7,9 +7,9 @@ import (
 
 	"github.com/edaniels/golog"
 	"go.viam.com/test"
-	"go.viam.com/utils"
 	"google.golang.org/grpc/metadata"
 
+	"go.viam.com/utils"
 	"go.viam.com/utils/testutils"
 )
 
