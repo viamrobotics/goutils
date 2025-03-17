@@ -19,6 +19,7 @@ type webrtcBaseChannel struct {
 	mu                      sync.Mutex
 	peerConn                *webrtc.PeerConnection
 	dataChannel             *webrtc.DataChannel
+	wrtcServer              *webrtcServer
 	ctx                     context.Context
 	cancel                  func()
 	ready                   chan struct{}
@@ -35,6 +36,7 @@ func newBaseChannel(
 	ctx context.Context,
 	peerConn *webrtc.PeerConnection,
 	dataChannel *webrtc.DataChannel,
+	wrtcServer *webrtcServer,
 	onICEConnected func(),
 	logger utils.ZapCompatibleLogger,
 ) *webrtcBaseChannel {
@@ -42,6 +44,7 @@ func newBaseChannel(
 	ch := &webrtcBaseChannel{
 		peerConn:    peerConn,
 		dataChannel: dataChannel,
+		wrtcServer:  wrtcServer,
 		ctx:         ctx,
 		cancel:      cancel,
 		ready:       make(chan struct{}),
@@ -85,10 +88,9 @@ func newBaseChannel(
 				"conn_state", connectionState.String(),
 			)
 
-			// We will close+wait on all of the channel related resources. We will additionally
-			// close the PeerConnection, but not wait on that to drain its resources. Any desired
-			// PeerConnection waiting will be performed by the client connection object or server
-			// object.
+			// We will close+wait on all of the goutils channel related resources. This does not
+			// call any cleanup methods on the webrtc.PeerConnection object. The Client/Server must
+			// perform that as necessary.
 			ch.Close()
 		case webrtc.ICEConnectionStateConnected:
 			if onICEConnected != nil {
@@ -158,6 +160,9 @@ func (ch *webrtcBaseChannel) Close() {
 	ch.mu.Unlock()
 
 	ch.activeBackgroundWorkers.Wait()
+	if ch.wrtcServer != nil {
+		ch.wrtcServer.AddPeerConnToClose(ch.peerConn)
+	}
 }
 
 func (ch *webrtcBaseChannel) Closed() bool {

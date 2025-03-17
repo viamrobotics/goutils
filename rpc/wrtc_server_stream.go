@@ -268,7 +268,7 @@ func (s *webrtcServerStream) processHeaders(headers *webrtcpb.RequestHeaders) {
 	}
 
 	s.headersReceived = true
-	s.ch.server.processHeadersWorkers.Add(func(ctx context.Context) {
+	s.ch.server.workers.Add(func(ctx context.Context) {
 		defer func() {
 			<-s.ch.server.callTickets // return a ticket
 		}()

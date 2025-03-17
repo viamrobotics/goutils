@@ -35,7 +35,7 @@ func TestWebRTCClientChannel(t *testing.T) {
 	defer func() {
 		test.That(t, clientCh.Close(), test.ShouldBeNil)
 	}()
-	serverCh := newBaseChannel(context.Background(), pc2, dc2, nil, logger)
+	serverCh := newBaseChannel(context.Background(), pc2, dc2, nil, nil, logger)
 	defer serverCh.Close()
 
 	<-clientCh.Ready()
@@ -346,7 +346,7 @@ func TestWebRTCClientChannelResetStream(t *testing.T) {
 	defer func() {
 		test.That(t, clientCh.Close(), test.ShouldBeNil)
 	}()
-	serverCh := newBaseChannel(context.Background(), pc2, dc2, nil, logger)
+	serverCh := newBaseChannel(context.Background(), pc2, dc2, nil, nil, logger)
 	defer serverCh.Close()
 
 	<-clientCh.Ready()
@@ -479,7 +479,7 @@ func TestWebRTCClientChannelWithInterceptor(t *testing.T) {
 	defer func() {
 		test.That(t, clientCh.Close(), test.ShouldBeNil)
 	}()
-	serverCh := newBaseChannel(context.Background(), serverPC, serverDataChannel, nil, logger)
+	serverCh := newBaseChannel(context.Background(), serverPC, serverDataChannel, nil, nil, logger)
 	defer serverCh.Close()
 
 	<-clientCh.Ready()
@@ -568,7 +568,7 @@ func TestWebRTCClientChannelCanStopStreamRecvMsg(t *testing.T) {
 	defer func() {
 		test.That(t, clientCh.Close(), test.ShouldBeNil)
 	}()
-	serverCh := newBaseChannel(context.Background(), pc2, dc2, nil, logger)
+	serverCh := newBaseChannel(context.Background(), pc2, dc2, nil, nil, logger)
 	defer serverCh.Close()
 
 	<-clientCh.Ready()

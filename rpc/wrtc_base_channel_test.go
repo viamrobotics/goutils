@@ -42,8 +42,8 @@ func setupWebRTCBaseChannels(t *testing.T) (
 	logger := golog.NewTestLogger(t)
 	pc1, pc2, dc1, dc2 := setupWebRTCPeers(t)
 
-	bc1 := newBaseChannel(context.Background(), pc1, dc1, nil, logger)
-	bc2 := newBaseChannel(context.Background(), pc2, dc2, nil, logger)
+	bc1 := newBaseChannel(context.Background(), pc1, dc1, nil, nil, logger)
+	bc2 := newBaseChannel(context.Background(), pc2, dc2, nil, nil, logger)
 
 	<-bc1.Ready()
 	<-bc2.Ready()

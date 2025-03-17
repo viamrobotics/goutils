@@ -7,6 +7,7 @@ import (
 	"io"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/viamrobotics/webrtc/v3"
 	"google.golang.org/grpc"
@@ -24,10 +25,11 @@ type webrtcServer struct {
 	services map[string]*serviceInfo
 	logger   utils.ZapCompatibleLogger
 
-	peerConnsMu sync.Mutex
-	peerConns   map[*webrtc.PeerConnection]struct{}
+	peerConnsMu      sync.Mutex
+	peerConns        map[*webrtc.PeerConnection]struct{}
+	peerConnsToClose []*webrtc.PeerConnection
 
-	processHeadersWorkers *utils.StoppableWorkers
+	workers *utils.StoppableWorkers
 
 	callTickets chan struct{}
 
@@ -119,7 +121,9 @@ func newWebRTCServerWithInterceptorsAndUnknownStreamHandler(
 		streamInt:         streamInt,
 		unknownStreamDesc: unknownStreamDesc,
 	}
-	srv.processHeadersWorkers = utils.NewBackgroundStoppableWorkers()
+	srv.workers = utils.NewBackgroundStoppableWorkers()
+	srv.workers.Add(srv.pcCloseLoop)
+
 	return srv
 }
 
@@ -127,7 +131,7 @@ func newWebRTCServerWithInterceptorsAndUnknownStreamHandler(
 // are done executing.
 func (srv *webrtcServer) Stop() {
 	srv.logger.Info("waiting for handlers to complete")
-	srv.processHeadersWorkers.Stop()
+	srv.workers.Stop()
 	srv.logger.Info("handlers complete")
 	srv.logger.Info("closing lingering peer connections")
 
@@ -282,5 +286,38 @@ func (srv *webrtcServer) streamHandler(ss interface{}, method string, desc grpc.
 		}
 		s.closeWithSendError(err)
 		return nil
+	}
+}
+
+func (srv *webrtcServer) AddPeerConnToClose(pc *webrtc.PeerConnection) {
+	srv.peerConnsMu.Lock()
+	srv.peerConnsToClose = append(srv.peerConnsToClose, pc)
+	srv.peerConnsMu.Unlock()
+}
+
+func (srv *webrtcServer) pcCloseLoop(ctx context.Context) {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+
+		srv.peerConnsMu.Lock()
+		cpy := srv.peerConnsToClose
+		if len(cpy) == 0 {
+			srv.peerConnsMu.Unlock()
+			continue
+		}
+
+		srv.peerConnsToClose = make([]*webrtc.PeerConnection, 0)
+		for _, pc := range cpy {
+			delete(srv.peerConns, pc)
+			go utils.UncheckedErrorFunc(pc.GracefulClose)
+		}
+
+		srv.peerConnsMu.Unlock()
 	}
 }

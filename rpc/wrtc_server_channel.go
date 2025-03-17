@@ -37,9 +37,10 @@ func newWebRTCServerChannel(
 	logger utils.ZapCompatibleLogger,
 ) *webrtcServerChannel {
 	base := newBaseChannel(
-		server.processHeadersWorkers.Context(),
+		server.workers.Context(),
 		peerConn,
 		dataChannel,
+		server,
 		nil,
 		logger,
 	)

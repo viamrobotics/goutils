@@ -54,6 +54,7 @@ func newWebRTCClientChannel(
 		context.Background(),
 		peerConn,
 		dataChannel,
+		nil,
 		onICEConnected,
 		logger,
 	)
@@ -71,9 +72,9 @@ func (ch *webrtcClientChannel) PeerConn() *webrtc.PeerConnection {
 	return ch.webrtcBaseChannel.peerConn
 }
 
-// Close returns a nil error to satisfy ClientConn. Prefer `close` for the internal API that has no
-// return value. There's nothing to do when close "has an error". This choice simplifies error
-// handling.
+// Close returns a nil error to satisfy ClientConn. WebRTC callbacks must use `close` to avoid
+// waiting on `GracefulClose`. This method is shadowed by
+// `webrtcClientChannel.webrtcBaseChannel.Close`.
 func (ch *webrtcClientChannel) Close() error {
 	ch.close()
 	utils.UncheckedErrorFunc(ch.webrtcBaseChannel.peerConn.GracefulClose)
