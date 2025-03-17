@@ -35,7 +35,6 @@ func newBaseChannel(
 	ctx context.Context,
 	peerConn *webrtc.PeerConnection,
 	dataChannel *webrtc.DataChannel,
-	onPeerDone func(),
 	onICEConnected func(),
 	logger utils.ZapCompatibleLogger,
 ) *webrtcBaseChannel {
@@ -61,7 +60,6 @@ func newBaseChannel(
 
 	var connID string
 	var connIDMu sync.Mutex
-	var peerDoneOnce sync.Once
 	peerConn.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
 		switch connectionState {
 		case webrtc.ICEConnectionStateDisconnected,
@@ -92,11 +90,6 @@ func newBaseChannel(
 			// PeerConnection waiting will be performed by the client connection object or server
 			// object.
 			ch.Close()
-			peerDoneOnce.Do(func() {
-				if onPeerDone != nil {
-					onPeerDone()
-				}
-			})
 		case webrtc.ICEConnectionStateConnected:
 			if onICEConnected != nil {
 				// The user of `onICEConnected` waits for a few seconds before enumerating/logging
@@ -164,11 +157,6 @@ func (ch *webrtcBaseChannel) Close() {
 	ch.bufferWriteMu.Unlock()
 	ch.mu.Unlock()
 
-	// We use `PeerConnection.Close` here rather than `GracefulClose`. The data channel is owned by
-	// the PeerConnection. Let's not have the data channel wait for the peer connection to
-	// completely clean up. We only wish to ensure that no requests/response (i.e:
-	// webrtc[Server/Client]Streams) are in operation.
-	utils.UncheckedError(ch.peerConn.Close())
 	ch.activeBackgroundWorkers.Wait()
 }
 

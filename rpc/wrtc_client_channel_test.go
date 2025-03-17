@@ -11,6 +11,7 @@ import (
 	"github.com/edaniels/golog"
 	"github.com/viamrobotics/webrtc/v3"
 	"go.viam.com/test"
+	"go.viam.com/utils"
 	pbstatus "google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -27,12 +28,14 @@ func TestWebRTCClientChannel(t *testing.T) {
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
 	pc1, pc2, dc1, dc2 := setupWebRTCPeers(t)
+	defer utils.UncheckedErrorFunc(pc1.GracefulClose)
+	defer utils.UncheckedErrorFunc(pc2.GracefulClose)
 
-	clientCh := newWebRTCClientChannel(pc1, dc1, nil, logger, nil, nil)
+	clientCh := newWebRTCClientChannel(pc1, dc1, nil, utils.Sublogger(logger, "client"), nil, nil)
 	defer func() {
 		test.That(t, clientCh.Close(), test.ShouldBeNil)
 	}()
-	serverCh := newBaseChannel(context.Background(), pc2, dc2, nil, nil, logger)
+	serverCh := newBaseChannel(context.Background(), pc2, dc2, nil, logger)
 	defer serverCh.Close()
 
 	<-clientCh.Ready()
@@ -336,12 +339,14 @@ func TestWebRTCClientChannelResetStream(t *testing.T) {
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
 	pc1, pc2, dc1, dc2 := setupWebRTCPeers(t)
+	defer pc1.GracefulClose()
+	defer pc2.GracefulClose()
 
-	clientCh := newWebRTCClientChannel(pc1, dc1, nil, logger, nil, nil)
+	clientCh := newWebRTCClientChannel(pc1, dc1, nil, utils.Sublogger(logger, "client"), nil, nil)
 	defer func() {
 		test.That(t, clientCh.Close(), test.ShouldBeNil)
 	}()
-	serverCh := newBaseChannel(context.Background(), pc2, dc2, nil, nil, logger)
+	serverCh := newBaseChannel(context.Background(), pc2, dc2, nil, logger)
 	defer serverCh.Close()
 
 	<-clientCh.Ready()
@@ -428,8 +433,13 @@ func TestWebRTCClientChannelResetStream(t *testing.T) {
 func TestWebRTCClientChannelWithInterceptor(t *testing.T) {
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
-	pc1, pc2, dc1, dc2 := setupWebRTCPeers(t)
+	clientPC, serverPC, clientDataChannel, serverDataChannel := setupWebRTCPeers(t)
+	defer clientPC.GracefulClose()
+	defer serverPC.GracefulClose()
 
+	// Set up a server handler for the client test. The first client request will be unary and an
+	// interceptor will append "some/value". The second will be a streaming request and append
+	// "other/thing". The interceptors also record the methods being sent.
 	var interceptedUnaryMethods []string
 	unaryInterceptor := func(
 		ctx context.Context,
@@ -459,11 +469,11 @@ func TestWebRTCClientChannelWithInterceptor(t *testing.T) {
 		return streamer(ctx, desc, cc, method, opts...)
 	}
 
-	clientCh := newWebRTCClientChannel(pc1, dc1, nil, logger, unaryInterceptor, streamInterceptor)
+	clientCh := newWebRTCClientChannel(clientPC, clientDataChannel, nil, utils.Sublogger(logger, "client"), unaryInterceptor, streamInterceptor)
 	defer func() {
 		test.That(t, clientCh.Close(), test.ShouldBeNil)
 	}()
-	serverCh := newBaseChannel(context.Background(), pc2, dc2, nil, nil, logger)
+	serverCh := newBaseChannel(context.Background(), serverPC, serverDataChannel, nil, logger)
 	defer serverCh.Close()
 
 	<-clientCh.Ready()
@@ -472,8 +482,13 @@ func TestWebRTCClientChannelWithInterceptor(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(4)
 
-	idCounter := uint64(1)
 	var headerCounter int
+
+	// Every set of headers bumps the `headerCounter`. This mimics unique/auto-incrementing grpc
+	// stream ids for every new request.
+	//
+	// The unary and stream requests will both have the same response. First the headers will be
+	// sent, followed by an empty message with EOM=true.
 	serverCh.dataChannel.OnMessage(func(msg webrtc.DataChannelMessage) {
 		req := &webrtcpb.Request{}
 		test.That(t, proto.Unmarshal(msg.Data, req), test.ShouldBeNil)
@@ -498,12 +513,12 @@ func TestWebRTCClientChannelWithInterceptor(t *testing.T) {
 		}
 
 		test.That(t, serverCh.write(&webrtcpb.Response{
-			Stream: &webrtcpb.Stream{Id: idCounter},
+			Stream: &webrtcpb.Stream{Id: uint64(headerCounter)},
 			Type:   &webrtcpb.Response_Headers{},
 		}), test.ShouldBeNil)
 
 		test.That(t, serverCh.write(&webrtcpb.Response{
-			Stream: &webrtcpb.Stream{Id: idCounter},
+			Stream: &webrtcpb.Stream{Id: uint64(headerCounter)},
 			Type: &webrtcpb.Response_Message{
 				Message: &webrtcpb.ResponseMessage{
 					PacketMessage: &webrtcpb.PacketMessage{
@@ -513,17 +528,18 @@ func TestWebRTCClientChannelWithInterceptor(t *testing.T) {
 				},
 			},
 		}), test.ShouldBeNil)
-		idCounter++
 		wg.Done()
 	})
 
 	var unaryMsg interface{}
 	var respStatus pbstatus.Status
+	logger.Info("Sending unary")
 	test.That(t, clientCh.Invoke(context.Background(), "a unary", unaryMsg, &respStatus), test.ShouldBeNil)
 	test.That(t, interceptedUnaryMethods, test.ShouldHaveLength, 1)
 	test.That(t, interceptedUnaryMethods, test.ShouldContain, "a unary")
 
 	var streamMsg interface{}
+	logger.Info("Sending stream")
 	clientStream, err := clientCh.NewStream(context.Background(), &grpc.StreamDesc{}, "a stream")
 	test.That(t, err, test.ShouldBeNil)
 	err = clientStream.SendMsg(streamMsg)
@@ -539,12 +555,14 @@ func TestWebRTCClientChannelCanStopStreamRecvMsg(t *testing.T) {
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
 	pc1, pc2, dc1, dc2 := setupWebRTCPeers(t)
+	defer pc1.GracefulClose()
+	defer pc2.GracefulClose()
 
-	clientCh := newWebRTCClientChannel(pc1, dc1, nil, logger, nil, nil)
+	clientCh := newWebRTCClientChannel(pc1, dc1, nil, utils.Sublogger(logger, "client"), nil, nil)
 	defer func() {
 		test.That(t, clientCh.Close(), test.ShouldBeNil)
 	}()
-	serverCh := newBaseChannel(context.Background(), pc2, dc2, nil, nil, logger)
+	serverCh := newBaseChannel(context.Background(), pc2, dc2, nil, logger)
 	defer serverCh.Close()
 
 	<-clientCh.Ready()
@@ -602,14 +620,13 @@ func TestClientStreamCancel(t *testing.T) {
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
 	pc1, pc2, dc1, dc2 := setupWebRTCPeers(t)
+	defer pc1.GracefulClose()
+	defer pc2.GracefulClose()
 
-	clientCh := newWebRTCClientChannel(pc1, dc1, nil, logger, nil, nil)
+	clientCh := newWebRTCClientChannel(pc1, dc1, nil, utils.Sublogger(logger, "client"), nil, nil)
 	defer func() {
 		test.That(t, clientCh.Close(), test.ShouldBeNil)
 	}()
-
-	wg := sync.WaitGroup{}
-	wg.Add(1)
 
 	server := newWebRTCServer(logger)
 	server.RegisterService(&grpc.ServiceDesc{
@@ -618,7 +635,6 @@ func TestClientStreamCancel(t *testing.T) {
 			{
 				StreamName: "stream_name",
 				Handler: grpc.StreamHandler(func(srv any, stream grpc.ServerStream) error {
-					defer wg.Done()
 					pongStatus, _ := status.FromError(errors.New("pong"))
 
 					for i := 0; i < 10; i++ {
@@ -673,5 +689,4 @@ func TestClientStreamCancel(t *testing.T) {
 		test.That(t, err, test.ShouldBeNil)
 	}
 	cancelStream()
-	wg.Wait()
 }

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/edaniels/golog"
+	"github.com/viamrobotics/webrtc/v3"
 	"go.viam.com/test"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -358,6 +359,10 @@ func TestClientConnAuthenticator(t *testing.T) {
 type closeReffedConn struct {
 	ClientConn
 	closeCalled int
+}
+
+func (crc *closeReffedConn) PeerConn() *webrtc.PeerConnection {
+	return nil
 }
 
 func (crc *closeReffedConn) Close() error {

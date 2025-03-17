@@ -40,7 +40,6 @@ func newWebRTCServerChannel(
 		server.processHeadersWorkers.Context(),
 		peerConn,
 		dataChannel,
-		func() { server.removePeer(peerConn) },
 		nil,
 		logger,
 	)

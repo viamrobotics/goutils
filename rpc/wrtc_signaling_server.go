@@ -6,6 +6,7 @@ import (
 	"io"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/pkg/errors"
@@ -386,10 +387,10 @@ func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 	}
 
 	offerCtx, offerCtxCancel := context.WithDeadline(ctx, offer.Deadline())
-	var answererStoppedExchange bool
+	var answererStoppedExchange atomic.Bool
 	callerLoop := func() error {
 		defer func() {
-			if !answererStoppedExchange {
+			if !answererStoppedExchange.Load() {
 				if err := server.Send(&webrtcpb.AnswerRequest{
 					Uuid: uuid,
 					Stage: &webrtcpb.AnswerRequest_Done{
@@ -484,7 +485,7 @@ func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 			case *webrtcpb.AnswerResponse_Error:
 				respStatus := status.FromProto(s.Error.GetStatus())
 				ans := WebRTCCallAnswer{Err: respStatus.Err()}
-				answererStoppedExchange = true
+				answererStoppedExchange.Store(true)
 				offerCtxCancel() // and stop exchange
 				return offer.AnswererRespond(server.Context(), ans)
 			default:

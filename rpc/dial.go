@@ -197,6 +197,7 @@ func dial(
 				fmt.Sprintf("%s->%s", dOpts.webrtcOpts.SignalingServerAddress, originalAddress),
 				dOpts.cacheKey(),
 				func() (ClientConn, error) {
+					// returns a webrtcClientChannel
 					return dialWebRTC(
 						ctxParallel,
 						dOpts.webrtcOpts.SignalingServerAddress,

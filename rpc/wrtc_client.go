@@ -176,7 +176,7 @@ func dialWebRTC(
 	}
 
 	//nolint:contextcheck
-	clientCh := newWebRTCClientChannel(peerConn, dataChannel, onICEConnected, logger, dOpts.unaryInterceptor, dOpts.streamInterceptor)
+	clientCh := newWebRTCClientChannel(peerConn, dataChannel, onICEConnected, utils.Sublogger(logger, "client"), dOpts.unaryInterceptor, dOpts.streamInterceptor)
 
 	var successful bool
 	defer func() {

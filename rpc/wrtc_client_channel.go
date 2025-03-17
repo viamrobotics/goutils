@@ -54,7 +54,6 @@ func newWebRTCClientChannel(
 		context.Background(),
 		peerConn,
 		dataChannel,
-		nil,
 		onICEConnected,
 		logger,
 	)
@@ -77,6 +76,7 @@ func (ch *webrtcClientChannel) PeerConn() *webrtc.PeerConnection {
 // handling.
 func (ch *webrtcClientChannel) Close() error {
 	ch.close()
+	ch.webrtcBaseChannel.peerConn.GracefulClose()
 	return nil
 }
 

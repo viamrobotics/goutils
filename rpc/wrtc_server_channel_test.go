@@ -9,6 +9,7 @@ import (
 	"github.com/edaniels/golog"
 	"github.com/viamrobotics/webrtc/v3"
 	"go.viam.com/test"
+	"go.viam.com/utils"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -22,18 +23,21 @@ func TestWebRTCServerChannel(t *testing.T) {
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
 	pc1, pc2, dc1, dc2 := setupWebRTCPeers(t)
+	defer pc1.GracefulClose()
+	defer pc2.GracefulClose()
 
-	clientCh := newWebRTCClientChannel(pc1, dc1, nil, logger, nil, nil)
+	clientCh := newWebRTCClientChannel(pc1, dc1, nil, utils.Sublogger(logger, "client"), nil, nil)
 	defer func() {
 		test.That(t, clientCh.Close(), test.ShouldBeNil)
 	}()
 
 	server := newWebRTCServer(logger)
+	defer server.Stop()
 	// use signaling server just as some random service to test against.
 	// It helps that it is in our package.
 	queue := newMemoryWebRTCCallQueueTest(logger)
 	defer queue.Close()
-	signalServer := NewWebRTCSignalingServer(queue, nil, logger, defaultHeartbeatInterval)
+	signalServer := NewWebRTCSignalingServer(queue, nil, utils.Sublogger(logger, "client"), defaultHeartbeatInterval)
 	defer signalServer.Close()
 	server.RegisterService(
 		&webrtcpb.SignalingService_ServiceDesc,
@@ -252,18 +256,21 @@ func TestWebRTCServerChannelResetStream(t *testing.T) {
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
 	pc1, pc2, dc1, dc2 := setupWebRTCPeers(t)
+	defer pc1.GracefulClose()
+	defer pc2.GracefulClose()
 
-	clientCh := newWebRTCClientChannel(pc1, dc1, nil, logger, nil, nil)
+	clientCh := newWebRTCClientChannel(pc1, dc1, nil, utils.Sublogger(logger, "client"), nil, nil)
 	defer func() {
 		test.That(t, clientCh.Close(), test.ShouldBeNil)
 	}()
 
 	server := newWebRTCServer(logger)
+	defer server.Stop()
 	// use signaling server just as some random service to test against.
 	// It helps that it is in our package.
 	queue := newMemoryWebRTCCallQueueTest(logger)
 	defer queue.Close()
-	signalServer := NewWebRTCSignalingServer(queue, nil, logger, defaultHeartbeatInterval)
+	signalServer := NewWebRTCSignalingServer(queue, nil, utils.Sublogger(logger, "client"), defaultHeartbeatInterval)
 	defer signalServer.Close()
 	server.RegisterService(
 		&webrtcpb.SignalingService_ServiceDesc,
