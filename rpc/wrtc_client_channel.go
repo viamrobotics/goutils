@@ -155,6 +155,7 @@ func (ch *webrtcClientChannel) invoke(
 				if clientStream.trailers != nil {
 					*optV.TrailerAddr = clientStream.trailers.Copy()
 				}
+			case grpc.StaticMethodCallOption:
 			default:
 				clientStream.webrtcBaseStream.logger.Errorf("do not know how to handle call option %T", opt)
 			}
