@@ -16,7 +16,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/edaniels/zeroconf"
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/google/uuid"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
@@ -24,6 +23,7 @@ import (
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/improbable-eng/grpc-web/go/grpcweb"
 	"github.com/pkg/errors"
+	"github.com/viamrobotics/zeroconf"
 	"go.uber.org/multierr"
 	"golang.org/x/net/http2/h2c"
 	"google.golang.org/grpc"
