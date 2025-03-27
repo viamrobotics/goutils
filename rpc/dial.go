@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/edaniels/zeroconf"
 	"github.com/pkg/errors"
+	"github.com/viamrobotics/zeroconf"
 	"go.uber.org/multierr"
 	"go.uber.org/zap"
 

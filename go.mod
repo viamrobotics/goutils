@@ -15,7 +15,6 @@ require (
 	github.com/coreos/go-oidc/v3 v3.1.0
 	github.com/edaniels/golinters v0.0.5-0.20210512224240-495d3b8eed19
 	github.com/edaniels/golog v0.0.0-20230215213219-28954395e8d0
-	github.com/edaniels/zeroconf v1.0.10
 	github.com/fatih/color v1.17.0
 	github.com/fsnotify/fsnotify v1.5.4
 	github.com/fullstorydev/grpcurl v1.8.0
@@ -38,6 +37,7 @@ require (
 	github.com/pseudomuto/protoc-gen-doc v1.3.2
 	github.com/rs/cors v1.10.1
 	github.com/viamrobotics/webrtc/v3 v3.99.10
+	github.com/viamrobotics/zeroconf v1.0.12
 	github.com/zitadel/oidc v1.13.2
 	go.mongodb.org/mongo-driver v1.11.6
 	go.opencensus.io v0.24.0
