@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/lestrrat-go/jwx/jwk"
-	httphelper "github.com/zitadel/oidc/pkg/http"
-	"github.com/zitadel/oidc/pkg/oidc"
+	httphelper "github.com/zitadel/oidc/v3/pkg/http"
+	"github.com/zitadel/oidc/v3/pkg/oidc"
 )
 
 // KeySet represents json key set object, a collection of jwk.Key objects.
