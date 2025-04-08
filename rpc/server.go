@@ -550,7 +550,8 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 					server.mdnsServers = append(server.mdnsServers, mdnsServer)
 
 					// register a second address to match queries for machine-name.local
-					// RSDK-10409 - This may not be necessary
+					// RSDK-10409 - Depending on if we need the previous block to register mDNS addresses with
+					// the system hostname, we may be able to combine the two separate registrations into one.
 					if host != hostname {
 						mdnsServer, err = zeroconf.RegisterProxy(
 							host,
@@ -608,7 +609,8 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 					server.mdnsServers = append(server.mdnsServers, mdnsServer)
 
 					// register a second address to match queries for machine-name.local
-					// RSDK-10409 - This may not be necessary
+					// RSDK-10409 - Depending on if we need the previous block to register mDNS addresses with
+					// the system hostname, we may be able to combine the two separate registrations into one.
 					hostname, err := os.Hostname()
 					if err == nil && host == hostname {
 						continue
