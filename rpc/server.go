@@ -166,7 +166,10 @@ var errMixedUnauthAndAuth = errors.New("cannot use unauthenticated and auth hand
 
 func addrsForInterface(iface *net.Interface) ([]string, []string) {
 	var v4, v6, v6local []string
-	addrs, _ := iface.Addrs()
+	addrs, err := iface.Addrs()
+	if err != nil {
+		return v4, v6
+	}
 	for _, address := range addrs {
 		if ipnet, ok := address.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
 			if ipnet.IP.To4() != nil {
