@@ -164,6 +164,32 @@ type simpleServer struct {
 
 var errMixedUnauthAndAuth = errors.New("cannot use unauthenticated and auth handlers at same time")
 
+func addrsForInterface(iface *net.Interface) ([]string, []string) {
+	var v4, v6, v6local []string
+	addrs, err := iface.Addrs()
+	if err != nil {
+		return v4, v6
+	}
+	for _, address := range addrs {
+		if ipnet, ok := address.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+			if ipnet.IP.To4() != nil {
+				v4 = append(v4, ipnet.IP.String())
+			} else {
+				switch ip := ipnet.IP.To16(); ip != nil {
+				case ip.IsGlobalUnicast():
+					v6 = append(v6, ipnet.IP.String())
+				case ip.IsLinkLocalUnicast():
+					v6local = append(v6local, ipnet.IP.String())
+				}
+			}
+		}
+	}
+	if len(v6) == 0 {
+		v6 = v6local
+	}
+	return v4, v6
+}
+
 // NewServer returns a new server ready to be started that
 // will listen on localhost on a random port unless TLS is turned
 // on and authentication is enabled in which case the server will
@@ -522,11 +548,47 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 						break
 					}
 					server.mdnsServers = append(server.mdnsServers, mdnsServer)
+
+					// register a second address to match queries for machine-name.local
+					// RSDK-10409 - Depending on if we need the previous block to register mDNS addresses with
+					// the system hostname, we may be able to combine the two separate registrations into one.
+					if host != hostname {
+						mdnsServer, err = zeroconf.RegisterProxy(
+							host,
+							"_rpc._tcp",
+							"local.",
+							mDNSAddress.Port,
+							host,
+							[]string{"127.0.0.1"},
+							supportedServices,
+							loopbackIfaces,
+							// RSDK-8205: logger.Desugar().Sugar() is necessary to massage a ZapCompatibleLogger into a
+							// *zap.SugaredLogger to match zeroconf function signatures.
+							logger.Desugar().Sugar(),
+						)
+						if err != nil {
+							logger.Warnw(mDNSerr, "error", err)
+							sOpts.disableMDNS = true
+							break
+						}
+						server.mdnsServers = append(server.mdnsServers, mdnsServer)
+					}
 				}
 			}
 		} else {
 			for _, host := range instanceNames {
 				hosts := []string{host, strings.ReplaceAll(host, ".", "-")}
+
+				// all of this mimics code in zeroconf.Register, with the change of
+				// using the host as hostname instead of os.Hostname.
+				ifaces := listMulticastInterfaces()
+				addrV4 := make([]string, 0)
+				addrV6 := make([]string, 0)
+				for _, iface := range ifaces {
+					v4, v6 := addrsForInterface(&iface)
+					addrV4 = append(addrV4, v4...)
+					addrV6 = append(addrV6, v6...)
+				}
 				for _, host := range hosts {
 					mdnsServer, err := zeroconf.RegisterDynamic(
 						host,
@@ -535,6 +597,34 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 						mDNSAddress.Port,
 						supportedServices,
 						nil,
+						// RSDK-8205: logger.Desugar().Sugar() is necessary to massage a ZapCompatibleLogger into a
+						// *zap.SugaredLogger to match zeroconf function signatures.
+						logger.Desugar().Sugar(),
+					)
+					if err != nil {
+						logger.Warnw(mDNSerr, "error", err)
+						sOpts.disableMDNS = true
+						break
+					}
+					server.mdnsServers = append(server.mdnsServers, mdnsServer)
+
+					// register a second address to match queries for machine-name.local
+					// RSDK-10409 - Depending on if we need the previous block to register mDNS addresses with
+					// the system hostname, we may be able to combine the two separate registrations into one.
+					hostname, err := os.Hostname()
+					if err == nil && host == hostname {
+						continue
+					}
+
+					mdnsServer, err = zeroconf.RegisterProxy(
+						host,
+						"_rpc._tcp",
+						"local.",
+						mDNSAddress.Port,
+						host,
+						append(addrV4, addrV6...),
+						supportedServices,
+						ifaces,
 						// RSDK-8205: logger.Desugar().Sugar() is necessary to massage a ZapCompatibleLogger into a
 						// *zap.SugaredLogger to match zeroconf function signatures.
 						logger.Desugar().Sugar(),
