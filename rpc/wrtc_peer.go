@@ -45,7 +45,7 @@ var DefaultWebRTCConfiguration = webrtc.Configuration{
 	ICEServers: DefaultICEServers,
 }
 
-func newWebRTCAPI(isClient bool, logger utils.ZapCompatibleLogger) (*webrtc.API, error) {
+func newWebRTCAPI(logger utils.ZapCompatibleLogger) (*webrtc.API, error) {
 	m := webrtc.MediaEngine{}
 	if err := m.RegisterDefaultCodecs(); err != nil {
 		return nil, err
@@ -62,7 +62,7 @@ func newWebRTCAPI(isClient bool, logger utils.ZapCompatibleLogger) (*webrtc.API,
 	//
 	// However, we prefer to send a LAN IP as a candidate rather than `<uuid>.local`. When using the
 	// ICE mdns "gather" option, it can generate candidates multiple `host` candidates. For example,
-	// each a machine may have a network interace associated with each of the following IPs:
+	// each a machine may have a network interacted associated with each of the following IPs:
 	// - 127.0.0.1
 	// - 192.168.2.1
 	// - 10.1.4.100
@@ -207,7 +207,7 @@ func newPeerConnectionForClient(
 	disableTrickle bool,
 	logger utils.ZapCompatibleLogger,
 ) (*webrtc.PeerConnection, *webrtc.DataChannel, error) {
-	webAPI, err := newWebRTCAPI(true, logger)
+	webAPI, err := newWebRTCAPI(logger)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -279,7 +279,7 @@ func newPeerConnectionForServer(
 	disableTrickle bool,
 	logger utils.ZapCompatibleLogger,
 ) (*webrtc.PeerConnection, *webrtc.DataChannel, error) {
-	webAPI, err := newWebRTCAPI(false, logger)
+	webAPI, err := newWebRTCAPI(logger)
 	if err != nil {
 		return nil, nil, err
 	}
