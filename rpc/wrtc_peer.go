@@ -45,7 +45,7 @@ var DefaultWebRTCConfiguration = webrtc.Configuration{
 	ICEServers: DefaultICEServers,
 }
 
-func newWebRTCAPI(isClient bool, logger utils.ZapCompatibleLogger) (*webrtc.API, error) {
+func newWebRTCAPI(logger utils.ZapCompatibleLogger) (*webrtc.API, error) {
 	m := webrtc.MediaEngine{}
 	if err := m.RegisterDefaultCodecs(); err != nil {
 		return nil, err
@@ -56,11 +56,26 @@ func newWebRTCAPI(isClient bool, logger utils.ZapCompatibleLogger) (*webrtc.API,
 	}
 
 	var settingEngine webrtc.SettingEngine
-	if isClient {
-		settingEngine.SetICEMulticastDNSMode(ice.MulticastDNSModeQueryAndGather)
-	} else {
-		settingEngine.SetICEMulticastDNSMode(ice.MulticastDNSModeQueryOnly)
-	}
+	// RSDK-10407: Existing viam-server deployments may send mdns entries (e.g: <uuid>.local) instead
+	// of their LAN IP (e.g: 192.168.2.100). We must continue to accept them and attempt to connect
+	// to those addresses.
+	//
+	// However, we prefer to send a LAN IP as a candidate rather than `<uuid>.local`. When using the
+	// ICE mdns "gather" option, it can generate candidates multiple `host` candidates. For example,
+	// each a machine may have a network interacted associated with each of the following IPs:
+	// - 127.0.0.1
+	// - 192.168.2.1
+	// - 10.1.4.100
+	// - 169.254.14.173
+	//
+	// The "gathering" mdns option will create a `<uuid>.local` name and transmit four candidates,
+	// but with the same `<uuid>.local` address value; instead of the raw IPs. It's unclear that
+	// when the other end of the PeerConnection sees these values, that it knows there are four
+	// distinct IPs to resolve that `<uuid>.local` value and use for connecting. See this ICE code
+	// for resolving mdns addresses:
+	//   https://github.com/pion/ice/blob/v2.3.34/agent.go?plain=1#L693-L721
+	settingEngine.SetICEMulticastDNSMode(ice.MulticastDNSModeQueryOnly)
+
 	// RSDK-8547: Replay protection can result in dropped video data. Specifically when there are
 	// multiple remote hops in getting video from the camera to the user. And these intermediate
 	// hops restart.
@@ -192,7 +207,7 @@ func newPeerConnectionForClient(
 	disableTrickle bool,
 	logger utils.ZapCompatibleLogger,
 ) (*webrtc.PeerConnection, *webrtc.DataChannel, error) {
-	webAPI, err := newWebRTCAPI(true, logger)
+	webAPI, err := newWebRTCAPI(logger)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -264,7 +279,7 @@ func newPeerConnectionForServer(
 	disableTrickle bool,
 	logger utils.ZapCompatibleLogger,
 ) (*webrtc.PeerConnection, *webrtc.DataChannel, error) {
-	webAPI, err := newWebRTCAPI(false, logger)
+	webAPI, err := newWebRTCAPI(logger)
 	if err != nil {
 		return nil, nil, err
 	}
