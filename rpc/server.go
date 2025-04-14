@@ -953,7 +953,8 @@ func (ss *simpleServer) Stop() error {
 		ss.webrtcServer.Stop()
 		ss.logger.Debug("WebRTC server stopped")
 	}
-	for _, mdnsServer := range ss.mdnsServers {
+	for idx, mdnsServer := range ss.mdnsServers {
+		ss.logger.Debugf("shutting down mDNS server %d of %d", idx+1, len(ss.mdnsServers))
 		mdnsServer.Shutdown()
 	}
 	ss.logger.Debug("shutting down HTTP server")
