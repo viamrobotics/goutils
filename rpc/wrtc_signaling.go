@@ -41,7 +41,7 @@ func DecodeSDP(in string, sdp *webrtc.SessionDescription) error {
 // signaling server and append the latter's ICE servers and creds to the
 // former. This is particularly useful for adding a TURN URL to the ICE servers
 // list. This function will always extend the list for URLs suffixed with "udp"
-// with the same URL suffixed with "tcp"
+// with the same URL suffixed with "tcp".
 func extendWebRTCConfig(original *webrtc.Configuration, optional *webrtcpb.WebRTCConfig) webrtc.Configuration {
 	configCopy := *original
 	if optional == nil {
