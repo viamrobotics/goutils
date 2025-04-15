@@ -341,7 +341,7 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 	for _, ice := range webrtcConfig.ICEServers {
 		iceUrls = append(iceUrls, ice.URLs...)
 	}
-	aa.logger.Debugw("extended WebRTC config", "ice servers", iceUrls)
+	aa.logger.Infow("extended WebRTC config", "ice servers", iceUrls)
 
 	pc, dc, err := newPeerConnectionForServer(
 		ctx,
