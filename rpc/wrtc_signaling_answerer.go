@@ -395,11 +395,21 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 		var pendingCandidates sync.WaitGroup
 		waitOneHost := make(chan struct{})
 		var waitOneHostOnce sync.Once
+		seenIceCandidates := make(map[string]struct{})
 		pc.OnICECandidate(func(icecandidate *webrtc.ICECandidate) {
 			if ctx.Err() != nil {
 				return
 			}
 			if icecandidate != nil {
+				// Before continuing, ensure we have not already added this ICE candidate. If we
+				// have, ignore this ICE candidate, as it's likely a duplicate due to the fact that
+				// we reach out to our STUN servers via both TCP and UDP.
+				icString := icecandidate.String()
+				if _, ok := seenIceCandidates[icString]; ok {
+					aa.logger.Debugf("ignoring duplicate ICE candidate %q", icString)
+					return
+				}
+				seenIceCandidates[icString] = struct{}{}
 				pendingCandidates.Add(1)
 				if icecandidate.Typ == webrtc.ICECandidateTypeHost {
 					waitOneHostOnce.Do(func() {

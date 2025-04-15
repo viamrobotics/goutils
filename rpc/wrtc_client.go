@@ -229,6 +229,7 @@ func dialWebRTC(
 		// found.
 		waitOneHost := make(chan struct{})
 		var waitOneHostOnce sync.Once
+		seenIceCandidates := make(map[string]struct{})
 		peerConn.OnICECandidate(func(icecandidate *webrtc.ICECandidate) {
 			if exchangeCtx.Err() != nil {
 				// Caller has canceled the dial, or a timeout has occurred.
@@ -236,6 +237,16 @@ func dialWebRTC(
 			}
 
 			if icecandidate != nil {
+				// Before continuing, ensure we have not already added this ICE candidate. If
+				// we have, ignore this ICE candidate, as it's likely a duplicate due to the fact
+				// that we reach out to our STUN servers via both TCP and UDP.
+				icString := icecandidate.String()
+				if _, ok := seenIceCandidates[icString]; ok {
+					logger.Debugf("ignoring duplicate ICE candidate %q", icString)
+					return
+				}
+				seenIceCandidates[icString] = struct{}{}
+
 				// The last `icecandidate` called from pion will be nil. `nil` signifies that all
 				// candidates were created. We will still create a goroutine for this "empty"
 				// candidate to wait for all other candidates to complete. Thus we only increment
