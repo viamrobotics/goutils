@@ -40,12 +40,9 @@ func DecodeSDP(in string, sdp *webrtc.SessionDescription) error {
 // configuration obtained by calling `OptionalWebRTCConfig` against the
 // signaling server and append the latter's ICE servers and creds to the
 // former. This is particularly useful for adding a TURN URL to the ICE servers
-// list. `replaceUDPWithTCP`, when true, will replace URLs suffixed with "udp"
-// with the same URL suffixed with "tcp"; this is useful when running behind
-// a SOCKS proxy that can only forward the TCP protocol.
-func extendWebRTCConfig(original *webrtc.Configuration, optional *webrtcpb.WebRTCConfig,
-	replaceUDPWithTCP bool,
-) webrtc.Configuration {
+// list. This function will always extend the list for URLs suffixed with "udp"
+// with the same URL suffixed with "tcp".
+func extendWebRTCConfig(original *webrtc.Configuration, optional *webrtcpb.WebRTCConfig) webrtc.Configuration {
 	configCopy := *original
 	if optional == nil {
 		return configCopy
@@ -55,15 +52,11 @@ func extendWebRTCConfig(original *webrtc.Configuration, optional *webrtcpb.WebRT
 		copy(iceServers, original.ICEServers)
 		for _, server := range optional.GetAdditionalIceServers() {
 			urls := server.GetUrls()
-			if replaceUDPWithTCP {
-				urls = nil
-				for _, url := range server.GetUrls() {
-					if strings.HasSuffix(url, "udp") {
-						newURL := url[:len(url)-len("udp")] + "tcp"
-						urls = append(urls, newURL)
-						continue
-					}
-					urls = append(urls, url)
+			for _, url := range server.GetUrls() {
+				if strings.HasSuffix(url, "udp") {
+					newURL := url[:len(url)-len("udp")] + "tcp"
+					urls = append(urls, newURL)
+					continue
 				}
 			}
 
