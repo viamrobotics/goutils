@@ -255,10 +255,20 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 				answerCtx, answerCtxCancel = context.WithTimeout(ctx, getDefaultOfferDeadline())
 			}
 
+			deadline, _ := ctx.Deadline() // there will always be a deadline
+			connectionStartTime := time.Now()
 			if err = aa.connect(answerCtx); err != nil {
 				answerCtxCancel()
 				// We received an error while trying to connect to a caller/peer.
-				ans.logger.Errorw("error connecting to peer", "error", err)
+				ans.logger.Errorw(
+					"error connecting to peer",
+					"error",
+					err,
+					"connection start time",
+					connectionStartTime.String(),
+					"deadline",
+					deadline.String(),
+				)
 				utils.SelectContextOrWait(ctx, answererReconnectWait)
 			}
 			answerCtxCancel()
