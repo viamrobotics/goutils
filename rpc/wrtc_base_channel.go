@@ -112,23 +112,20 @@ func newBaseChannel(
 			connIDMu.Lock()
 			connID = connInfo.ID
 			connIDMu.Unlock()
-			connectionStateChangedLogFields := []interface{}{
-				"conn_id", connInfo.ID,
-				"conn_local_candidates", connInfo.LocalCandidates,
-				"conn_remote_candidates", connInfo.RemoteCandidates,
-			}
 			if hasCandPair {
 				// Use info level when there is a selected candidate pair, as a
 				// connection has been established.
-				connectionStateChangedLogFields = append(connectionStateChangedLogFields,
-					"candidate_pair", candPair.String())
-				logger.Infow("Connection establishment succeeded", connectionStateChangedLogFields...)
+				logger.Infow("Connection establishment succeeded", "conn_id", connInfo.ID, "selected_pair", candPair.String())
+				logger.Infof("ICE Candidates:\n\tLocal:%v\n\tRemote:%v",
+					stringifyCandidates(connInfo.LocalCandidates),
+					stringifyCandidates(connInfo.RemoteCandidates))
 			} else {
 				// Use debug level when there is no selected candidate pair to avoid
 				// noise.
-				connectionStateChangedLogFields = append(connectionStateChangedLogFields,
-					"conn_state", connectionState.String())
-				logger.Debugw("Connection state changed", connectionStateChangedLogFields...)
+				logger.Debugw("Connection state changed", "conn_id", connInfo.ID, "state", connectionState.String())
+				logger.Debugf("ICE Candidates:\n\tLocal:%v\n\tRemote:%v",
+					stringifyCandidates(connInfo.LocalCandidates),
+					stringifyCandidates(connInfo.RemoteCandidates))
 			}
 		}
 	})

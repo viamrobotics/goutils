@@ -372,10 +372,11 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 				"conn_id", connInfo.ID,
 				"ice_connection_state", iceConnectionState,
 				"ice_gathering_state", iceGatheringState,
-				"conn_local_candidates", connInfo.LocalCandidates,
-				"conn_remote_candidates", connInfo.RemoteCandidates,
-				"candidate_pair", candPairStr,
+				"selected_pair", candPairStr,
 			)
+			aa.logger.Infof("ICE Candidates:\n\tLocal:%v\n\tRemote:%v",
+				stringifyCandidates(connInfo.LocalCandidates),
+				stringifyCandidates(connInfo.RemoteCandidates))
 
 			// Close unhealthy connection.
 			utils.UncheckedError(pc.GracefulClose())
