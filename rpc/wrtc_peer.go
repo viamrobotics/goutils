@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -532,6 +533,23 @@ func ConfigureForRenegotiation(
 type webrtcPeerConnectionStats struct {
 	ID                                string
 	LocalCandidates, RemoteCandidates []iceCandidate
+}
+
+type iceCandidatesToSort []iceCandidate
+
+func (icts iceCandidatesToSort) Len() int           { return len(icts) }
+func (icts iceCandidatesToSort) Swap(i, j int)      { icts[i], icts[j] = icts[j], icts[i] }
+func (icts iceCandidatesToSort) Less(i, j int) bool { return icts[i].FoundAt.Before(icts[j].FoundAt) }
+
+func stringifyCandidates(iceCandidates []iceCandidate) string {
+	// Sort candidates by time found.
+	sort.Sort(iceCandidatesToSort(iceCandidates))
+
+	var ret string
+	for _, ic := range iceCandidates {
+		ret += fmt.Sprintf("\n\t\t%v %v %v", ic.FoundAt.Format(iso8601), ic.CandType, ic.IP)
+	}
+	return ret
 }
 
 type iceCandidate struct {
