@@ -255,7 +255,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 				answerCtx, answerCtxCancel = context.WithTimeout(ctx, getDefaultOfferDeadline())
 			}
 
-			deadline, _ := ctx.Deadline() // there will always be a deadline
+			deadline, _ := answerCtx.Deadline() // there will always be a deadline
 			connectionStartTime := time.Now()
 			if err = aa.connect(answerCtx); err != nil {
 				answerCtxCancel()
