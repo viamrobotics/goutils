@@ -253,7 +253,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 				asTime := deadline.AsTime()
 				earliestDeadline := time.Now().Add(5 * time.Second)
 				if asTime.Before(earliestDeadline) {
-					ans.logger.Warnw("updating deadline from received %s to earliest %s", "received", asTime, "earliest", earliestDeadline)
+					ans.logger.Warnw("updating deadline from received %s to earliest %s", "received", asTime.String(), "earliest", earliestDeadline.String())
 					asTime = earliestDeadline
 				}
 				answerCtx, answerCtxCancel = context.WithDeadline(ctx, asTime)
