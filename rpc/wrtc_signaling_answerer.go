@@ -250,7 +250,13 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 			var answerCtx context.Context
 			var answerCtxCancel func()
 			if deadline := initStage.Init.GetDeadline(); deadline != nil {
-				answerCtx, answerCtxCancel = context.WithDeadline(ctx, deadline.AsTime())
+				asTime := deadline.AsTime()
+				earliestDeadline := time.Now().Add(5 * time.Second)
+				if asTime.Before(earliestDeadline) {
+					ans.logger.Warnw("updating deadline from received %s to earliest %s", "received", asTime, "earliest", earliestDeadline)
+					asTime = earliestDeadline
+				}
+				answerCtx, answerCtxCancel = context.WithDeadline(ctx, asTime)
 			} else {
 				answerCtx, answerCtxCancel = context.WithTimeout(ctx, getDefaultOfferDeadline())
 			}
