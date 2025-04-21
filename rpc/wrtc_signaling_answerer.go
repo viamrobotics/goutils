@@ -151,7 +151,7 @@ func isNetworkError(err error) bool {
 	return true
 }
 
-// logic for computing actual deadline from server-provided deadline
+// logic for computing actual deadline from server-provided deadline.
 func getDeadline(ctx context.Context, logger utils.ZapCompatibleLogger, initStage *webrtcpb.AnswerRequest_Init) (context.Context, func()) {
 	if deadline := initStage.Init.GetDeadline(); deadline != nil {
 		asTime := deadline.AsTime()
