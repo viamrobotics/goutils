@@ -15,6 +15,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"go.viam.com/utils"
 	echopb "go.viam.com/utils/proto/rpc/examples/echo/v1"
@@ -257,4 +258,33 @@ func TestSignalingHeartbeats(t *testing.T) {
 	grpcServer.Stop()
 	webrtcServer.Stop()
 	test.That(t, <-serveDone, test.ShouldBeNil)
+}
+
+func TestGetDeadline(t *testing.T) {
+	logger := golog.NewTestLogger(t)
+	ctx := context.Background()
+	initStage := &webrtcpb.AnswerRequest_Init{
+		Init: &webrtcpb.AnswerRequestInitStage{},
+	}
+	type testcase struct {
+		name  string        // name of the test
+		delta time.Duration // how far in the future to set deadline
+	}
+
+	for _, tc := range []testcase{
+		// case 1: default offer deadline
+		{"default", _defaultOfferDeadline},
+		// case 2: simulate a machine with bad system clock, deadline is in the past
+		{"too-soon", time.Second},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var cancel func()
+			initStage.Init.Deadline = timestamppb.New(time.Now().Add(tc.delta))
+			ctx, cancel = getDeadline(ctx, logger, initStage)
+			defer cancel()
+			deadline, ok := ctx.Deadline()
+			test.That(t, ok, test.ShouldBeTrue)
+			test.That(t, deadline.Sub(time.Now()), test.ShouldBeGreaterThan, time.Second*4)
+		})
+	}
 }

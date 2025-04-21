@@ -151,6 +151,20 @@ func isNetworkError(err error) bool {
 	return true
 }
 
+// logic for computing actual deadline from server-provided deadline
+func getDeadline(ctx context.Context, logger utils.ZapCompatibleLogger, initStage *webrtcpb.AnswerRequest_Init) (context.Context, func()) {
+	if deadline := initStage.Init.GetDeadline(); deadline != nil {
+		asTime := deadline.AsTime()
+		earliestDeadline := time.Now().Add(5 * time.Second)
+		if asTime.Before(earliestDeadline) {
+			logger.Warnw("updating deadline to be ahead of system clock", "received", asTime.String(), "adjusted", earliestDeadline.String())
+			asTime = earliestDeadline
+		}
+		return context.WithDeadline(ctx, asTime)
+	}
+	return context.WithTimeout(ctx, getDefaultOfferDeadline())
+}
+
 func (ans *webrtcSignalingAnswerer) startAnswerer() {
 	newAnswer := func() (webrtcpb.SignalingService_AnswerClient, error) {
 		ans.connMu.Lock()
@@ -247,19 +261,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 			}
 			aa.offerSDP = initStage.Init.GetSdp()
 
-			var answerCtx context.Context
-			var answerCtxCancel func()
-			if deadline := initStage.Init.GetDeadline(); deadline != nil {
-				asTime := deadline.AsTime()
-				earliestDeadline := time.Now().Add(_defaultOfferDeadline)
-				if asTime.Before(earliestDeadline) {
-					ans.logger.Warnw("updating deadline to be ahead of system clock", "received", asTime.String(), "adjusted", earliestDeadline.String())
-					asTime = earliestDeadline
-				}
-				answerCtx, answerCtxCancel = context.WithDeadline(ctx, asTime)
-			} else {
-				answerCtx, answerCtxCancel = context.WithTimeout(ctx, getDefaultOfferDeadline())
-			}
+			answerCtx, answerCtxCancel := getDeadline(ctx, ans.logger, initStage)
 
 			deadline, _ := answerCtx.Deadline() // there will always be a deadline
 			connectionStartTime := time.Now()
