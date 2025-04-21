@@ -274,7 +274,7 @@ func TestGetDeadline(t *testing.T) {
 	for _, tc := range []testcase{
 		// case 1: default offer deadline
 		{"default", _defaultOfferDeadline},
-		// case 2: simulate a machine with bad system clock, deadline is in the past
+		// case 2: simulate a machine with bad system clock, deadline is less than 5 seconds
 		{"too-soon", time.Second},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
