@@ -280,11 +280,11 @@ func TestGetDeadline(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			var cancel func()
 			initStage.Init.Deadline = timestamppb.New(time.Now().Add(tc.delta))
-			ctx, cancel = getDeadline(ctx, logger, initStage)
+			ctx, cancel = getDeadline(ctx, logger, initStage) //nolint:fatcontext
 			defer cancel()
 			deadline, ok := ctx.Deadline()
 			test.That(t, ok, test.ShouldBeTrue)
-			test.That(t, deadline.Sub(time.Now()), test.ShouldBeGreaterThan, time.Second*4)
+			test.That(t, time.Until(deadline), test.ShouldBeGreaterThan, time.Second*4)
 		})
 	}
 }
