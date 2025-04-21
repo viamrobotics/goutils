@@ -251,7 +251,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 			var answerCtxCancel func()
 			if deadline := initStage.Init.GetDeadline(); deadline != nil {
 				asTime := deadline.AsTime()
-				earliestDeadline := time.Now().Add(5 * time.Second)
+				earliestDeadline := time.Now().Add(_defaultOfferDeadline)
 				if asTime.Before(earliestDeadline) {
 					ans.logger.Warnw("updating deadline to be ahead of system clock", "received", asTime.String(), "adjusted", earliestDeadline.String())
 					asTime = earliestDeadline
