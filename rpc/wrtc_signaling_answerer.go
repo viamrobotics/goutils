@@ -117,7 +117,7 @@ func (ans *webrtcSignalingAnswerer) Start() {
 			conn, err := Dial(setupCtx, ans.address, ans.logger, ans.dialOpts...)
 			timeoutCancel()
 			if err != nil {
-				ans.logger.Errorw("error connecting answer client", "error", err)
+				ans.logger.Warnw("error connecting answer client", "error", err)
 				utils.SelectContextOrWait(ctx, answererReconnectWait)
 				continue
 			}
@@ -190,7 +190,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 				return
 			}
 			if err := client.CloseSend(); err != nil {
-				ans.logger.Errorw("error closing send side of answering client", "error", err)
+				ans.logger.Warnf("error closing send side of answering client", "error", err)
 			}
 		}()
 		for {
@@ -268,7 +268,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 			if err = aa.connect(answerCtx); err != nil {
 				answerCtxCancel()
 				// We received an error while trying to connect to a caller/peer.
-				ans.logger.Errorw(
+				ans.logger.Warnw(
 					"error connecting to peer",
 					"error",
 					err,
@@ -297,7 +297,7 @@ func (ans *webrtcSignalingAnswerer) Stop() {
 		if !ans.sharedConn {
 			err := ans.conn.Close()
 			if isNetworkError(err) {
-				ans.logger.Errorw("error closing signaling connection", "error", err)
+				ans.logger.Warnw("error closing signaling connection", "error", err)
 			}
 		}
 		ans.conn = nil

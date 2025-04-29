@@ -152,13 +152,14 @@ func LogFinalLine(logger ZapCompatibleLogger, startTime time.Time, err error, ms
 	}
 	fields = append(fields, "grpc.code", code.String(), "grpc.time_ms", duration)
 	// grpc_zap.DefaultCodeToLevel will only return zap.DebugLevel, zap.InfoLevel, zap.ErrorLevel, zap.WarnLevel
+	// log everything but Warn at Debug level, errors are propagated to callers so not necessary to log.
 	switch level {
 	case zap.DebugLevel:
 		logger.Debugw(msg, fields...)
 	case zap.InfoLevel:
-		logger.Infow(msg, fields...)
+		logger.Debugw(msg, fields...)
 	case zap.ErrorLevel:
-		logger.Errorw(msg, fields...)
+		logger.Debugw(msg, fields...)
 	case zap.WarnLevel, zap.DPanicLevel, zap.PanicLevel, zap.FatalLevel, zapcore.InvalidLevel:
 		logger.Warnw(msg, fields...)
 	}
