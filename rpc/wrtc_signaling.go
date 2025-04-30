@@ -51,7 +51,7 @@ func extendWebRTCConfig(original *webrtc.Configuration, optional *webrtcpb.WebRT
 		return configCopy
 	}
 	if len(optional.GetAdditionalIceServers()) > 0 {
-		iceServers := make([]webrtc.ICEServer, len(original.ICEServers)+len(optional.GetAdditionalIceServers()))
+		iceServers := make([]webrtc.ICEServer, len(original.ICEServers), len(original.ICEServers)+len(optional.GetAdditionalIceServers()))
 		copy(iceServers, original.ICEServers)
 		for _, server := range optional.GetAdditionalIceServers() {
 			urls := server.GetUrls()
