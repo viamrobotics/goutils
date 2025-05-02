@@ -143,8 +143,8 @@ func PanicCapturingGoWithCallback(f func(), callback func(err interface{})) {
 	go func() {
 		defer func() {
 			if err := recover(); err != nil {
-				debug.PrintStack()
 				golog.Global().Errorw("panic while running function", "error", err)
+				debug.PrintStack()
 				if callback == nil {
 					return
 				}
@@ -161,15 +161,10 @@ func PanicCapturingGoWithCallback(f func(), callback func(err interface{})) {
 // it terminates normally.
 func ManagedGo(f, onComplete func()) {
 	PanicCapturingGoWithCallback(func() {
-		defer func() {
-			if err := recover(); err == nil && onComplete != nil {
-				onComplete()
-			} else if err != nil {
-				// re-panic
-				panic(err)
-			}
-		}()
 		f()
+		if onComplete != nil {
+			onComplete()
+		}
 	}, func(_ interface{}) {
 		ManagedGo(f, onComplete)
 	})
