@@ -347,9 +347,14 @@ func (p *managedProcess) manage(stdOut, stdErr io.ReadCloser) {
 	close(stopLogging)
 	activeLoggers.Wait()
 
+	// Take the lock to prevent a race where a crashed process restarts even
+	// though Stop is called.
+	p.mu.Lock()
+
 	// It's possible that Stop was called and is the reason why Wait returned.
 	select {
 	case <-p.killCh:
+		p.mu.Unlock()
 		return
 	default:
 	}
@@ -358,6 +363,7 @@ func (p *managedProcess) manage(stdOut, stdErr io.ReadCloser) {
 	// onUnexpectedExit returns false.
 	if p.onUnexpectedExit != nil &&
 		!p.onUnexpectedExit(p.cmd.ProcessState.ExitCode()) {
+		p.mu.Unlock()
 		return
 	}
 
@@ -383,13 +389,16 @@ func (p *managedProcess) manage(stdOut, stdErr io.ReadCloser) {
 	select {
 	case <-ticker.C:
 	case <-p.killCh:
+		p.mu.Unlock()
 		return
 	}
 
+	// Unlock as not to deadlock with Start. Start will handle taking the lock
+	// to avoid racing with Stop on its own.
+	p.mu.Unlock()
 	err = p.Start(context.Background())
 	if err != nil {
 		if !errors.Is(err, errAlreadyStopped) {
-			// MAYBE(erd): add retry
 			p.logger.Errorw("error restarting process", "error", err)
 		}
 		return
@@ -398,29 +407,30 @@ func (p *managedProcess) manage(stdOut, stdErr io.ReadCloser) {
 }
 
 func (p *managedProcess) Stop() error {
-	// Minimally hold a lock here so that we can signal the
-	// management goroutine to stop. If we were to hold the
-	// lock for the duration of the function, we would possibly
-	// deadlock with manage trying to restart.
-	p.mu.Lock()
+	// Return early if the process has already been killed.
 	select {
-	case <- p.killCh:
-		p.mu.Unlock()
+	case <-p.killCh:
 		return nil
 	default:
 	}
+
+	// Close the channel outside the lock to allow preempting any restart
+	// attempts that are waiting in backoff.
 	close(p.killCh)
 
-	if p.cmd == nil {
-		p.mu.Unlock()
-		return nil
-	}
+	// Now we need the lock to make sure any Start, manage restarts, etc.
+	// complete.
+	p.mu.Lock()
 	p.mu.Unlock()
 
-	// Since p.cmd is mutex guarded and we just signaled the manage
-	// goroutine to stop, no new Start can happen and therefore
-	// p.cmd can no longer be modified rendering it safe to read
-	// without a lock held.
+	// Since p.cmd is mutex guarded and we just signaled the managed goroutine to
+	// stop, no new Start can happen and therefore we can proceed with shutdown
+	// without the lock being held.
+
+	// Nothing to do.
+	if p.cmd == nil {
+		return nil
+	}
 
 	forceKilled, err := p.kill()
 	if err != nil {
@@ -461,7 +471,7 @@ func (p *managedProcess) KillGroup() {
 	// process even if p.stopped is true.
 	p.mu.Lock()
 	select {
-	case <- p.killCh:
+	case <-p.killCh:
 	default:
 		close(p.killCh)
 	}
