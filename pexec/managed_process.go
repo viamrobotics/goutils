@@ -101,7 +101,6 @@ type managedProcess struct {
 	shouldLog bool
 	cmd       *exec.Cmd
 
-	stopped          bool
 	onUnexpectedExit func(int) bool
 	managingCh       chan struct{}
 	killCh           chan struct{}
@@ -404,12 +403,13 @@ func (p *managedProcess) Stop() error {
 	// lock for the duration of the function, we would possibly
 	// deadlock with manage trying to restart.
 	p.mu.Lock()
-	if p.stopped {
+	select {
+	case <- p.killCh:
 		p.mu.Unlock()
 		return nil
+	default:
 	}
 	close(p.killCh)
-	p.stopped = true
 
 	if p.cmd == nil {
 		p.mu.Unlock()
@@ -460,9 +460,10 @@ func (p *managedProcess) KillGroup() {
 	// management goroutine to stop. We will attempt to kill the
 	// process even if p.stopped is true.
 	p.mu.Lock()
-	if !p.stopped {
+	select {
+	case <- p.killCh:
+	default:
 		close(p.killCh)
-		p.stopped = true
 	}
 
 	if p.cmd == nil {
