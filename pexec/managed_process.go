@@ -273,74 +273,7 @@ func (p *managedProcess) manage(stdOut, stdErr io.ReadCloser) {
 		}
 	}()
 
-	// This block here logs as much as possible if it's requested until the
-	// pipes are closed.
-	stopLogging := make(chan struct{})
-	var activeLoggers sync.WaitGroup
-	if p.shouldLog || p.logWriter != nil {
-		logPipe := func(name string, pipe io.ReadCloser, isErr bool, logger utils.ZapCompatibleLogger) {
-			defer activeLoggers.Done()
-			pipeR := bufio.NewReader(pipe)
-			logWriterError := false
-			for {
-				select {
-				case <-stopLogging:
-					return
-				default:
-				}
-				line, _, err := pipeR.ReadLine()
-				if err != nil {
-					if !errors.Is(err, io.EOF) && !errors.Is(err, os.ErrClosed) {
-						p.logger.Errorw("error reading output", "name", name, "error", err)
-					}
-					return
-				}
-				if p.shouldLog {
-					if isErr {
-						logger.Error("\n\\_ " + string(line))
-					} else {
-						logger.Info("\n\\_ " + string(line))
-					}
-				}
-				if p.logWriter != nil && !logWriterError {
-					_, err := p.logWriter.Write(line)
-					if err == nil {
-						_, err = p.logWriter.Write([]byte("\n"))
-					}
-					if err != nil {
-						if !errors.Is(err, io.ErrClosedPipe) {
-							p.logger.Debugw("error writing process output to log writer", "name", name, "error", err)
-						}
-						if !p.shouldLog {
-							return
-						}
-						logWriterError = true
-					}
-				}
-			}
-		}
-		activeLoggers.Add(2)
-		utils.PanicCapturingGo(func() {
-			name := "StdOut"
-			var logger utils.ZapCompatibleLogger
-			if p.stdoutLogger != nil {
-				logger = p.stdoutLogger
-			} else {
-				logger = utils.Sublogger(p.logger, name)
-			}
-			logPipe(name, stdOut, false, logger)
-		})
-		utils.PanicCapturingGo(func() {
-			name := "StdErr"
-			var logger utils.ZapCompatibleLogger
-			if p.stderrLogger != nil {
-				logger = p.stderrLogger
-			} else {
-				logger = utils.Sublogger(p.logger, name)
-			}
-			logPipe(name, stdErr, true, logger)
-		})
-	}
+	stopAndDrainLoggers := p.startLoggers(stdOut, stdErr)
 
 	err := p.cmd.Wait()
 	// This is safe to write to because it is only read in Stop which
@@ -350,8 +283,8 @@ func (p *managedProcess) manage(stdOut, stdErr io.ReadCloser) {
 	} else {
 		p.lastWaitErr = err
 	}
-	close(stopLogging)
-	activeLoggers.Wait()
+
+	stopAndDrainLoggers()
 
 	// Take the lock to prevent a race where a crashed process restarts even
 	// though Stop is called.
@@ -424,6 +357,88 @@ func (p *managedProcess) manage(stdOut, stdErr io.ReadCloser) {
 		return
 	}
 	restarted = true
+}
+
+// This helper function is only meant to be called from manage. If logging is
+// enabled it creates goroutines that log as much as possible until the pipes
+// are closed. It returns a function that terminates logging and blocks until
+// the loggers drain.
+func (p *managedProcess) startLoggers(stdOut, stdErr io.ReadCloser) func() {
+	if !p.shouldLog && p.logWriter == nil {
+		// No logging enabled, return a noop func so the caller can unconditionally
+		// invoke it.
+		return func() {}
+	}
+
+	stopLogging := make(chan struct{})
+	var activeLoggers sync.WaitGroup
+	logPipe := func(name string, pipe io.ReadCloser, isErr bool, logger utils.ZapCompatibleLogger) {
+		defer activeLoggers.Done()
+		pipeR := bufio.NewReader(pipe)
+		logWriterError := false
+		for {
+			select {
+			case <-stopLogging:
+				return
+			default:
+			}
+			line, _, err := pipeR.ReadLine()
+			if err != nil {
+				if !errors.Is(err, io.EOF) && !errors.Is(err, os.ErrClosed) {
+					p.logger.Errorw("error reading output", "name", name, "error", err)
+				}
+				return
+			}
+			if p.shouldLog {
+				if isErr {
+					logger.Error("\n\\_ " + string(line))
+				} else {
+					logger.Info("\n\\_ " + string(line))
+				}
+			}
+			if p.logWriter != nil && !logWriterError {
+				_, err := p.logWriter.Write(line)
+				if err == nil {
+					_, err = p.logWriter.Write([]byte("\n"))
+				}
+				if err != nil {
+					if !errors.Is(err, io.ErrClosedPipe) {
+						p.logger.Debugw("error writing process output to log writer", "name", name, "error", err)
+					}
+					if !p.shouldLog {
+						return
+					}
+					logWriterError = true
+				}
+			}
+		}
+	}
+
+	utils.PanicCapturingGo(func() {
+		name := "StdOut"
+		var logger utils.ZapCompatibleLogger
+		if p.stdoutLogger != nil {
+			logger = p.stdoutLogger
+		} else {
+			logger = utils.Sublogger(p.logger, name)
+		}
+		logPipe(name, stdOut, false, logger)
+	})
+	utils.PanicCapturingGo(func() {
+		name := "StdErr"
+		var logger utils.ZapCompatibleLogger
+		if p.stderrLogger != nil {
+			logger = p.stderrLogger
+		} else {
+			logger = utils.Sublogger(p.logger, name)
+		}
+		logPipe(name, stdErr, true, logger)
+	})
+
+	return func() {
+		close(stopLogging)
+		activeLoggers.Wait()
+	}
 }
 
 func (p *managedProcess) Stop() error {
