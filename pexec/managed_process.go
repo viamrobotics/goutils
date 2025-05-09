@@ -372,6 +372,7 @@ func (p *managedProcess) startLoggers(stdOut, stdErr io.ReadCloser) func() {
 
 	stopLogging := make(chan struct{})
 	var activeLoggers sync.WaitGroup
+	activeLoggers.Add(2)
 	logPipe := func(name string, pipe io.ReadCloser, isErr bool, logger utils.ZapCompatibleLogger) {
 		defer activeLoggers.Done()
 		pipeR := bufio.NewReader(pipe)
