@@ -18,6 +18,8 @@ import (
 
 var errAlreadyStopped = errors.New("already stopped")
 
+type UnexpectedExitHandler = func(exitCode int) bool
+
 // A ManagedProcess controls the lifecycle of a single system process. Based on
 // its configuration, it will ensure the process is revived if it every unexpectedly
 // perishes.
@@ -101,7 +103,7 @@ type managedProcess struct {
 	shouldLog bool
 	cmd       *exec.Cmd
 
-	onUnexpectedExit func(int) bool
+	onUnexpectedExit UnexpectedExitHandler
 	managingCh       chan struct{}
 	killCh           chan struct{}
 	stopSig          syscall.Signal
@@ -158,7 +160,11 @@ func (p *managedProcess) validateCWD() error {
 func (p *managedProcess) Start(ctx context.Context) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	return p.start(ctx)
+}
 
+// This internal version of start must be called with the process lock held.
+func (p *managedProcess) start(ctx context.Context) error {
 	// In the event this Start happened from a restart but a
 	// stop happened while we were acquiring the lock, we may
 	// need to return early.
@@ -350,21 +356,38 @@ func (p *managedProcess) manage(stdOut, stdErr io.ReadCloser) {
 	// Take the lock to prevent a race where a crashed process restarts even
 	// though Stop is called.
 	p.mu.Lock()
+	locked := true
+	defer func() {
+		if locked {
+			p.mu.Unlock()
+		}
+	}()
 
 	// It's possible that Stop was called and is the reason why Wait returned.
 	select {
 	case <-p.killCh:
-		p.mu.Unlock()
 		return
 	default:
 	}
 
 	// Run onUnexpectedExit if it exists. Do not attempt restart if
-	// onUnexpectedExit returns false.
-	if p.onUnexpectedExit != nil &&
-		!p.onUnexpectedExit(p.cmd.ProcessState.ExitCode()) {
+	// onUnexpectedExit returns false. Drop the lock to avoid deadlocking other
+	// goroutines that my try to call Stop while we're handling a crash.
+	if p.onUnexpectedExit != nil {
 		p.mu.Unlock()
-		return
+		locked = false
+		if !p.onUnexpectedExit(p.cmd.ProcessState.ExitCode()) {
+			return
+		}
+		p.mu.Lock()
+		locked = true
+		// Dropped the lock to call the oue handler, check if we were stopped during
+		// that time.
+		select {
+		case <-p.killCh:
+			return
+		default:
+		}
 	}
 
 	// Otherwise, let's try restarting the process.
@@ -389,14 +412,11 @@ func (p *managedProcess) manage(stdOut, stdErr io.ReadCloser) {
 	select {
 	case <-ticker.C:
 	case <-p.killCh:
-		p.mu.Unlock()
 		return
 	}
 
-	// Unlock as not to deadlock with Start. Start will handle taking the lock
-	// to avoid racing with Stop on its own.
-	p.mu.Unlock()
-	err = p.Start(context.Background())
+	// Use the internal version of start since we already hold the lock.
+	err = p.start(context.Background())
 	if err != nil {
 		if !errors.Is(err, errAlreadyStopped) {
 			p.logger.Errorw("error restarting process", "error", err)
@@ -407,9 +427,13 @@ func (p *managedProcess) manage(stdOut, stdErr io.ReadCloser) {
 }
 
 func (p *managedProcess) Stop() error {
+	p.mu.Lock()
+
 	// Return early if the process has already been killed.
 	select {
 	case <-p.killCh:
+		<-p.managingCh
+		p.mu.Unlock()
 		return nil
 	default:
 	}
@@ -418,14 +442,10 @@ func (p *managedProcess) Stop() error {
 	// attempts that are waiting in backoff.
 	close(p.killCh)
 
-	// Now we need the lock to make sure any Start, manage restarts, etc.
-	// complete.
-	p.mu.Lock()
-	p.mu.Unlock()
-
 	// Since p.cmd is mutex guarded and we just signaled the managed goroutine to
 	// stop, no new Start can happen and therefore we can proceed with shutdown
 	// without the lock being held.
+	p.mu.Unlock()
 
 	// Nothing to do.
 	if p.cmd == nil {
