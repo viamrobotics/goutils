@@ -432,8 +432,8 @@ func (p *managedProcess) Stop() error {
 	// Return early if the process has already been killed.
 	select {
 	case <-p.killCh:
-		<-p.managingCh
 		p.mu.Unlock()
+		<-p.managingCh
 		return nil
 	default:
 	}
