@@ -18,6 +18,11 @@ import (
 
 var errAlreadyStopped = errors.New("already stopped")
 
+// UnexpectedExitHandler is the signature for functions that can optionally be
+// provided to run when a managed process unexpectedly exits. The return value
+// indicates whether pexec should continue with its own attempt to restart the
+// process: true means pexec will attempt its own restart, false means the
+// no restart will be attempted and the process will remain dead.
 type UnexpectedExitHandler = func(exitCode int) bool
 
 // A ManagedProcess controls the lifecycle of a single system process. Based on
