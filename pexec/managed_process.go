@@ -283,11 +283,7 @@ func (p *managedProcess) manage(stdOut, stdErr io.ReadCloser) {
 	err := p.cmd.Wait()
 	// This is safe to write to because it is only read in Stop which
 	// is waiting for us to stop managing.
-	if err == nil {
-		p.lastWaitErr = nil
-	} else {
-		p.lastWaitErr = err
-	}
+	p.lastWaitErr = err
 
 	stopAndDrainLoggers()
 
@@ -459,13 +455,11 @@ func (p *managedProcess) Stop() error {
 	default:
 	}
 
-	// Close the channel outside the lock to allow preempting any restart
-	// attempts that are waiting in backoff.
 	close(p.killCh)
 
-	// Since p.cmd is mutex guarded and we just signaled the managed goroutine to
-	// stop, no new Start can happen and therefore we can proceed with shutdown
-	// without the lock being held.
+	// All relevant methods wait on the lock we hold and will not attempt to
+	// (re)start the process now that we closed killch, so we can safely drop the
+	// lock to unblock other calls while we proceed with shutown.
 	p.mu.Unlock()
 
 	// Nothing to do.
