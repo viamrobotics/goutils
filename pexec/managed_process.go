@@ -450,7 +450,12 @@ func (p *managedProcess) Stop() error {
 	select {
 	case <-p.killCh:
 		p.mu.Unlock()
-		<-p.managingCh
+		if p.cmd != nil {
+			// Avoid deadlocking if Stop was called before Start while blocking all
+			// calls to Stop that follow Start until the management goroutine shuts
+			// down.
+			<-p.managingCh
+		}
 		return nil
 	default:
 	}
