@@ -26,6 +26,7 @@ func TryReserveRandomPort() (port int, err error) {
 	return listener.Addr().(*net.TCPAddr).Port, nil
 }
 
+// ReserveRandomPort reserves a random port and returns the port number and the listener.
 func ReserveRandomPort() (int, net.Listener, error) {
 	//nolint:gosec
 	listener, err := net.Listen("tcp", ":0")
