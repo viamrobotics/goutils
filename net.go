@@ -26,6 +26,15 @@ func TryReserveRandomPort() (port int, err error) {
 	return listener.Addr().(*net.TCPAddr).Port, nil
 }
 
+func ReserveRandomPort() (int, net.Listener, error) {
+	//nolint:gosec
+	listener, err := net.Listen("tcp", ":0")
+	if err != nil {
+		return 0, nil, err
+	}
+	return listener.Addr().(*net.TCPAddr).Port, listener, nil
+}
+
 // GetAllLocalIPv4s finds all the local ips from all interfaces
 // It only returns IPv4 addresses, and tries not to return any loopback addresses.
 func GetAllLocalIPv4s() ([]string, error) {
