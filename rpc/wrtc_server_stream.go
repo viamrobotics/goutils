@@ -281,7 +281,7 @@ func (s *webrtcServerStream) processHeaders(headers *webrtcpb.RequestHeaders) {
 
 func (s *webrtcServerStream) processMessage(msg *webrtcpb.RequestMessage) {
 	if s.recvClosed.Load() {
-		s.logger.Error("message received after EOS")
+		s.logger.Debug("message received after EOS")
 		return
 	}
 	if msg.GetHasMessage() {
