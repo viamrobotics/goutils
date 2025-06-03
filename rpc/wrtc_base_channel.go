@@ -63,6 +63,9 @@ func newBaseChannel(
 
 	var connID string
 	var connIDMu sync.Mutex
+
+	// In the normal connection flow, the client closes the WebRTC PeerConnection. Which closes the
+	// client DataChannel which results in the server DataChannel having its `OnClose` being called.
 	peerConn.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
 		switch connectionState {
 		case webrtc.ICEConnectionStateDisconnected,
@@ -144,9 +147,20 @@ func newBaseChannel(
 func (ch *webrtcBaseChannel) Close() {
 	// RSDK-8941: Having this instead early return when `closed` is set will result in `TestServer`
 	// to leak goroutines created by `dialWebRTC`.
-	ch.closed.CompareAndSwap(false, true)
 
 	ch.mu.Lock()
+	firstCallToClose := ch.closed.CompareAndSwap(false, true)
+	if !firstCallToClose {
+		// Only the first call to close needs to follow through and propagate the message. Calls
+		// that lose the race will still block to ensure background goroutines are cleaned up.
+		//
+		// By acquiring the `ch.mu` before checking the value of `ch.closed`, we can guarantee it is
+		// safe to wait on `ch.activeBackgroundWorkers`.
+		ch.mu.Unlock()
+		ch.activeBackgroundWorkers.Wait()
+		return
+	}
+
 	// APP-6839: We must hold the `bufferWriteMu` to avoid a "missed notification" that can happen
 	// when a `webrtcBaseChannel.write` happens concurrently with `closeWithReason`. Specifically,
 	// this lock makes atomic the `ch.cancel` with the broadcast. Such that a call to write that can
