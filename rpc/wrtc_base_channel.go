@@ -145,9 +145,6 @@ func newBaseChannel(
 // RSDK-8941: The above is a statement of expectations from existing code. Not a claim it is
 // factually correct.
 func (ch *webrtcBaseChannel) Close() {
-	// RSDK-8941: Having this instead early return when `closed` is set will result in `TestServer`
-	// to leak goroutines created by `dialWebRTC`.
-
 	ch.mu.Lock()
 	firstCallToClose := ch.closed.CompareAndSwap(false, true)
 	if !firstCallToClose {
