@@ -203,7 +203,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 			client, err = newAnswer()
 			if err != nil {
 				if isNetworkError(err) {
-					ans.logger.Warnw("error communicating with signaling server", "error", err)
+					ans.logger.Debugw("error communicating with signaling server, waiting a bit and trying again", "error", err)
 					utils.SelectContextOrWait(ctx, answererReconnectWait)
 				}
 				continue
