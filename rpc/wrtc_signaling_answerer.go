@@ -117,7 +117,7 @@ func (ans *webrtcSignalingAnswerer) Start() {
 			conn, err := Dial(setupCtx, ans.address, ans.logger, ans.dialOpts...)
 			timeoutCancel()
 			if err != nil {
-				ans.logger.Warnw("error connecting answer client", "error", err)
+				ans.logger.Debugw("unable to connect answer client", "error", err)
 				utils.SelectContextOrWait(ctx, answererReconnectWait)
 				continue
 			}
@@ -203,7 +203,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 			client, err = newAnswer()
 			if err != nil {
 				if isNetworkError(err) {
-					ans.logger.Warnw("error communicating with signaling server", "error", err)
+					ans.logger.Debugw("unable to communicate with signaling server, waiting a bit and trying again", "error", err)
 					utils.SelectContextOrWait(ctx, answererReconnectWait)
 				}
 				continue
@@ -233,7 +233,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 			}
 			if err != nil {
 				if isNetworkError(err) {
-					ans.logger.Warnw("error communicating with signaling server", "error", err)
+					ans.logger.Debugw("unable to communicate with signaling server", "error", err)
 					utils.SelectContextOrWait(ctx, answererReconnectWait)
 				}
 				continue
@@ -297,7 +297,7 @@ func (ans *webrtcSignalingAnswerer) Stop() {
 		if !ans.sharedConn {
 			err := ans.conn.Close()
 			if isNetworkError(err) {
-				ans.logger.Warnw("error closing signaling connection", "error", err)
+				ans.logger.Debugw("unable to close signaling connection", "error", err)
 			}
 		}
 		ans.conn = nil
