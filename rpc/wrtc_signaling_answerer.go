@@ -400,6 +400,9 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 		}
 	}()
 
+	// `NewChannel` instantiates our webrtc wrapper around DataChannels. This includes callback
+	// handlers for transitioning to the open/closed/error states. As well as backpressure when the
+	// amount of data to send gets high.
 	serverChannel := aa.server.NewChannel(pc, dc, aa.hosts)
 
 	initSent := make(chan struct{})
@@ -552,7 +555,7 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 	case <-serverChannel.Ready():
 		// Happy path
 		successful = true
-		aa.server.counters.PeersConnected.Add(1)
+		aa.server.counters.PeerConnectionSuccesses.Add(1)
 		aa.server.counters.TotalTimeConnectingMillis.Add(time.Since(connectionStartTime).Milliseconds())
 	case <-ctx.Done():
 		// Timed out or signaling server was closed.

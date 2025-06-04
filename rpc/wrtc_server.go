@@ -25,10 +25,10 @@ type webrtcServer struct {
 	services map[string]*serviceInfo
 	logger   utils.ZapCompatibleLogger
 
-	peerConnsMu      sync.Mutex
-	peerConns        map[*webrtc.PeerConnection]struct{}
-	peerConnsToClose []*webrtc.PeerConnection
-	peerConnsClosing sync.WaitGroup
+	peerConnsMu        sync.Mutex
+	peerConns          map[*webrtc.PeerConnection]struct{}
+	peerConnsToClose   []*webrtc.PeerConnection
+	peerConnsClosingWg sync.WaitGroup
 
 	workers *utils.StoppableWorkers
 
@@ -39,10 +39,11 @@ type webrtcServer struct {
 	unknownStreamDesc *grpc.StreamDesc
 
 	counters struct {
-		PeersConnected       atomic.Int64
-		PeersDisconnected    atomic.Int64
-		PeerConnectionErrors atomic.Int64
-		HeadersProcessed     atomic.Int64
+		PeersActive             atomic.Int64
+		PeerConnectionSuccesses atomic.Int64
+		PeerConnectionErrors    atomic.Int64
+		PeerConnectionCloses    atomic.Int64
+		HeadersProcessed        atomic.Int64
 
 		// TotalTimeConnectingMillis just counts successful connection attempts.
 		TotalTimeConnectingMillis atomic.Int64
@@ -51,10 +52,10 @@ type webrtcServer struct {
 
 // WebRTCGrpcStats are stats of the webrtc variety.
 type WebRTCGrpcStats struct {
-	PeersConnected            int64
-	PeersDisconnected         int64
-	PeerConnectionErrors      int64
 	PeersActive               int64
+	PeerConnectionSuccesses   int64
+	PeerConnectionErrors      int64
+	PeerConnectionCloses      int64
 	HeadersProcessed          int64
 	CallTicketsAvailable      int32
 	TotalTimeConnectingMillis int64
@@ -67,16 +68,16 @@ type WebRTCGrpcStats struct {
 // Stats returns stats.
 func (srv *webrtcServer) Stats() WebRTCGrpcStats {
 	ret := WebRTCGrpcStats{
-		PeersConnected:            srv.counters.PeersConnected.Load(),
-		PeersDisconnected:         srv.counters.PeersDisconnected.Load(),
+		PeersActive:               srv.counters.PeersActive.Load(),
+		PeerConnectionSuccesses:   srv.counters.PeerConnectionSuccesses.Load(),
 		PeerConnectionErrors:      srv.counters.PeerConnectionErrors.Load(),
+		PeerConnectionCloses:      srv.counters.PeerConnectionCloses.Load(),
 		HeadersProcessed:          srv.counters.HeadersProcessed.Load(),
 		CallTicketsAvailable:      int32(cap(srv.callTickets) - len(srv.callTickets)),
 		TotalTimeConnectingMillis: srv.counters.TotalTimeConnectingMillis.Load(),
 	}
-	ret.PeersActive = ret.PeersConnected - ret.PeersDisconnected
-	if ret.PeersConnected > 0 {
-		ret.AverageTimeConnectingMillis = float64(ret.TotalTimeConnectingMillis) / float64(ret.PeersConnected)
+	if ret.PeerConnectionSuccesses > 0 {
+		ret.AverageTimeConnectingMillis = float64(ret.TotalTimeConnectingMillis) / float64(ret.PeerConnectionSuccesses)
 	}
 
 	return ret
@@ -135,7 +136,7 @@ func (srv *webrtcServer) Stop() {
 	srv.workers.Stop()
 	// `workers` must be stopped first, followed by waiting on `peerConnsClosing`. Such that we know
 	// no more background GracefulClose goroutines will be created.
-	srv.peerConnsClosing.Wait()
+	srv.peerConnsClosingWg.Wait()
 	srv.logger.Info("handlers complete")
 	srv.logger.Info("closing lingering peer connections")
 
@@ -234,6 +235,7 @@ func (srv *webrtcServer) NewChannel(
 	serverCh := newWebRTCServerChannel(srv, peerConn, dataChannel, authAudience, srv.logger)
 	srv.peerConnsMu.Lock()
 	srv.peerConns[peerConn] = struct{}{}
+	srv.counters.PeersActive.Add(1)
 	srv.peerConnsMu.Unlock()
 	return serverCh
 }
@@ -324,13 +326,15 @@ func (srv *webrtcServer) pcCloseLoop(ctx context.Context) {
 		srv.peerConnsToClose = make([]*webrtc.PeerConnection, 0)
 		for _, pc := range cpy {
 			delete(srv.peerConns, pc)
-			srv.peerConnsClosing.Add(1)
+			srv.peerConnsClosingWg.Add(1)
+			srv.counters.PeersActive.Add(-1)
+			srv.counters.PeerConnectionCloses.Add(1)
 
 			// Dan: We spin off a goroutine such that one bugged `GracefulClose` does not inhibit
 			// others from being processed. But there's no strong conviction that it must be this
 			// way. A synchronous GracefulClose also seems acceptable.
 			go func() {
-				defer srv.peerConnsClosing.Done()
+				defer srv.peerConnsClosingWg.Done()
 				utils.UncheckedErrorFunc(pc.GracefulClose)
 			}()
 		}
