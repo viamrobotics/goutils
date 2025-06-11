@@ -11,11 +11,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pion/ice/v2"
 	"github.com/pion/interceptor"
 	"github.com/pion/sctp"
 	"github.com/pion/transport/v2"
 	"github.com/pion/transport/v2/stdnet"
+	"github.com/viamrobotics/ice/v2"
 	"github.com/viamrobotics/webrtc/v3"
 	"go.uber.org/multierr"
 	"golang.org/x/net/proxy"

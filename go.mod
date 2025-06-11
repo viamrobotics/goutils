@@ -28,7 +28,6 @@ require (
 	github.com/jacobsa/go-serial v0.0.0-20180131005756-15cf729a72d4
 	github.com/lestrrat-go/jwx v1.2.25
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/pion/ice/v2 v2.3.34
 	github.com/pion/interceptor v0.1.29
 	github.com/pion/logging v0.2.2
 	github.com/pion/sctp v1.8.33
@@ -36,7 +35,8 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/pseudomuto/protoc-gen-doc v1.3.2
 	github.com/rs/cors v1.11.1
-	github.com/viamrobotics/webrtc/v3 v3.99.10
+	github.com/viamrobotics/ice/v2 v2.3.37
+	github.com/viamrobotics/webrtc/v3 v3.99.12
 	github.com/viamrobotics/zeroconf v1.0.12
 	github.com/zitadel/oidc/v3 v3.37.0
 	go.mongodb.org/mongo-driver v1.11.6
