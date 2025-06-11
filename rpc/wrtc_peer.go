@@ -539,6 +539,7 @@ type iceCandidate struct {
 	// the time the candidate was received for remote candidates.
 	FoundAt      time.Time
 	CandType, IP string
+	Port         int
 }
 
 // Find selected candidate pair.
@@ -602,6 +603,7 @@ func getWebRTCPeerConnectionStats(peerConnection *webrtc.PeerConnection) webrtcP
 			candidateStats.Timestamp.Time(),
 			candidateType,
 			candidateStats.IP,
+			int(candidateStats.Port),
 		}
 		if local {
 			localCands = append(localCands, cand)
