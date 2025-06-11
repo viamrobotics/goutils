@@ -507,9 +507,11 @@ func TestWithStatsHandler(t *testing.T) {
 	)
 	test.That(t, err, test.ShouldBeNil)
 
-	handler.mu.Lock()
-	test.That(t, handler.serverConnections, test.ShouldBeGreaterThan, 1)
-	handler.mu.Unlock()
+	testutils.WaitForAssertion(t, func(tb testing.TB) {
+		handler.mu.Lock()
+		test.That(tb, handler.serverConnections, test.ShouldBeGreaterThan, 1)
+		handler.mu.Unlock()
+	})
 
 	test.That(t, conn.Close(), test.ShouldBeNil)
 	test.That(t, rpcServer.Stop(), test.ShouldBeNil)
