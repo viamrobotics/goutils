@@ -102,7 +102,7 @@ func newWebRTCAPI(logger utils.ZapCompatibleLogger) (*webrtc.API, error) {
 	// When an `ICEServer` is configured with a `turn:...?transport=tcp` string, we will generate
 	// "true" passive TCP local candidates. It's not clear how close to spec we are here, so it's
 	// recommended to also have a UDP turn ICEServer (simply omit `transport=tcp`). When both exist
-	// and are result in useable candidate pairs, the UDP one ought to be preferred using ICE
+	// and result in useable candidate pairs, the UDP one ought to be preferred using ICE
 	// candidate priorities.
 	settingEngine.SetUseTCPAllocationsForLocalRelayCandidates(true)
 
