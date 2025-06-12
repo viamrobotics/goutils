@@ -486,6 +486,8 @@ func (s *fakeStatsHandler) HandleConn(ctx context.Context, info stats.ConnStats)
 }
 
 func TestWithStatsHandler(t *testing.T) {
+	// This test asserts that two grpc connections are made to the server from a single `rpc.Dial`
+	// invocation. By using grpc's `StatsHandler.HandleConn` instrumentation.
 	logger := golog.NewTestLogger(t)
 
 	handler := fakeStatsHandler{}
@@ -498,6 +500,9 @@ func TestWithStatsHandler(t *testing.T) {
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, rpcServer.Start(), test.ShouldBeNil)
 
+	// This will make two grpc connections. The first is to the signaling server. Because connecting
+	// over signaling/webrtc logically fails (for some reason), `Dial` will make a fallback plain
+	// grpc connection.
 	conn, err := Dial(
 		context.Background(),
 		rpcServer.InternalAddr().String(),
@@ -507,9 +512,13 @@ func TestWithStatsHandler(t *testing.T) {
 	)
 	test.That(t, err, test.ShouldBeNil)
 
-	handler.mu.Lock()
-	test.That(t, handler.serverConnections, test.ShouldBeGreaterThan, 1)
-	handler.mu.Unlock()
+	// The stats callback is invoked when the grpc stream is opened. Which happens in a separate
+	// goroutine. So we must be willing to wait to observe the connection counter tick to two.
+	testutils.WaitForAssertion(t, func(tb testing.TB) {
+		handler.mu.Lock()
+		test.That(tb, handler.serverConnections, test.ShouldBeGreaterThan, 1)
+		handler.mu.Unlock()
+	})
 
 	test.That(t, conn.Close(), test.ShouldBeNil)
 	test.That(t, rpcServer.Stop(), test.ShouldBeNil)
