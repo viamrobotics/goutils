@@ -79,10 +79,9 @@ func extendWebRTCConfig(original *webrtc.Configuration, optional *webrtcpb.WebRT
 						uri.Scheme = "turns"
 					}
 					if options.replaceUDPWithTCP {
-						if query := uri.Query(); query.Get("transport") == "udp" {
-							query.Set("transport", "tcp")
-							uri.RawQuery = query.Encode()
-						}
+						query := uri.Query()
+						query.Set("transport", "tcp")
+						uri.RawQuery = query.Encode()
 					}
 					return uri.String(), true
 				})
