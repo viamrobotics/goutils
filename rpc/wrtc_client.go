@@ -141,7 +141,7 @@ func dialWebRTC(
 	if dOpts.webrtcOpts.Config != nil {
 		config = *dOpts.webrtcOpts.Config
 	}
-	extendedConfig := extendWebRTCConfig(&config, configResp.GetConfig(), extendWebRTCConfigOptions{})
+	extendedConfig := extendWebRTCConfig(logger, &config, configResp.GetConfig(), extendWebRTCConfigOptions{})
 	peerConn, dataChannel, err := newPeerConnectionForClient(ctx, extendedConfig, dOpts.webrtcOpts.DisableTrickleICE, logger)
 	if err != nil {
 		return nil, err

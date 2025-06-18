@@ -9,6 +9,7 @@ import (
 	"github.com/samber/lo"
 	"github.com/viamrobotics/webrtc/v3"
 
+	"go.viam.com/utils"
 	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
 )
 
@@ -52,7 +53,7 @@ type extendWebRTCConfigOptions struct {
 // running behind a SOCKS proxy that can only forward the TCP protocol.
 // `replaceTURNWithTURNS`, when true, will change the protocol from `turn` to
 // `turns` on all TURN servers.
-func extendWebRTCConfig(original *webrtc.Configuration, optional *webrtcpb.WebRTCConfig,
+func extendWebRTCConfig(logger utils.ZapCompatibleLogger, original *webrtc.Configuration, optional *webrtcpb.WebRTCConfig,
 	options extendWebRTCConfigOptions,
 ) webrtc.Configuration {
 	configCopy := *original
@@ -68,6 +69,7 @@ func extendWebRTCConfig(original *webrtc.Configuration, optional *webrtcpb.WebRT
 				urls = lo.FilterMap(urls, func(rawUrl string, _ int) (string, bool) {
 					uri, err := url.Parse(rawUrl)
 					if err != nil {
+						logger.Warnw("Failed to parse ICE url, dropping from config", "url", rawUrl)
 						return "", false
 					}
 					if options.turnsHost != "" && (uri.Scheme == "turn" || uri.Scheme == "turns") {
@@ -77,11 +79,14 @@ func extendWebRTCConfig(original *webrtc.Configuration, optional *webrtcpb.WebRT
 						// work around this.
 						host := strings.Split(uri.Opaque, ":")[0]
 						if host != options.turnsHost {
+							logger.Debugw("Found TURN/TURNS host that doesn't match requested host, dropping from config", "url", rawUrl)
 							return "", false
 						}
+						logger.Debugw("Found configured TURNS host, setting scheme to TURNS", "host", host)
 						uri.Scheme = "turns"
 					}
-					if options.replaceUDPWithTCP {
+					if options.replaceUDPWithTCP && (uri.Scheme == "stun" || uri.Scheme == "stuns") {
+						logger.Debugw("Setting protocol=tcp for STUN host", "url", rawUrl)
 						query := uri.Query()
 						query.Set("transport", "tcp")
 						uri.RawQuery = query.Encode()
@@ -101,5 +106,9 @@ func extendWebRTCConfig(original *webrtc.Configuration, optional *webrtcpb.WebRT
 		}
 		configCopy.ICEServers = iceServers
 	}
+	iceURLS := lo.Flatten(lo.Map(configCopy.ICEServers, func(s webrtc.ICEServer, _ int) []string {
+		return s.URLs
+	}))
+	logger.Infow("extended WebRTC config", "iceURLs", iceURLS)
 	return configCopy
 }

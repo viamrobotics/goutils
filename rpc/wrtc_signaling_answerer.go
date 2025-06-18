@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"github.com/samber/lo"
 	"github.com/viamrobotics/webrtc/v3"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -367,14 +366,10 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 			aa.server.counters.PeerConnectionErrors.Add(1)
 			return err
 		}
-		webrtcConfig = extendWebRTCConfig(&webrtcConfig, configResp.GetConfig(), extendWebRTCConfigOptions{
+		webrtcConfig = extendWebRTCConfig(aa.logger, &webrtcConfig, configResp.GetConfig(), extendWebRTCConfigOptions{
 			replaceUDPWithTCP: behindProxy,
 			turnsHost:         turnsHost,
 		})
-		iceURLS := lo.Flatten(lo.Map(webrtcConfig.ICEServers, func(s webrtc.ICEServer, _ int) []string {
-			return s.URLs
-		}))
-		aa.logger.Infow("extended WebRTC config", "iceURLs", iceURLS)
 	}
 
 	pc, dc, err := newPeerConnectionForServer(
