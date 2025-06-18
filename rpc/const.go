@@ -19,6 +19,6 @@ var (
 	OnlySocksProxyEnvVar = "ONLY_SOCKS_PROXY"
 
 	// TURNSDomainEnvVar is the name of an environment variable used to select
-	// at most a single TURN server and set it's protocol to TURNS.
+	// at most a single TURN server and set its protocol to TURNS.
 	TURNSDomainEnvVar = "TURNS_DOMAIN"
 )
