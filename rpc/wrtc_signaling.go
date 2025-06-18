@@ -3,8 +3,9 @@ package rpc
 import (
 	"encoding/base64"
 	"encoding/json"
-	"strings"
+	"net/url"
 
+	"github.com/samber/lo"
 	"github.com/viamrobotics/webrtc/v3"
 
 	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
@@ -36,15 +37,22 @@ func DecodeSDP(in string, sdp *webrtc.SessionDescription) error {
 	return err
 }
 
+type extendWebRTCConfigOptions struct {
+	replaceUDPWithTCP    bool
+	replaceTURNwithTURNS bool
+}
+
 // extendWebRTCConfig will take a WebRTC configuration and an extension to that
 // configuration obtained by calling `OptionalWebRTCConfig` against the
 // signaling server and append the latter's ICE servers and creds to the
 // former. This is particularly useful for adding a TURN URL to the ICE servers
-// list. `replaceUDPWithTCP`, when true, will replace URLs suffixed with "udp"
-// with the same URL suffixed with "tcp"; this is useful when running behind
-// a SOCKS proxy that can only forward the TCP protocol.
+// list. `replaceUDPWithTCP`, when true, will replace URLs where
+// "transport=udp" with the same URL with "transport=tcp"; this is useful when
+// running behind a SOCKS proxy that can only forward the TCP protocol.
+// `replaceTURNWithTURNS`, when true, will change the protocol from `turn` to
+// `turns` on all TURN servers.
 func extendWebRTCConfig(original *webrtc.Configuration, optional *webrtcpb.WebRTCConfig,
-	replaceUDPWithTCP bool,
+	options extendWebRTCConfigOptions,
 ) webrtc.Configuration {
 	configCopy := *original
 	if optional == nil {
@@ -55,16 +63,23 @@ func extendWebRTCConfig(original *webrtc.Configuration, optional *webrtcpb.WebRT
 		copy(iceServers, original.ICEServers)
 		for _, server := range optional.GetAdditionalIceServers() {
 			urls := server.GetUrls()
-			if replaceUDPWithTCP {
-				urls = nil
-				for _, url := range server.GetUrls() {
-					if strings.HasSuffix(url, "udp") {
-						newURL := url[:len(url)-len("udp")] + "tcp"
-						urls = append(urls, newURL)
-						continue
+			if options.replaceUDPWithTCP || options.replaceTURNwithTURNS {
+				urls = lo.FilterMap(urls, func(rawUrl string, _ int) (string, bool) {
+					uri, err := url.Parse(rawUrl)
+					if err != nil {
+						return "", false
 					}
-					urls = append(urls, url)
-				}
+					if options.replaceTURNwithTURNS && uri.Scheme == "turn" {
+						uri.Scheme = "turns"
+					}
+					if options.replaceUDPWithTCP {
+						if query := uri.Query(); query.Get("transport") == "udp" {
+							query.Set("transport", "tcp")
+							uri.RawQuery = query.Encode()
+						}
+					}
+					return uri.String(), true
+				})
 			}
 
 			iceServers = append(iceServers, webrtc.ICEServer{

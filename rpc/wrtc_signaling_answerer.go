@@ -334,8 +334,15 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 	// possible through extending the WebRTC config with a TURN URL (and
 	// associated username and password).
 	webrtcConfig := aa.webrtcConfig
-	if proxyAddr := os.Getenv(SocksProxyEnvVar); proxyAddr != "" {
-		aa.logger.Info("behind SOCKS proxy; extending WebRTC config with TURN URL")
+	behindProxy := os.Getenv(SocksProxyEnvVar) != ""
+	requireTURNS := os.Getenv(RequireTURNSEnvVar) != ""
+	if behindProxy || requireTURNS {
+		if behindProxy {
+			aa.logger.Info("behind SOCKS proxy; extending WebRTC config with TURN URL")
+		}
+		if requireTURNS {
+			aa.logger.Info("REQUIRE_TURNS set; extending WebRTC config with TURNS URL")
+		}
 		aa.connMu.Lock()
 		conn := aa.conn
 		aa.connMu.Unlock()
@@ -357,7 +364,10 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 			aa.server.counters.PeerConnectionErrors.Add(1)
 			return err
 		}
-		webrtcConfig = extendWebRTCConfig(&webrtcConfig, configResp.GetConfig(), true)
+		webrtcConfig = extendWebRTCConfig(&webrtcConfig, configResp.GetConfig(), extendWebRTCConfigOptions{
+			replaceUDPWithTCP:    behindProxy,
+			replaceTURNwithTURNS: requireTURNS,
+		})
 		aa.logger.Debugw("extended WebRTC config", "ICE servers", webrtcConfig.ICEServers)
 	}
 
