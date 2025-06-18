@@ -18,8 +18,7 @@ var (
 	// traffic should be done through SOCKS5.
 	OnlySocksProxyEnvVar = "ONLY_SOCKS_PROXY"
 
-	// RequireTURNSEnvVar is the name of an environment variable that indicates
-	// TURN servers should be added to the WebRTC config and connected to over
-	// TURNS.
-	RequireTURNSEnvVar = "REQUIRE_TURNS"
+	// TURNSDomainEnvVar is the name of an environment variable used to select
+	// at most a single TURN server and set it's protocol to TURNS.
+	TURNSDomainEnvVar = "TURNS_DOMAIN"
 )

@@ -335,13 +335,14 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 	// associated username and password).
 	webrtcConfig := aa.webrtcConfig
 	behindProxy := os.Getenv(SocksProxyEnvVar) != ""
-	requireTURNS := os.Getenv(RequireTURNSEnvVar) != ""
-	if behindProxy || requireTURNS {
+	turnsDomain := os.Getenv(TURNSDomainEnvVar)
+	if behindProxy || turnsDomain != "" {
 		if behindProxy {
 			aa.logger.Info("behind SOCKS proxy; extending WebRTC config with TURN URL")
 		}
-		if requireTURNS {
-			aa.logger.Info("REQUIRE_TURNS set; extending WebRTC config with TURNS URL")
+		if turnsDomain != "" {
+			aa.logger.Infow("TURNS_DOMAIN set; extending WebRTC config and limiting to single TURN domain over TURNS",
+				"turnsDomain", turnsDomain)
 		}
 		aa.connMu.Lock()
 		conn := aa.conn
@@ -365,10 +366,10 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 			return err
 		}
 		webrtcConfig = extendWebRTCConfig(&webrtcConfig, configResp.GetConfig(), extendWebRTCConfigOptions{
-			replaceUDPWithTCP:    behindProxy,
-			replaceTURNwithTURNS: requireTURNS,
+			replaceUDPWithTCP: behindProxy,
+			turnsDomain:       turnsDomain,
 		})
-		aa.logger.Debugw("extended WebRTC config", "ICE servers", webrtcConfig.ICEServers)
+		aa.logger.Infow("extended WebRTC config", "ICE servers", webrtcConfig.ICEServers)
 	}
 
 	pc, dc, err := newPeerConnectionForServer(

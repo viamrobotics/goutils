@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"net/url"
+	"strings"
 
 	"github.com/samber/lo"
 	"github.com/viamrobotics/webrtc/v3"
@@ -38,8 +39,8 @@ func DecodeSDP(in string, sdp *webrtc.SessionDescription) error {
 }
 
 type extendWebRTCConfigOptions struct {
-	replaceUDPWithTCP    bool
-	replaceTURNwithTURNS bool
+	replaceUDPWithTCP bool
+	turnsDomain       string
 }
 
 // extendWebRTCConfig will take a WebRTC configuration and an extension to that
@@ -63,13 +64,18 @@ func extendWebRTCConfig(original *webrtc.Configuration, optional *webrtcpb.WebRT
 		copy(iceServers, original.ICEServers)
 		for _, server := range optional.GetAdditionalIceServers() {
 			urls := server.GetUrls()
-			if options.replaceUDPWithTCP || options.replaceTURNwithTURNS {
+			if options.replaceUDPWithTCP || options.turnsDomain != "" {
 				urls = lo.FilterMap(urls, func(rawUrl string, _ int) (string, bool) {
 					uri, err := url.Parse(rawUrl)
 					if err != nil {
 						return "", false
 					}
-					if options.replaceTURNwithTURNS && uri.Scheme == "turn" {
+					if options.turnsDomain != "" && (uri.Scheme == "turn" || uri.Scheme == "turns") {
+						// net/url doesn't parse the turn URIs exactly right
+						host := strings.Split(uri.Opaque, ":")[0]
+						if host != options.turnsDomain {
+							return "", false
+						}
 						uri.Scheme = "turns"
 					}
 					if options.replaceUDPWithTCP {
@@ -80,6 +86,9 @@ func extendWebRTCConfig(original *webrtc.Configuration, optional *webrtcpb.WebRT
 					}
 					return uri.String(), true
 				})
+			}
+			if len(urls) == 0 {
+				continue
 			}
 
 			iceServers = append(iceServers, webrtc.ICEServer{
