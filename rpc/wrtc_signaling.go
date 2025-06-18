@@ -40,7 +40,7 @@ func DecodeSDP(in string, sdp *webrtc.SessionDescription) error {
 
 type extendWebRTCConfigOptions struct {
 	replaceUDPWithTCP bool
-	turnsDomain       string
+	turnsHost         string
 }
 
 // extendWebRTCConfig will take a WebRTC configuration and an extension to that
@@ -64,16 +64,19 @@ func extendWebRTCConfig(original *webrtc.Configuration, optional *webrtcpb.WebRT
 		copy(iceServers, original.ICEServers)
 		for _, server := range optional.GetAdditionalIceServers() {
 			urls := server.GetUrls()
-			if options.replaceUDPWithTCP || options.turnsDomain != "" {
+			if options.replaceUDPWithTCP || options.turnsHost != "" {
 				urls = lo.FilterMap(urls, func(rawUrl string, _ int) (string, bool) {
 					uri, err := url.Parse(rawUrl)
 					if err != nil {
 						return "", false
 					}
-					if options.turnsDomain != "" && (uri.Scheme == "turn" || uri.Scheme == "turns") {
-						// net/url doesn't parse the turn URIs exactly right
+					if options.turnsHost != "" && (uri.Scheme == "turn" || uri.Scheme == "turns") {
+						// The format being used is technically not a valid URL, so net/url
+						// doesn't correctly extract the host and port and instead leaves
+						// both in Opaque. Manually perform the necessary string split to
+						// work around this.
 						host := strings.Split(uri.Opaque, ":")[0]
-						if host != options.turnsDomain {
+						if host != options.turnsHost {
 							return "", false
 						}
 						uri.Scheme = "turns"

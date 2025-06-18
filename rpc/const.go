@@ -18,7 +18,7 @@ var (
 	// traffic should be done through SOCKS5.
 	OnlySocksProxyEnvVar = "ONLY_SOCKS_PROXY"
 
-	// TURNSDomainEnvVar is the name of an environment variable used to select
-	// at most a single TURN server and set its protocol to TURNS.
-	TURNSDomainEnvVar = "TURNS_DOMAIN"
+	// TURNSHostEnvVar is the name of an environment variable used to select
+	// at most a single TURN server and set it's protocol to TURNS.
+	TURNSHostEnvVar = "TURNS_HOST"
 )

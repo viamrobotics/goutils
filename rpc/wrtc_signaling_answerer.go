@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/samber/lo"
 	"github.com/viamrobotics/webrtc/v3"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -335,14 +336,15 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 	// associated username and password).
 	webrtcConfig := aa.webrtcConfig
 	behindProxy := os.Getenv(SocksProxyEnvVar) != ""
-	turnsDomain := os.Getenv(TURNSDomainEnvVar)
-	if behindProxy || turnsDomain != "" {
+	turnsHost := os.Getenv(TURNSHostEnvVar)
+	if behindProxy || turnsHost != "" {
 		if behindProxy {
 			aa.logger.Info("behind SOCKS proxy; extending WebRTC config with TURN URL")
 		}
-		if turnsDomain != "" {
-			aa.logger.Infow("TURNS_DOMAIN set; extending WebRTC config and limiting to single TURN domain over TURNS",
-				"turnsDomain", turnsDomain)
+		if turnsHost != "" {
+			aa.logger.Infow(
+				fmt.Sprintf("%s set; extending WebRTC config and limiting to single TURN host over TURNS", TURNSHostEnvVar),
+				"turnsHost", turnsHost)
 		}
 		aa.connMu.Lock()
 		conn := aa.conn
@@ -367,9 +369,12 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 		}
 		webrtcConfig = extendWebRTCConfig(&webrtcConfig, configResp.GetConfig(), extendWebRTCConfigOptions{
 			replaceUDPWithTCP: behindProxy,
-			turnsDomain:       turnsDomain,
+			turnsHost:         turnsHost,
 		})
-		aa.logger.Infow("extended WebRTC config", "ICE servers", webrtcConfig.ICEServers)
+		iceURLS := lo.Flatten(lo.Map(webrtcConfig.ICEServers, func(s webrtc.ICEServer, _ int) []string {
+			return s.URLs
+		}))
+		aa.logger.Infow("extended WebRTC config", "iceURLs", iceURLS)
 	}
 
 	pc, dc, err := newPeerConnectionForServer(
