@@ -18,9 +18,13 @@ var (
 	// traffic should be done through SOCKS5.
 	OnlySocksProxyEnvVar = "ONLY_SOCKS_PROXY"
 
-	// TURNSHostEnvVar is the name of an environment variable used to select
+	// TURNSOverrideEnvVar is the name of an environment variable used override
+	// TURN to TURNS for any configured TURN servers.
+	TURNSOverride = "TURNS_OVERRIDE"
+
+	// TURNHostEnvVar is the name of an environment variable used to select
 	// at most a single TURN server and set it's protocol to TURNS.
-	TURNSHostEnvVar = "TURNS_HOST"
+	TURNHostEnvVar = "TURN_HOST"
 
 	// TURNTCPEnvVar is the name of an environment variable used to override
 	// any configured TURN servers to use TCP instead of UDP.

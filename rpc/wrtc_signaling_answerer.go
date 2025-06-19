@@ -336,16 +336,26 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 	// associated username and password).
 	webrtcConfig := aa.webrtcConfig
 	behindProxy := os.Getenv(SocksProxyEnvVar) != ""
-	turnsHost := os.Getenv(TURNSHostEnvVar)
+	turnHost := os.Getenv(TURNHostEnvVar)
 	turnUseTCP := os.Getenv(TURNTCPEnvVar) != ""
-	turnPort, err := strconv.ParseUint(os.Getenv(TURNPortEnvVar), 10, 0)
-	if err != nil {
-		aa.logger.Warnw(
-			fmt.Sprintf("%s was set but could not be parsed; ignoring", TURNPortEnvVar),
-			TURNPortEnvVar, os.Getenv(TURNPortEnvVar))
-		turnPort = 0
+	turnsOverride := os.Getenv(TURNSOverride) != ""
+	var turnPort uint64
+	if turnPortStr := os.Getenv(TURNPortEnvVar); turnPortStr != "" {
+		turnPort, err = strconv.ParseUint(turnPortStr, 10, 0)
+		if err != nil {
+			aa.logger.Warnw(
+				fmt.Sprintf("%s was set but could not be parsed; ignoring", TURNPortEnvVar),
+				TURNPortEnvVar, os.Getenv(TURNPortEnvVar))
+			turnPort = 0
+		}
 	}
-	if behindProxy || turnsHost != "" || turnUseTCP || turnPort != 0 {
+	eWrtcOpts := extendWebRTCConfigOptions{
+		replaceUDPWithTCP: behindProxy || turnUseTCP,
+		turnHost:          turnHost,
+		turnPort:          turnPort,
+		turnsOverride:     turnsOverride,
+	}
+	if eWrtcOpts.nonZero() {
 		if behindProxy {
 			aa.logger.Info("behind SOCKS proxy; extending WebRTC config with TURN URL")
 		}
@@ -358,10 +368,13 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 				"turnPort", turnPort)
 
 		}
-		if turnsHost != "" {
+		if turnHost != "" {
 			aa.logger.Infow(
-				fmt.Sprintf("%s set; extending WebRTC config and limiting to single TURN host over TURNS", TURNSHostEnvVar),
-				"turnsHost", turnsHost)
+				fmt.Sprintf("%s set; extending WebRTC config and limiting to single TURN host", TURNHostEnvVar),
+				"turnHost", turnHost)
+		}
+		if turnsOverride {
+			aa.logger.Infof("%s set; extending WebRTC config and overriding TURN hosts to use TURNS", TURNSOverride)
 		}
 		aa.connMu.Lock()
 		conn := aa.conn
@@ -384,11 +397,7 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 			aa.server.counters.PeerConnectionErrors.Add(1)
 			return err
 		}
-		webrtcConfig = extendWebRTCConfig(aa.logger, &webrtcConfig, configResp.GetConfig(), extendWebRTCConfigOptions{
-			replaceUDPWithTCP: behindProxy || turnUseTCP,
-			turnsHost:         turnsHost,
-			turnPort:          turnPort,
-		})
+		webrtcConfig = extendWebRTCConfig(aa.logger, &webrtcConfig, configResp.GetConfig(), eWrtcOpts)
 	}
 
 	pc, dc, err := newPeerConnectionForServer(

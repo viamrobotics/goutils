@@ -42,8 +42,13 @@ func DecodeSDP(in string, sdp *webrtc.SessionDescription) error {
 
 type extendWebRTCConfigOptions struct {
 	replaceUDPWithTCP bool
-	turnsHost         string
+	turnHost          string
 	turnPort          uint64
+	turnsOverride     bool
+}
+
+func (o extendWebRTCConfigOptions) nonZero() bool {
+	return o.replaceUDPWithTCP || o.turnHost != "" || o.turnPort != 0 || o.turnsOverride
 }
 
 // extendWebRTCConfig will take a WebRTC configuration and an extension to that
@@ -69,7 +74,7 @@ func extendWebRTCConfig(logger utils.ZapCompatibleLogger, original *webrtc.Confi
 		copy(iceServers, original.ICEServers)
 		for _, server := range optional.GetAdditionalIceServers() {
 			urls := server.GetUrls()
-			if options.replaceUDPWithTCP || options.turnsHost != "" {
+			if options.nonZero() {
 				urls = lo.FilterMap(urls, func(rawUrl string, _ int) (string, bool) {
 					uri, err := url.Parse(rawUrl)
 					if err != nil {
@@ -82,12 +87,16 @@ func extendWebRTCConfig(logger utils.ZapCompatibleLogger, original *webrtc.Confi
 						// both in Opaque. Manually perform the necessary string split to
 						// work around this.
 						host := strings.Split(uri.Opaque, ":")[0]
-						if options.turnsHost != "" {
-							if host != options.turnsHost {
+						if options.turnHost != "" {
+							if host != options.turnHost {
 								logger.Debugw("Found TURN/TURNS host that doesn't match requested host, dropping from config", "url", rawUrl)
 								return "", false
 							}
-							logger.Debugw("Found configured TURNS host, setting scheme to TURNS", "host", host)
+							logger.Debugw("Found configured TURNS host",
+								"url", rawUrl, TURNHostEnvVar, options.turnHost)
+						}
+						if options.turnsOverride && uri.Scheme == "turn" {
+							logger.Debugw("Overriding TURN to TURNS", "url", rawUrl)
 							uri.Scheme = "turns"
 						}
 						if options.turnPort != 0 {
