@@ -366,7 +366,6 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 			aa.logger.Info(
 				fmt.Sprintf("%s set; extending WebRTC config and overriding port on all TURN/TURNS hosts", TURNPortEnvVar),
 				"turnPort", turnPort)
-
 		}
 		if turnHost != "" {
 			aa.logger.Infow(
