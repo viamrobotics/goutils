@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -336,9 +337,26 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 	webrtcConfig := aa.webrtcConfig
 	behindProxy := os.Getenv(SocksProxyEnvVar) != ""
 	turnsHost := os.Getenv(TURNSHostEnvVar)
-	if behindProxy || turnsHost != "" {
+	turnUseTCP := os.Getenv(TURNTCPEnvVar) != ""
+	turnPort, err := strconv.ParseUint(os.Getenv(TURNPortEnvVar), 10, 0)
+	if err != nil {
+		aa.logger.Warnw(
+			fmt.Sprintf("%s was set but could not be parsed; ignoring", TURNPortEnvVar),
+			TURNPortEnvVar, os.Getenv(TURNPortEnvVar))
+		turnPort = 0
+	}
+	if behindProxy || turnsHost != "" || turnUseTCP || turnPort != 0 {
 		if behindProxy {
 			aa.logger.Info("behind SOCKS proxy; extending WebRTC config with TURN URL")
+		}
+		if turnUseTCP {
+			aa.logger.Infof("%s set; extending WebRTC config and setting transport=tcp on all TURN/TURNS hosts", TURNTCPEnvVar)
+		}
+		if turnPort != 0 {
+			aa.logger.Info(
+				fmt.Sprintf("%s set; extending WebRTC config and overriding port on all TURN/TURNS hosts", TURNPortEnvVar),
+				"turnPort", turnPort)
+
 		}
 		if turnsHost != "" {
 			aa.logger.Infow(
@@ -367,8 +385,9 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 			return err
 		}
 		webrtcConfig = extendWebRTCConfig(aa.logger, &webrtcConfig, configResp.GetConfig(), extendWebRTCConfigOptions{
-			replaceUDPWithTCP: behindProxy,
+			replaceUDPWithTCP: behindProxy || turnUseTCP,
 			turnsHost:         turnsHost,
+			turnPort:          turnPort,
 		})
 	}
 

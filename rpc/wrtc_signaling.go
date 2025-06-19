@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/samber/lo"
@@ -42,6 +43,7 @@ func DecodeSDP(in string, sdp *webrtc.SessionDescription) error {
 type extendWebRTCConfigOptions struct {
 	replaceUDPWithTCP bool
 	turnsHost         string
+	turnPort          uint64
 }
 
 // extendWebRTCConfig will take a WebRTC configuration and an extension to that
@@ -72,21 +74,27 @@ func extendWebRTCConfig(logger utils.ZapCompatibleLogger, original *webrtc.Confi
 						logger.Warnw("Failed to parse ICE url, dropping from config", "url", rawUrl)
 						return "", false
 					}
-					if options.turnsHost != "" && (uri.Scheme == "turn" || uri.Scheme == "turns") {
+					if (options.turnsHost != "" && (uri.Scheme == "turn" || uri.Scheme == "turns")) || options.turnPort != 0 {
 						// The format being used is technically not a valid URL, so net/url
 						// doesn't correctly extract the host and port and instead leaves
 						// both in Opaque. Manually perform the necessary string split to
 						// work around this.
 						host := strings.Split(uri.Opaque, ":")[0]
-						if host != options.turnsHost {
-							logger.Debugw("Found TURN/TURNS host that doesn't match requested host, dropping from config", "url", rawUrl)
-							return "", false
+						if options.turnsHost != "" {
+							if host != options.turnsHost {
+								logger.Debugw("Found TURN/TURNS host that doesn't match requested host, dropping from config", "url", rawUrl)
+								return "", false
+							}
+							logger.Debugw("Found configured TURNS host, setting scheme to TURNS", "host", host)
+							uri.Scheme = "turns"
 						}
-						logger.Debugw("Found configured TURNS host, setting scheme to TURNS", "host", host)
-						uri.Scheme = "turns"
+						if options.turnPort != 0 {
+							logger.Debugw("Setting port for TURN host", "port", options.turnPort)
+							uri.Opaque = host + ":" + strconv.FormatUint(options.turnPort, 10)
+						}
 					}
-					if options.replaceUDPWithTCP && (uri.Scheme == "stun" || uri.Scheme == "stuns") {
-						logger.Debugw("Setting protocol=tcp for STUN host", "url", rawUrl)
+					if options.replaceUDPWithTCP && (uri.Scheme == "turn" || uri.Scheme == "turns") {
+						logger.Debugw("Setting protocol=tcp for TURN host", "url", rawUrl)
 						query := uri.Query()
 						query.Set("transport", "tcp")
 						uri.RawQuery = query.Encode()

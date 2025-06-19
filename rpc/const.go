@@ -21,4 +21,12 @@ var (
 	// TURNSHostEnvVar is the name of an environment variable used to select
 	// at most a single TURN server and set it's protocol to TURNS.
 	TURNSHostEnvVar = "TURNS_HOST"
+
+	// TURNTCPEnvVar is the name of an environment variable used to override
+	// any configured TURN servers to use TCP instead of UDP.
+	TURNTCPEnvVar = "TURN_TCP"
+
+	// TURNPort is the name of an environment variable used to override the port
+	// for any configured TURN servers.
+	TURNPortEnvVar = "TURN_PORT"
 )
