@@ -53,8 +53,10 @@ type extendWebRTCConfigOptions struct {
 // list. `replaceUDPWithTCP`, when true, will replace URLs where
 // "transport=udp" with the same URL with "transport=tcp"; this is useful when
 // running behind a SOCKS proxy that can only forward the TCP protocol.
-// `replaceTURNWithTURNS`, when true, will change the protocol from `turn` to
-// `turns` on all TURN servers.
+// `turnsHost`, when set, will filter TURN/TURNS ICE URLs to include at most
+// one URL whose host matches the provided value, and set that URL's scheme to
+// "stuns". `turnsPort`, if set, will override the port on any configured TURN
+// URLs to the provided value.
 func extendWebRTCConfig(logger utils.ZapCompatibleLogger, original *webrtc.Configuration, optional *webrtcpb.WebRTCConfig,
 	options extendWebRTCConfigOptions,
 ) webrtc.Configuration {
@@ -74,7 +76,7 @@ func extendWebRTCConfig(logger utils.ZapCompatibleLogger, original *webrtc.Confi
 						logger.Warnw("Failed to parse ICE url, dropping from config", "url", rawUrl)
 						return "", false
 					}
-					if (options.turnsHost != "" && (uri.Scheme == "turn" || uri.Scheme == "turns")) || options.turnPort != 0 {
+					if uri.Scheme == "turn" || uri.Scheme == "turns" {
 						// The format being used is technically not a valid URL, so net/url
 						// doesn't correctly extract the host and port and instead leaves
 						// both in Opaque. Manually perform the necessary string split to
@@ -92,12 +94,12 @@ func extendWebRTCConfig(logger utils.ZapCompatibleLogger, original *webrtc.Confi
 							logger.Debugw("Setting port for TURN host", "port", options.turnPort)
 							uri.Opaque = host + ":" + strconv.FormatUint(options.turnPort, 10)
 						}
-					}
-					if options.replaceUDPWithTCP && (uri.Scheme == "turn" || uri.Scheme == "turns") {
-						logger.Debugw("Setting protocol=tcp for TURN host", "url", rawUrl)
-						query := uri.Query()
-						query.Set("transport", "tcp")
-						uri.RawQuery = query.Encode()
+						if options.replaceUDPWithTCP {
+							logger.Debugw("Setting protocol=tcp for TURN host", "url", rawUrl)
+							query := uri.Query()
+							query.Set("transport", "tcp")
+							uri.RawQuery = query.Encode()
+						}
 					}
 					return uri.String(), true
 				})
