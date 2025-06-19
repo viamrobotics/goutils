@@ -20,7 +20,7 @@ var (
 
 	// TURNSOverrideEnvVar is the name of an environment variable used override
 	// TURN to TURNS for any configured TURN servers.
-	TURNSOverride = "TURNS_OVERRIDE"
+	TURNSOverrideEnvVar = "TURNS_OVERRIDE"
 
 	// TURNHostEnvVar is the name of an environment variable used to select
 	// at most a single TURN server and set it's protocol to TURNS.
@@ -30,7 +30,7 @@ var (
 	// any configured TURN servers to use TCP instead of UDP.
 	TURNTCPEnvVar = "TURN_TCP"
 
-	// TURNPort is the name of an environment variable used to override the port
+	// TURNPortEnvVar is the name of an environment variable used to override the port
 	// for any configured TURN servers.
 	TURNPortEnvVar = "TURN_PORT"
 )

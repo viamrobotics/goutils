@@ -338,7 +338,7 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 	behindProxy := os.Getenv(SocksProxyEnvVar) != ""
 	turnHost := os.Getenv(TURNHostEnvVar)
 	turnUseTCP := os.Getenv(TURNTCPEnvVar) != ""
-	turnsOverride := os.Getenv(TURNSOverride) != ""
+	turnsOverride := os.Getenv(TURNSOverrideEnvVar) != ""
 	var turnPort uint64
 	if turnPortStr := os.Getenv(TURNPortEnvVar); turnPortStr != "" {
 		turnPort, err = strconv.ParseUint(turnPortStr, 10, 0)
@@ -374,7 +374,7 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 				"turnHost", turnHost)
 		}
 		if turnsOverride {
-			aa.logger.Infof("%s set; extending WebRTC config and overriding TURN hosts to use TURNS", TURNSOverride)
+			aa.logger.Infof("%s set; extending WebRTC config and overriding TURN hosts to use TURNS", TURNSOverrideEnvVar)
 		}
 		aa.connMu.Lock()
 		conn := aa.conn
