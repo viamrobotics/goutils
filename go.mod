@@ -35,6 +35,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/pseudomuto/protoc-gen-doc v1.3.2
 	github.com/rs/cors v1.11.1
+	github.com/samber/lo v1.51.0
 	github.com/viamrobotics/ice/v2 v2.3.37
 	github.com/viamrobotics/webrtc/v3 v3.99.13
 	github.com/viamrobotics/zeroconf v1.0.12
