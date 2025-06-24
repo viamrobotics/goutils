@@ -337,18 +337,18 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 	// associated username and password).
 	webrtcConfig := aa.webrtcConfig
 	behindProxy := os.Getenv(SocksProxyEnvVar) != ""
-	var turnUri *stun.URI
-	turnUriStr := os.Getenv(TURNURIEnvVar)
-	if turnUriStr != "" {
-		turnUri, err = stun.ParseURI(turnUriStr)
+	var turnURI *stun.URI
+	turnURIStr := os.Getenv(TURNURIEnvVar)
+	if turnURIStr != "" {
+		turnURI, err = stun.ParseURI(turnURIStr)
 		if err != nil {
-			aa.logger.Warnw("Environment variable set for TURN URI but failed to parse and will be ignored", TURNURIEnvVar, turnUriStr)
-			turnUri = nil
+			aa.logger.Warnw("Environment variable set for TURN URI but failed to parse and will be ignored", TURNURIEnvVar, turnURIStr)
+			turnURI = nil
 		}
 	}
 	eWrtcOpts := extendWebRTCConfigOptions{
 		replaceUDPWithTCP: behindProxy,
-		turnURI:           turnUri,
+		turnURI:           turnURI,
 	}
 	if eWrtcOpts.nonZero() {
 		if turnPortStr := os.Getenv(TURNPortEnvVar); turnPortStr != "" {
@@ -374,12 +374,16 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 					"var", TURNTransportEnvVar, "value", turnTransportStr)
 			case stun.ProtoTypeTCP:
 				eWrtcOpts.replaceUDPWithTCP = true
+			case stun.ProtoTypeUDP:
+				// noop, have a case here so the exhaustive linter is happy for now but
+				// will alert us if for some reason another protocol is added in the
+				// future.
 			}
 		}
 		if behindProxy {
 			aa.logger.Info("behind SOCKS proxy; extending WebRTC config with TURN URL")
 		}
-		if turnUri != nil {
+		if turnURI != nil {
 			aa.logger.Infof("%s set, extending WebRTC config and limiting to single TURN URL", TURNURIEnvVar)
 		}
 		aa.connMu.Lock()

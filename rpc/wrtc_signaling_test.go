@@ -350,19 +350,19 @@ func TestExtendWebRTCConfig(t *testing.T) {
 			},
 		}
 		t.Run("no match", func(t *testing.T) {
-			filterUri, err := stun.ParseURI("turn:turn2.example.com:3478")
+			filterURI, err := stun.ParseURI("turn:turn2.example.com:3478")
 			test.That(t, err, test.ShouldBeNil)
 			extended := extendWebRTCConfig(logger, cfg, extraMulti, extendWebRTCConfigOptions{
-				turnURI: filterUri,
+				turnURI: filterURI,
 			})
 			test.That(t, extended.ICEServers, test.ShouldHaveLength, 1)
 			test.That(t, extended.ICEServers[0].URLs[0], test.ShouldNotStartWith, "turn")
 		})
 		t.Run("match", func(t *testing.T) {
-			filterUri, err := stun.ParseURI(extraMulti.AdditionalIceServers[1].Urls[0])
+			filterURI, err := stun.ParseURI(extraMulti.AdditionalIceServers[1].Urls[0])
 			test.That(t, err, test.ShouldBeNil)
 			extended := extendWebRTCConfig(logger, cfg, extraMulti, extendWebRTCConfigOptions{
-				turnURI: filterUri,
+				turnURI: filterURI,
 			})
 			test.That(t, extended.ICEServers, test.ShouldHaveLength, 2)
 			turnServers := lo.Filter(extended.ICEServers, func(server webrtc.ICEServer, _ int) bool {
