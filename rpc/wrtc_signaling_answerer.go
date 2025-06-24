@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/pion/stun"
 	"github.com/pkg/errors"
 	"github.com/viamrobotics/webrtc/v3"
 	"google.golang.org/grpc/codes"
@@ -336,44 +336,25 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 	// associated username and password).
 	webrtcConfig := aa.webrtcConfig
 	behindProxy := os.Getenv(SocksProxyEnvVar) != ""
-	turnHost := os.Getenv(TURNHostEnvVar)
-	turnUseTCP := os.Getenv(TURNTCPEnvVar) != ""
-	turnsOverride := os.Getenv(TURNSOverrideEnvVar) != ""
-	var turnPort uint64
-	if turnPortStr := os.Getenv(TURNPortEnvVar); turnPortStr != "" {
-		turnPort, err = strconv.ParseUint(turnPortStr, 10, 0)
+	var turnUri *stun.URI
+	turnUriStr := os.Getenv(TURNURIEnvVar)
+	if turnUriStr != "" {
+		turnUri, err = stun.ParseURI(turnUriStr)
 		if err != nil {
-			aa.logger.Warnw(
-				fmt.Sprintf("%s was set but could not be parsed; ignoring", TURNPortEnvVar),
-				TURNPortEnvVar, os.Getenv(TURNPortEnvVar))
-			turnPort = 0
+			aa.logger.Warnw("Environment variable set for TURN URI but failed to parse and will be ignored", TURNURIEnvVar, turnUriStr)
+			turnUri = nil
 		}
 	}
 	eWrtcOpts := extendWebRTCConfigOptions{
-		replaceUDPWithTCP: behindProxy || turnUseTCP,
-		turnHost:          turnHost,
-		turnPort:          turnPort,
-		turnsOverride:     turnsOverride,
+		replaceUDPWithTCP: behindProxy,
+		turnUri:           turnUri,
 	}
 	if eWrtcOpts.nonZero() {
 		if behindProxy {
 			aa.logger.Info("behind SOCKS proxy; extending WebRTC config with TURN URL")
 		}
-		if turnUseTCP {
-			aa.logger.Infof("%s set; extending WebRTC config and setting transport=tcp on all TURN/TURNS hosts", TURNTCPEnvVar)
-		}
-		if turnPort != 0 {
-			aa.logger.Info(
-				fmt.Sprintf("%s set; extending WebRTC config and overriding port on all TURN/TURNS hosts", TURNPortEnvVar),
-				"turnPort", turnPort)
-		}
-		if turnHost != "" {
-			aa.logger.Infow(
-				fmt.Sprintf("%s set; extending WebRTC config and limiting to single TURN host", TURNHostEnvVar),
-				"turnHost", turnHost)
-		}
-		if turnsOverride {
-			aa.logger.Infof("%s set; extending WebRTC config and overriding TURN hosts to use TURNS", TURNSOverrideEnvVar)
+		if turnUri != nil {
+			aa.logger.Infof("%s set, extending WebRTC config and limiting to single TURN URL", TURNURIEnvVar)
 		}
 		aa.connMu.Lock()
 		conn := aa.conn
