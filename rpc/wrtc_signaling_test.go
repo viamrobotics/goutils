@@ -379,28 +379,28 @@ func TestExtendWebRTCConfig(t *testing.T) {
 	table := []struct {
 		name            string
 		opts            extendWebRTCConfigOptions
-		expectedTurnUri string
+		expectedTurnURI string
 	}{
 		{
 			name: "replace turn with turns",
 			opts: extendWebRTCConfigOptions{
 				turnScheme: stun.SchemeTypeTURNS,
 			},
-			expectedTurnUri: "turns:turn.example.com:3478?transport=udp",
+			expectedTurnURI: "turns:turn.example.com:3478?transport=udp",
 		},
 		{
 			name: "replace udp with tcp",
 			opts: extendWebRTCConfigOptions{
 				replaceUDPWithTCP: true,
 			},
-			expectedTurnUri: "turn:turn.example.com:3478?transport=tcp",
+			expectedTurnURI: "turn:turn.example.com:3478?transport=tcp",
 		},
 		{
 			name: "replace port",
 			opts: extendWebRTCConfigOptions{
 				turnPort: 443,
 			},
-			expectedTurnUri: "turn:turn.example.com:443?transport=udp",
+			expectedTurnURI: "turn:turn.example.com:443?transport=udp",
 		},
 	}
 	for _, row := range table {
@@ -428,7 +428,7 @@ func TestExtendWebRTCConfig(t *testing.T) {
 			})
 			test.That(t, turnServers, test.ShouldHaveLength, 1)
 			test.That(t, turnServers[0].URLs, test.ShouldHaveLength, 1)
-			test.That(t, turnServers[0].URLs[0], test.ShouldEqual, row.expectedTurnUri)
+			test.That(t, turnServers[0].URLs[0], test.ShouldEqual, row.expectedTurnURI)
 			test.That(t, turnServers[0].Username, test.ShouldEqual, "foo")
 			test.That(t, turnServers[0].Credential, test.ShouldEqual, "bar")
 			stunServers := lo.Filter(extended.ICEServers, func(server webrtc.ICEServer, _ int) bool {
