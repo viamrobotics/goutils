@@ -359,7 +359,7 @@ func TestExtendWebRTCConfig(t *testing.T) {
 			test.That(t, extended.ICEServers[0].URLs[0], test.ShouldNotStartWith, "turn")
 		})
 		t.Run("match", func(t *testing.T) {
-			filterURI, err := stun.ParseURI(extraMulti.AdditionalIceServers[1].Urls[0])
+			filterURI, err := stun.ParseURI(extraMulti.GetAdditionalIceServers()[1].GetUrls()[0])
 			test.That(t, err, test.ShouldBeNil)
 			extended := extendWebRTCConfig(logger, cfg, extraMulti, extendWebRTCConfigOptions{
 				turnURI: filterURI,
