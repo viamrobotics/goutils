@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -347,9 +348,34 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 	}
 	eWrtcOpts := extendWebRTCConfigOptions{
 		replaceUDPWithTCP: behindProxy,
-		turnUri:           turnUri,
+		turnURI:           turnUri,
 	}
 	if eWrtcOpts.nonZero() {
+		if turnPortStr := os.Getenv(TURNPortEnvVar); turnPortStr != "" {
+			eWrtcOpts.turnPort, err = strconv.Atoi(turnPortStr)
+			if err != nil || eWrtcOpts.turnPort <= 0 {
+				eWrtcOpts.turnPort = 0
+				aa.logger.Warnw("Environment variable set to invalid value and will be ignored",
+					"var", TURNPortEnvVar, "value", turnPortStr)
+			}
+		}
+		if turnSchemeStr := os.Getenv(TURNSchemeEnvVar); turnSchemeStr != "" {
+			eWrtcOpts.turnScheme = stun.NewSchemeType(turnSchemeStr)
+			if eWrtcOpts.turnScheme == stun.SchemeTypeUnknown {
+				aa.logger.Warnw("Environment variable set to invalid value and will be ignored",
+					"var", TURNSchemeEnvVar, "value", turnSchemeStr)
+			}
+		}
+		if turnTransportStr := os.Getenv(TURNTransportEnvVar); turnTransportStr != "" {
+			turnTransport := stun.NewProtoType(turnTransportStr)
+			switch turnTransport {
+			case stun.ProtoTypeUnknown:
+				aa.logger.Warnw("Environment variable set to invalid value and will be ignored",
+					"var", TURNTransportEnvVar, "value", turnTransportStr)
+			case stun.ProtoTypeTCP:
+				eWrtcOpts.replaceUDPWithTCP = true
+			}
+		}
 		if behindProxy {
 			aa.logger.Info("behind SOCKS proxy; extending WebRTC config with TURN URL")
 		}

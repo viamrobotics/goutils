@@ -21,4 +21,18 @@ var (
 	// TURNURIEnvVar is the name of an environment variable used to select at
 	// most one TURN server.
 	TURNURIEnvVar = "TURN_URI"
+
+	// TURNPortEnvVar is the name of an environment variable used to override the
+	// port used for TURN if a TURN server is configured.
+	TURNPortEnvVar = "TURN_PORT"
+
+	// TURNSchemeEnvVar is the name of an environment variable used to override
+	// the scheme used for TURN if a TURN server is configured. Must be either
+	// turn or turns.
+	TURNSchemeEnvVar = "TURN_SCHEME"
+
+	// TURNTransportEnvVar is the name of an environment variable used to
+	// override the transport used for TURN if a TURN server is configured. Must
+	// be either tcp or udp.
+	TURNTransportEnvVar = "TURN_TRANSPORT"
 )

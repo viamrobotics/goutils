@@ -330,7 +330,7 @@ func TestExtendWebRTCConfig(t *testing.T) {
 				},
 			},
 		}
-		extra := &webrtcpb.WebRTCConfig{
+		extraMulti := &webrtcpb.WebRTCConfig{
 			AdditionalIceServers: []*webrtcpb.ICEServer{
 				{
 					Urls:       []string{"turn:turn.example.com:3478"},
@@ -352,17 +352,17 @@ func TestExtendWebRTCConfig(t *testing.T) {
 		t.Run("no match", func(t *testing.T) {
 			filterUri, err := stun.ParseURI("turn:turn2.example.com:3478")
 			test.That(t, err, test.ShouldBeNil)
-			extended := extendWebRTCConfig(logger, cfg, extra, extendWebRTCConfigOptions{
-				turnUri: filterUri,
+			extended := extendWebRTCConfig(logger, cfg, extraMulti, extendWebRTCConfigOptions{
+				turnURI: filterUri,
 			})
 			test.That(t, extended.ICEServers, test.ShouldHaveLength, 1)
 			test.That(t, extended.ICEServers[0].URLs[0], test.ShouldNotStartWith, "turn")
 		})
 		t.Run("match", func(t *testing.T) {
-			filterUri, err := stun.ParseURI(extra.AdditionalIceServers[1].Urls[0])
+			filterUri, err := stun.ParseURI(extraMulti.AdditionalIceServers[1].Urls[0])
 			test.That(t, err, test.ShouldBeNil)
-			extended := extendWebRTCConfig(logger, cfg, extra, extendWebRTCConfigOptions{
-				turnUri: filterUri,
+			extended := extendWebRTCConfig(logger, cfg, extraMulti, extendWebRTCConfigOptions{
+				turnURI: filterUri,
 			})
 			test.That(t, extended.ICEServers, test.ShouldHaveLength, 2)
 			turnServers := lo.Filter(extended.ICEServers, func(server webrtc.ICEServer, _ int) bool {
@@ -375,42 +375,70 @@ func TestExtendWebRTCConfig(t *testing.T) {
 			test.That(t, turnServers[0].Credential, test.ShouldEqual, "baz")
 		})
 	})
-	t.Run("replace udp with tcp", func(t *testing.T) {
-		cfg := &webrtc.Configuration{
-			ICEServers: []webrtc.ICEServer{
-				{
-					URLs: []string{"stun:stun.example.com:3478"},
-				},
+
+	table := []struct {
+		name            string
+		opts            extendWebRTCConfigOptions
+		expectedTurnUri string
+	}{
+		{
+			name: "replace turn with turns",
+			opts: extendWebRTCConfigOptions{
+				turnScheme: stun.SchemeTypeTURNS,
 			},
-		}
-		extra := &webrtcpb.WebRTCConfig{
-			AdditionalIceServers: []*webrtcpb.ICEServer{
-				{
-					Urls:       []string{"turn:turn.example.com:3478?transport=udp"},
-					Username:   "foo",
-					Credential: "bar",
-				},
+			expectedTurnUri: "turns:turn.example.com:3478?transport=udp",
+		},
+		{
+			name: "replace udp with tcp",
+			opts: extendWebRTCConfigOptions{
+				replaceUDPWithTCP: true,
 			},
-		}
-		extended := extendWebRTCConfig(logger, cfg, extra, extendWebRTCConfigOptions{
-			replaceUDPWithTCP: true,
+			expectedTurnUri: "turn:turn.example.com:3478?transport=tcp",
+		},
+		{
+			name: "replace port",
+			opts: extendWebRTCConfigOptions{
+				turnPort: 443,
+			},
+			expectedTurnUri: "turn:turn.example.com:443?transport=udp",
+		},
+	}
+	for _, row := range table {
+		t.Run(row.name, func(t *testing.T) {
+			cfg := &webrtc.Configuration{
+				ICEServers: []webrtc.ICEServer{
+					{
+						URLs: []string{"stun:stun.example.com:3478"},
+					},
+				},
+			}
+			extra := &webrtcpb.WebRTCConfig{
+				AdditionalIceServers: []*webrtcpb.ICEServer{
+					{
+						Urls:       []string{"turn:turn.example.com:3478?transport=udp"},
+						Username:   "foo",
+						Credential: "bar",
+					},
+				},
+			}
+			extended := extendWebRTCConfig(logger, cfg, extra, row.opts)
+			test.That(t, extended.ICEServers, test.ShouldHaveLength, 2)
+			turnServers := lo.Filter(extended.ICEServers, func(server webrtc.ICEServer, _ int) bool {
+				return strings.HasPrefix(server.URLs[0], "turn")
+			})
+			test.That(t, turnServers, test.ShouldHaveLength, 1)
+			test.That(t, turnServers[0].URLs, test.ShouldHaveLength, 1)
+			test.That(t, turnServers[0].URLs[0], test.ShouldEqual, row.expectedTurnUri)
+			test.That(t, turnServers[0].Username, test.ShouldEqual, "foo")
+			test.That(t, turnServers[0].Credential, test.ShouldEqual, "bar")
+			stunServers := lo.Filter(extended.ICEServers, func(server webrtc.ICEServer, _ int) bool {
+				return strings.HasPrefix(server.URLs[0], "stun")
+			})
+			test.That(t, stunServers, test.ShouldHaveLength, 1)
+			test.That(t, stunServers[0].URLs, test.ShouldHaveLength, 1)
+			test.That(t, stunServers[0].URLs[0], test.ShouldEqual, "stun:stun.example.com:3478")
+			test.That(t, stunServers[0].Username, test.ShouldEqual, "")
+			test.That(t, stunServers[0].Credential, test.ShouldEqual, nil)
 		})
-		test.That(t, extended.ICEServers, test.ShouldHaveLength, 2)
-		turnServers := lo.Filter(extended.ICEServers, func(server webrtc.ICEServer, _ int) bool {
-			return strings.HasPrefix(server.URLs[0], "turn")
-		})
-		test.That(t, turnServers, test.ShouldHaveLength, 1)
-		test.That(t, turnServers[0].URLs, test.ShouldHaveLength, 1)
-		test.That(t, turnServers[0].URLs[0], test.ShouldEqual, "turn:turn.example.com:3478?transport=tcp")
-		test.That(t, turnServers[0].Username, test.ShouldEqual, "foo")
-		test.That(t, turnServers[0].Credential, test.ShouldEqual, "bar")
-		stunServers := lo.Filter(extended.ICEServers, func(server webrtc.ICEServer, _ int) bool {
-			return strings.HasPrefix(server.URLs[0], "stun")
-		})
-		test.That(t, stunServers, test.ShouldHaveLength, 1)
-		test.That(t, stunServers[0].URLs, test.ShouldHaveLength, 1)
-		test.That(t, stunServers[0].URLs[0], test.ShouldEqual, "stun:stun.example.com:3478")
-		test.That(t, stunServers[0].Username, test.ShouldEqual, "")
-		test.That(t, stunServers[0].Credential, test.ShouldEqual, nil)
-	})
+	}
 }
