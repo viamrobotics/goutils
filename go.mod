@@ -37,8 +37,8 @@ require (
 	github.com/pseudomuto/protoc-gen-doc v1.3.2
 	github.com/rs/cors v1.11.1
 	github.com/samber/lo v1.51.0
-	github.com/viamrobotics/ice/v2 v2.3.37
-	github.com/viamrobotics/webrtc/v3 v3.99.13
+	github.com/viamrobotics/ice/v2 v2.3.39
+	github.com/viamrobotics/webrtc/v3 v3.99.15
 	github.com/viamrobotics/zeroconf v1.0.12
 	github.com/zitadel/oidc/v3 v3.37.0
 	go.mongodb.org/mongo-driver v1.11.6

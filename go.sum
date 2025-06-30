@@ -1207,10 +1207,10 @@ github.com/valyala/quicktemplate v1.6.3/go.mod h1:fwPzK2fHuYEODzJ9pkw0ipCPNHZ2tD
 github.com/valyala/tcplisten v0.0.0-20161114210144-ceec8f93295a/go.mod h1:v3UYOV9WzVtRmSR+PDvWpU/qWl4Wa5LApYYX4ZtKbio=
 github.com/vbatts/tar-split v0.11.5 h1:3bHCTIheBm1qFTcgh9oPu+nNBtX+XJIupG/vacinCts=
 github.com/vbatts/tar-split v0.11.5/go.mod h1:yZbwRsSeGjusneWgA781EKej9HF8vme8okylkAeNKLk=
-github.com/viamrobotics/ice/v2 v2.3.37 h1:6vkWVOlDoc7WFUre98c3Xj64r2y8eGZbR/d1wra5YRI=
-github.com/viamrobotics/ice/v2 v2.3.37/go.mod h1:MFqB81U1pliDKaXJx2hGHvYKg1PepyEYwEY10828Ve0=
-github.com/viamrobotics/webrtc/v3 v3.99.13 h1:BnHaQY7bsss9iaCgPsGH3Frs4OaY41Riz2ocIa8asSg=
-github.com/viamrobotics/webrtc/v3 v3.99.13/go.mod h1:ppSvgs7raAcfkYpXdS6t7lI/6OSg+mgvaPOXU5uq3r8=
+github.com/viamrobotics/ice/v2 v2.3.39 h1:vMELsoU73h9v6PCNJeq6qPa+fCMJxkpXu6nOSD1DJPc=
+github.com/viamrobotics/ice/v2 v2.3.39/go.mod h1:MFqB81U1pliDKaXJx2hGHvYKg1PepyEYwEY10828Ve0=
+github.com/viamrobotics/webrtc/v3 v3.99.15 h1:I9qBa2mMnfVqR5wUP6EOBC9lIpnAXtX0+JqAyM6xVRk=
+github.com/viamrobotics/webrtc/v3 v3.99.15/go.mod h1:w1LmHsQFaq7vqLh06ybQ5kmYXo8myQq+3Pj073RL0f0=
 github.com/viamrobotics/zeroconf v1.0.12 h1:y0AaDnBmELvtKKzJlnRBivZ4KWYXWXyGv73SY16sXUw=
 github.com/viamrobotics/zeroconf v1.0.12/go.mod h1:6qNiiR//WWB7n2c6syvOl0rAGltrcyNW4KonC6OBkPM=
 github.com/wlynxg/anet v0.0.3 h1:PvR53psxFXstc12jelG6f1Lv4MWqE0tI76/hHGjh9rg=
