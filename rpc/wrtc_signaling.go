@@ -3,10 +3,9 @@ package rpc
 import (
 	"encoding/base64"
 	"encoding/json"
-	"net/url"
-	"strconv"
-	"strings"
+	"slices"
 
+	"github.com/pion/stun"
 	"github.com/samber/lo"
 	"github.com/viamrobotics/webrtc/v3"
 
@@ -42,13 +41,15 @@ func DecodeSDP(in string, sdp *webrtc.SessionDescription) error {
 
 type extendWebRTCConfigOptions struct {
 	replaceUDPWithTCP bool
-	turnHost          string
-	turnPort          uint64
-	turnsOverride     bool
+	turnURI           *stun.URI
+	turnPort          int
+	turnScheme        stun.SchemeType
 }
 
+var validTurnSchemes = []stun.SchemeType{stun.SchemeTypeTURN, stun.SchemeTypeTURNS}
+
 func (o extendWebRTCConfigOptions) nonZero() bool {
-	return o.replaceUDPWithTCP || o.turnHost != "" || o.turnPort != 0 || o.turnsOverride
+	return o.replaceUDPWithTCP || o.turnURI != nil || o.turnPort > 0 || slices.Contains(validTurnSchemes, o.turnScheme)
 }
 
 // extendWebRTCConfig will take a WebRTC configuration and an extension to that
@@ -76,38 +77,31 @@ func extendWebRTCConfig(logger utils.ZapCompatibleLogger, original *webrtc.Confi
 			urls := server.GetUrls()
 			if options.nonZero() {
 				urls = lo.FilterMap(urls, func(rawUrl string, _ int) (string, bool) {
-					uri, err := url.Parse(rawUrl)
+					uri, err := stun.ParseURI(rawUrl)
 					if err != nil {
 						logger.Warnw("Failed to parse ICE url, dropping from config", "url", rawUrl)
 						return "", false
 					}
-					if uri.Scheme == "turn" || uri.Scheme == "turns" {
-						// The format being used is technically not a valid URL, so net/url
-						// doesn't correctly extract the host and port and instead leaves
-						// both in Opaque. Manually perform the necessary string split to
-						// work around this.
-						host := strings.Split(uri.Opaque, ":")[0]
-						if options.turnHost != "" {
-							if host != options.turnHost {
-								logger.Debugw("Found TURN/TURNS host that doesn't match requested host, dropping from config", "url", rawUrl)
+					if slices.Contains(validTurnSchemes, uri.Scheme) {
+						if options.turnURI != nil {
+							if *options.turnURI != *uri {
+								logger.Debugw("Found TURN/TURNS URI that doesn't match requested URI, dropping from config", "url", rawUrl)
 								return "", false
 							}
-							logger.Debugw("Found configured TURNS host",
-								"url", rawUrl, TURNHostEnvVar, options.turnHost)
+							logger.Debugw("Found configured TURN URI",
+								"url", rawUrl, TURNURIEnvVar, options.turnURI.String())
 						}
-						if options.turnsOverride && uri.Scheme == "turn" {
-							logger.Debugw("Overriding TURN to TURNS", "url", rawUrl)
-							uri.Scheme = "turns"
+						if slices.Contains(validTurnSchemes, options.turnScheme) {
+							logger.Debugw("Setting scheme for TURN host", "url", rawUrl, "scheme", options.turnScheme)
+							uri.Scheme = options.turnScheme
 						}
-						if options.turnPort != 0 {
-							logger.Debugw("Setting port for TURN host", "port", options.turnPort)
-							uri.Opaque = host + ":" + strconv.FormatUint(options.turnPort, 10)
+						if options.turnPort > 0 {
+							logger.Debugw("Setting port for TURN host", "url", rawUrl, "port", options.turnPort)
+							uri.Port = options.turnPort
 						}
 						if options.replaceUDPWithTCP {
 							logger.Debugw("Setting protocol=tcp for TURN host", "url", rawUrl)
-							query := uri.Query()
-							query.Set("transport", "tcp")
-							uri.RawQuery = query.Encode()
+							uri.Proto = stun.ProtoTypeTCP
 						}
 					}
 					return uri.String(), true

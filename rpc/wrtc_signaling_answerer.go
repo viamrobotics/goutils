@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pion/stun"
 	"github.com/pkg/errors"
 	"github.com/viamrobotics/webrtc/v3"
 	"google.golang.org/grpc/codes"
@@ -336,44 +337,54 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 	// associated username and password).
 	webrtcConfig := aa.webrtcConfig
 	behindProxy := os.Getenv(SocksProxyEnvVar) != ""
-	turnHost := os.Getenv(TURNHostEnvVar)
-	turnUseTCP := os.Getenv(TURNTCPEnvVar) != ""
-	turnsOverride := os.Getenv(TURNSOverrideEnvVar) != ""
-	var turnPort uint64
-	if turnPortStr := os.Getenv(TURNPortEnvVar); turnPortStr != "" {
-		turnPort, err = strconv.ParseUint(turnPortStr, 10, 0)
+	var turnURI *stun.URI
+	turnURIStr := os.Getenv(TURNURIEnvVar)
+	if turnURIStr != "" {
+		turnURI, err = stun.ParseURI(turnURIStr)
 		if err != nil {
-			aa.logger.Warnw(
-				fmt.Sprintf("%s was set but could not be parsed; ignoring", TURNPortEnvVar),
-				TURNPortEnvVar, os.Getenv(TURNPortEnvVar))
-			turnPort = 0
+			aa.logger.Warnw("Environment variable set for TURN URI but failed to parse and will be ignored", TURNURIEnvVar, turnURIStr)
+			turnURI = nil
 		}
 	}
 	eWrtcOpts := extendWebRTCConfigOptions{
-		replaceUDPWithTCP: behindProxy || turnUseTCP,
-		turnHost:          turnHost,
-		turnPort:          turnPort,
-		turnsOverride:     turnsOverride,
+		replaceUDPWithTCP: behindProxy,
+		turnURI:           turnURI,
 	}
 	if eWrtcOpts.nonZero() {
+		if turnPortStr := os.Getenv(TURNPortEnvVar); turnPortStr != "" {
+			eWrtcOpts.turnPort, err = strconv.Atoi(turnPortStr)
+			if err != nil || eWrtcOpts.turnPort <= 0 {
+				eWrtcOpts.turnPort = 0
+				aa.logger.Warnw("Environment variable set to invalid value and will be ignored",
+					"var", TURNPortEnvVar, "value", turnPortStr)
+			}
+		}
+		if turnSchemeStr := os.Getenv(TURNSchemeEnvVar); turnSchemeStr != "" {
+			eWrtcOpts.turnScheme = stun.NewSchemeType(turnSchemeStr)
+			if eWrtcOpts.turnScheme == stun.SchemeTypeUnknown {
+				aa.logger.Warnw("Environment variable set to invalid value and will be ignored",
+					"var", TURNSchemeEnvVar, "value", turnSchemeStr)
+			}
+		}
+		if turnTransportStr := os.Getenv(TURNTransportEnvVar); turnTransportStr != "" {
+			turnTransport := stun.NewProtoType(turnTransportStr)
+			switch turnTransport {
+			case stun.ProtoTypeUnknown:
+				aa.logger.Warnw("Environment variable set to invalid value and will be ignored",
+					"var", TURNTransportEnvVar, "value", turnTransportStr)
+			case stun.ProtoTypeTCP:
+				eWrtcOpts.replaceUDPWithTCP = true
+			case stun.ProtoTypeUDP:
+				// noop, have a case here so the exhaustive linter is happy for now but
+				// will alert us if for some reason another protocol is added in the
+				// future.
+			}
+		}
 		if behindProxy {
 			aa.logger.Info("behind SOCKS proxy; extending WebRTC config with TURN URL")
 		}
-		if turnUseTCP {
-			aa.logger.Infof("%s set; extending WebRTC config and setting transport=tcp on all TURN/TURNS hosts", TURNTCPEnvVar)
-		}
-		if turnPort != 0 {
-			aa.logger.Info(
-				fmt.Sprintf("%s set; extending WebRTC config and overriding port on all TURN/TURNS hosts", TURNPortEnvVar),
-				"turnPort", turnPort)
-		}
-		if turnHost != "" {
-			aa.logger.Infow(
-				fmt.Sprintf("%s set; extending WebRTC config and limiting to single TURN host", TURNHostEnvVar),
-				"turnHost", turnHost)
-		}
-		if turnsOverride {
-			aa.logger.Infof("%s set; extending WebRTC config and overriding TURN hosts to use TURNS", TURNSOverrideEnvVar)
+		if turnURI != nil {
+			aa.logger.Infof("%s set, extending WebRTC config and limiting to single TURN URL", TURNURIEnvVar)
 		}
 		aa.connMu.Lock()
 		conn := aa.conn

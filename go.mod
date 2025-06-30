@@ -31,6 +31,7 @@ require (
 	github.com/pion/interceptor v0.1.29
 	github.com/pion/logging v0.2.2
 	github.com/pion/sctp v1.8.33
+	github.com/pion/stun v0.6.1
 	github.com/pion/transport/v2 v2.2.10
 	github.com/pkg/errors v0.9.1
 	github.com/pseudomuto/protoc-gen-doc v1.3.2
@@ -257,7 +258,6 @@ require (
 	github.com/pion/rtp v1.8.7 // indirect
 	github.com/pion/sdp/v3 v3.0.9 // indirect
 	github.com/pion/srtp/v2 v2.0.20 // indirect
-	github.com/pion/stun v0.6.1 // indirect
 	github.com/pion/turn/v2 v2.1.6 // indirect
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c // indirect
 	github.com/pkg/profile v1.7.0 // indirect
