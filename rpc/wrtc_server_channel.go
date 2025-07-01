@@ -101,20 +101,20 @@ func (ch *webrtcServerChannel) onChannelMessage(msg webrtc.DataChannelMessage) {
 	}
 
 	id := stream.GetId()
-	logger := utils.AddFieldsToLogger(ch.webrtcBaseChannel.logger, "id", id)
 
 	ch.mu.Lock()
 	serverStream, ok := ch.streams[id]
 	if !ok {
 		if len(ch.streams) == WebRTCMaxStreamCount {
-			logger.Error(errWebRTCMaxStreams)
+			ch.webrtcBaseChannel.logger.Error(errWebRTCMaxStreams)
 			ch.mu.Unlock()
 			return
 		}
+
 		// peek headers for timeout
 		headers, ok := req.GetType().(*webrtcpb.Request_Headers)
 		if !ok || headers.Headers == nil {
-			logger.Debugf("expected headers as first message but got %T, discard request", req.GetType())
+			ch.webrtcBaseChannel.logger.Debugf("expected headers as first message but got %T, discard request", req.GetType())
 			ch.mu.Unlock()
 			return
 		}
@@ -133,7 +133,7 @@ func (ch *webrtcServerChannel) onChannelMessage(msg webrtc.DataChannelMessage) {
 		// implies that auth should be allowed here, which is not 100% true.
 		// TODO(RSDK-890): use the correct entity (sub), not the audience (hosts)
 		handlerCtx = ContextWithAuthEntity(handlerCtx, EntityInfo{Entity: ch.authAudience})
-
+		logger := utils.AddFieldsToLogger(ch.webrtcBaseChannel.logger, "id", id)
 		serverStream = newWebRTCServerStream(handlerCtx, cancelCtx, headers.Headers.GetMethod(), ch, stream, ch.removeStreamByID, logger)
 		ch.streams[id] = serverStream
 	}
