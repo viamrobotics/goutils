@@ -244,13 +244,14 @@ func (s *webrtcServerStream) onRequest(request *webrtcpb.Request) {
 }
 
 func (s *webrtcServerStream) processHeaders(headers *webrtcpb.RequestHeaders) {
-	s.logger = utils.AddFieldsToLogger(s.logger, "method", headers.GetMethod())
+	method := headers.GetMethod()
+	s.logger = utils.AddFieldsToLogger(s.logger, "method", method)
 	s.logger.Debug("incoming grpc request")
 
-	handlerFunc, ok := s.ch.server.handler(headers.GetMethod())
+	handlerFunc, ok := s.ch.server.handler(method)
 	if !ok {
 		if s.ch.server.unknownStreamDesc != nil {
-			handlerFunc = s.ch.server.streamHandler(s.ch.server, headers.GetMethod(), *s.ch.server.unknownStreamDesc)
+			handlerFunc = s.ch.server.streamHandler(s.ch.server, method, *s.ch.server.unknownStreamDesc)
 		} else {
 			s.closeWithSendError(status.Error(codes.Unimplemented, codes.Unimplemented.String()))
 			return
@@ -263,7 +264,9 @@ func (s *webrtcServerStream) processHeaders(headers *webrtcpb.RequestHeaders) {
 	select {
 	case s.ch.server.callTickets <- struct{}{}:
 	default:
-		s.closeWithSendError(status.Error(codes.ResourceExhausted, "too many in-flight requests"))
+		errMsg := fmt.Sprintf("Limit of %d gRPC operations already in-progress reached; rejecting incoming request for %v",
+			DefaultWebRTCMaxGRPCCalls, method)
+		s.closeWithSendError(status.Error(codes.ResourceExhausted, errMsg))
 		return
 	}
 

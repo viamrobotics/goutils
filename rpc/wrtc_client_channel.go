@@ -2,7 +2,7 @@ package rpc
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"path"
 	"sync"
 	"sync/atomic"
@@ -20,9 +20,13 @@ import (
 )
 
 var (
-	// WebRTCMaxStreamCount is the max number of streams a channel can have.
+	// WebRTCMaxStreamCount is the max number of streams a channel can have. Exceeding this
+	// limit means that there are too many concurrent gRPC interactions over a single
+	// underlying WebRTC connection.
 	WebRTCMaxStreamCount = 256
-	errWebRTCMaxStreams  = errors.New("stream limit hit")
+	errWebRTCMaxStreams  = fmt.Errorf("limit of %d WebRTC stream count reached; "+
+		"there are too many concurrent gRPC interactions over this connection",
+		WebRTCMaxStreamCount)
 )
 
 // A webrtcClientChannel reflects the client end of a gRPC connection serviced over
