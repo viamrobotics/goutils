@@ -49,7 +49,7 @@ require (
 	go.uber.org/zap v1.27.0
 	go.viam.com/test v1.2.4
 	goji.io v2.0.2+incompatible
-	golang.org/x/net v0.37.0
+	golang.org/x/net v0.38.0
 	golang.org/x/oauth2 v0.28.0
 	golang.org/x/tools v0.24.0
 	google.golang.org/api v0.196.0
