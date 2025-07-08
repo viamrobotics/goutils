@@ -29,6 +29,15 @@ func ContextualMainQuit[L ILogger](main func(ctx context.Context, args []string,
 
 func contextualMain[L ILogger](main func(ctx context.Context, args []string, logger L) error, quitSignal bool, logger L) {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	// RSDK-11244: SIGPIPE errors happen when a program writes to a pipe that has no readers. This
+	// can, for example, happen when:
+	// - Piping a program (e.g: viam-server) to `tee` and hitting Ctrl-C.
+	// - Writing a gRPC request over a unix socket to a program that has crashed.
+	//
+	// We want to ignore SIGPIPE errors such that, in the SIGINT case, clean shutdown can proceed.
+	// `signal.Notify` does not block sending events to a channel. Hence never consuming items from
+	// the created channel.
+	signal.Notify(make(chan os.Signal), syscall.SIGPIPE)
 	if quitSignal {
 		quitC := make(chan os.Signal, 1)
 		signal.Notify(quitC, syscall.SIGQUIT)
