@@ -35,9 +35,7 @@ func contextualMain[L ILogger](main func(ctx context.Context, args []string, log
 	// - Writing a gRPC request over a unix socket to a program that has crashed.
 	//
 	// We want to ignore SIGPIPE errors such that, in the SIGINT case, clean shutdown can proceed.
-	// `signal.Notify` does not block sending events to a channel. Hence never consuming items from
-	// the created channel.
-	signal.Notify(make(chan os.Signal), syscall.SIGPIPE)
+	signal.Ignore(syscall.SIGPIPE)
 	if quitSignal {
 		quitC := make(chan os.Signal, 1)
 		signal.Notify(quitC, syscall.SIGQUIT)
