@@ -585,7 +585,7 @@ func TestManagedProcessKillGroup(t *testing.T) {
 		// this script writes a string to the specified file every 100ms
 		// stop after 10000 iterations (1000s or ~16m), so processes don't stay around forever if kill doesn't work
 		script := `
-		for i in $(seq 0 10000);
+		while [ $(( ( i += 1 ) <= 10000 )) -ne 0 ]; 
 		do echo hello >> '%s'
 		sleep 0.1
 		done
