@@ -634,6 +634,9 @@ func TestManagedProcessKillGroup(t *testing.T) {
 		test.That(t, file2SizeAfterKill, test.ShouldBeGreaterThan, file2SizeBeforeStart)
 		test.That(t, file3SizeAfterKill, test.ShouldBeGreaterThan, file3SizeBeforeStart)
 
+		// wait longer than the 0.1s sleep in the child process
+		time.Sleep(1 * time.Second)
+
 		// since KillGroup does not wait, we might have to check file size a few times as the kill
 		// might take a little to propagate. We want to make sure that the file size stops increasing.
 		testutils.WaitForAssertionWithSleep(t, 300*time.Millisecond, 50, func(tb testing.TB) {
