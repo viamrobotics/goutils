@@ -16,7 +16,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"testing"
 	"time"
 
@@ -653,14 +652,6 @@ func TestManagedProcessKillGroup(t *testing.T) {
 			file2SizeAfterKill = tempSize1
 			file3SizeAfterKill = tempSize1
 		})
-
-		// in CI, we have to send another signal to make sure the cmd.Wait() in
-		// the manage goroutine actually returns.
-		// We do not care about the error if it is expected.
-		// maybe related to https://github.com/golang/go/issues/18874
-		if err := proc.(*managedProcess).cmd.Process.Signal(syscall.SIGTERM); err != nil {
-			test.That(t, errors.Is(err, os.ErrProcessDone), test.ShouldBeFalse)
-		}
 
 		// wait on the managingCh to close
 		<-proc.(*managedProcess).managingCh
