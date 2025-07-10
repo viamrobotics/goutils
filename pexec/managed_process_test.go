@@ -584,8 +584,9 @@ func TestManagedProcessKillGroup(t *testing.T) {
 		watcher3, tempFile3 := testutils.WatchedFile(t)
 
 		// this script writes a string to the specified file every 100ms
+		// stop after 10000 iterations (1000s or ~16m), so processes don't stay around forever if kill doesn't work
 		script := `
-		while true
+		for i in $(seq 0 10000);
 		do echo hello >> '%s'
 		sleep 0.1
 		done
