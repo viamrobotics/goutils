@@ -258,20 +258,8 @@ func (s *webrtcServerStream) processHeaders(headers *webrtcpb.RequestHeaders) {
 	}
 
 	s.ch.server.counters.HeadersProcessed.Add(1)
-
-	// take a ticket
-	select {
-	case s.ch.server.callTickets <- struct{}{}:
-	default:
-		s.closeWithSendError(status.Error(codes.ResourceExhausted, "too many in-flight requests"))
-		return
-	}
-
 	s.headersReceived = true
 	s.ch.server.workers.Add(func(ctx context.Context) {
-		defer func() {
-			<-s.ch.server.callTickets // return a ticket
-		}()
 		// we're not checking/logging the error here because it is handled
 		// by [rpc.grpcUnaryServerInterceptor] and [rpc.grpcStreamServerInterceptor].
 		//nolint:errcheck,gosec
