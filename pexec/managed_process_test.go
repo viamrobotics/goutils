@@ -372,12 +372,7 @@ func TestManagedProcessStop(t *testing.T) {
 
 		test.That(t, proc.Status(), test.ShouldBeNil)
 		err := proc.Stop()
-		if runtime.GOOS == "windows" {
-			test.That(t, err, test.ShouldBeNil)
-		} else {
-			test.That(t, err, test.ShouldNotBeNil)
-			test.That(t, err.Error(), test.ShouldContainSubstring, "exit status 1")
-		}
+		test.That(t, err, test.ShouldBeNil)
 		test.That(t, proc.Status(), test.ShouldNotBeNil)
 
 		proc = NewManagedProcess(ProcessConfig{
@@ -428,8 +423,7 @@ func TestManagedProcessStop(t *testing.T) {
 		<-watcher.Events
 		test.That(t, proc.Status(), test.ShouldBeNil)
 		err := proc.Stop()
-		test.That(t, err, test.ShouldNotBeNil)
-		test.That(t, err.Error(), test.ShouldContainSubstring, "exit status 115")
+		test.That(t, err, test.ShouldBeNil)
 		test.That(t, proc.Status(), test.ShouldNotBeNil)
 
 		for _, signal := range knownSignals {
@@ -442,8 +436,7 @@ func TestManagedProcessStop(t *testing.T) {
 				test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
 				<-watcher.Events
 				err = proc.Stop()
-				test.That(t, err, test.ShouldNotBeNil)
-				test.That(t, err.Error(), test.ShouldContainSubstring, fmt.Sprintf("exit status %d", signal+100))
+				test.That(t, err, test.ShouldBeNil)
 			})
 		}
 	})

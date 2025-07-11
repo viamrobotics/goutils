@@ -112,11 +112,3 @@ func (p *managedProcess) forceKillGroup() error {
 	p.logger.Infof("force killing entire process tree %d", p.cmd.Process.Pid)
 	return exec.Command("taskkill", "/t", "/f", "/pid", pidStr).Start()
 }
-
-func isWaitErrUnknown(err string, forceKilled bool) bool {
-	if !forceKilled {
-		return false
-	}
-	// when we force kill, it's very easy to get 1.
-	return err == "exit status 1"
-}
