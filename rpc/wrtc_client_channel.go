@@ -2,7 +2,6 @@ package rpc
 
 import (
 	"context"
-	"errors"
 	"path"
 	"sync"
 	"sync/atomic"
@@ -17,12 +16,6 @@ import (
 
 	"go.viam.com/utils"
 	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
-)
-
-var (
-	// WebRTCMaxStreamCount is the max number of streams a channel can have.
-	WebRTCMaxStreamCount = 256
-	errWebRTCMaxStreams  = errors.New("stream limit hit")
 )
 
 // A webrtcClientChannel reflects the client end of a gRPC connection serviced over
@@ -270,9 +263,6 @@ func (ch *webrtcClientChannel) newStream(
 	defer ch.mu.Unlock()
 	activeStream, ok := ch.streams[id]
 	if !ok {
-		if len(ch.streams) == WebRTCMaxStreamCount {
-			return nil, errWebRTCMaxStreams
-		}
 		clientStream, err := newWebRTCClientStream(
 			ctx,
 			ch,

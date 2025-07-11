@@ -15,10 +15,6 @@ import (
 	"go.viam.com/utils"
 )
 
-// DefaultWebRTCMaxGRPCCalls is the maximum number of concurrent gRPC calls to allow
-// for a server.
-var DefaultWebRTCMaxGRPCCalls = 256
-
 // A webrtcServer translates gRPC frames over WebRTC data channels into gRPC calls.
 type webrtcServer struct {
 	handlers map[string]handlerFunc
@@ -31,8 +27,6 @@ type webrtcServer struct {
 	peerConnsClosingWg sync.WaitGroup
 
 	workers *utils.StoppableWorkers
-
-	callTickets chan struct{}
 
 	unaryInt          grpc.UnaryServerInterceptor
 	streamInt         grpc.StreamServerInterceptor
@@ -73,7 +67,6 @@ func (srv *webrtcServer) Stats() WebRTCGrpcStats {
 		PeerConnectionErrors:      srv.counters.PeerConnectionErrors.Load(),
 		PeerConnectionCloses:      srv.counters.PeerConnectionCloses.Load(),
 		HeadersProcessed:          srv.counters.HeadersProcessed.Load(),
-		CallTicketsAvailable:      int32(cap(srv.callTickets) - len(srv.callTickets)),
 		TotalTimeConnectingMillis: srv.counters.TotalTimeConnectingMillis.Load(),
 	}
 	if ret.PeerConnectionSuccesses > 0 {
@@ -118,7 +111,6 @@ func newWebRTCServerWithInterceptorsAndUnknownStreamHandler(
 		services:          map[string]*serviceInfo{},
 		logger:            logger,
 		peerConns:         map[*webrtc.PeerConnection]struct{}{},
-		callTickets:       make(chan struct{}, DefaultWebRTCMaxGRPCCalls),
 		unaryInt:          unaryInt,
 		streamInt:         streamInt,
 		unknownStreamDesc: unknownStreamDesc,
