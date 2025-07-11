@@ -35,8 +35,8 @@ type ManagedProcess interface {
 	// Start starts the process. The given context is only used for one shot processes.
 	Start(ctx context.Context) error
 
-	// Stop signals and waits for the process to stop. An error is returned if
-	// there's any system level issue stopping the process.
+	// Stop signals and waits for the process to stop. An error is returned if the process may still
+	// be running.
 	Stop() error
 
 	// KillGroup will attempt to kill the process group and not wait for completion. Only use this if
@@ -472,36 +472,17 @@ func (p *managedProcess) Stop() error {
 		return nil
 	}
 
-	forceKilled, err := p.kill()
+	_, err := p.kill()
 	if err != nil {
 		return err
 	}
 	<-p.managingCh
 
-	if p.lastWaitErr == nil && p.cmd.ProcessState.Success() {
-		return nil
-	}
-
 	if p.lastWaitErr != nil {
-		var unknownStatus bool
-		var errno syscall.Errno
-		if errors.As(p.lastWaitErr, &errno) {
-			// We lost the race to wait before the signal was caught. We're
-			// not going to be able to report any information here about the
-			// process stopping, unfortunately.
-			if errno == syscall.ECHILD {
-				unknownStatus = true
-			}
-		}
-
-		unknownStatus = unknownStatus || isWaitErrUnknown(p.lastWaitErr.Error(), forceKilled)
-		if unknownStatus {
-			p.logger.Debug("unable to check exit status")
-			return nil
-		}
-		return p.lastWaitErr
+		p.logger.Warnw("Stopped module did not exit cleanly", "err", p.lastWaitErr)
 	}
-	return errors.Errorf("non-successful exit code: %d", p.cmd.ProcessState.ExitCode())
+
+	return nil
 }
 
 // KillGroup kills the process group.

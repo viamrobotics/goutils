@@ -135,13 +135,3 @@ func (p *managedProcess) forceKillGroup() error {
 	//nolint:gosec
 	return exec.Command("kill", "-9", pgidStr).Start()
 }
-
-func isWaitErrUnknown(err string, forceKilled bool) bool {
-	// This can easily happen if the process does not handle interrupts gracefully
-	// and it won't provide us any exit code info.
-	switch err {
-	case "signal: interrupt", "signal: terminated", "signal: killed":
-		return true
-	}
-	return false
-}
