@@ -16,7 +16,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"testing"
 	"time"
 
@@ -577,8 +576,9 @@ func TestManagedProcessKillGroup(t *testing.T) {
 		watcher3, tempFile3 := testutils.WatchedFile(t)
 
 		// this script writes a string to the specified file every 100ms
+		// stop after 10000 iterations (1000s or ~16m), so processes don't stay around forever if kill doesn't work
 		script := `
-		while true
+		while [ $(( ( i += 1 ) <= 10000 )) -ne 0 ]; 
 		do echo hello >> '%s'
 		sleep 0.1
 		done
@@ -627,6 +627,9 @@ func TestManagedProcessKillGroup(t *testing.T) {
 		test.That(t, file2SizeAfterKill, test.ShouldBeGreaterThan, file2SizeBeforeStart)
 		test.That(t, file3SizeAfterKill, test.ShouldBeGreaterThan, file3SizeBeforeStart)
 
+		// wait longer than the 0.1s sleep in the child process
+		time.Sleep(1 * time.Second)
+
 		// since KillGroup does not wait, we might have to check file size a few times as the kill
 		// might take a little to propagate. We want to make sure that the file size stops increasing.
 		testutils.WaitForAssertionWithSleep(t, 300*time.Millisecond, 50, func(tb testing.TB) {
@@ -642,14 +645,6 @@ func TestManagedProcessKillGroup(t *testing.T) {
 			file2SizeAfterKill = tempSize1
 			file3SizeAfterKill = tempSize1
 		})
-
-		// in CI, we have to send another signal to make sure the cmd.Wait() in
-		// the manage goroutine actually returns.
-		// We do not care about the error if it is expected.
-		// maybe related to https://github.com/golang/go/issues/18874
-		if err := proc.(*managedProcess).cmd.Process.Signal(syscall.SIGTERM); err != nil {
-			test.That(t, errors.Is(err, os.ErrProcessDone), test.ShouldBeFalse)
-		}
 
 		// wait on the managingCh to close
 		<-proc.(*managedProcess).managingCh
