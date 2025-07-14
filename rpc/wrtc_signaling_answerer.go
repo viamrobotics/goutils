@@ -159,7 +159,7 @@ func getDeadline(ctx context.Context, logger utils.ZapCompatibleLogger, initStag
 		asTime := deadline.AsTime()
 		earliestDeadline := time.Now().Add(5 * time.Second)
 		if asTime.Before(earliestDeadline) {
-			logger.Warnw("updating deadline to be ahead of system clock", "received", asTime.String(), "adjusted", earliestDeadline.String())
+			logger.Debugw("updating deadline to be ahead of system clock", "received", asTime.String(), "adjusted", earliestDeadline.String())
 			asTime = earliestDeadline
 		}
 		return context.WithDeadline(ctx, asTime)
