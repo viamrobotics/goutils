@@ -326,7 +326,7 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 			aa.logger.Warnw("Connection establishment failed",
 				"connection start time", connectionStartTime.String(),
 				"deadline", deadline.String(),
-				"error", err,
+				"error", err.Error(),
 			)
 		}
 	}()
@@ -449,7 +449,7 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 				"deadline", deadline.String(),
 			}
 			if err != nil {
-				logFields = append(logFields, "error", err)
+				logFields = append(logFields, "error", err.Error())
 			}
 			aa.logger.Warnw("Connection establishment failed", logFields...)
 
