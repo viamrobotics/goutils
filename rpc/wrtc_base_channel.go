@@ -86,9 +86,14 @@ func newBaseChannel(
 				return
 			}
 
-			// only log if state change is unexpected, e.g. not closed
+			// only log at Info if state change is unexpected, e.g. not closed
 			if connectionState != webrtc.ICEConnectionStateClosed {
 				logger.Infow("connection state changed",
+					"conn_id", currConnID,
+					"conn_state", connectionState.String(),
+				)
+			} else {
+				logger.Debugw("connection state changed",
 					"conn_id", currConnID,
 					"conn_state", connectionState.String(),
 				)
