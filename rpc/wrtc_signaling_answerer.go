@@ -264,21 +264,10 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 			aa.offerSDP = initStage.Init.GetSdp()
 
 			answerCtx, answerCtxCancel := getDeadline(ctx, ans.logger, initStage)
-
-			deadline, _ := answerCtx.Deadline() // there will always be a deadline
-			connectionStartTime := time.Now()
 			if err = aa.connect(answerCtx); err != nil {
+				// We received an error while trying to connect to a caller/peer, but don't need to log
+				// since any pertinent info is logged inside connect().
 				answerCtxCancel()
-				// We received an error while trying to connect to a caller/peer.
-				ans.logger.Warnw(
-					"error connecting to peer",
-					"error",
-					err,
-					"connection start time",
-					connectionStartTime.String(),
-					"deadline",
-					deadline.String(),
-				)
 				utils.SelectContextOrWait(ctx, answererReconnectWait)
 			}
 			answerCtxCancel()
@@ -328,6 +317,19 @@ type answerAttempt struct {
 // is then used as the server end of a gRPC connection.
 func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 	connectionStartTime := time.Now()
+	deadline, _ := ctx.Deadline() // there will always be a deadline
+
+	// install an error handler while PeerConnection is nil
+	var pc *webrtc.PeerConnection
+	defer func() {
+		if err != nil && pc == nil {
+			aa.logger.Warnw("Connection establishment failed",
+				"connection start time", connectionStartTime.String(),
+				"deadline", deadline.String(),
+				"error", err,
+			)
+		}
+	}()
 
 	// If SOCKS proxy is indicated by environment, extend WebRTC config with an
 	// `OptionalWebRTCConfig` call to the signaling server. The usage of a SOCKS
@@ -435,14 +437,21 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 			connInfo := getWebRTCPeerConnectionStats(pc)
 			iceConnectionState := pc.ICEConnectionState()
 			iceGatheringState := pc.ICEGatheringState()
-			aa.logger.Warnw("Connection establishment failed",
+
+			logFields := []any{
 				"conn_id", connInfo.ID,
 				"ice_connection_state", iceConnectionState,
 				"ice_gathering_state", iceGatheringState,
 				"conn_local_candidates", connInfo.LocalCandidates,
 				"conn_remote_candidates", connInfo.RemoteCandidates,
 				"candidate_pair", candPairStr,
-			)
+				"connection start time", connectionStartTime.String(),
+				"deadline", deadline.String(),
+			}
+			if err != nil {
+				logFields = append(logFields, "error", err)
+			}
+			aa.logger.Warnw("Connection establishment failed", logFields...)
 
 			// Close unhealthy connection.
 			utils.UncheckedError(pc.GracefulClose())
