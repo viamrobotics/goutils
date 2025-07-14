@@ -86,10 +86,18 @@ func newBaseChannel(
 				return
 			}
 
-			logger.Infow("connection state changed",
-				"conn_id", currConnID,
-				"conn_state", connectionState.String(),
-			)
+			// only log at Info if state change is unexpected, e.g. not closed
+			if connectionState != webrtc.ICEConnectionStateClosed {
+				logger.Infow("connection state changed",
+					"conn_id", currConnID,
+					"conn_state", connectionState.String(),
+				)
+			} else {
+				logger.Debugw("connection state changed",
+					"conn_id", currConnID,
+					"conn_state", connectionState.String(),
+				)
+			}
 
 			// We will close+wait on all of the goutils channel related resources. This does not
 			// call any cleanup methods on the webrtc.PeerConnection object. The Client/Server must
