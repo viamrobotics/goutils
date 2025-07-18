@@ -191,6 +191,7 @@ func dialWebRTC(
 		}
 	}()
 
+	//nolint:govet
 	exchangeCtx, exchangeCancel := context.WithCancelCause(signalCtx)
 
 	// bool representing whether initial sdp exchange has occurred
@@ -220,6 +221,7 @@ func dialWebRTC(
 	if !dOpts.webrtcOpts.DisableTrickleICE {
 		offer, err := peerConn.CreateOffer(nil)
 		if err != nil {
+			//nolint:govet
 			return nil, err
 		}
 
