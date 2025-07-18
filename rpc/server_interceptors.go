@@ -4,8 +4,11 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"path"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	grpc_logging "github.com/grpc-ecosystem/go-grpc-middleware/logging"
@@ -23,12 +26,12 @@ func UnaryServerTracingInterceptor() grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		if remoteSpanContext, err := remoteSpanContextFromContext(ctx); err == nil {
 			var span *trace.Span
-			println("remote span", remoteSpanContext.IsSampled(), remoteSpanContext.TraceID.String())
+			println("tracing: remote span", remoteSpanContext.IsSampled(), remoteSpanContext.TraceID.String())
 			ctx, span = trace.StartSpanWithRemoteParent(ctx, "server_root", remoteSpanContext)
-			println("local span", span.SpanContext().IsSampled())
+			println("tracing: local span", span.SpanContext().IsSampled())
 			defer span.End()
 		} else {
-			println("err getting remote span", err.Error())
+			println("tracing: err getting remote span", err.Error())
 		}
 
 		resp, err := handler(ctx, req)
@@ -94,6 +97,7 @@ func remoteSpanContextFromContext(ctx context.Context) (trace.SpanContext, error
 	// Extract trace-id
 	traceIDMetadata := md.Get("trace-id")
 	if len(traceIDMetadata) == 0 {
+		println("tracing: metadata keys in trace-id missing", strings.Join(slices.Collect(maps.Keys(md)), ","))
 		return trace.SpanContext{}, errors.New("trace-id is missing from metadata")
 	}
 
