@@ -23,8 +23,12 @@ func UnaryServerTracingInterceptor() grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		if remoteSpanContext, err := remoteSpanContextFromContext(ctx); err == nil {
 			var span *trace.Span
+			println("remote span", remoteSpanContext.IsSampled(), remoteSpanContext.TraceID.String())
 			ctx, span = trace.StartSpanWithRemoteParent(ctx, "server_root", remoteSpanContext)
+			println("local span", span.SpanContext().IsSampled())
 			defer span.End()
+		} else {
+			println("err getting remote span", err.Error())
 		}
 
 		resp, err := handler(ctx, req)
