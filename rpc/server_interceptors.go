@@ -96,8 +96,18 @@ func remoteSpanContextFromContext(ctx context.Context) (trace.SpanContext, error
 
 	// Extract trace-id
 	traceIDMetadata := md.Get("trace-id")
+	first := func(md metadata.MD, key string) string {
+		arr := md.Get(key)
+		if len(arr) > 0 {
+			return arr[0]
+		}
+		return ""
+	}
 	if len(traceIDMetadata) == 0 {
 		println("tracing: metadata keys in trace-id missing", strings.Join(slices.Collect(maps.Keys(md)), ","))
+		println("traceparent", first(md, "traceparent"))
+		println("x-cloud-trace-context", first(md, "x-cloud-trace-context"))
+		println("x-grpc-web", first(md, "x-grpc-web"))
 		return trace.SpanContext{}, errors.New("trace-id is missing from metadata")
 	}
 
