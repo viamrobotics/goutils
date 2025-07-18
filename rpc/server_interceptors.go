@@ -2,17 +2,12 @@ package rpc
 
 import (
 	"context"
-	"encoding/hex"
-	"fmt"
-	"maps"
 	"path"
-	"slices"
-	"strconv"
-	"strings"
 	"time"
 
 	grpc_logging "github.com/grpc-ecosystem/go-grpc-middleware/logging"
 	"github.com/pkg/errors"
+	"go.opencensus.io/plugin/ochttp/propagation/tracecontext"
 	"go.opencensus.io/trace"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
@@ -87,59 +82,23 @@ func wrapServerStream(ctx context.Context, stream grpc.ServerStream) *serverStre
 }
 
 func remoteSpanContextFromContext(ctx context.Context) (trace.SpanContext, error) {
-	var err error
-
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
 		return trace.SpanContext{}, errors.New("no metadata in context")
 	}
 
-	// Extract trace-id
-	traceIDMetadata := md.Get("trace-id")
-	first := func(md metadata.MD, key string) string {
-		arr := md.Get(key)
-		if len(arr) > 0 {
-			return arr[0]
-		}
-		return ""
-	}
-	if len(traceIDMetadata) == 0 {
-		println("tracing: metadata keys in trace-id missing", strings.Join(slices.Collect(maps.Keys(md)), ","))
-		println("traceparent", first(md, "traceparent"))
-		println("x-cloud-trace-context", first(md, "x-cloud-trace-context"))
-		println("x-grpc-web", first(md, "x-grpc-web"))
-		return trace.SpanContext{}, errors.New("trace-id is missing from metadata")
+	// see https://cloud.google.com/trace/docs/trace-context
+	traceparent := md.Get("traceparent")
+	if len(traceparent) == 0 {
+		return trace.SpanContext{}, errors.New("no traceparent header")
 	}
 
-	traceIDBytes, err := hex.DecodeString(traceIDMetadata[0])
-	if err != nil {
-		return trace.SpanContext{}, fmt.Errorf("trace-id could not be decoded: %w", err)
+	format := tracecontext.HTTPFormat{}
+	spanContext, ok := format.SpanContextFromHeaders(traceparent[0], "")
+	if !ok {
+		return trace.SpanContext{}, errors.New("error parsing traceparent")
 	}
-	var traceID trace.TraceID
-	copy(traceID[:], traceIDBytes)
-
-	// Extract span-id
-	spanIDMetadata := md.Get("span-id")
-	spanIDBytes, err := hex.DecodeString(spanIDMetadata[0])
-	if err != nil {
-		return trace.SpanContext{}, fmt.Errorf("span-id could not be decoded: %w", err)
-	}
-	var spanID trace.SpanID
-	copy(spanID[:], spanIDBytes)
-
-	// Extract trace-options
-	traceOptionsMetadata := md.Get("trace-options")
-	if len(traceOptionsMetadata) == 0 {
-		return trace.SpanContext{}, errors.New("trace-options is missing from metadata")
-	}
-
-	traceOptionsUint, err := strconv.ParseUint(traceOptionsMetadata[0], 10 /* base 10 */, 32 /* 32-bit */)
-	if err != nil {
-		return trace.SpanContext{}, fmt.Errorf("trace-options could not be parsed as uint: %w", err)
-	}
-	traceOptions := trace.TraceOptions(traceOptionsUint)
-
-	return trace.SpanContext{TraceID: traceID, SpanID: spanID, TraceOptions: traceOptions, Tracestate: nil}, nil
+	return spanContext, nil
 }
 
 func grpcUnaryServerInterceptor(logger utils.ZapCompatibleLogger) grpc.UnaryServerInterceptor {
