@@ -6,6 +6,7 @@ import (
 
 	"github.com/edaniels/golog"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"go.viam.com/test"
 )
 
@@ -104,11 +105,16 @@ func TestSubloggerWithInvalidLogger(t *testing.T) {
 }
 
 func TestLogWithZapLogger(t *testing.T) {
-	logger := golog.NewTestLogger(t)
+	logger, logsOutput := golog.NewObservedTestLogger(t)
 	loggerWith := AddFieldsToLogger(logger, "key", "value")
 	test.That(t, loggerWith, test.ShouldNotBeNil)
-	test.That(t, loggerWith, test.ShouldEqual, logger)
-	test.That(t, reflect.TypeOf(loggerWith), test.ShouldEqual, reflect.TypeOf(logger))
+	loggerWith.Info("foo")
+	test.That(t, logsOutput.Len(), test.ShouldEqual, 1)
+	loggedEntry := logsOutput.TakeAll()[0]
+	test.That(t, loggedEntry.Context, test.ShouldHaveLength, 1)
+	test.That(t, loggedEntry.Context[0].Key, test.ShouldEqual, "key")
+	test.That(t, loggedEntry.Context[0].Type, test.ShouldEqual, zapcore.StringType)
+	test.That(t, loggedEntry.Context[0].String, test.ShouldEqual, "value")
 }
 
 func TestLogWithMockRDKLogger(t *testing.T) {
