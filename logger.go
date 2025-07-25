@@ -93,8 +93,7 @@ func Sublogger(inp ZapCompatibleLogger, subname string) (loggerRet ZapCompatible
 
 // AddFieldsToLogger attempts to add fields for logging to a given ZapCompatibleLogger instance.
 // This function uses reflection to dynamically add fields to the provided logger by
-// calling its `WithFields` method if it is an RDK logger. If the logger is not an RDK logger,
-// it logs a debug message and returns the original logger.
+// calling its `WithFields` method if it is an RDK logger.
 // Args is expected to be a list of key-value pair(s).
 func AddFieldsToLogger(inp ZapCompatibleLogger, args ...interface{}) (loggerRet ZapCompatibleLogger) {
 	loggerRet = inp //nolint:wastedassign
@@ -108,10 +107,15 @@ func AddFieldsToLogger(inp ZapCompatibleLogger, args ...interface{}) (loggerRet 
 	}()
 
 	typ := reflect.TypeOf(inp)
+	// Go interfaces are not covariant. Hence the rdk logger API uses `WithFields` while zap uses
+	// `With`. Check for the existence of either method.
 	with, ok := typ.MethodByName("WithFields")
 	if !ok {
-		inp.Debugf("could not add fields to logger of type %s, returning self", typ.String())
-		return inp
+		with, ok = typ.MethodByName("With")
+		if !ok {
+			inp.Debugf("could not add fields to logger of type %s, returning self", typ.String())
+			return inp
+		}
 	}
 
 	// When using reflection to call receiver methods, the first argument must be the object.
