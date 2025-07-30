@@ -205,7 +205,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 			client, err = newAnswer()
 			if err != nil {
 				if isNetworkError(err) {
-					ans.logger.Debugw("unable to communicate with signaling server, waiting a bit and trying again", "error", err)
+					ans.logger.Infow("failed to communicate with signaling server", "error", err)
 					utils.SelectContextOrWait(ctx, answererReconnectWait)
 				}
 				continue
@@ -235,7 +235,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 			}
 			if err != nil {
 				if isNetworkError(err) {
-					ans.logger.Debugw("unable to communicate with signaling server", "error", err)
+					ans.logger.Infow("failed to communicate with signaling server", "error", err)
 					utils.SelectContextOrWait(ctx, answererReconnectWait)
 				}
 				continue
