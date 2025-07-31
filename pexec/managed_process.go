@@ -132,12 +132,6 @@ func (p *managedProcess) UnixPid() (int, error) {
 	return p.cmd.Process.Pid, nil
 }
 
-func (p *managedProcess) Status() error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.cmd.Process.Signal(syscall.Signal(0))
-}
-
 func (p *managedProcess) validateCWD() error {
 	if p.cwd == "" {
 		return nil

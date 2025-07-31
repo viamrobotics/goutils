@@ -3,6 +3,7 @@
 package pexec
 
 import (
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"golang.org/x/sys/windows"
 )
 
 func sigStr(sig syscall.Signal) string {
@@ -111,4 +113,42 @@ func (p *managedProcess) forceKillGroup() error {
 	pidStr := strconv.Itoa(p.cmd.Process.Pid)
 	p.logger.Infof("force killing entire process tree %d", p.cmd.Process.Pid)
 	return exec.Command("taskkill", "/t", "/f", "/pid", pidStr).Start()
+}
+
+// Status is a best effort method to return an os.ErrProcessDone in case the process no
+// longer exists.
+func (p *managedProcess) Status() error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	pid, err := p.UnixPid()
+	if err != nil {
+		return err
+	}
+
+	handle, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, uint32(pid))
+	defer windows.CloseHandle(handle)
+	if err != nil {
+		if err == windows.ERROR_INVALID_PARAMETER {
+			// Bohdan: my understanding is that Invalid_Paramater is not a strong guarantee, but
+			// it's highly likely that we can treat it as "ProcessDone".
+			return os.ErrProcessDone
+		}
+		// A common error here could be Access_Denied, which would signal that the process
+		// still exists.
+		return err
+	}
+
+	// To be extra sure, we can examine the exit code of the process handle.
+	var exitCode uint32
+	err = windows.GetExitCodeProcess(handle, &exitCode)
+	if err != nil {
+		return err
+	}
+	// Somehow, this constant is not defined in the windows library, but it looks like it's
+	// a commonly used Windows constant to check that the process is still running.
+	const STILL_ACTIVE = 259
+	if exitCode != STILL_ACTIVE {
+		return os.ErrProcessDone
+	}
+	return nil
 }

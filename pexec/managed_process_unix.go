@@ -87,6 +87,12 @@ func (p *managedProcess) sysProcAttr() (*syscall.SysProcAttr, error) {
 	return attrs, nil
 }
 
+func (p *managedProcess) Status() error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.cmd.Process.Signal(syscall.Signal(0))
+}
+
 func (p *managedProcess) kill() (bool, error) {
 	p.logger.Infof("stopping process %d with signal %s", p.cmd.Process.Pid, p.stopSig)
 	// First let's try to directly signal the process.
