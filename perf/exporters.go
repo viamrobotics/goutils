@@ -58,7 +58,7 @@ func NewCloudExporter(opts CloudOptions) (Exporter, error) {
 	module := os.Getenv("K_SERVICE")
 	if module == "" {
 		// Check fallback env variable for Cloud Run Worker Pool
-		module = os.Getenv("CRWP_SERVICE")
+		module = os.Getenv("GAE_SERVICE")
 	}
 	version := os.Getenv("K_REVISION")
 	if version == "" {
