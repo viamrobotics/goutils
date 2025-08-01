@@ -51,9 +51,21 @@ func NewCloudExporter(opts CloudOptions) (Exporter, error) {
 		sdOpts.ProjectID = os.Getenv(envVarStackDriverProjectID)
 	}
 
-	// For Cloud Run applications use
+	// For Cloud Run Services applications use
 	// See: https://cloud.google.com/run/docs/container-contract#env-vars
-	if os.Getenv("K_SERVICE") != "" {
+	// Cloud Run Worker Pools do NOT have those env variable automatically injected
+	// We manually add our own
+	module := os.Getenv("K_SERVICE")
+	if module == "" {
+		// Check fallback env variable for Cloud Run Worker Pool
+		module = os.Getenv("GAE_SERVICE")
+	}
+	version := os.Getenv("K_REVISION")
+	if version == "" {
+		// Check fallback env variable for Cloud Run Worker Pool
+		version = os.Getenv("CRWP_VERSION")
+	}
+	if module != "" {
 		// Allow for local testing with GCP_COMPUTE_ZONE
 		var err error
 		zone := os.Getenv("GCP_COMPUTE_ZONE")
@@ -84,8 +96,8 @@ func NewCloudExporter(opts CloudOptions) (Exporter, error) {
 		// See: https://cloud.google.com/monitoring/custom-metrics/creating-metrics#create-metric-desc
 		sdOpts.MonitoredResource = &gaeResource{
 			projectID:  os.Getenv(envVarStackDriverProjectID),
-			module:     os.Getenv("K_SERVICE"),
-			version:    os.Getenv("K_REVISION"),
+			module:     module,
+			version:    version,
 			instanceID: instanceID,
 			location:   zone,
 		}
