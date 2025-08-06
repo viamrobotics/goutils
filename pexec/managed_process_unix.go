@@ -87,7 +87,7 @@ func (p *managedProcess) sysProcAttr() (*syscall.SysProcAttr, error) {
 	return attrs, nil
 }
 
-func (p *managedProcess) Status() error {
+func (p *managedProcess) status() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.cmd.Process.Signal(syscall.Signal(0))

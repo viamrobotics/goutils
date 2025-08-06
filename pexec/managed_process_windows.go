@@ -117,7 +117,7 @@ func (p *managedProcess) forceKillGroup() error {
 
 // Status is a best effort method to return an os.ErrProcessDone in case the process no
 // longer exists.
-func (p *managedProcess) Status() error {
+func (p *managedProcess) status() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	pid, err := p.UnixPid()

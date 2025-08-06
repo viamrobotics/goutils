@@ -132,6 +132,10 @@ func (p *managedProcess) UnixPid() (int, error) {
 	return p.cmd.Process.Pid, nil
 }
 
+func (p *managedProcess) Status() error {
+	return p.status()
+}
+
 func (p *managedProcess) validateCWD() error {
 	if p.cwd == "" {
 		return nil
