@@ -50,7 +50,7 @@ func (p *managedProcess) kill() (bool, error) {
 			p.logger.Debug("must force terminate process")
 			shouldJustForce = true
 		case strings.Contains(string(out), "not found"):
-			return false, nil
+			return false, &ErrProcessNotExist{err}
 		default:
 			return false, errors.Wrapf(err, "error killing process %d", p.cmd.Process.Pid)
 		}
@@ -70,7 +70,7 @@ func (p *managedProcess) kill() (bool, error) {
 					p.logger.Debug("must force terminate process tree")
 					shouldJustForce = true
 				case strings.Contains(string(out), "not found"):
-					return false, nil
+					return false, &ErrProcessNotExist{err}
 				default:
 					return false, errors.Wrapf(err, "error killing process tree %d", p.cmd.Process.Pid)
 				}

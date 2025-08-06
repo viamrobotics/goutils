@@ -107,7 +107,13 @@ func (p *managedProcess) kill() (bool, error) {
 	select {
 	case <-timer.C:
 		p.logger.Infof("stopping entire process group %d with signal %s", p.cmd.Process.Pid, p.stopSig)
-		if err := syscall.Kill(-p.cmd.Process.Pid, p.stopSig); err != nil && !errors.Is(err, os.ErrProcessDone) {
+		if err := syscall.Kill(-p.cmd.Process.Pid, p.stopSig); err != nil {
+			errno, ok := err.(syscall.Errno)
+			if ok && errno == syscall.ESRCH {
+				return false, &ErrProcessNotExist{err}
+			} else if errors.Is(err, os.ErrProcessDone) {
+				return false, &ErrProcessNotExist{err}
+			}
 			return false, errors.Wrapf(err, "error signaling process group %d with signal %s", p.cmd.Process.Pid, p.stopSig)
 		}
 	case <-p.managingCh:
@@ -121,7 +127,13 @@ func (p *managedProcess) kill() (bool, error) {
 	select {
 	case <-timer2.C:
 		p.logger.Infof("killing entire process group %d", p.cmd.Process.Pid)
-		if err := syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL); err != nil && !errors.Is(err, os.ErrProcessDone) {
+		if err := syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL); err != nil {
+			errno, ok := err.(syscall.Errno)
+			if ok && errno == syscall.ESRCH {
+				return false, &ErrProcessNotExist{err}
+			} else if errors.Is(err, os.ErrProcessDone) {
+				return false, &ErrProcessNotExist{err}
+			}
 			return false, errors.Wrapf(err, "error killing process group %d", p.cmd.Process.Pid)
 		}
 		forceKilled = true
