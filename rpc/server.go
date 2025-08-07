@@ -208,7 +208,7 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 	grpcBindAddr := sOpts.bindAddress
 	if grpcBindAddr == "" {
 		if sOpts.tlsConfig == nil || sOpts.unauthenticated {
-			grpcBindAddr = "localhost:0"
+			grpcBindAddr = "127.0.0.1:0"
 		} else {
 			grpcBindAddr = ":0"
 		}
