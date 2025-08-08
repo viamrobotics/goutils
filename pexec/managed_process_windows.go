@@ -48,6 +48,12 @@ func (p *managedProcess) kill() (bool, error) {
 		switch {
 		case strings.Contains(string(out), mustForce):
 			p.logger.Debug("must force terminate process")
+			// if taskkill doesn't find a window to terminate the process, we will attempt to
+			// send a "break" control event, which asks for a graceful shutdown of the whole
+			// process group.
+			if err := windows.GenerateConsoleCtrlEvent(windows.CTRL_BREAK_EVENT, uint32(p.cmd.Process.Pid)); err != nil {
+				p.logger.Debugw("sending a control break event to the process group failed with error", "err", err)
+			}
 			shouldJustForce = true
 		case strings.Contains(string(out), "not found"):
 			return false, &ErrProcessNotExist{err}
@@ -56,56 +62,58 @@ func (p *managedProcess) kill() (bool, error) {
 		}
 	}
 
-	if !shouldJustForce {
-		// In case the process didn't stop, or left behind any orphan children in its process group,
-		// we now ask everything in the process tree to stop after a brief wait.
-		timer := time.NewTimer(p.stopWaitInterval)
-		defer timer.Stop()
-		select {
-		case <-timer.C:
-			p.logger.Infof("killing entire process tree %d", p.cmd.Process.Pid)
-			if out, err := exec.Command("taskkill", "/t", "/pid", pidStr).CombinedOutput(); err != nil {
-				switch {
-				case strings.Contains(string(out), mustForce):
-					p.logger.Debug("must force terminate process tree")
-					shouldJustForce = true
-				case strings.Contains(string(out), "not found"):
-					return false, &ErrProcessNotExist{err}
-				default:
-					return false, errors.Wrapf(err, "error killing process tree %d", p.cmd.Process.Pid)
-				}
+	// In case the process didn't stop, or left behind any orphan children in its process group,
+	// we now ask everything in the process tree to stop after a brief wait.
+	timer := time.NewTimer(p.stopWaitInterval)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		p.logger.Infof("killing entire process tree %d", p.cmd.Process.Pid)
+		out, err := exec.Command("taskkill", "/t", "/pid", pidStr).CombinedOutput()
+		if err != nil {
+			switch {
+			case strings.Contains(string(out), mustForce):
+				p.logger.Debug("must force terminate process tree")
+				shouldJustForce = true
+			case strings.Contains(string(out), "not found"):
+				return false, &ErrProcessNotExist{err}
+			default:
+				return false, errors.Wrapf(err, "error killing process tree %d", p.cmd.Process.Pid)
 			}
-		case <-p.managingCh:
-			timer.Stop()
 		}
+	case <-p.managingCh:
+		timer.Stop()
 	}
 
 	// Lastly, kill everything in the process tree that remains after a longer wait or now. This is
 	// going to likely result in an "exit status 1" that we will have to interpret.
 	// FUTURE(erd): find a way to do this better. Research has not come up with much and is
 	// program dependent.
-	var forceKilled bool
-	if !shouldJustForce {
-		timer2 := time.NewTimer(p.stopWaitInterval * 2)
-		defer timer2.Stop()
-		select {
-		case <-timer2.C:
-			p.logger.Infof("force killing entire process tree %d", p.cmd.Process.Pid)
-			if err := exec.Command("taskkill", "/t", "/f", "/pid", pidStr).Run(); err != nil {
-				return false, errors.Wrapf(err, "error force killing process tree %d", p.cmd.Process.Pid)
-			}
-			forceKilled = true
-		case <-p.managingCh:
-			timer2.Stop()
-		}
-	} else {
-		if err := exec.Command("taskkill", "/t", "/f", "/pid", pidStr).Run(); err != nil {
+
+	// We can force kill the process group right away, if the flag is already set
+	forceKillCommand := exec.Command("taskkill", "/t", "/f", "/pid", pidStr)
+	if shouldJustForce {
+		if err := forceKillCommand.Run(); err != nil {
 			return false, errors.Wrapf(err, "error force killing process tree %d", p.cmd.Process.Pid)
 		}
-		forceKilled = true
+		return true, nil
 	}
 
-	return forceKilled, nil
+	// If shouldJustForce is not set yet, we will wait on a timer to give managing channel a
+	// final chance to close. If it doesn't, we will force kill the process tree.
+	timer2 := time.NewTimer(p.stopWaitInterval * 2)
+	defer timer2.Stop()
+	select {
+	case <-timer2.C:
+		p.logger.Infof("force killing entire process tree %d", p.cmd.Process.Pid)
+		if err := forceKillCommand.Run(); err != nil {
+			return false, errors.Wrapf(err, "error force killing process tree %d", p.cmd.Process.Pid)
+		}
+		return true, nil
+	case <-p.managingCh:
+		timer2.Stop()
+	}
+	return false, nil
 }
 
 // forceKillGroup kills everything in the process tree. This will not wait for completion and may result in a zombie process.
