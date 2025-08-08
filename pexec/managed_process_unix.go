@@ -93,6 +93,9 @@ func (p *managedProcess) status() error {
 	return p.cmd.Process.Signal(syscall.Signal(0))
 }
 
+// kill attempts to stop the managedProcess.
+// The boolean return value indicates whether the process was force killed or not. If the process is already done
+// or no longer exist, a special ErrProcessNotExist is returned.
 func (p *managedProcess) kill() (bool, error) {
 	p.logger.Infof("stopping process %d with signal %s", p.cmd.Process.Pid, p.stopSig)
 	// First let's try to directly signal the process.

@@ -37,6 +37,9 @@ func (p *managedProcess) sysProcAttr() (*syscall.SysProcAttr, error) {
 	return ret, nil
 }
 
+// kill attempts to stop the managedProcess.
+// The boolean return value indicates whether the process was force killed or not. If the process is already done
+// or no longer exist, a special ErrProcessNotExist is returned.
 func (p *managedProcess) kill() (bool, error) {
 	const mustForce = "This process can only be terminated forcefully"
 	pidStr := strconv.Itoa(p.cmd.Process.Pid)
