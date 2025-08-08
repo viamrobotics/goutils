@@ -18,6 +18,18 @@ import (
 
 var errAlreadyStopped = errors.New("already stopped")
 
+type ErrProcessNotExist struct {
+	err error
+}
+
+func (e *ErrProcessNotExist) Error() string {
+	return fmt.Sprintf("process does not exist: %v", e.err)
+}
+
+func (e *ErrProcessNotExist) Unwrap() error {
+	return e.err
+}
+
 // UnexpectedExitHandler is the signature for functions that can optionally be
 // provided to run when a managed process unexpectedly exits. The return value
 // indicates whether pexec should continue with its own attempt to restart the
@@ -133,9 +145,7 @@ func (p *managedProcess) UnixPid() (int, error) {
 }
 
 func (p *managedProcess) Status() error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.cmd.Process.Signal(syscall.Signal(0))
+	return p.status()
 }
 
 func (p *managedProcess) validateCWD() error {

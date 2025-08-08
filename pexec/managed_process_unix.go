@@ -87,6 +87,15 @@ func (p *managedProcess) sysProcAttr() (*syscall.SysProcAttr, error) {
 	return attrs, nil
 }
 
+func (p *managedProcess) status() error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.cmd.Process.Signal(syscall.Signal(0))
+}
+
+// kill attempts to stop the managedProcess.
+// The boolean return value indicates whether the process was force killed or not. If the process is already done
+// or no longer exist, a special ErrProcessNotExist is returned.
 func (p *managedProcess) kill() (bool, error) {
 	p.logger.Infof("stopping process %d with signal %s", p.cmd.Process.Pid, p.stopSig)
 	// First let's try to directly signal the process.
@@ -101,7 +110,13 @@ func (p *managedProcess) kill() (bool, error) {
 	select {
 	case <-timer.C:
 		p.logger.Infof("stopping entire process group %d with signal %s", p.cmd.Process.Pid, p.stopSig)
-		if err := syscall.Kill(-p.cmd.Process.Pid, p.stopSig); err != nil && !errors.Is(err, os.ErrProcessDone) {
+		if err := syscall.Kill(-p.cmd.Process.Pid, p.stopSig); err != nil {
+			errno, ok := err.(syscall.Errno)
+			if ok && errno == syscall.ESRCH {
+				return false, &ErrProcessNotExist{err}
+			} else if errors.Is(err, os.ErrProcessDone) {
+				return false, &ErrProcessNotExist{err}
+			}
 			return false, errors.Wrapf(err, "error signaling process group %d with signal %s", p.cmd.Process.Pid, p.stopSig)
 		}
 	case <-p.managingCh:
@@ -115,7 +130,13 @@ func (p *managedProcess) kill() (bool, error) {
 	select {
 	case <-timer2.C:
 		p.logger.Infof("killing entire process group %d", p.cmd.Process.Pid)
-		if err := syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL); err != nil && !errors.Is(err, os.ErrProcessDone) {
+		if err := syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL); err != nil {
+			errno, ok := err.(syscall.Errno)
+			if ok && errno == syscall.ESRCH {
+				return false, &ErrProcessNotExist{err}
+			} else if errors.Is(err, os.ErrProcessDone) {
+				return false, &ErrProcessNotExist{err}
+			}
 			return false, errors.Wrapf(err, "error killing process group %d", p.cmd.Process.Pid)
 		}
 		forceKilled = true
