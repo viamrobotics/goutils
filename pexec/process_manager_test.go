@@ -2,6 +2,7 @@ package pexec
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"runtime"
@@ -183,7 +184,13 @@ func TestProcessManagerStart(t *testing.T) {
 		logger := golog.NewTestLogger(t)
 		pm := NewProcessManager(logger)
 		defer func() {
-			test.That(t, pm.Stop(), test.ShouldBeNil)
+			if runtime.GOOS == "windows" {
+				// on windows, we return a process not found error here
+				var processNotExistsErr *ProcessNotExistsError
+				test.That(t, errors.As(pm.Stop(), &processNotExistsErr), test.ShouldBeTrue)
+			} else {
+				test.That(t, pm.Stop(), test.ShouldBeNil)
+			}
 		}()
 		test.That(t, pm.Start(context.Background()), test.ShouldBeNil)
 		test.That(t, pm.Start(context.Background()), test.ShouldBeNil)
