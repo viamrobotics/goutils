@@ -79,6 +79,11 @@ func (p *managedProcess) kill() (bool, error) {
 				p.logger.Debugw("sending a control break event to the process group failed with error", "err", err)
 			}
 			shouldJustForce = true
+			// Note: the following behavior is different on unix. If the first attempt to kill the
+			// process results in os.ErrProcessDone on unix, no error is returned. Only if a process
+			// is not found when trying to kill its tree or force kill it, then
+			// &ProcessNotExistsError is returned.
+			// On windows, we will always return this error, even when the first attempt failed.
 		case strings.Contains(string(out), "not found"):
 			return false, &ProcessNotExistsError{err}
 		default:
