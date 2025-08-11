@@ -18,15 +18,18 @@ import (
 
 var errAlreadyStopped = errors.New("already stopped")
 
-type ErrProcessNotExist struct {
+// ProcessNotExistsError is a custom error that is returned from managedProcess.kill() to
+// specify that the desired process no longer exists. It is checked by the modManager in
+// rdk.
+type ProcessNotExistsError struct {
 	err error
 }
 
-func (e *ErrProcessNotExist) Error() string {
+func (e *ProcessNotExistsError) Error() string {
 	return fmt.Sprintf("process does not exist: %v", e.err)
 }
 
-func (e *ErrProcessNotExist) Unwrap() error {
+func (e *ProcessNotExistsError) Unwrap() error {
 	return e.err
 }
 

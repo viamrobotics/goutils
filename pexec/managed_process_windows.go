@@ -39,7 +39,7 @@ func (p *managedProcess) sysProcAttr() (*syscall.SysProcAttr, error) {
 
 // kill attempts to stop the managedProcess.
 // The boolean return value indicates whether the process was force killed or not. If the process is already done
-// or no longer exist, a special ErrProcessNotExist is returned.
+// or no longer exist, a special ProcessNotExistsError is returned.
 func (p *managedProcess) kill() (bool, error) {
 	const mustForce = "This process can only be terminated forcefully"
 	pidStr := strconv.Itoa(p.cmd.Process.Pid)
@@ -59,7 +59,7 @@ func (p *managedProcess) kill() (bool, error) {
 			}
 			shouldJustForce = true
 		case strings.Contains(string(out), "not found"):
-			return false, &ErrProcessNotExist{err}
+			return false, &ProcessNotExistsError{err}
 		default:
 			return false, errors.Wrapf(err, "error killing process %d", p.cmd.Process.Pid)
 		}
@@ -79,7 +79,7 @@ func (p *managedProcess) kill() (bool, error) {
 				p.logger.Debug("must force terminate process tree")
 				shouldJustForce = true
 			case strings.Contains(string(out), "not found"):
-				return false, &ErrProcessNotExist{err}
+				return false, &ProcessNotExistsError{err}
 			default:
 				return false, errors.Wrapf(err, "error killing process tree %d", p.cmd.Process.Pid)
 			}
