@@ -47,6 +47,16 @@ func (p *managedProcess) kill() (bool, error) {
 	// First let's try to ask the process to stop. If it's a console application, this is
 	// very unlikely to work.
 	var shouldJustForce bool
+	// Our first attempt to gracefully close the process is taskkill. Taskkill is a windows
+	// replacement for kill. However, windows does not implement signals in the same way
+	// unix does, so their IPC involves "messages". Researched has not shown exactly what is
+	// the message sent by taskkill, but it is most likely WM_CLOSE (another option that I
+	// have seen in discussions is WM_QUIT). WM_CLOSE is similar to pressing the X button on
+	// an application window, which asks the process to shutdown, but the handling of this
+	// "message" is up to the process. Moreover, to receive this message, a process needs to
+	// have a "window". Since most viam modules do not have their own windows, killing them
+	// results in a message "This process can only be terminated forcefully". However, this
+	// line can potentially work if a module will have its own window.
 	if out, err := exec.Command("taskkill", "/pid", pidStr).CombinedOutput(); err != nil {
 		switch {
 		case strings.Contains(string(out), mustForce):
@@ -54,6 +64,17 @@ func (p *managedProcess) kill() (bool, error) {
 			// if taskkill doesn't find a window to terminate the process, we will attempt to
 			// send a "break" control event, which asks for a graceful shutdown of the whole
 			// process group.
+
+			// GenerateConsoleCtrlEvent functions differently from taskkill. In particular, it
+			// sends a "signal" to a process group that shares a console with the calling process.
+			// Since we specify the CREATE_NEW_PROCESS_GROUP flag in SysProcAttr, this pattern
+			// works well for us for two reasons:
+			// a) The module still shares the console with the calling process (viam-server). If
+			// we were to specify CREATE_NEW_CONSOLE in the creation flags, this would no longer
+			// be the case.
+			// b) By creating a new process group, we are safe to send the break signal to the
+			// module. If we didn't specify the CREATE_NEW_PROCESS_GROUP flag, we would risk
+			// shutting down viam-server as well, since they would be in the same process group.
 			if err := windows.GenerateConsoleCtrlEvent(windows.CTRL_BREAK_EVENT, uint32(p.cmd.Process.Pid)); err != nil {
 				p.logger.Debugw("sending a control break event to the process group failed with error", "err", err)
 			}
