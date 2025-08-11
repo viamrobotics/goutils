@@ -117,10 +117,15 @@ func (p *managedProcess) kill() (bool, error) {
 	// We can force kill the process group right away, if the flag is already set
 	forceKillCommand := exec.Command("taskkill", "/t", "/f", "/pid", pidStr)
 	if shouldJustForce {
-		if err := forceKillCommand.Run(); err != nil {
-			return false, errors.Wrapf(err, "error force killing process tree %d", p.cmd.Process.Pid)
+		select {
+		case <-p.managingCh:
+			return false, nil
+		default:
+			if err := forceKillCommand.Run(); err != nil {
+				return false, errors.Wrapf(err, "error force killing process tree %d", p.cmd.Process.Pid)
+			}
+			return true, nil
 		}
-		return true, nil
 	}
 
 	// If shouldJustForce is not set yet, we will wait on a timer to give managing channel a
