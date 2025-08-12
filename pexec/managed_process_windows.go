@@ -122,15 +122,15 @@ func (p *managedProcess) kill() (bool, error) {
 	// We can force kill the process group right away, if the flag is already set
 	forceKillCommand := exec.Command("taskkill", "/t", "/f", "/pid", pidStr)
 	if shouldJustForce {
-		select {
-		case <-p.managingCh:
-			return false, nil
-		default:
-			if err := forceKillCommand.Run(); err != nil {
-				return false, errors.Wrapf(err, "error force killing process tree %d", p.cmd.Process.Pid)
+		if out, err := forceKillCommand.CombinedOutput(); err != nil {
+			switch {
+			case strings.Contains(string(out), "not found"):
+				return false, &ProcessNotExistsError{err}
+			default:
+				return false, errors.Wrapf(err, "error killing process %d", p.cmd.Process.Pid)
 			}
-			return true, nil
 		}
+		return true, nil
 	}
 
 	// If shouldJustForce is not set yet, we will wait on a timer to give managing channel a
@@ -140,8 +140,13 @@ func (p *managedProcess) kill() (bool, error) {
 	select {
 	case <-timer2.C:
 		p.logger.Infof("force killing entire process tree %d", p.cmd.Process.Pid)
-		if err := forceKillCommand.Run(); err != nil {
-			return false, errors.Wrapf(err, "error force killing process tree %d", p.cmd.Process.Pid)
+		if out, err := forceKillCommand.CombinedOutput(); err != nil {
+			switch {
+			case strings.Contains(string(out), "not found"):
+				return false, &ProcessNotExistsError{err}
+			default:
+				return false, errors.Wrapf(err, "error killing process %d", p.cmd.Process.Pid)
+			}
 		}
 		return true, nil
 	case <-p.managingCh:
