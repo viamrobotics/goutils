@@ -41,6 +41,11 @@ func (p *managedProcess) sysProcAttr() (*syscall.SysProcAttr, error) {
 // The boolean return value indicates whether the process was force killed or not. If the process is already done
 // or no longer exist, a special ProcessNotExistsError is returned.
 func (p *managedProcess) kill() (bool, error) {
+	// NOTE: the first kill attempt behavior is different on unix. If the first attempt to kill the
+	// process results in os.ErrProcessDone on unix, no error is returned. Only if a process
+	// is not found when trying to kill its tree or force kill it, then &ProcessNotExistsError
+	// is returned.
+	// On windows, we will always return this error, even when the first attempt failed.
 	const mustForce = "This process can only be terminated forcefully"
 	pidStr := strconv.Itoa(p.cmd.Process.Pid)
 	p.logger.Infof("killing process %d", p.cmd.Process.Pid)
@@ -49,7 +54,7 @@ func (p *managedProcess) kill() (bool, error) {
 	var shouldJustForce bool
 	// Our first attempt to gracefully close the process is taskkill. Taskkill is a windows
 	// replacement for kill. However, windows does not implement signals in the same way
-	// unix does, so their IPC involves "messages". Researched has not shown exactly what is
+	// unix does, so their IPC involves "messages". Research has not shown exactly what is
 	// the message sent by taskkill, but it is most likely WM_CLOSE (another option that I
 	// have seen in discussions is WM_QUIT). WM_CLOSE is similar to pressing the X button on
 	// an application window, which asks the process to shutdown, but the handling of this
@@ -79,11 +84,6 @@ func (p *managedProcess) kill() (bool, error) {
 				p.logger.Debugw("sending a control break event to the process group failed with error", "err", err)
 			}
 			shouldJustForce = true
-			// Note: the following behavior is different on unix. If the first attempt to kill the
-			// process results in os.ErrProcessDone on unix, no error is returned. Only if a process
-			// is not found when trying to kill its tree or force kill it, then
-			// &ProcessNotExistsError is returned.
-			// On windows, we will always return this error, even when the first attempt failed.
 		case strings.Contains(string(out), "not found"):
 			return false, &ProcessNotExistsError{err}
 		default:
