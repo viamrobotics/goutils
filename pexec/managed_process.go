@@ -18,6 +18,21 @@ import (
 
 var errAlreadyStopped = errors.New("already stopped")
 
+// ProcessNotExistsError is a custom error that is returned from managedProcess.kill() to
+// specify that the desired process no longer exists. It is checked by the modManager in
+// rdk.
+type ProcessNotExistsError struct {
+	err error
+}
+
+func (e *ProcessNotExistsError) Error() string {
+	return fmt.Sprintf("process does not exist: %v", e.err)
+}
+
+func (e *ProcessNotExistsError) Unwrap() error {
+	return e.err
+}
+
 // UnexpectedExitHandler is the signature for functions that can optionally be
 // provided to run when a managed process unexpectedly exits. The return value
 // indicates whether pexec should continue with its own attempt to restart the
@@ -133,9 +148,7 @@ func (p *managedProcess) UnixPid() (int, error) {
 }
 
 func (p *managedProcess) Status() error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.cmd.Process.Signal(syscall.Signal(0))
+	return p.status()
 }
 
 func (p *managedProcess) validateCWD() error {

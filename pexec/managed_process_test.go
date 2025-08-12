@@ -151,6 +151,10 @@ func TestManagedProcessStart(t *testing.T) {
 			test.That(t, err.Error(), test.ShouldContainSubstring, `error setting process working directory to "idontexist"`)
 		})
 		t.Run("resolves relative path with different cwd", func(t *testing.T) {
+			// on windows, this test will not run, because we use a unix executable.
+			if runtime.GOOS == "windows" {
+				t.Skip()
+			}
 			logger := golog.NewTestLogger(t)
 			newWD := t.TempDir()
 			// create an executable file in there that we will refence as a just "./exec.sh"
@@ -192,7 +196,13 @@ func TestManagedProcessStart(t *testing.T) {
 			cancel()
 
 			test.That(t, proc.Start(ctx), test.ShouldBeNil)
-			test.That(t, proc.Stop(), test.ShouldBeNil)
+			if runtime.GOOS == "windows" {
+				// on windows, we return a process not found error here
+				var processNotExistsErr *ProcessNotExistsError
+				test.That(t, errors.As(proc.Stop(), &processNotExistsErr), test.ShouldBeTrue)
+			} else {
+				test.That(t, proc.Stop(), test.ShouldBeNil)
+			}
 		})
 		t.Run("starting with a normal context should run until stop", func(t *testing.T) {
 			logger := golog.NewTestLogger(t)
@@ -680,7 +690,13 @@ func TestManagedProcessEnvironmentVariables(t *testing.T) {
 		output, err := bufferedLogReader.ReadString('\n')
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, output, test.ShouldEqual, "/opt/viam\n")
-		test.That(t, proc.Stop(), test.ShouldBeNil)
+		if runtime.GOOS == "windows" {
+			// on windows, we return a process not found error here
+			var processNotExistsErr *ProcessNotExistsError
+			test.That(t, errors.As(proc.Stop(), &processNotExistsErr), test.ShouldBeTrue)
+		} else {
+			test.That(t, proc.Stop(), test.ShouldBeNil)
+		}
 	})
 
 	t.Run("overwrite an environment variable", func(t *testing.T) {
@@ -739,7 +755,13 @@ func TestManagedProcessLogWriter(t *testing.T) {
 			test.That(t, err, test.ShouldBeNil)
 			test.That(t, line, test.ShouldEqual, "hello\n")
 		}
-		test.That(t, proc.Stop(), test.ShouldBeNil)
+		if runtime.GOOS == "windows" {
+			// on windows, we return a process not found error here
+			var processNotExistsErr *ProcessNotExistsError
+			test.That(t, errors.As(proc.Stop(), &processNotExistsErr), test.ShouldBeTrue)
+		} else {
+			test.That(t, proc.Stop(), test.ShouldBeNil)
+		}
 	})
 }
 
