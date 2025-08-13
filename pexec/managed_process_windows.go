@@ -112,6 +112,7 @@ func (p *managedProcess) kill() (bool, error) {
 		}
 	case <-p.managingCh:
 		timer.Stop()
+		return false, nil
 	}
 
 	// Lastly, kill everything in the process tree that remains after a longer wait or now. This is
