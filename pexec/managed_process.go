@@ -89,6 +89,8 @@ func NewManagedProcess(config ProcessConfig, logger utils.ZapCompatibleLogger) M
 		env = append(env, fmt.Sprintf("%s=%s", key, value))
 	}
 
+	killCtx, killCtxCancel := context.WithCancel(context.Background())
+
 	return &managedProcess{
 		id:               config.ID,
 		name:             config.Name,
@@ -100,7 +102,8 @@ func NewManagedProcess(config ProcessConfig, logger utils.ZapCompatibleLogger) M
 		shouldLog:        config.Log,
 		onUnexpectedExit: config.OnUnexpectedExit,
 		managingCh:       make(chan struct{}),
-		killCh:           make(chan struct{}),
+		killCtx:          killCtx,
+		killCtxCancel:    killCtxCancel,
 		stopSig:          config.StopSignal,
 		stopWaitInterval: config.StopTimeout / time.Duration(3),
 		logger:           logger,
@@ -125,7 +128,8 @@ type managedProcess struct {
 
 	onUnexpectedExit UnexpectedExitHandler
 	managingCh       chan struct{}
-	killCh           chan struct{}
+	killCtx          context.Context
+	killCtxCancel    context.CancelFunc
 	stopSig          syscall.Signal
 	stopWaitInterval time.Duration
 	lastWaitErr      error
@@ -186,12 +190,8 @@ func (p *managedProcess) start(ctx context.Context) error {
 	// In the event this Start happened from a restart but a
 	// stop happened while we were acquiring the lock, we may
 	// need to return early.
-	select {
-	case <-p.killCh:
-		// This will signal to a potential restarter that
-		// there's no restart to do.
+	if err := p.killCtx.Err(); err != nil {
 		return errAlreadyStopped
-	default:
 	}
 
 	if err := p.validateCWD(); err != nil {
@@ -311,10 +311,8 @@ func (p *managedProcess) manage(stdOut, stdErr io.ReadCloser) {
 	}()
 
 	// It's possible that Stop was called and is the reason why Wait returned.
-	select {
-	case <-p.killCh:
+	if err := p.killCtx.Err(); err != nil {
 		return
-	default:
 	}
 
 	// Run onUnexpectedExit if it exists. Do not attempt restart if
@@ -330,10 +328,8 @@ func (p *managedProcess) manage(stdOut, stdErr io.ReadCloser) {
 		locked = true
 		// Dropped the lock to call the oue handler, check if we were stopped during
 		// that time.
-		select {
-		case <-p.killCh:
+		if err := p.killCtx.Err(); err != nil {
 			return
-		default:
 		}
 	}
 
@@ -358,7 +354,7 @@ func (p *managedProcess) manage(stdOut, stdErr io.ReadCloser) {
 	defer ticker.Stop()
 	select {
 	case <-ticker.C:
-	case <-p.killCh:
+	case <-p.killCtx.Done():
 		return
 	}
 
@@ -460,8 +456,7 @@ func (p *managedProcess) Stop() error {
 	p.mu.Lock()
 
 	// Return early if the process has already been killed.
-	select {
-	case <-p.killCh:
+	if err := p.killCtx.Err(); err != nil {
 		p.mu.Unlock()
 		if p.cmd != nil {
 			// Avoid deadlocking if Stop was called before Start while blocking all
@@ -470,10 +465,9 @@ func (p *managedProcess) Stop() error {
 			<-p.managingCh
 		}
 		return nil
-	default:
 	}
 
-	close(p.killCh)
+	p.killCtxCancel()
 
 	// All relevant methods wait on the lock we hold and will not attempt to
 	// (re)start the process now that we closed killch, so we can safely drop the
@@ -504,11 +498,7 @@ func (p *managedProcess) KillGroup() {
 	// management goroutine to stop. We will attempt to kill the
 	// process even if p.stopped is true.
 	p.mu.Lock()
-	select {
-	case <-p.killCh:
-	default:
-		close(p.killCh)
-	}
+	p.killCtxCancel()
 
 	if p.cmd == nil {
 		p.mu.Unlock()
