@@ -36,9 +36,15 @@ func (e *ProcessNotExistsError) Unwrap() error {
 // UnexpectedExitHandler is the signature for functions that can optionally be
 // provided to run when a managed process unexpectedly exits. The return value
 // indicates whether pexec should continue with its own attempt to restart the
-// process: true means pexec will attempt its own restart, false means the
-// no restart will be attempted and the process will remain dead.
-type UnexpectedExitHandler = func(exitCode int) bool
+// process: true means pexec will attempt its own restart, false means no
+// restart will be attempted and the process will remain dead. `exitCode` is
+// the exit code of the process. `ctx` is a [context.Context] that will be
+// cancelled if another goroutine attempts to stop the process, such as by
+// `ManagedProcess.Kill` or `ManagedProcess.KillGroup`. Users who implement
+// custom restart logic within an `UnexpectedExitHandler` must take care to
+// avoid race conditions between the handler and other goroutines that may try
+// to stop the process.
+type UnexpectedExitHandler = func(ctx context.Context, exitCode int) bool
 
 // A ManagedProcess controls the lifecycle of a single system process. Based on
 // its configuration, it will ensure the process is revived if it every unexpectedly
@@ -319,11 +325,22 @@ func (p *managedProcess) manage(stdOut, stdErr io.ReadCloser) {
 	// onUnexpectedExit returns false. Drop the lock to avoid deadlocking other
 	// goroutines that my try to call Stop while we're handling a crash.
 	if p.onUnexpectedExit != nil {
-		p.mu.Unlock()
-		locked = false
-		if !p.onUnexpectedExit(p.cmd.ProcessState.ExitCode()) {
+		oueChan := make(chan bool)
+		go func() {
+			p.mu.Unlock()
+			locked = false
+			oueChan <- p.onUnexpectedExit(p.killCtx, p.cmd.ProcessState.ExitCode())
+		}()
+
+		select {
+		case shouldContinue := <-oueChan:
+			if !shouldContinue {
+				return
+			}
+		case <-p.killCtx.Done():
 			return
 		}
+
 		p.mu.Lock()
 		locked = true
 		// Dropped the lock to call the oue handler, check if we were stopped during
