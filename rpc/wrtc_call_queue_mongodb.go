@@ -74,7 +74,39 @@ var (
 	connectionEstablishmentFailures = statz.NewCounter0(
 		"rcp.webrtc/connection_establishment_failures",
 		statz.MetricConfig{
-			Description: "The total number of connection establishment failures (caller or answerer errors).",
+			Description: "The total number of connection establishment failures (all caller or answerer errors).",
+			Unit:        units.Dimensionless,
+		},
+	)
+
+	connectionEstablishmentCallerTimeouts = statz.NewCounter0(
+		"rcp.webrtc/connection_establishment_caller_timeouts",
+		statz.MetricConfig{
+			Description: "The total number of connection establishment failures that were timeouts on the caller side.",
+			Unit:        units.Dimensionless,
+		},
+	)
+
+	connectionEstablishmentCallerNonTimeoutErrors = statz.NewCounter0(
+		"rcp.webrtc/connection_establishment_caller_non_timeouts",
+		statz.MetricConfig{
+			Description: "The total number of connection establishment failures that were NOT timeouts on the caller side.",
+			Unit:        units.Dimensionless,
+		},
+	)
+
+	connectionEstablishmentAnswererTimeouts = statz.NewCounter0(
+		"rcp.webrtc/connection_establishment_answerer_timeouts",
+		statz.MetricConfig{
+			Description: "The total number of connection establishment failures that were timeouts on the answerer side.",
+			Unit:        units.Dimensionless,
+		},
+	)
+
+	connectionEstablishmentAnswererNonTimeoutErrors = statz.NewCounter0(
+		"rcp.webrtc/connection_establishment_answerer_non_timeouts",
+		statz.MetricConfig{
+			Description: "The total number of connection establishment failures that were NOT timeouts on the answerer side.",
 			Unit:        units.Dimensionless,
 		},
 	)
@@ -1050,10 +1082,15 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferError(ctx context.Context, host, u
 		return errors.Wrap(err, "could not decode document where 'caller_error' was set")
 	}
 
-	// Increment connection establishment failure count if we are setting a
+	// Increment connection establishment failure counts if we are setting a
 	// `caller_error` and the `answerer_error` has not already been set.
 	if updatedMDBWebRTCCall.AnswererError == "" {
 		connectionEstablishmentFailures.Inc()
+		if errors.Is(err, context.DeadlineExceeded) {
+			connectionEstablishmentCallerTimeouts.Inc()
+		} else {
+			connectionEstablishmentCallerNonTimeoutErrors.Inc()
+		}
 	}
 
 	return nil
@@ -1441,10 +1478,15 @@ func (resp *mongoDBWebRTCCallOfferExchange) AnswererRespond(ctx context.Context,
 			return errors.Wrap(err, "could not decode document where 'answerer_error' was set")
 		}
 
-		// Increment connection establishment failure count if we are setting an
+		// Increment connection establishment failure counts if we are setting an
 		// `answerer_error` and the `caller_error` has not already been set.
 		if updatedMDBWebRTCCall.CallerError == "" {
 			connectionEstablishmentFailures.Inc()
+			if errors.Is(ans.Err, context.DeadlineExceeded) {
+				connectionEstablishmentAnswererTimeouts.Inc()
+			} else {
+				connectionEstablishmentAnswererNonTimeoutErrors.Inc()
+			}
 		}
 	}
 
