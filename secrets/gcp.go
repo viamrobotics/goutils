@@ -4,10 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	secretmanager "cloud.google.com/go/secretmanager/apiv1"
 	"cloud.google.com/go/secretmanager/apiv1/secretmanagerpb"
+	grpc_retry "github.com/grpc-ecosystem/go-grpc-middleware/retry"
 	"golang.org/x/oauth2/google"
+	"google.golang.org/api/option"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -29,7 +33,15 @@ type GCPSource struct {
 // NewGCPSource returns a new GCP secret source that derives its information from
 // the given context.
 func NewGCPSource(ctx context.Context) (*GCPSource, error) {
-	c, err := secretmanager.NewClient(ctx)
+	// 5 retries with 100ms timeout
+	// exponential backoff with a base of 50ms and a +/- 10% jitter
+	retryInterceptor := grpc_retry.UnaryClientInterceptor(
+		grpc_retry.WithPerRetryTimeout(100*time.Millisecond),
+		grpc_retry.WithMax(5),
+		grpc_retry.WithBackoff(grpc_retry.BackoffExponentialWithJitter(50*time.Millisecond, 0.1)),
+	)
+
+	c, err := secretmanager.NewClient(ctx, option.WithGRPCDialOption(grpc.WithChainUnaryInterceptor(retryInterceptor)))
 	if err != nil {
 		return nil, err
 	}
