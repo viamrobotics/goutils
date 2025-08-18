@@ -62,6 +62,54 @@ var (
 			{Name: "operator_id", Description: "The queue operator ID."},
 		},
 	})
+
+	connectionEstablishmentAttempts = statz.NewCounter0(
+		"rpc.webrtc/connection_establishment_attempts",
+		statz.MetricConfig{
+			Description: "The total number of connection establishment attempts (offer initializations).",
+			Unit:        units.Dimensionless,
+		},
+	)
+
+	connectionEstablishmentFailures = statz.NewCounter0(
+		"rcp.webrtc/connection_establishment_failures",
+		statz.MetricConfig{
+			Description: "The total number of connection establishment failures (all caller or answerer errors).",
+			Unit:        units.Dimensionless,
+		},
+	)
+
+	connectionEstablishmentCallerTimeouts = statz.NewCounter0(
+		"rcp.webrtc/connection_establishment_caller_timeouts",
+		statz.MetricConfig{
+			Description: "The total number of connection establishment failures that were timeouts on the caller side.",
+			Unit:        units.Dimensionless,
+		},
+	)
+
+	connectionEstablishmentCallerNonTimeoutErrors = statz.NewCounter0(
+		"rcp.webrtc/connection_establishment_caller_non_timeouts",
+		statz.MetricConfig{
+			Description: "The total number of connection establishment failures that were NOT timeouts on the caller side.",
+			Unit:        units.Dimensionless,
+		},
+	)
+
+	connectionEstablishmentAnswererTimeouts = statz.NewCounter0(
+		"rcp.webrtc/connection_establishment_answerer_timeouts",
+		statz.MetricConfig{
+			Description: "The total number of connection establishment failures that were timeouts on the answerer side.",
+			Unit:        units.Dimensionless,
+		},
+	)
+
+	connectionEstablishmentAnswererNonTimeoutErrors = statz.NewCounter0(
+		"rcp.webrtc/connection_establishment_answerer_non_timeouts",
+		statz.MetricConfig{
+			Description: "The total number of connection establishment failures that were NOT timeouts on the answerer side.",
+			Unit:        units.Dimensionless,
+		},
+	)
 )
 
 // A mongoDBWebRTCCallQueue is an MongoDB implementation of a call queue designed to be used for
@@ -328,7 +376,6 @@ type mongodbCallExchange struct {
 
 type mongodbCallEvent struct {
 	Call    mongodbWebRTCCall
-	Error   error
 	Expired bool
 }
 
@@ -876,6 +923,10 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 		return "", nil, nil, nil, err
 	}
 
+	// An offer initialization (after verifying the host queue size), indicates an attempted
+	// connection establishment attempt.
+	connectionEstablishmentAttempts.Inc()
+
 	newUUID := uuid.NewString()
 	call := mongodbWebRTCCall{
 		ID:               newUUID,
@@ -942,11 +993,6 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 				sendAnswer(WebRTCCallAnswer{Err: sendAndQueueCtx.Err()})
 				return
 			case next = <-events:
-			}
-
-			if next.Error != nil {
-				sendAnswer(WebRTCCallAnswer{Err: next.Error})
-				return
 			}
 
 			callResp := next.Call
@@ -1019,17 +1065,34 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferDone(ctx context.Context, host, uu
 // SendOfferError informs the queue that the offer associated with the UUID has encountered
 // an error from the sender side.
 func (queue *mongoDBWebRTCCallQueue) SendOfferError(ctx context.Context, host, uuid string, err error) error {
-	updateResult, err := queue.callsColl.UpdateOne(ctx, bson.D{
+	updateResult := queue.callsColl.FindOneAndUpdate(ctx, bson.D{
 		{webrtcCallIDField, uuid},
 		{webrtcCallHostField, host},
 		{webrtcCallCallerDoneField, bson.D{{"$ne", true}}},
 	}, bson.D{{"$set", bson.D{{webrtcCallCallerErrorField, err.Error()}}}})
-	if err != nil {
+	if err := updateResult.Err(); err != nil {
+		// No matching documents is indicative of an inactive offer.
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return newInactiveOfferErr(uuid)
+		}
 		return err
 	}
-	if updateResult.MatchedCount == 0 {
-		return newInactiveOfferErr(uuid)
+	var updatedMDBWebRTCCall mongodbWebRTCCall
+	if err := updateResult.Decode(&updatedMDBWebRTCCall); err != nil {
+		return errors.Wrap(err, "could not decode document where 'caller_error' was set")
 	}
+
+	// Increment connection establishment failure counts if we are setting a
+	// `caller_error` and the `answerer_error` has not already been set.
+	if updatedMDBWebRTCCall.AnswererError == "" {
+		connectionEstablishmentFailures.Inc()
+		if errors.Is(err, context.DeadlineExceeded) {
+			connectionEstablishmentCallerTimeouts.Inc()
+		} else {
+			connectionEstablishmentCallerNonTimeoutErrors.Inc()
+		}
+	}
+
 	return nil
 }
 
@@ -1106,10 +1169,6 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 				case <-recvOfferCtx.Done():
 					return false, recvOfferCtx.Err()
 				case next := <-events:
-					if next.Error != nil {
-						return false, next.Error
-					}
-
 					callReq = next.Call
 
 					// take the offer
@@ -1208,36 +1267,6 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 		callerDoneCtx:    callerDoneCtx,
 		deadline:         offerDeadline,
 	}
-	setErr := func(errToSet error) {
-		if !(errors.Is(errToSet, context.Canceled) || errors.Is(errToSet, context.DeadlineExceeded)) {
-			queue.logger.Errorw("error in RecvOffer", "error", errToSet, "id", callReq.ID)
-		}
-		// we assume the number of goroutines is bounded by the gRPC server invoking this method.
-		queue.activeBackgroundWorkers.Add(1)
-		utils.PanicCapturingGo(func() {
-			queue.activeBackgroundWorkers.Done()
-
-			// we need a dedicated timeout since even if the server is shutting down,
-			// we want to notify other servers immediately, instead of waiting for a timeout.
-			updateCtx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-			defer cancel()
-
-			_, err := queue.callsColl.UpdateOne(
-				updateCtx,
-				bson.D{
-					{webrtcCallIDField, callReq.ID},
-				},
-				bson.D{{"$set", bson.D{{webrtcCallAnswererErrorField, errToSet.Error()}}}},
-			)
-			if err == nil {
-				return
-			}
-			var errInactive inactiveOfferError
-			if !errors.As(err, &errInactive) {
-				queue.logger.Errorw("error updating error for RecvOffer", "error", errToSet, "id", callReq.ID)
-			}
-		})
-	}
 	sendCandidate := func(cand webrtc.ICECandidateInit) bool {
 		select {
 		case <-recvCtx.Done():
@@ -1291,20 +1320,13 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 			}
 
 			if err := recvCtx.Err(); err != nil {
-				setErr(recvCtx.Err())
 				return
 			}
 
 			select {
 			case <-recvCtx.Done():
-				setErr(recvCtx.Err())
 				return
 			case next := <-events:
-				if next.Error != nil {
-					setErr(next.Error)
-					return
-				}
-
 				if next.Expired {
 					exchange.callerErr = errors.New("offer expired")
 					return
@@ -1412,12 +1434,14 @@ func (resp *mongoDBWebRTCCallOfferExchange) CallerErr() error {
 func (resp *mongoDBWebRTCCallOfferExchange) AnswererRespond(ctx context.Context, ans WebRTCCallAnswer) error {
 	var toSet bson.D
 	var toPush bson.D
+	var answererErrorSet bool
 	switch {
 	case ans.InitialSDP != nil:
 		toSet = append(toSet, bson.E{webrtcCallAnswererSDPField, ans.InitialSDP})
 	case ans.Candidate != nil:
 		toPush = append(toPush, bson.E{webrtcCallAnswererCandidatesField, iceCandidateToMongo(ans.Candidate)})
 	case ans.Err != nil:
+		answererErrorSet = true
 		toSet = append(toSet, bson.E{webrtcCallAnswererErrorField, ans.Err.Error()})
 	default:
 		return errors.New("expected either SDP, ICE candidate, or error to be set")
@@ -1434,19 +1458,38 @@ func (resp *mongoDBWebRTCCallOfferExchange) AnswererRespond(ctx context.Context,
 		return nil
 	}
 
-	updateResult, err := resp.coll.UpdateOne(
+	updateResult := resp.coll.FindOneAndUpdate(
 		ctx,
 		bson.D{
 			{webrtcCallIDField, resp.call.ID},
 		},
 		update,
 	)
-	if err != nil {
+	if err := updateResult.Err(); err != nil {
+		// No matching documents is indicative of an inactive offer.
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return newInactiveOfferErr(resp.call.ID)
+		}
 		return err
 	}
-	if updateResult.MatchedCount == 0 {
-		return newInactiveOfferErr(resp.call.ID)
+	if answererErrorSet {
+		var updatedMDBWebRTCCall mongodbWebRTCCall
+		if err := updateResult.Decode(&updatedMDBWebRTCCall); err != nil {
+			return errors.Wrap(err, "could not decode document where 'answerer_error' was set")
+		}
+
+		// Increment connection establishment failure counts if we are setting an
+		// `answerer_error` and the `caller_error` has not already been set.
+		if updatedMDBWebRTCCall.CallerError == "" {
+			connectionEstablishmentFailures.Inc()
+			if errors.Is(ans.Err, context.DeadlineExceeded) {
+				connectionEstablishmentAnswererTimeouts.Inc()
+			} else {
+				connectionEstablishmentAnswererNonTimeoutErrors.Inc()
+			}
+		}
 	}
+
 	return nil
 }
 
