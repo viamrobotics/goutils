@@ -1,16 +1,17 @@
-version: v1
-name: buf.build/viamrobotics/goutils
+version: v2
+modules:
+  - path: .
+    name: buf.build/viamrobotics/goutils
+    excludes:
+      - vendor
 deps:
   - buf.build/googleapis/googleapis:62f35d8aed1149c291d606d958a7ce32
-build:
-  excludes:
-    - vendor
-breaking:
-  use:
-    - FILE
 lint:
   use:
-    - DEFAULT
+    - STANDARD
+  except:
+    - FIELD_NOT_REQUIRED
+    - PACKAGE_NO_IMPORT_CYCLE
   ignore_only:
     RPC_REQUEST_RESPONSE_UNIQUE:
       - proto/rpc/webrtc/v1/signaling.proto
@@ -18,3 +19,10 @@ lint:
       - proto/rpc/webrtc/v1/signaling.proto
     RPC_RESPONSE_STANDARD_NAME:
       - proto/rpc/webrtc/v1/signaling.proto
+  disallow_comment_ignores: true
+breaking:
+  use:
+    - FILE
+  except:
+    - EXTENSION_NO_DELETE
+    - FIELD_SAME_DEFAULT
