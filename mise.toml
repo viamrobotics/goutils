@@ -1,0 +1,77 @@
+[settings]
+experimental = true
+disable_backends = ["asdf"]
+
+[tools]
+buf = "1.55.1"
+go = "1.23.8"
+"go:github.com/AlekSi/gocov-xml" = "1.0.0"
+"go:github.com/axw/gocov/gocov" = "1.1.0"
+"go:github.com/bufbuild/buf/cmd/protoc-gen-buf-breaking" = "1.55.1"
+"go:github.com/bufbuild/buf/cmd/protoc-gen-buf-lint" = "1.55.1"
+"go:github.com/edaniels/golinters/cmd/combined" = "0.0.5"
+"go:github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway" = "2.20.0"
+"go:github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2" = "2.27.1"
+"go:github.com/pseudomuto/protoc-gen-doc/cmd/protoc-gen-doc" = "1.5.1"
+golangci-lint = "1.61.0"
+gotestsum = "1.10.0"
+jq = "1.8.1"
+node = "18.20.8"
+protoc = "21.12"
+protoc-gen-go = "1.35.1"
+protoc-gen-go-grpc = "1.5.1"
+
+[tasks.setup-cert]
+description = "Create a self-signed cert and add it to the system trust store"
+dir = "etc"
+run = "bash ./setup_cert.sh"
+
+[tasks.setup-priv-key]
+description = "Create private keys for testing"
+dir = "etc"
+run = "bash ./setup_priv_key.sh"
+
+[tasks.build-go]
+alias = "build"
+depends = ["buf-go"]
+run = "go build ./..."
+
+[tasks.buf-go]
+run = [
+  "buf lint",
+  "buf generate",
+]
+
+[tasks.lint-go]
+alias = "lint"
+run = """
+  {% raw %}
+  #!/usr/bin/env bash
+  set -x
+  go mod tidy
+  buf lint
+  set +x
+  export pkgs=`go list -f '{{.Dir}}' ./... | grep -v gen | grep -v proto` && echo "$pkgs" | xargs -t go vet -vettool=$(which combined)
+  export GOGC=50 pkgs=`go list -f '{{.Dir}}' ./... | grep -v gen | grep -v proto` && echo "$pkgs" | xargs -t golangci-lint run $LINT_BUILD_TAGS -v --fix --config=./etc/.golangci.yaml
+  {% endraw %}
+"""
+
+[tasks.cover]
+run = "./etc/test.bash cover"
+
+[tasks.test-go]
+alias = "test"
+run = "./etc/test.bash"
+
+[tasks.list-example-echo-tasks]
+hide = true
+quiet = true
+dir = "rpc/examples/echo"
+run = """mise tasks ls -l -J | jq -r '.[] | select(.source | endswith("rpc/examples/echo/mise.toml")) | .name'"""
+
+[tasks.example-echo]
+dir = "rpc/examples/echo"
+usage = """
+complete "echo_task" run="mise run list-example-echo-tasks"
+"""
+run = "mise run {{ arg(name='echo_task') }}"
