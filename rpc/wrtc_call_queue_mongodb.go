@@ -63,8 +63,8 @@ var (
 		},
 	})
 
-	connectionEstablishments = statz.NewCounter0(
-		"rpc.webrtc/connection_establishments",
+	connectionEstablishmentAttempts = statz.NewCounter0(
+		"rpc.webrtc/connection_establishment_attempts",
 		statz.MetricConfig{
 			Description: "The total number of connection establishment attempts (offer initializations).",
 			Unit:        units.Dimensionless,
@@ -925,7 +925,7 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 
 	// An offer initialization (after verifying the host queue size), indicates an attempted
 	// connection establishment attempt.
-	connectionEstablishments.Inc()
+	connectionEstablishmentAttempts.Inc()
 
 	newUUID := uuid.NewString()
 	call := mongodbWebRTCCall{
