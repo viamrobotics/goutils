@@ -48,6 +48,16 @@ jobs:
       with:
         experimental: true
 
+    - name: Extract go version from mise
+      id: go-version
+      run:
+        echo "version=$(mise tool go --active)" >> $GITHUB_OUTPUT
+
+    # Go was already installed by mise but setup-go will also cache our module dependencies.
+    - uses: actions/setup-go@v5
+      with:
+        go-version: ${{ steps.go-version.outputs.version }}
+
     - name: Set main env vars
       if: github.event_name != 'pull_request_target'
       run: |
