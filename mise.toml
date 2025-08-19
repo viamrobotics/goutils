@@ -1,5 +1,17 @@
 [settings]
+# (Josh) At time of writing the go backend is experimental. When it's promoted
+# to stable this can be removed.
 experimental = true
+# (Josh) Testing shows that mise only generates new lockfile entries for the
+# platform it is run on, so adding new tools on MacOS causes the CI runs to
+# create a diff for the corresponding Linux entries. We can also assume that
+# updating versions on one OS would leave the other(s) out of date. For now
+# we'll rely on specifying exact versions here (or as exact as we feel is
+# necessary) and revisit the lockfile if and when it improves and we feel it's
+# needed.
+lockfile = false
+# (Josh) asdf plugins are just shell scripts that never work on Windows, which
+# is one of our supported platforms.
 disable_backends = ["asdf"]
 
 [tools]
