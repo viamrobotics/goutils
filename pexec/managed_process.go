@@ -485,9 +485,22 @@ func (p *managedProcess) Stop() error {
 		return nil
 	}
 
-	_, err := p.kill()
+	forceKilled, err := p.kill()
 	if err != nil {
 		return err
+	}
+
+	// If we had to force kill the process, we should not wait on the managingCh. The
+	// managingCh is only closed after the cmd.Wait call in in the manage goroutine
+	// completes. cmd.Wait can block even _after_ the created process has died if any of
+	// STDOUT, STDERR, or STDIN has been set to point to an OS pipe, as the goroutines
+	// managing reading and writing to those [out/in]puts may still be running. It's "safe"
+	// to assume that if we had to send SIGKILL to the process' entire process group, we can
+	// return and not attempt to block until cmd.Wait finishes.
+	//
+	// See https://github.com/golang/go/issues/23019.
+	if forceKilled {
+		return nil
 	}
 	<-p.managingCh
 
