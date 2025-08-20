@@ -129,7 +129,7 @@ func TestManagedProcessStart(t *testing.T) {
 				Args:             []string{"-c", "exit 1"},
 				OneShot:          true,
 				Log:              true,
-				OnUnexpectedExit: func(int) bool { panic("this should not panic") },
+				OnUnexpectedExit: func(context.Context, int) bool { panic("this should not panic") },
 			}, logger)
 			err := proc.Start(context.Background())
 			test.That(t, err, test.ShouldNotBeNil)
@@ -293,7 +293,7 @@ func TestManagedProcessManage(t *testing.T) {
 		proc := NewManagedProcess(ProcessConfig{
 			Name: "bash",
 			Args: []string{"-c", "exit 1"},
-			OnUnexpectedExit: func(exitCode int) bool {
+			OnUnexpectedExit: func(ctx context.Context, exitCode int) bool {
 				receivedExitCode.Store(int64(exitCode))
 
 				// Close channel and return false (no restart) after 5 restarts.
@@ -333,6 +333,29 @@ func TestManagedProcessStop(t *testing.T) {
 		test.That(t, proc.Stop(), test.ShouldBeNil)
 		test.That(t, proc.Stop(), test.ShouldBeNil)
 		test.That(t, proc.Start(context.Background()), test.ShouldEqual, errAlreadyStopped)
+	})
+	t.Run("stopping with a hung OUE handler does not block", func(t *testing.T) {
+		logger := golog.NewTestLogger(t)
+		blockOue := make(chan struct{})
+		oueRunning := make(chan struct{})
+		oue := func(ctx context.Context, exitCode int) bool {
+			close(oueRunning)
+			<-blockOue
+			return true
+		}
+		proc := NewManagedProcess(ProcessConfig{
+			Name:             "bash",
+			Args:             []string{"-c", "exit 1"},
+			OneShot:          false,
+			Log:              false,
+			OnUnexpectedExit: oue,
+		}, logger)
+		test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
+		<-oueRunning
+		test.That(t, proc.Stop(), test.ShouldBeNil)
+		test.That(t, proc.Start(context.Background()), test.ShouldEqual, errAlreadyStopped)
+		close(blockOue)
+		time.Sleep(time.Second * 30)
 	})
 	t.Run("stopping a one shot does nothing", func(t *testing.T) {
 		logger := golog.NewTestLogger(t)
@@ -566,7 +589,7 @@ func TestManagedProcessStop(t *testing.T) {
 				fmt.Sprintf("while true; do echo hello >> '%s'; sleep 1; done", tempFile.Name()),
 			},
 			StopTimeout:      time.Second * 5,
-			OnUnexpectedExit: func(int) bool { panic("this should not panic") },
+			OnUnexpectedExit: func(context.Context, int) bool { panic("this should not panic") },
 		}, logger)
 		test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
 		<-watcher1.Events

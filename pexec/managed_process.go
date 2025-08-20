@@ -325,10 +325,14 @@ func (p *managedProcess) manage(stdOut, stdErr io.ReadCloser) {
 	// onUnexpectedExit returns false. Drop the lock to avoid deadlocking other
 	// goroutines that my try to call Stop while we're handling a crash.
 	if p.onUnexpectedExit != nil {
-		oueChan := make(chan bool)
+		// Buffer the channel so the OUE goroutine can write to it and immediately
+		// exit. Using an unbuffered channel can lead to a leaked goroutine that is
+		// blocked on writing to the channel even though the management goroutine
+		// already exited because the kill context was cancelled.
+		oueChan := make(chan bool, 1)
 		go func() {
-			p.mu.Unlock()
 			locked = false
+			p.mu.Unlock()
 			oueChan <- p.onUnexpectedExit(p.killCtx, p.cmd.ProcessState.ExitCode())
 		}()
 
