@@ -343,7 +343,7 @@ func (p *managedProcess) manage(stdOut, stdErr io.ReadCloser) {
 		// exit. Using an unbuffered channel can lead to a leaked goroutine that is
 		// blocked on writing to the channel even though the management goroutine
 		// already exited because the kill context was cancelled.
-		oueChan := make(chan bool)
+		oueChan := make(chan bool, 1)
 		p.wg.Add(1)
 		go func() {
 			locked = false
