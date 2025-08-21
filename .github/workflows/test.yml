@@ -42,20 +42,21 @@ jobs:
         ref: ${{ github.event.pull_request.head.sha }}
         fetch-depth: 2
 
-    - name: Setup go
-      uses: actions/setup-go@v5
-      with:
-        go-version-file: go.mod
 
-    - name: Setup node
-      uses: actions/setup-node@v3
+    - name: Install toolchain
+      uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac
       with:
-        node-version: 18
+        experimental: true
 
-    - name: Install Protoc
-      uses: arduino/setup-protoc@v3
+    - name: Extract go version from mise
+      id: go-version
+      run:
+        echo "version=$(mise tool go --active)" >> $GITHUB_OUTPUT
+
+    # Go was already installed by mise but setup-go will also cache our module dependencies.
+    - uses: actions/setup-go@v5
       with:
-        version: "21.x"
+        go-version: ${{ steps.go-version.outputs.version }}
 
     - name: Set main env vars
       if: github.event_name != 'pull_request_target'
@@ -73,14 +74,14 @@ jobs:
         echo "GITHUB_X_PR_BASE_SHA=${{ github.event.pull_request.base.sha }}" >> $GITHUB_ENV
         echo "GITHUB_X_PR_BASE_REF=${{ github.event.pull_request.base.ref }}" >> $GITHUB_ENV
 
-    - name: Verify no uncommitted changes from "make build lint"
+    - name: Verify no uncommitted changes
       run: |
         git init
         git add .
-        make build lint
+        mise run build ::: lint
         GEN_DIFF=$(git status -s)
         if [ -n "$GEN_DIFF" ]; then
-            echo '"make build lint" resulted in changes not in git' 1>&2
+            echo '"mise run build ::: lint" resulted in changes not in git' 1>&2
             git status
             exit 1
         fi
@@ -92,7 +93,7 @@ jobs:
       run: |
         echo "${{ secrets.ARTIFACT_GOOGLE_APPLICATION_CREDENTIALS }}" | base64 -d > artifact_google_creds.json
         export ARTIFACT_GOOGLE_APPLICATION_CREDENTIALS=`pwd`/artifact_google_creds.json
-        make cover
+        mise run cover
 
     - name: Upload test.json
       if: always()
