@@ -795,6 +795,8 @@ type fakeProcess struct {
 	stopErr   bool
 }
 
+func (fp *fakeProcess) Wait() {}
+
 func (fp *fakeProcess) ID() string {
 	return fp.id
 }
