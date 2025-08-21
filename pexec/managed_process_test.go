@@ -355,6 +355,7 @@ func TestManagedProcessStop(t *testing.T) {
 		test.That(t, proc.Stop(), test.ShouldBeNil)
 		test.That(t, proc.Start(context.Background()), test.ShouldEqual, errAlreadyStopped)
 		close(blockOue)
+		proc.(*managedProcess).wg.Wait()
 	})
 	t.Run("stopping a one shot does nothing", func(t *testing.T) {
 		logger := golog.NewTestLogger(t)

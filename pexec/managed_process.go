@@ -71,6 +71,10 @@ type ManagedProcess interface {
 	// UnixPid returns the pid of the process. This method returns an error if the pid is
 	// unknown. For example, if the process hasn't been `Start`ed yet. Or if not on a unix system.
 	UnixPid() (int, error)
+
+	// Wait blocks until all goroutines associated with this ManagedProcess have
+	// exited.
+	Wait()
 }
 
 // NewManagedProcess returns a new, unstarted, from the given configuration.
@@ -121,6 +125,9 @@ func NewManagedProcess(config ProcessConfig, logger utils.ZapCompatibleLogger) M
 
 type managedProcess struct {
 	mu sync.Mutex
+	// wg is used to keep track of all the goroutines spawned by managedProcess
+	// so users can wait for all background work to complete
+	wg sync.WaitGroup
 
 	id        string
 	name      string
@@ -144,6 +151,10 @@ type managedProcess struct {
 	logWriter    io.Writer
 	stdoutLogger utils.ZapCompatibleLogger
 	stderrLogger utils.ZapCompatibleLogger
+}
+
+func (p *managedProcess) Wait() {
+	p.wg.Wait()
 }
 
 func (p *managedProcess) ID() string {
@@ -272,9 +283,12 @@ func (p *managedProcess) start(ctx context.Context) error {
 	p.cmd = cmd
 
 	// It's okay to not wait for management to start.
+	p.wg.Add(1)
 	utils.ManagedGo(func() {
 		p.manage(stdOut, stdErr)
-	}, nil)
+	}, func() {
+		p.wg.Done()
+	})
 	return nil
 }
 
@@ -329,11 +343,13 @@ func (p *managedProcess) manage(stdOut, stdErr io.ReadCloser) {
 		// exit. Using an unbuffered channel can lead to a leaked goroutine that is
 		// blocked on writing to the channel even though the management goroutine
 		// already exited because the kill context was cancelled.
-		oueChan := make(chan bool, 1)
+		oueChan := make(chan bool)
+		p.wg.Add(1)
 		go func() {
 			locked = false
 			p.mu.Unlock()
 			oueChan <- p.onUnexpectedExit(p.killCtx, p.cmd.ProcessState.ExitCode())
+			p.wg.Done()
 		}()
 
 		select {
