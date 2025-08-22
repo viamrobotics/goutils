@@ -36,9 +36,15 @@ func (e *ProcessNotExistsError) Unwrap() error {
 // UnexpectedExitHandler is the signature for functions that can optionally be
 // provided to run when a managed process unexpectedly exits. The return value
 // indicates whether pexec should continue with its own attempt to restart the
-// process: true means pexec will attempt its own restart, false means the
-// no restart will be attempted and the process will remain dead.
-type UnexpectedExitHandler = func(exitCode int) bool
+// process: true means pexec will attempt its own restart, false means no
+// restart will be attempted and the process will remain dead. `exitCode` is
+// the exit code of the process. `ctx` is a [context.Context] that will be
+// cancelled if another goroutine attempts to stop the process, such as by
+// `ManagedProcess.Kill` or `ManagedProcess.KillGroup`. Users who implement
+// custom restart logic within an `UnexpectedExitHandler` must take care to
+// avoid race conditions between the handler and other goroutines that may try
+// to stop the process.
+type UnexpectedExitHandler = func(ctx context.Context, exitCode int) bool
 
 // A ManagedProcess controls the lifecycle of a single system process. Based on
 // its configuration, it will ensure the process is revived if it every unexpectedly
@@ -65,6 +71,10 @@ type ManagedProcess interface {
 	// UnixPid returns the pid of the process. This method returns an error if the pid is
 	// unknown. For example, if the process hasn't been `Start`ed yet. Or if not on a unix system.
 	UnixPid() (int, error)
+
+	// Wait blocks until all goroutines associated with this ManagedProcess have
+	// exited.
+	Wait()
 }
 
 // NewManagedProcess returns a new, unstarted, from the given configuration.
@@ -89,6 +99,8 @@ func NewManagedProcess(config ProcessConfig, logger utils.ZapCompatibleLogger) M
 		env = append(env, fmt.Sprintf("%s=%s", key, value))
 	}
 
+	killCtx, killCtxCancel := context.WithCancel(context.Background())
+
 	return &managedProcess{
 		id:               config.ID,
 		name:             config.Name,
@@ -100,7 +112,8 @@ func NewManagedProcess(config ProcessConfig, logger utils.ZapCompatibleLogger) M
 		shouldLog:        config.Log,
 		onUnexpectedExit: config.OnUnexpectedExit,
 		managingCh:       make(chan struct{}),
-		killCh:           make(chan struct{}),
+		killCtx:          killCtx,
+		killCtxCancel:    killCtxCancel,
 		stopSig:          config.StopSignal,
 		stopWaitInterval: config.StopTimeout / time.Duration(3),
 		logger:           logger,
@@ -112,6 +125,9 @@ func NewManagedProcess(config ProcessConfig, logger utils.ZapCompatibleLogger) M
 
 type managedProcess struct {
 	mu sync.Mutex
+	// wg is used to keep track of all the goroutines spawned by managedProcess
+	// so users can wait for all background work to complete
+	wg sync.WaitGroup
 
 	id        string
 	name      string
@@ -125,7 +141,8 @@ type managedProcess struct {
 
 	onUnexpectedExit UnexpectedExitHandler
 	managingCh       chan struct{}
-	killCh           chan struct{}
+	killCtx          context.Context
+	killCtxCancel    context.CancelFunc
 	stopSig          syscall.Signal
 	stopWaitInterval time.Duration
 	lastWaitErr      error
@@ -134,6 +151,10 @@ type managedProcess struct {
 	logWriter    io.Writer
 	stdoutLogger utils.ZapCompatibleLogger
 	stderrLogger utils.ZapCompatibleLogger
+}
+
+func (p *managedProcess) Wait() {
+	p.wg.Wait()
 }
 
 func (p *managedProcess) ID() string {
@@ -186,12 +207,8 @@ func (p *managedProcess) start(ctx context.Context) error {
 	// In the event this Start happened from a restart but a
 	// stop happened while we were acquiring the lock, we may
 	// need to return early.
-	select {
-	case <-p.killCh:
-		// This will signal to a potential restarter that
-		// there's no restart to do.
+	if err := p.killCtx.Err(); err != nil {
 		return errAlreadyStopped
-	default:
 	}
 
 	if err := p.validateCWD(); err != nil {
@@ -266,9 +283,12 @@ func (p *managedProcess) start(ctx context.Context) error {
 	p.cmd = cmd
 
 	// It's okay to not wait for management to start.
+	p.wg.Add(1)
 	utils.ManagedGo(func() {
 		p.manage(stdOut, stdErr)
-	}, nil)
+	}, func() {
+		p.wg.Done()
+	})
 	return nil
 }
 
@@ -311,29 +331,42 @@ func (p *managedProcess) manage(stdOut, stdErr io.ReadCloser) {
 	}()
 
 	// It's possible that Stop was called and is the reason why Wait returned.
-	select {
-	case <-p.killCh:
+	if err := p.killCtx.Err(); err != nil {
 		return
-	default:
 	}
 
 	// Run onUnexpectedExit if it exists. Do not attempt restart if
 	// onUnexpectedExit returns false. Drop the lock to avoid deadlocking other
 	// goroutines that my try to call Stop while we're handling a crash.
 	if p.onUnexpectedExit != nil {
-		p.mu.Unlock()
-		locked = false
-		if !p.onUnexpectedExit(p.cmd.ProcessState.ExitCode()) {
+		// Buffer the channel so the OUE goroutine can write to it and immediately
+		// exit. Using an unbuffered channel can lead to a leaked goroutine that is
+		// blocked on writing to the channel even though the management goroutine
+		// already exited because the kill context was cancelled.
+		oueChan := make(chan bool, 1)
+		p.wg.Add(1)
+		go func() {
+			locked = false
+			p.mu.Unlock()
+			oueChan <- p.onUnexpectedExit(p.killCtx, p.cmd.ProcessState.ExitCode())
+			p.wg.Done()
+		}()
+
+		select {
+		case shouldContinue := <-oueChan:
+			if !shouldContinue {
+				return
+			}
+		case <-p.killCtx.Done():
 			return
 		}
+
 		p.mu.Lock()
 		locked = true
 		// Dropped the lock to call the oue handler, check if we were stopped during
 		// that time.
-		select {
-		case <-p.killCh:
+		if err := p.killCtx.Err(); err != nil {
 			return
-		default:
 		}
 	}
 
@@ -358,7 +391,7 @@ func (p *managedProcess) manage(stdOut, stdErr io.ReadCloser) {
 	defer ticker.Stop()
 	select {
 	case <-ticker.C:
-	case <-p.killCh:
+	case <-p.killCtx.Done():
 		return
 	}
 
@@ -460,8 +493,7 @@ func (p *managedProcess) Stop() error {
 	p.mu.Lock()
 
 	// Return early if the process has already been killed.
-	select {
-	case <-p.killCh:
+	if err := p.killCtx.Err(); err != nil {
 		p.mu.Unlock()
 		if p.cmd != nil {
 			// Avoid deadlocking if Stop was called before Start while blocking all
@@ -470,10 +502,9 @@ func (p *managedProcess) Stop() error {
 			<-p.managingCh
 		}
 		return nil
-	default:
 	}
 
-	close(p.killCh)
+	p.killCtxCancel()
 
 	// All relevant methods wait on the lock we hold and will not attempt to
 	// (re)start the process now that we closed killch, so we can safely drop the
@@ -517,11 +548,7 @@ func (p *managedProcess) KillGroup() {
 	// management goroutine to stop. We will attempt to kill the
 	// process even if p.stopped is true.
 	p.mu.Lock()
-	select {
-	case <-p.killCh:
-	default:
-		close(p.killCh)
-	}
+	p.killCtxCancel()
 
 	if p.cmd == nil {
 		p.mu.Unlock()
