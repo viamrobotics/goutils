@@ -1,6 +1,3 @@
-// Do we want to have base channel logs (probably not, just some of them, like the ones in this file that have to do with parsing grpc requests) to fall under related to grpc_requests or to keep them separate?
-// Also, what exactly is the difference between these webrtc server, server channels and, server streams conceptually
-
 package rpc
 
 import (
@@ -131,7 +128,7 @@ func (ch *webrtcServerChannel) onChannelMessage(msg webrtc.DataChannelMessage) {
 		// TODO(RSDK-890): use the correct entity (sub), not the audience (hosts)
 		handlerCtx = ContextWithAuthEntity(handlerCtx, EntityInfo{Entity: ch.authAudience})
 		logger := utils.AddFieldsToLogger(ch.webrtcBaseChannel.logger, "id", id)
-		serverStream = newWebRTCServerStream(handlerCtx, cancelCtx, headers.Headers.GetMethod(), ch, stream, ch.removeStreamByID, logger) // this is where the grpc_requests sublogger gets made
+		serverStream = newWebRTCServerStream(handlerCtx, cancelCtx, headers.Headers.GetMethod(), ch, stream, ch.removeStreamByID, logger)
 		ch.streams[id] = serverStream
 	}
 	ch.mu.Unlock()

@@ -355,7 +355,7 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 		serverOpts = append(serverOpts, grpc.UnknownServiceHandler(sOpts.unknownStreamDesc.Handler))
 	}
 
-	grpcLogger := utils.Sublogger(logger, "grpc_requests") // How to test this?
+	grpcLogger := utils.Sublogger(logger, "grpc_requests")
 
 	var unaryInterceptors []grpc.UnaryServerInterceptor
 	unaryInterceptors = append(unaryInterceptors,
