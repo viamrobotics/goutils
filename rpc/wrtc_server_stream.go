@@ -39,7 +39,7 @@ type webrtcServerStream struct {
 	trailer         metadata.MD
 	sendClosed      atomic.Bool
 	requestID       string
-	msgCount        int64
+	msgCount        int
 }
 
 // newWebRTCServerStream creates a gRPC stream from the given server channel with a
@@ -268,7 +268,8 @@ func (s *webrtcServerStream) processHeaders(headers *webrtcpb.RequestHeaders) {
 		}
 	}
 
-	s.ctx = context.WithValue(s.ctx, "request_id", s.requestID)
+	type RequestID struct{}
+	s.ctx = context.WithValue(s.ctx, RequestID{}, s.requestID)
 
 	s.ch.server.counters.HeadersProcessed.Add(1)
 	s.headersReceived = true
