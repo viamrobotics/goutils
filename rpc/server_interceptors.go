@@ -181,11 +181,12 @@ func serverCallFields(ctx context.Context, fullMethodString string, start time.T
 	}
 
 	service := path.Dir(fullMethodString)[1:]
+	method := path.Base(fullMethodString)
 	return append(f, []any{
 		"span.kind", "server",
 		"system", "grpc",
 		"grpc.service", service,
-		"grpc.method", path.Base(fullMethodString),
+		"grpc.method", method,
 		"request_id", requestID,
 	}...)
 }
