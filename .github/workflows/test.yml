@@ -123,7 +123,7 @@ jobs:
     - uses: actions/setup-go@v5
       with:
         go-version-file: go.mod
-    - uses: install testing deps
+    - name: install testing deps
       run: |
         go get gotest.tools/gotestsum@v1.10.0
     - name: test
