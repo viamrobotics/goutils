@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"path"
 	"sync/atomic"
 
 	protov1 "github.com/golang/protobuf/proto" //nolint:staticcheck
+	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -36,6 +38,8 @@ type webrtcServerStream struct {
 	header          metadata.MD
 	trailer         metadata.MD
 	sendClosed      atomic.Bool
+	requestID       string
+	msgCount        int64
 }
 
 // newWebRTCServerStream creates a gRPC stream from the given server channel with a
@@ -50,11 +54,16 @@ func newWebRTCServerStream(
 	onDone func(id uint64),
 	logger utils.ZapCompatibleLogger,
 ) *webrtcServerStream {
-	bs := newWebRTCBaseStream(ctx, cancelCtx, stream, onDone, utils.Sublogger(logger, "grpc_requests"))
+	requestID := uuid.New().String()
+	loggerWithRequestID := utils.AddFieldsToLogger(utils.Sublogger(logger, "grpc_requests"), "request_id", requestID)
+
+	bs := newWebRTCBaseStream(ctx, cancelCtx, stream, onDone, loggerWithRequestID)
 	s := &webrtcServerStream{
 		webrtcBaseStream: bs,
 		ch:               channel,
 		method:           method,
+		requestID:        requestID,
+		msgCount:         0,
 	}
 	return s
 }
@@ -228,12 +237,14 @@ func (s *webrtcServerStream) onRequest(request *webrtcpb.Request) {
 			s.closeWithSendError(status.Error(codes.InvalidArgument, "headers already received"))
 			return
 		}
+		s.msgCount++
 		s.processHeaders(r.Headers)
 	case *webrtcpb.Request_Message:
 		if !s.headersReceived {
 			s.closeWithSendError(status.Error(codes.InvalidArgument, "headers not yet received"))
 			return
 		}
+		s.msgCount++
 		s.processMessage(r.Message)
 	case *webrtcpb.Request_RstStream:
 		s.closeWithSendError(status.Error(codes.Canceled, "request cancelled"))
@@ -244,6 +255,9 @@ func (s *webrtcServerStream) onRequest(request *webrtcpb.Request) {
 }
 
 func (s *webrtcServerStream) processHeaders(headers *webrtcpb.RequestHeaders) {
+	s.logger = utils.AddFieldsToLogger(s.logger, "grpc.method", path.Base(headers.GetMethod()), "request_id", s.requestID, "msg", s.msgCount)
+	s.logger.Debug("incoming grpc request msg")
+
 	handlerFunc, ok := s.ch.server.handler(headers.GetMethod())
 	if !ok {
 		if s.ch.server.unknownStreamDesc != nil {
@@ -253,6 +267,8 @@ func (s *webrtcServerStream) processHeaders(headers *webrtcpb.RequestHeaders) {
 			return
 		}
 	}
+
+	s.ctx = context.WithValue(s.ctx, "request_id", s.requestID)
 
 	s.ch.server.counters.HeadersProcessed.Add(1)
 	s.headersReceived = true
@@ -265,6 +281,9 @@ func (s *webrtcServerStream) processHeaders(headers *webrtcpb.RequestHeaders) {
 }
 
 func (s *webrtcServerStream) processMessage(msg *webrtcpb.RequestMessage) {
+	s.logger = utils.AddFieldsToLogger(s.logger, "grpc.method", path.Base(s.method), "request_id", s.requestID, "msg", s.msgCount)
+	s.logger.Debug("incoming grpc request msg")
+
 	if s.recvClosed.Load() {
 		s.logger.Debug("message received after EOS")
 		return
