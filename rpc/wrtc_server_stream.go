@@ -244,9 +244,6 @@ func (s *webrtcServerStream) onRequest(request *webrtcpb.Request) {
 }
 
 func (s *webrtcServerStream) processHeaders(headers *webrtcpb.RequestHeaders) {
-	s.logger = utils.AddFieldsToLogger(s.logger, "method", headers.GetMethod())
-	s.logger.Debug("incoming grpc request")
-
 	handlerFunc, ok := s.ch.server.handler(headers.GetMethod())
 	if !ok {
 		if s.ch.server.unknownStreamDesc != nil {

@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/google/uuid"
 	grpc_logging "github.com/grpc-ecosystem/go-grpc-middleware/logging"
 	"github.com/pkg/errors"
 	"go.opencensus.io/trace"
@@ -140,6 +141,11 @@ func grpcUnaryServerInterceptor(logger utils.ZapCompatibleLogger) grpc.UnaryServ
 func grpcStreamServerInterceptor(logger utils.ZapCompatibleLogger) grpc.StreamServerInterceptor {
 	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		startTime := time.Now()
+		requestID := uuid.New()
+
+		logger = utils.AddFieldsToLogger(logger, "grpc.method", path.Base(info.FullMethod), "request_id", requestID)
+		logger.Debug("incoming grpc request")
+
 		err := handler(srv, stream)
 		code := grpc_logging.DefaultErrorToCode(err)
 		loggerWithFields := utils.AddFieldsToLogger(logger, serverCallFields(stream.Context(), info.FullMethod, startTime)...)
@@ -158,12 +164,11 @@ func serverCallFields(ctx context.Context, fullMethodString string, start time.T
 	if d, ok := ctx.Deadline(); ok {
 		f = append(f, "grpc.request.deadline", d.UTC().Format(iso8601))
 	}
+
 	service := path.Dir(fullMethodString)[1:]
-	method := path.Base(fullMethodString)
 	return append(f, []any{
 		"span.kind", "server",
 		"system", "grpc",
 		"grpc.service", service,
-		"grpc.method", method,
 	}...)
 }
