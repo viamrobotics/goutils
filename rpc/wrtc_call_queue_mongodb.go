@@ -30,7 +30,7 @@ func init() {
 }
 
 var (
-	callChangeStreamFailures = statz.NewCounter1[string]("rpc.webrtc/call_change_stream_failures", statz.MetricConfig{
+	callChangeStreamFailures = statz.NewCounter1[string]("signaling/call_change_stream_failures", statz.MetricConfig{
 		Description: "The number of times making a change stream fails.",
 		Unit:        units.Dimensionless,
 		Labels: []statz.Label{
@@ -38,7 +38,7 @@ var (
 		},
 	})
 
-	callAnswererTooBusy = statz.NewCounter2[string, string]("rpc.webrtc/call_answerer_too_busy", statz.MetricConfig{
+	callAnswererTooBusy = statz.NewCounter2[string, string]("signaling/call_answerer_too_busy", statz.MetricConfig{
 		Description: "The number of times all answerers were too busy to handle a new call.",
 		Unit:        units.Dimensionless,
 		Labels: []statz.Label{
@@ -47,7 +47,7 @@ var (
 		},
 	})
 
-	exchangeChannelAtCapacity = statz.NewCounter1[string]("rpc.webrtc/exchange_channel_at_capacity", statz.MetricConfig{
+	exchangeChannelAtCapacity = statz.NewCounter1[string]("signaling/exchange_channel_at_capacity", statz.MetricConfig{
 		Description: "The number of times a call exchange has it max channel capacity.",
 		Unit:        units.Dimensionless,
 		Labels: []statz.Label{
@@ -55,7 +55,7 @@ var (
 		},
 	})
 
-	activeHosts = statz.NewGauge1[string]("rpc.webrtc/active_hosts", statz.MetricConfig{
+	activeHosts = statz.NewGauge1[string]("signaling/active_hosts", statz.MetricConfig{
 		Description: "The number of hosts waiting for a call to come in or processing a call.",
 		Unit:        units.Dimensionless,
 		Labels: []statz.Label{
@@ -64,7 +64,7 @@ var (
 	})
 
 	connectionEstablishmentAttempts = statz.NewCounter0(
-		"rpc.webrtc/connection_establishment_attempts",
+		"signaling/connection_establishment_attempts",
 		statz.MetricConfig{
 			Description: "The total number of connection establishment attempts (offer initializations).",
 			Unit:        units.Dimensionless,
@@ -72,7 +72,7 @@ var (
 	)
 
 	connectionEstablishmentFailures = statz.NewCounter0(
-		"rcp.webrtc/connection_establishment_failures",
+		"signaling/connection_establishment_failures",
 		statz.MetricConfig{
 			Description: "The total number of connection establishment failures (all caller or answerer errors).",
 			Unit:        units.Dimensionless,
@@ -80,7 +80,7 @@ var (
 	)
 
 	connectionEstablishmentCallerTimeouts = statz.NewCounter0(
-		"rcp.webrtc/connection_establishment_caller_timeouts",
+		"signaling/connection_establishment_caller_timeouts",
 		statz.MetricConfig{
 			Description: "The total number of connection establishment failures that were timeouts on the caller side.",
 			Unit:        units.Dimensionless,
@@ -88,7 +88,7 @@ var (
 	)
 
 	connectionEstablishmentCallerNonTimeoutErrors = statz.NewCounter0(
-		"rcp.webrtc/connection_establishment_caller_non_timeouts",
+		"signaling/connection_establishment_caller_non_timeouts",
 		statz.MetricConfig{
 			Description: "The total number of connection establishment failures that were NOT timeouts on the caller side.",
 			Unit:        units.Dimensionless,
@@ -96,7 +96,7 @@ var (
 	)
 
 	connectionEstablishmentAnswererTimeouts = statz.NewCounter0(
-		"rcp.webrtc/connection_establishment_answerer_timeouts",
+		"signaling/connection_establishment_answerer_timeouts",
 		statz.MetricConfig{
 			Description: "The total number of connection establishment failures that were timeouts on the answerer side.",
 			Unit:        units.Dimensionless,
@@ -104,7 +104,7 @@ var (
 	)
 
 	connectionEstablishmentAnswererNonTimeoutErrors = statz.NewCounter0(
-		"rcp.webrtc/connection_establishment_answerer_non_timeouts",
+		"signaling/connection_establishment_answerer_non_timeouts",
 		statz.MetricConfig{
 			Description: "The total number of connection establishment failures that were NOT timeouts on the answerer side.",
 			Unit:        units.Dimensionless,
