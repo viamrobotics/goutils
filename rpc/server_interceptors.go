@@ -19,6 +19,7 @@ import (
 	"go.viam.com/utils"
 )
 
+// RequestID is the type used for the request ID in the context.
 type RequestID struct{}
 
 // UnaryServerTracingInterceptor starts a new Span if Span metadata exists in the context.

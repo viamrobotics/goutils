@@ -136,7 +136,8 @@ func AddFieldsToLogger(inp ZapCompatibleLogger, args ...interface{}) (loggerRet 
 	return loggerRet
 }
 
-const ISO8601 = "2006-01-02T15:04:05.000Z0700" // keep timestamp formatting constant
+// ISO8601 is a constant to keep time formatting timestamp consistent.
+const ISO8601 = "2006-01-02T15:04:05.000Z0700"
 
 // LogFinalLine is used to log the final status of a gRPC request along with its execution time, an associated error (if any), and the
 // gRPC status code. If there is an error, the log level is upgraded (if necessary) to ERROR. Otherwise, it is set to DEBUG. This code is
