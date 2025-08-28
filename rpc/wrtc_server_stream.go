@@ -55,9 +55,10 @@ func newWebRTCServerStream(
 	logger utils.ZapCompatibleLogger,
 ) *webrtcServerStream {
 	requestID := uuid.New().String()
-	loggerWithRequestID := utils.AddFieldsToLogger(utils.Sublogger(logger, "grpc_requests"), "request_id", requestID)
 
-	bs := newWebRTCBaseStream(ctx, cancelCtx, stream, onDone, loggerWithRequestID)
+	ctx = context.WithValue(ctx, RequestID{}, requestID)
+
+	bs := newWebRTCBaseStream(ctx, cancelCtx, stream, onDone, utils.Sublogger(logger, "grpc_requests"))
 	s := &webrtcServerStream{
 		webrtcBaseStream: bs,
 		ch:               channel,
@@ -65,6 +66,9 @@ func newWebRTCServerStream(
 		requestID:        requestID,
 		msgCount:         0,
 	}
+
+	s.logger = utils.AddFieldsToLogger(s.logger, "grpc.method", path.Base(method), "request_id", requestID)
+
 	return s
 }
 
@@ -255,8 +259,7 @@ func (s *webrtcServerStream) onRequest(request *webrtcpb.Request) {
 }
 
 func (s *webrtcServerStream) processHeaders(headers *webrtcpb.RequestHeaders) {
-	s.logger = utils.AddFieldsToLogger(s.logger, "grpc.method", path.Base(headers.GetMethod()), "request_id", s.requestID, "msg", s.msgCount)
-	s.logger.Debug("incoming grpc request msg")
+	s.logger.Debugw("incoming grpc request msg", "msg", s.msgCount)
 
 	handlerFunc, ok := s.ch.server.handler(headers.GetMethod())
 	if !ok {
@@ -267,9 +270,6 @@ func (s *webrtcServerStream) processHeaders(headers *webrtcpb.RequestHeaders) {
 			return
 		}
 	}
-
-	type RequestID struct{}
-	s.ctx = context.WithValue(s.ctx, RequestID{}, s.requestID)
 
 	s.ch.server.counters.HeadersProcessed.Add(1)
 	s.headersReceived = true
@@ -282,8 +282,7 @@ func (s *webrtcServerStream) processHeaders(headers *webrtcpb.RequestHeaders) {
 }
 
 func (s *webrtcServerStream) processMessage(msg *webrtcpb.RequestMessage) {
-	s.logger = utils.AddFieldsToLogger(s.logger, "grpc.method", path.Base(s.method), "request_id", s.requestID, "msg", s.msgCount)
-	s.logger.Debug("incoming grpc request msg")
+	s.logger.Debugw("incoming grpc request msg", "msg", s.msgCount)
 
 	if s.recvClosed.Load() {
 		s.logger.Debug("message received after EOS")

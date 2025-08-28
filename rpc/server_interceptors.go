@@ -19,6 +19,8 @@ import (
 	"go.viam.com/utils"
 )
 
+type RequestID struct{}
+
 // UnaryServerTracingInterceptor starts a new Span if Span metadata exists in the context.
 func UnaryServerTracingInterceptor() grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
@@ -129,21 +131,22 @@ func grpcUnaryServerInterceptor(logger utils.ZapCompatibleLogger) grpc.UnaryServ
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		startTime := time.Now()
 
+		// webRTC requests will have the request ID set in the context when processing the initial headers, direct GRPC requests will not
 		var requestID string
-		if id := ctx.Value("request_id"); id != nil {
+		if id := ctx.Value(RequestID{}); id != nil {
 			requestID = id.(string)
 		} else {
-			// webRTC requests will have this set in the context when processing the initial headers, direct GRPC requests will not
 			requestID = uuid.New().String()
-			loggerWithFields := utils.AddFieldsToLogger(logger, "grpc.method", path.Base(info.FullMethod), "request_id", requestID)
-			loggerWithFields.Debug("incoming grpc request")
+
 		}
+
+		loggerWithFields := utils.AddFieldsToLogger(logger, serverCallFields(ctx, info.FullMethod, requestID)...)
+		loggerWithFields.Debug("incoming grpc request")
 
 		resp, err := handler(ctx, req)
 		code := grpc_logging.DefaultErrorToCode(err)
 
-		loggerWithExitFields := utils.AddFieldsToLogger(logger, serverCallFields(ctx, info.FullMethod, startTime, requestID)...)
-		utils.LogFinalLine(loggerWithExitFields, startTime, err, "finished unary call with code "+code.String(), code)
+		utils.LogFinalLine(loggerWithFields, startTime, err, "finished unary call with code "+code.String(), code)
 		return resp, err
 	}
 }
@@ -152,32 +155,29 @@ func grpcStreamServerInterceptor(logger utils.ZapCompatibleLogger) grpc.StreamSe
 	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		startTime := time.Now()
 
+		// webRTC requests will have the request ID set in the context when processing the initial headers, direct GRPC requests will not
 		var requestID string
-		if id := stream.Context().Value("request_id"); id != nil {
+		if id := stream.Context().Value(RequestID{}); id != nil {
 			requestID = id.(string)
 		} else {
-			// webRTC requests will have this set in the context when processing the initial headers, direct GRPC requests will not
 			requestID = uuid.New().String()
-			loggerWithFields := utils.AddFieldsToLogger(logger, "grpc.method", path.Base(info.FullMethod), "request_id", requestID)
-			loggerWithFields.Debug("incoming grpc request")
 		}
+
+		loggerWithFields := utils.AddFieldsToLogger(logger, serverCallFields(stream.Context(), info.FullMethod, requestID)...)
+		loggerWithFields.Debug("incoming grpc request")
 
 		err := handler(srv, stream)
 		code := grpc_logging.DefaultErrorToCode(err)
 
-		loggerWithExitFields := utils.AddFieldsToLogger(logger, serverCallFields(stream.Context(), info.FullMethod, startTime, requestID)...)
-		utils.LogFinalLine(loggerWithExitFields, startTime, err, "finished stream call with code "+code.String(), code)
+		utils.LogFinalLine(loggerWithFields, startTime, err, "finished stream call with code "+code.String(), code)
 		return err
 	}
 }
 
-const iso8601 = "2006-01-02T15:04:05.000Z0700" // keep timestamp formatting constant
-
-func serverCallFields(ctx context.Context, fullMethodString string, start time.Time, requestID string) []any {
+func serverCallFields(ctx context.Context, fullMethodString string, requestID string) []any {
 	var f []any
-	f = append(f, "grpc.start_time", start.UTC().Format(iso8601))
 	if d, ok := ctx.Deadline(); ok {
-		f = append(f, "grpc.request.deadline", d.UTC().Format(iso8601))
+		f = append(f, "grpc.request.deadline", d.UTC().Format(utils.ISO8601))
 	}
 
 	service := path.Dir(fullMethodString)[1:]
