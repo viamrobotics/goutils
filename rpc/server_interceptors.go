@@ -138,7 +138,6 @@ func grpcUnaryServerInterceptor(logger utils.ZapCompatibleLogger) grpc.UnaryServ
 			requestID = id.(string)
 		} else {
 			requestID = uuid.New().String()
-
 		}
 
 		loggerWithFields := utils.AddFieldsToLogger(logger, serverCallFields(ctx, info.FullMethod, requestID)...)
@@ -175,7 +174,7 @@ func grpcStreamServerInterceptor(logger utils.ZapCompatibleLogger) grpc.StreamSe
 	}
 }
 
-func serverCallFields(ctx context.Context, fullMethodString string, requestID string) []any {
+func serverCallFields(ctx context.Context, fullMethodString, requestID string) []any {
 	var f []any
 	if d, ok := ctx.Deadline(); ok {
 		f = append(f, "grpc.request.deadline", d.UTC().Format(utils.ISO8601))
