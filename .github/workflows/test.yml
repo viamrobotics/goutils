@@ -131,7 +131,7 @@ jobs:
         GOFLAGS: "-tags=no_cgo"
       # note: this is a subset of tests that are known to pass on windows
       run: |
-        bash
+        bash -i
         gotestsum --format standard-verbose --jsonfile json.log ./pexec
 
     - name: Upload test.json
