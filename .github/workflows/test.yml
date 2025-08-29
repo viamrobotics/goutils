@@ -126,11 +126,13 @@ jobs:
     - name: install testing deps
       run: |
         go install gotest.tools/gotestsum@v1.10.0
+        which bash
     - name: test
       env:
         GOFLAGS: "-tags=no_cgo"
       run:
         # note: this is a subset of tests that are known to pass on windows
+        bash gotestsum --format standard-verbose --jsonfile json.log ./pexec
         gotestsum --format standard-verbose --jsonfile json.log ./pexec
 
     - name: Upload test.json
