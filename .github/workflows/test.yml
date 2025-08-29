@@ -129,9 +129,9 @@ jobs:
     - name: test
       env:
         GOFLAGS: "-tags=no_cgo"
+      shell: bash
       # note: this is a subset of tests that are known to pass on windows
       run: |
-        bash -i
         gotestsum --format standard-verbose --jsonfile json.log ./pexec
 
     - name: Upload test.json
