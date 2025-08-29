@@ -352,7 +352,13 @@ func TestManagedProcessStop(t *testing.T) {
 		}, logger)
 		test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
 		<-oueRunning
-		test.That(t, proc.Stop(), test.ShouldBeNil)
+		if runtime.GOOS == "windows" {
+			// on windows, we return a process not found error here
+			var processNotExistsErr *ProcessNotExistsError
+			test.That(t, errors.As(proc.Stop(), &processNotExistsErr), test.ShouldBeTrue)
+		} else {
+			test.That(t, proc.Stop(), test.ShouldBeNil)
+		}
 		test.That(t, proc.Start(context.Background()), test.ShouldEqual, errAlreadyStopped)
 		close(blockOue)
 		proc.(*managedProcess).wg.Wait()
