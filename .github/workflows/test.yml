@@ -126,7 +126,6 @@ jobs:
     - name: install testing deps
       run: |
         go install gotest.tools/gotestsum@v1.10.0
-        which bash
     - name: test
       env:
         GOFLAGS: "-tags=no_cgo"
