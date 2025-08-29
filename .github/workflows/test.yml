@@ -124,6 +124,7 @@ jobs:
       with:
         go-version-file: go.mod
     - name: install testing deps
+      # should be kept in sync with mise.toml and go.mod
       run: |
         go install gotest.tools/gotestsum@v1.10.0
     - name: test

@@ -51,7 +51,7 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240903143218-8af14fe29dc1
 	google.golang.org/grpc v1.66.0
 	google.golang.org/protobuf v1.35.1
-	gotest.tools/gotestsum v1.10.0
+	gotest.tools/gotestsum v1.10.0 //should be kept in sync with mise.toml and test.yml
 	howett.net/plist v1.0.0
 )
 
