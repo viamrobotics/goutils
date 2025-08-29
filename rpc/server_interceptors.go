@@ -133,10 +133,8 @@ func grpcUnaryServerInterceptor(logger utils.ZapCompatibleLogger) grpc.UnaryServ
 		startTime := time.Now()
 
 		// webRTC requests will have the request ID set in the context when processing the initial headers, direct GRPC requests will not
-		var requestID string
-		if id := ctx.Value(RequestID{}); id != nil {
-			requestID = id.(string)
-		} else {
+		requestID, ok := ctx.Value(RequestID{}).(string)
+		if !ok {
 			requestID = uuid.New().String()
 		}
 

@@ -144,13 +144,13 @@ const ISO8601 = "2006-01-02T15:04:05.000Z0700"
 // taken from
 // https://github.com/grpc-ecosystem/go-grpc-middleware/blob/560829fc74fcf9a69b7ab01d484f8b8961dc734b/logging/zap/client_interceptors.go
 func LogFinalLine(logger ZapCompatibleLogger, startTime time.Time, err error, msg string, code codes.Code) {
-	var f []any
-	f = append(f, "grpc.start_time", startTime.UTC().Format(ISO8601))
+	var fields []any
+	fields = append(fields, "grpc.start_time", startTime.UTC().Format(ISO8601))
 
 	// this calculation is done because duration.Milliseconds() will return an integer, which is not precise enough.
 	duration := float32(time.Since(startTime).Nanoseconds()/1000) / 1000
 
-	f = append(f, "grpc.code", code.String(), "grpc.time_ms", duration)
+	fields = append(fields, "grpc.code", code.String(), "grpc.time_ms", duration)
 
 	level := grpc_zap.DefaultCodeToLevel(code)
 	if err == nil {
@@ -159,19 +159,19 @@ func LogFinalLine(logger ZapCompatibleLogger, startTime time.Time, err error, ms
 		if level < zap.ErrorLevel {
 			level = zap.ErrorLevel
 		}
-		f = append(f, "error", err)
+		fields = append(fields, "error", err)
 	}
 
 	// grpc_zap.DefaultCodeToLevel will only return zap.DebugLevel, zap.InfoLevel, zap.ErrorLevel, zap.WarnLevel
 	// log everything but Warn at Debug level, errors are propagated to callers so not necessary to log.
 	switch level {
 	case zap.DebugLevel:
-		logger.Debugw(msg, f...)
+		logger.Debugw(msg, fields...)
 	case zap.InfoLevel:
-		logger.Debugw(msg, f...)
+		logger.Debugw(msg, fields...)
 	case zap.ErrorLevel:
-		logger.Debugw(msg, f...)
+		logger.Debugw(msg, fields...)
 	case zap.WarnLevel, zap.DPanicLevel, zap.PanicLevel, zap.FatalLevel, zapcore.InvalidLevel:
-		logger.Warnw(msg, f...)
+		logger.Warnw(msg, fields...)
 	}
 }
