@@ -136,16 +136,23 @@ func AddFieldsToLogger(inp ZapCompatibleLogger, args ...interface{}) (loggerRet 
 	return loggerRet
 }
 
+// ISO8601 is a constant to keep time formatting timestamp consistent.
+const ISO8601 = "2006-01-02T15:04:05.000Z0700"
+
 // LogFinalLine is used to log the final status of a gRPC request along with its execution time, an associated error (if any), and the
 // gRPC status code. If there is an error, the log level is upgraded (if necessary) to ERROR. Otherwise, it is set to DEBUG. This code is
 // taken from
 // https://github.com/grpc-ecosystem/go-grpc-middleware/blob/560829fc74fcf9a69b7ab01d484f8b8961dc734b/logging/zap/client_interceptors.go
 func LogFinalLine(logger ZapCompatibleLogger, startTime time.Time, err error, msg string, code codes.Code) {
-	level := grpc_zap.DefaultCodeToLevel(code)
+	var fields []any
+	fields = append(fields, "grpc.start_time", startTime.UTC().Format(ISO8601))
 
 	// this calculation is done because duration.Milliseconds() will return an integer, which is not precise enough.
 	duration := float32(time.Since(startTime).Nanoseconds()/1000) / 1000
-	fields := []any{}
+
+	fields = append(fields, "grpc.code", code.String(), "grpc.time_ms", duration)
+
+	level := grpc_zap.DefaultCodeToLevel(code)
 	if err == nil {
 		level = zap.DebugLevel
 	} else {
@@ -154,7 +161,7 @@ func LogFinalLine(logger ZapCompatibleLogger, startTime time.Time, err error, ms
 		}
 		fields = append(fields, "error", err)
 	}
-	fields = append(fields, "grpc.code", code.String(), "grpc.time_ms", duration)
+
 	// grpc_zap.DefaultCodeToLevel will only return zap.DebugLevel, zap.InfoLevel, zap.ErrorLevel, zap.WarnLevel
 	// log everything but Warn at Debug level, errors are propagated to callers so not necessary to log.
 	switch level {

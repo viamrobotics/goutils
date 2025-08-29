@@ -354,15 +354,18 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 	if sOpts.unknownStreamDesc != nil {
 		serverOpts = append(serverOpts, grpc.UnknownServiceHandler(sOpts.unknownStreamDesc.Handler))
 	}
+
+	grpcLogger := utils.Sublogger(logger, "grpc_requests")
+
 	var unaryInterceptors []grpc.UnaryServerInterceptor
 	unaryInterceptors = append(unaryInterceptors,
 		grpc_recovery.UnaryServerInterceptor(grpc_recovery.WithRecoveryHandler(
 			grpc_recovery.RecoveryHandlerFunc(func(p interface{}) error {
 				err := status.Errorf(codes.Internal, "%v", p)
-				logger.Errorw("panicked while calling unary server method", "error", errors.WithStack(err))
+				grpcLogger.Errorw("panicked while calling unary server method", "error", errors.WithStack(err))
 				return err
 			}))),
-		grpcUnaryServerInterceptor(logger),
+		grpcUnaryServerInterceptor(grpcLogger),
 		unaryServerCodeInterceptor(),
 	)
 	unaryInterceptors = append(unaryInterceptors, UnaryServerTracingInterceptor())
@@ -392,10 +395,10 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 		grpc_recovery.StreamServerInterceptor(grpc_recovery.WithRecoveryHandler(
 			grpc_recovery.RecoveryHandlerFunc(func(p interface{}) error {
 				err := status.Errorf(codes.Internal, "%s", p)
-				logger.Errorw("panicked while calling stream server method", "error", errors.WithStack(err))
+				grpcLogger.Errorw("panicked while calling stream server method", "error", errors.WithStack(err))
 				return err
 			}))),
-		grpcStreamServerInterceptor(logger),
+		grpcStreamServerInterceptor(grpcLogger),
 		streamServerCodeInterceptor(),
 	)
 	streamInterceptors = append(streamInterceptors, StreamServerTracingInterceptor())
