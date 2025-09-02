@@ -130,8 +130,8 @@ jobs:
     - name: test
       env:
         GOFLAGS: "-tags=no_cgo"
-      # note: tests do not pass on the default powershell, but do pass in cmd.
-      shell: cmd
+      # note: tests do not pass on the default powershell, but do pass in bash.
+      shell: bash
       # note: this is a subset of tests that are known to pass on windows
       run: |
         gotestsum --format standard-verbose --jsonfile json.log ./pexec
