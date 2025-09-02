@@ -228,14 +228,12 @@ func (s *webrtcServerStream) onRequest(request *webrtcpb.Request) {
 			s.closeWithSendError(status.Error(codes.InvalidArgument, "headers already received"))
 			return
 		}
-		s.msgCount++
 		s.processHeaders(r.Headers)
 	case *webrtcpb.Request_Message:
 		if !s.headersReceived {
 			s.closeWithSendError(status.Error(codes.InvalidArgument, "headers not yet received"))
 			return
 		}
-		s.msgCount++
 		s.processMessage(r.Message)
 	case *webrtcpb.Request_RstStream:
 		s.closeWithSendError(status.Error(codes.Canceled, "request cancelled"))
@@ -246,8 +244,6 @@ func (s *webrtcServerStream) onRequest(request *webrtcpb.Request) {
 }
 
 func (s *webrtcServerStream) processHeaders(headers *webrtcpb.RequestHeaders) {
-	s.logger.Debugw("incoming grpc request msg", "msg", s.msgCount)
-
 	handlerFunc, ok := s.ch.server.handler(headers.GetMethod())
 	if !ok {
 		if s.ch.server.unknownStreamDesc != nil {
@@ -269,8 +265,6 @@ func (s *webrtcServerStream) processHeaders(headers *webrtcpb.RequestHeaders) {
 }
 
 func (s *webrtcServerStream) processMessage(msg *webrtcpb.RequestMessage) {
-	s.logger.Debugw("incoming grpc request msg", "msg", s.msgCount)
-
 	if s.recvClosed.Load() {
 		s.logger.Debug("message received after EOS")
 		return
