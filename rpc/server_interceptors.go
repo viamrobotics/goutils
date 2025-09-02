@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/google/uuid"
 	grpc_logging "github.com/grpc-ecosystem/go-grpc-middleware/logging"
 	"github.com/pkg/errors"
 	"go.opencensus.io/trace"
@@ -18,9 +17,6 @@ import (
 
 	"go.viam.com/utils"
 )
-
-// RequestID is the type used for the request ID in the context.
-type RequestID struct{}
 
 // UnaryServerTracingInterceptor starts a new Span if Span metadata exists in the context.
 func UnaryServerTracingInterceptor() grpc.UnaryServerInterceptor {
@@ -132,13 +128,7 @@ func grpcUnaryServerInterceptor(logger utils.ZapCompatibleLogger) grpc.UnaryServ
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		startTime := time.Now()
 
-		// webRTC requests will have the request ID set in the context when processing the initial headers, direct GRPC requests will not
-		requestID, ok := ctx.Value(RequestID{}).(string)
-		if !ok {
-			requestID = uuid.New().String()
-		}
-
-		loggerWithFields := utils.AddFieldsToLogger(logger, serverCallFields(ctx, info.FullMethod, requestID)...)
+		loggerWithFields := utils.AddFieldsToLogger(logger, serverCallFields(ctx, info.FullMethod)...)
 		loggerWithFields.Debug("incoming grpc request")
 
 		resp, err := handler(ctx, req)
@@ -153,15 +143,7 @@ func grpcStreamServerInterceptor(logger utils.ZapCompatibleLogger) grpc.StreamSe
 	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		startTime := time.Now()
 
-		// webRTC requests will have the request ID set in the context when processing the initial headers, direct GRPC requests will not
-		var requestID string
-		if id := stream.Context().Value(RequestID{}); id != nil {
-			requestID = id.(string)
-		} else {
-			requestID = uuid.New().String()
-		}
-
-		loggerWithFields := utils.AddFieldsToLogger(logger, serverCallFields(stream.Context(), info.FullMethod, requestID)...)
+		loggerWithFields := utils.AddFieldsToLogger(logger, serverCallFields(stream.Context(), info.FullMethod)...)
 		loggerWithFields.Debug("incoming grpc request")
 
 		err := handler(srv, stream)
@@ -172,7 +154,7 @@ func grpcStreamServerInterceptor(logger utils.ZapCompatibleLogger) grpc.StreamSe
 	}
 }
 
-func serverCallFields(ctx context.Context, fullMethodString, requestID string) []any {
+func serverCallFields(ctx context.Context, fullMethodString string) []any {
 	var f []any
 	if d, ok := ctx.Deadline(); ok {
 		f = append(f, "grpc.request.deadline", d.UTC().Format(utils.ISO8601))
@@ -185,6 +167,5 @@ func serverCallFields(ctx context.Context, fullMethodString, requestID string) [
 		"system", "grpc",
 		"grpc.service", service,
 		"grpc.method", method,
-		"request_id", requestID,
 	}...)
 }

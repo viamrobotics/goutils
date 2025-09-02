@@ -5,11 +5,9 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"path"
 	"sync/atomic"
 
 	protov1 "github.com/golang/protobuf/proto" //nolint:staticcheck
-	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -38,8 +36,6 @@ type webrtcServerStream struct {
 	header          metadata.MD
 	trailer         metadata.MD
 	sendClosed      atomic.Bool
-	requestID       string
-	msgCount        int
 }
 
 // newWebRTCServerStream creates a gRPC stream from the given server channel with a
@@ -54,21 +50,12 @@ func newWebRTCServerStream(
 	onDone func(id uint64),
 	logger utils.ZapCompatibleLogger,
 ) *webrtcServerStream {
-	requestID := uuid.New().String()
-
-	ctx = context.WithValue(ctx, RequestID{}, requestID)
-
 	bs := newWebRTCBaseStream(ctx, cancelCtx, stream, onDone, utils.Sublogger(logger, "grpc_requests"))
 	s := &webrtcServerStream{
 		webrtcBaseStream: bs,
 		ch:               channel,
 		method:           method,
-		requestID:        requestID,
-		msgCount:         0,
 	}
-
-	s.logger = utils.AddFieldsToLogger(s.logger, "grpc.method", path.Base(method), "request_id", requestID)
-
 	return s
 }
 
