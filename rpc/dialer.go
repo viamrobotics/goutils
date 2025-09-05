@@ -62,7 +62,7 @@ type Dialer interface {
 	Close() error
 }
 
-// Unknown is an unknown connectivity state.
+// Unknown indicates an unknown connectivity state.
 const Unknown connectivity.State = 5
 
 // A ClientConn is a wrapper around the gRPC client connection interface but ensures
