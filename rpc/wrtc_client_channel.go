@@ -336,6 +336,7 @@ func (ch *webrtcClientChannel) writeReset(stream *webrtcpb.Stream) error {
 
 // GetState returns the current connectivity state of the channel.
 func (ch *webrtcClientChannel) GetState() connectivity.State {
+	// TODO: RSDK-11841 - Add connectivity state checking to WebRTC connections
 	return Unknown
 }
 
