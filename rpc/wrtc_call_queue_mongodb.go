@@ -960,7 +960,7 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 			}
 		}
 
-		// TODO(RSDK-XXXXX): Use an actual database (or, likely, cache) lookup to determine
+		// TODO(RSDK-11875): Use an actual database (or, likely, cache) lookup to determine
 		// the organization ID for this host based on its DNS name.
 		//
 		// Hackily guess the organization ID based on the "org" in the "cookie" field (only
