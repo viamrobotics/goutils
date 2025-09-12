@@ -46,8 +46,8 @@ func TestNewPossiblySecureTCPListenerFromFile(t *testing.T) {
 		test.That(t, listener.Addr().String(), test.ShouldStartWith, "127.0.0.1:")
 
 		httpServer := &http.Server{
-			ReadTimeout:    10 * time.Second,
-			MaxHeaderBytes: 1 << 20,
+			ReadHeaderTimeout: 10 * time.Second,
+			MaxHeaderBytes:    1 << 20,
 		}
 		httpServer.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
 
@@ -80,8 +80,8 @@ func TestNewPossiblySecureTCPListenerFromFile(t *testing.T) {
 		test.That(t, listener, test.ShouldNotBeNil)
 
 		httpServer := &http.Server{
-			ReadTimeout:    10 * time.Second,
-			MaxHeaderBytes: 1 << 20,
+			ReadHeaderTimeout: 10 * time.Second,
+			MaxHeaderBytes:    1 << 20,
 		}
 		httpServer.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
 
@@ -123,8 +123,8 @@ func TestNewPossiblySecureTCPListenerFromMemory(t *testing.T) {
 		test.That(t, listener.Addr().String(), test.ShouldStartWith, "127.0.0.1:")
 
 		httpServer := &http.Server{
-			ReadTimeout:    10 * time.Second,
-			MaxHeaderBytes: 1 << 20,
+			ReadHeaderTimeout: 10 * time.Second,
+			MaxHeaderBytes:    1 << 20,
 		}
 		httpServer.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
 
@@ -161,8 +161,8 @@ func TestNewPossiblySecureTCPListenerFromMemory(t *testing.T) {
 		test.That(t, listener, test.ShouldNotBeNil)
 
 		httpServer := &http.Server{
-			ReadTimeout:    10 * time.Second,
-			MaxHeaderBytes: 1 << 20,
+			ReadHeaderTimeout: 10 * time.Second,
+			MaxHeaderBytes:    1 << 20,
 		}
 		httpServer.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
 

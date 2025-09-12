@@ -27,9 +27,9 @@ func NewPossiblySecureHTTPServer(handler http.Handler, opts HTTPServerOptions) (
 	var httpServer *http.Server
 	if opts.Secure {
 		httpServer = &http.Server{
-			ReadTimeout:    10 * time.Second,
-			MaxHeaderBytes: opts.MaxHeaderBytes,
-			Handler:        handler,
+			ReadHeaderTimeout: 10 * time.Second,
+			MaxHeaderBytes:    opts.MaxHeaderBytes,
+			Handler:           handler,
 		}
 		// TlS settings configured using https://ssl-config.mozilla.org/
 		if opts.TLSAuth {
@@ -66,9 +66,9 @@ func NewPlainTextHTTP2Server(handler http.Handler) (*http.Server, error) {
 		return nil, err
 	}
 	httpServer := &http.Server{
-		ReadTimeout:    10 * time.Second,
-		MaxHeaderBytes: 1 << 20,
-		Handler:        h2c.NewHandler(handler, http2Server.HTTP2),
+		ReadHeaderTimeout: 10 * time.Second,
+		MaxHeaderBytes:    1 << 20,
+		Handler:           h2c.NewHandler(handler, http2Server.HTTP2),
 	}
 	httpServer.RegisterOnShutdown(func() {
 		UncheckedErrorFunc(http2Server.Close)

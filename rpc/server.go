@@ -251,8 +251,8 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 	}
 
 	httpServer := &http.Server{
-		ReadTimeout:    10 * time.Second,
-		MaxHeaderBytes: MaxMessageSize,
+		ReadHeaderTimeout: 10 * time.Second,
+		MaxHeaderBytes:    MaxMessageSize,
 	}
 
 	if len(sOpts.authKeys) == 0 {
