@@ -73,15 +73,29 @@ func NewWebRTCSignalingServer(
 	}
 }
 
-// RPCHostMetadataField is the identifier of a host.
-const RPCHostMetadataField = "rpc-host"
+const (
+	// RPCHostMetadataField is the identifier of a host.
+	RPCHostMetadataField = "rpc-host"
 
-// HeartbeatsAllowedMetadataField is the identifier for allowing heartbeats
-// from a signaling server to answerers.
-const HeartbeatsAllowedMetadataField = "heartbeats-allowed"
+	// ViamClientMetadataField is the identifier for the SDK type and version.
+	ViamClientMetadataField = "viam_client"
 
-// Default interval at which to send heartbeats.
-const defaultHeartbeatInterval = 15 * time.Second
+	// UserAgentMetadataField is the identifier for the type of gRPC agent.
+	UserAgentMetadataField = "user-agent"
+
+	// XGRPCWebMetadataField is the identifier for whether x-grpc-web is being used.
+	XGRPCWebMetadataField = "x-grpc-web"
+
+	// CookieMetadataField is the identifier for any cookies passed by the browser.
+	CookieMetadataField = "cookie"
+
+	// HeartbeatsAllowedMetadataField is the identifier for allowing heartbeats
+	// from a signaling server to answerers.
+	HeartbeatsAllowedMetadataField = "heartbeats-allowed"
+
+	// Default interval at which to send heartbeats.
+	defaultHeartbeatInterval = 15 * time.Second
+)
 
 // HostFromCtx gets the host being called/answered for from the context.
 func HostFromCtx(ctx context.Context) (string, error) {

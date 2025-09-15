@@ -127,12 +127,14 @@ func remoteSpanContextFromContext(ctx context.Context) (trace.SpanContext, error
 func grpcUnaryServerInterceptor(logger utils.ZapCompatibleLogger) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		startTime := time.Now()
+
+		loggerWithFields := utils.AddFieldsToLogger(logger, serverCallFields(ctx, info.FullMethod)...)
+		loggerWithFields.Debug("incoming grpc request")
+
 		resp, err := handler(ctx, req)
 		code := grpc_logging.DefaultErrorToCode(err)
-		loggerWithFields := utils.AddFieldsToLogger(logger, serverCallFields(ctx, info.FullMethod, startTime)...)
 
 		utils.LogFinalLine(loggerWithFields, startTime, err, "finished unary call with code "+code.String(), code)
-
 		return resp, err
 	}
 }
@@ -140,24 +142,24 @@ func grpcUnaryServerInterceptor(logger utils.ZapCompatibleLogger) grpc.UnaryServ
 func grpcStreamServerInterceptor(logger utils.ZapCompatibleLogger) grpc.StreamServerInterceptor {
 	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		startTime := time.Now()
+
+		loggerWithFields := utils.AddFieldsToLogger(logger, serverCallFields(stream.Context(), info.FullMethod)...)
+		loggerWithFields.Debug("incoming grpc request")
+
 		err := handler(srv, stream)
 		code := grpc_logging.DefaultErrorToCode(err)
-		loggerWithFields := utils.AddFieldsToLogger(logger, serverCallFields(stream.Context(), info.FullMethod, startTime)...)
 
 		utils.LogFinalLine(loggerWithFields, startTime, err, "finished stream call with code "+code.String(), code)
-
 		return err
 	}
 }
 
-const iso8601 = "2006-01-02T15:04:05.000Z0700" // keep timestamp formatting constant
-
-func serverCallFields(ctx context.Context, fullMethodString string, start time.Time) []any {
+func serverCallFields(ctx context.Context, fullMethodString string) []any {
 	var f []any
-	f = append(f, "grpc.start_time", start.UTC().Format(iso8601))
 	if d, ok := ctx.Deadline(); ok {
-		f = append(f, "grpc.request.deadline", d.UTC().Format(iso8601))
+		f = append(f, "grpc.request.deadline", d.UTC().Format(utils.ISO8601))
 	}
+
 	service := path.Dir(fullMethodString)[1:]
 	method := path.Base(fullMethodString)
 	return append(f, []any{

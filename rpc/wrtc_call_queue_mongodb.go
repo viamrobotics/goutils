@@ -3,6 +3,7 @@ package rpc
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
 	"go.viam.com/utils"
@@ -63,11 +65,21 @@ var (
 		},
 	})
 
-	connectionEstablishmentAttempts = statz.NewCounter0(
+	connectionEstablishmentAttempts = statz.NewCounter2[string, string](
 		"signaling/connection_establishment_attempts",
 		statz.MetricConfig{
 			Description: "The total number of connection establishment attempts (offer initializations).",
 			Unit:        units.Dimensionless,
+			Labels: []statz.Label{
+				{
+					Name:        "sdk_type",
+					Description: "The type of SDK attempting to connect.",
+				},
+				{
+					Name:        "organization_id",
+					Description: "The organization ID of the machine that is being connected to.",
+				},
+			},
 		},
 	)
 
@@ -923,9 +935,53 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 		return "", nil, nil, nil, err
 	}
 
+	sdkType, organizationID := "unknown", "unknown"
+	if md, exists := metadata.FromIncomingContext(ctx); exists {
+		// TODO(RSDK-11864): Use actual structured metadata provided by the SDK to determine
+		// SDK type for the TypeScript, Python, and C++ SDKs.
+		//
+		// Hackily guess the SDK type based on a combination of the "viam_client",
+		// "x-grpc-web", and "user-agent" metadata fields. The first only exists for Golang,
+		// the second only exists for TypeScrpt, and the third is "tonic" for both Python and
+		// C++.
+		if viamClientMD, exists := md[ViamClientMetadataField]; exists && len(viamClientMD) > 0 {
+			if strings.Contains(viamClientMD[0], "go;") {
+				sdkType = "go"
+			}
+		} else if xGRPCWebMD, exists := md[XGRPCWebMetadataField]; exists &&
+			len(xGRPCWebMD) > 0 {
+			if xGRPCWebMD[0] == "1" {
+				sdkType = "typescript"
+			}
+		} else if userAgentMD, exists := md[UserAgentMetadataField]; exists &&
+			len(userAgentMD) > 0 {
+			if strings.Contains(userAgentMD[0], "tonic/") {
+				sdkType = "python/c++"
+			}
+		}
+
+		// TODO(RSDK-11875): Use an actual database (or, likely, cache) lookup to determine
+		// the organization ID for this host based on its DNS name.
+		//
+		// Hackily guess the organization ID based on the "org" in the "cookie" field (only
+		// present for the TypeScript SDK).
+		if cookieMD, exists := md[CookieMetadataField]; exists && len(cookieMD) > 0 {
+			// The "cookie" field usually has the following structure:
+			// 	"session-id=[uuid]; org=[uuid]"
+			// Bail if that structure is not found.
+			for _, cookieField := range strings.Split(cookieMD[0], ";") {
+				cookieField = strings.TrimSpace(cookieField)
+				if strings.HasPrefix(cookieField, "org=") {
+					organizationID = strings.TrimPrefix(cookieField, "org=")
+					break
+				}
+			}
+		}
+	}
+
 	// An offer initialization (after verifying the host queue size), indicates an attempted
 	// connection establishment attempt.
-	connectionEstablishmentAttempts.Inc()
+	connectionEstablishmentAttempts.Inc(sdkType, organizationID)
 
 	newUUID := uuid.NewString()
 	call := mongodbWebRTCCall{

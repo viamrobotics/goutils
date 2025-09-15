@@ -23,6 +23,7 @@ import (
 	"golang.org/x/net/proxy"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
@@ -61,6 +62,9 @@ type Dialer interface {
 	Close() error
 }
 
+// Unknown indicates an unknown connectivity state.
+const Unknown connectivity.State = 5
+
 // A ClientConn is a wrapper around the gRPC client connection interface but ensures
 // there is a way to close the connection.
 type ClientConn interface {
@@ -70,6 +74,8 @@ type ClientConn interface {
 	// a PeerConnection.
 	PeerConn() *webrtc.PeerConnection
 	Close() error
+
+	GetState() connectivity.State
 }
 
 // A ClientConnAuthenticator supports instructing a connection to authenticate now.

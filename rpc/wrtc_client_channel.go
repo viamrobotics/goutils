@@ -10,6 +10,7 @@ import (
 	grpc_logging "github.com/grpc-ecosystem/go-grpc-middleware/logging"
 	"github.com/viamrobotics/webrtc/v3"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -331,6 +332,12 @@ func (ch *webrtcClientChannel) writeReset(stream *webrtcpb.Stream) error {
 			RstStream: true,
 		},
 	})
+}
+
+// GetState returns the current connectivity state of the channel.
+func (ch *webrtcClientChannel) GetState() connectivity.State {
+	// TODO: RSDK-11841 - Add connectivity state checking to WebRTC connections
+	return Unknown
 }
 
 func newClientLoggerFields(fullMethodString string) []any {
