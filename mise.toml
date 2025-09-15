@@ -15,7 +15,7 @@ lockfile = false
 disable_backends = ["asdf"]
 
 [tools]
-buf = "1.55.1"
+"ubi:bufbuild/buf" = "1.55.1"
 go = "1.23.8"
 "go:github.com/AlekSi/gocov-xml" = "1.0.0"
 "go:github.com/axw/gocov/gocov" = "1.1.0"
