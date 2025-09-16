@@ -21,7 +21,7 @@ jobs:
       - name: Extract buf version from mise
         id: buf-version
         run:
-          echo "version=$(mise tool ubi:bufbuild/buf --active)" >> $GITHUB_OUTPUT
+          echo "version=$(mise tool buf --active)" >> $GITHUB_OUTPUT
       - uses: bufbuild/buf-setup-action@a47c93e0b1648d5651a065437926377d060baa99
         with:
           version: ${{ steps.buf-version.outputs.version }}
