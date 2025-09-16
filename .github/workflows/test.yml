@@ -1,4 +1,4 @@
-name: Build and Test
+name: Test
 
 on:
   workflow_dispatch:
@@ -11,17 +11,19 @@ on:
 jobs:
   test_passing:
     name: All Tests Passing
-    needs: [build_and_test]
+    needs: [test_go, test_win]
     runs-on: ubuntu-latest
     if: always()
     steps:
       - name: Check Results
         run: |
-          echo Main Tests: ${{ needs.build_and_test.result }}
-          [ "${{ needs.build_and_test.result }}" == "success" ]
+          echo Main Tests: ${{ needs.test_go.result }}
+          echo Windows Tests: ${{ needs.test_win.result }}
+          [ "${{ needs.test_go.result }}" == "success" ] && \
+          [ "${{ needs.test_win.result }}" == "success" ]
 
-  build_and_test:
-    name: Build and Test
+  test_go:
+    name: ubuntu
     runs-on: ubuntu-latest
     timeout-minutes: 20
     if: |
@@ -111,10 +113,33 @@ jobs:
         sudo useradd $TEST_SUBPROC_USER
         sudo go test -v ./pexec -run TestManagedProcessStart
 
-    - name: Add Coverage PR Comment
-      uses: marocchino/sticky-pull-request-comment@v2.2.0
-      if: github.event_name == 'pull_request'
+  test_win:
+    name: windows
+    runs-on: windows-2025
+    steps:
+    - uses: actions/checkout@v4
       with:
-        recreate: true
-        path: code-coverage-results.md
-        GITHUB_TOKEN: ${{ secrets.GIT_ACCESS_TOKEN }}
+        ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.ref }}
+    - uses: actions/setup-go@v5
+      with:
+        go-version-file: go.mod
+    - name: Install toolchain
+      uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac
+      with:
+        experimental: true
+    - name: test
+      env:
+        GOFLAGS: "-tags=no_cgo"
+      # note: tests do not pass on the default powershell, but do pass in bash.
+      shell: bash
+      # note: this is a subset of tests that are known to pass on windows
+      run: |
+        gotestsum --format standard-verbose --jsonfile json.log ./pexec
+
+    - name: Upload test.json
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-windows-amd64.json
+        path: json.log
+        retention-days: 30
