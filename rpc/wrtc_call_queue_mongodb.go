@@ -91,6 +91,14 @@ var (
 		},
 	)
 
+	connectionEstablishmentExpectedFailures = statz.NewCounter0(
+		"signaling/connection_establishment_expected_failures",
+		statz.MetricConfig{
+			Description: "The total number of connection attempts that failed because the target robot was offline or does not exist.",
+			Unit:        units.Dimensionless,
+		},
+	)
+
 	connectionEstablishmentCallerTimeouts = statz.NewCounter0(
 		"signaling/connection_establishment_caller_timeouts",
 		statz.MetricConfig{
@@ -130,6 +138,7 @@ type mongoDBWebRTCCallQueue struct {
 	operatorID                         string
 	hostCallerQueueSizeMatchAggStage   bson.D
 	hostAnswererQueueSizeMatchAggStage bson.D
+	hostAnswererOnlineMatchAggStage    bson.D
 	activeBackgroundWorkers            sync.WaitGroup
 	callsColl                          *mongo.Collection
 	operatorsColl                      *mongo.Collection
@@ -260,6 +269,10 @@ func NewMongoDBWebRTCCallQueue(
 		hostAnswererQueueSizeMatchAggStage: bson.D{{"$match", bson.D{
 			{"answerer_size", bson.D{{"$gte", maxHostAnswerersSize * 2}}},
 		}}},
+		hostAnswererOnlineMatchAggStage: bson.D{{"$match", bson.D{
+			{"answerer_size", bson.D{{"$gt", 0}}},
+		}}},
+
 		callsColl:     callsColl,
 		operatorsColl: operatorsColl,
 		cancelCtx:     cancelCtx,
@@ -888,10 +901,27 @@ var (
 		{"caller_size", bson.D{{"$sum", "$" + webrtcOperatorHostsCallerSizeCombinedField}}},
 		{"answerer_size", bson.D{{"$sum", "$" + webrtcOperatorHostsAnswererSizeCombinedField}}},
 	}}}
+	groupAggStageAnswerers = bson.D{{"$group", bson.D{
+		{"_id", "$" + webrtcOperatorHostsHostCombinedField},
+		{"answerer_size", bson.D{{"$sum", "$" + webrtcOperatorHostsAnswererSizeCombinedField}}},
+	}}}
 )
 
 var errTooManyConns = status.Error(codes.Unavailable, "too many connection attempts; please wait a bit and try again")
 
+// checkHostQueueSize checks if the total number of callers to or answerers for a set of
+// hosts exceeds the configured maxima (50 for callers and 4 for answerers). It does this
+// by running an aggregation pipeline against the operators collection. That pipeline will
+// sum `caller_size` and `answerer_size` fields across all operators for the provided
+// hosts. If any of the provided hosts exceeds a total caller or answerer size maximum
+// across all operators, an error is returned. Otherwise, nil is returned. Checking caller
+// or answerer size is controlled via the forCaller flag.
+//
+// NOTE(benjirewis): I believe `len(hosts) == 1`. The hosts list is ultimately derived by
+// the value of `rpc-host` passed to the `Answer` metadata from the answerer for a
+// machine. For external signaling (the only signaling that will route through here) there
+// is only ever one host reported and therefore included in `hosts` here: the
+// `.viam.cloud` URI.
 func (queue *mongoDBWebRTCCallQueue) checkHostQueueSize(ctx context.Context, forCaller bool, hosts ...string) error {
 	hostsMatch := bson.D{
 		{"$match", bson.D{{webrtcOperatorHostsHostCombinedField, bson.D{{"$in", hosts}}}}},
@@ -922,6 +952,43 @@ func (queue *mongoDBWebRTCCallQueue) checkHostQueueSize(ctx context.Context, for
 	return errTooManyConns
 }
 
+var errOffline = status.Error(codes.Unavailable, "host appears to be offline; ensure machine is online and try again")
+
+// checkHostOnline will check if there is some operator for all the managed hosts that
+// claims to have an answerer online for that host. It does this by running an aggregation
+// pipeline against the operators collection to sum `answerer_size` for each host across
+// all operators. If any of the provided hosts has a total answerer size of 0 or isn't
+// managed by any operator, an error is returned. Otherwise, nil is returned.
+//
+// NOTE(benjirewis): The same NOTE about `len(hosts) == 1` applies here as in the method
+// above.
+func (queue *mongoDBWebRTCCallQueue) checkHostOnline(ctx context.Context, hosts ...string) error {
+	hostsMatch := bson.D{
+		{"$match", bson.D{{webrtcOperatorHostsHostCombinedField, bson.D{{"$in", hosts}}}}},
+	}
+	pipeline := []interface{}{
+		hostsMatch,
+		projectStage,
+		unwindAggStage,
+		hostsMatch,
+		groupAggStageAnswerers,
+		queue.hostAnswererOnlineMatchAggStage,
+	}
+
+	cursor, err := queue.operatorsColl.Aggregate(ctx, pipeline)
+	if err != nil {
+		return err
+	}
+	var ret []interface{}
+	if err := cursor.All(ctx, &ret); err != nil {
+		return err
+	}
+	if len(ret) == 0 {
+		return errOffline
+	}
+	return nil
+}
+
 // SendOfferInit initializes an offer associated with the given SDP to the given host.
 // It returns a UUID to track/authenticate the offer over time, the initial SDP for the
 // sender to start its peer connection with, as well as a channel to receive candidates on
@@ -932,6 +999,16 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 	disableTrickle bool,
 ) (string, <-chan WebRTCCallAnswer, <-chan struct{}, func(), error) {
 	if err := queue.checkHostQueueSize(ctx, true, host); err != nil {
+		return "", nil, nil, nil, err
+	}
+
+	if err := queue.checkHostOnline(ctx, host); err != nil {
+		connectionEstablishmentExpectedFailures.Inc()
+		// TODO(RSDK-11928): Implement proper time-based rate limiting to prevent clients from spamming connection attempts to offline machines so we can remove sleep and error instantly.
+
+		// Machine is offline but if we return the error instantly, clients can immediately reattempt connection establishment, overwhelming the signaling server. Instead, sleep for the
+		// default offer deadline duration to slow down reattempts and give robots the chance to potentially come online.
+		time.Sleep(getDefaultOfferDeadline())
 		return "", nil, nil, nil, err
 	}
 
