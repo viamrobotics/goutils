@@ -1004,10 +1004,12 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 
 	if err := queue.checkHostOnline(ctx, host); err != nil {
 		connectionEstablishmentExpectedFailures.Inc()
-		// TODO(RSDK-11928): Implement proper time-based rate limiting to prevent clients from spamming connection attempts to offline machines so we can remove sleep and error instantly.
+		// TODO(RSDK-11928): Implement proper time-based rate limiting to prevent clients from spamming connection attempts to offline machines so
+		// we can remove sleep and error instantly.
 
-		// Machine is offline but if we return the error instantly, clients can immediately reattempt connection establishment, overwhelming the signaling server if spammed. Instead, sleep
-		// for the default offer deadline duration to slow down reattempts and give robots the chance to potentially come online.
+		// Machine is offline but if we return the error instantly, clients can immediately reattempt connection establishment, overwhelming the
+		// signaling server if spammed. Instead, sleep for the default offer deadline duration to slow down reattempts and give robots the chance
+		// to potentially come online.
 		time.Sleep(getDefaultOfferDeadline())
 		return "", nil, nil, nil, err
 	}
