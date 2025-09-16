@@ -124,7 +124,9 @@ jobs:
       with:
         go-version-file: go.mod
     - name: Install toolchain
-      uses: jdx/mise-action@v2
+      uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac
+      with:
+        experimental: true
     - name: test
       env:
         GOFLAGS: "-tags=no_cgo"
