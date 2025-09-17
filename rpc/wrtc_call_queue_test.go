@@ -21,12 +21,13 @@ func testWebRTCCallQueue(t *testing.T, setupQueues func(t *testing.T) (WebRTCCal
 		defer undo()
 
 		host := primitive.NewObjectID().Hex()
-		_, _, _, _, err := callerQueue.SendOfferInit(context.Background(), host, "somesdp", false)
+		_, _, ansCtx, _, err := callerQueue.SendOfferInit(context.Background(), host, "somesdp", false)
 
 		// NOTE(danielbotros): This is a little bit ugly but in memory queues are only used for internal signaling to localhosts,
 		// so there isn't a concept of attempting to connect to an offline host.
 		if isInMemoryQueue(callerQueue) {
 			test.That(t, err, test.ShouldBeNil)
+			<-ansCtx
 		} else {
 			test.That(t, err, test.ShouldNotBeNil)
 			test.That(t, err.Error(), test.ShouldContainSubstring, "robot is offline")
