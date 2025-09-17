@@ -21,9 +21,16 @@ func testWebRTCCallQueue(t *testing.T, setupQueues func(t *testing.T) (WebRTCCal
 		defer undo()
 
 		host := primitive.NewObjectID().Hex()
-		_, _, ansCtx, _, err := callerQueue.SendOfferInit(context.Background(), host, "somesdp", false)
-		test.That(t, err, test.ShouldBeNil)
-		<-ansCtx
+		_, _, _, _, err := callerQueue.SendOfferInit(context.Background(), host, "somesdp", false)
+
+		// NOTE(danielbotros): This is a little bit ugly but in memory queues are only used for internal signaling to localhosts,
+		// so there isn't a concept of attempting to connect to an offline host.
+		if isInMemoryQueue(callerQueue) {
+			test.That(t, err, test.ShouldBeNil)
+		} else {
+			test.That(t, err, test.ShouldNotBeNil)
+			test.That(t, err.Error(), test.ShouldContainSubstring, "robot is offline")
+		}
 	})
 
 	t.Run("recv can get caller updates and done", func(t *testing.T) {
@@ -72,6 +79,9 @@ func testWebRTCCallQueue(t *testing.T, setupQueues func(t *testing.T) (WebRTCCal
 			<-offer.CallerDone()
 			close(done)
 		}()
+
+		// Give some time for the queue to recognize an answerer is online so we don't error due to thinking the host is offline.
+		time.Sleep(time.Second)
 
 		newUUID, answers, answersDone, cancel, err := callerQueue.SendOfferInit(context.Background(), host, "hello", false)
 		defer cancel()
@@ -142,6 +152,9 @@ func testWebRTCCallQueue(t *testing.T, setupQueues func(t *testing.T) (WebRTCCal
 			close(done)
 		}()
 
+		// Give some time for the queue to recognize an answerer is online so we don't error due to thinking the host is offline.
+		time.Sleep(time.Second)
+
 		newUUID, answers, answersDone, cancel, err := callerQueue.SendOfferInit(context.Background(), host, "hello", false)
 		defer cancel()
 		test.That(t, err, test.ShouldBeNil)
@@ -165,10 +178,22 @@ func testWebRTCCallQueue(t *testing.T, setupQueues func(t *testing.T) (WebRTCCal
 	})
 
 	t.Run("canceling an offer should eventually close answerer responses", func(t *testing.T) {
-		callerQueue, _, teardown := setupQueues(t)
+		callerQueue, answererQueue, teardown := setupQueues(t)
 		defer teardown()
 
 		host := primitive.NewObjectID().Hex()
+
+		// We need to have an answerer online to handle this host before sending the offer so it doesn't immediately fail, but we don't care what
+		// happens to the offer.
+		answerCtx, answerCancel := context.WithCancel(context.Background())
+		defer answerCancel()
+		go func() {
+			_, _ = answererQueue.RecvOffer(answerCtx, []string{host})
+		}()
+
+		// Give some time for the queue to recognize an answerer is online so we don't error due to thinking the host is offline.
+		time.Sleep(time.Second)
+
 		newUUID, _, answersDone, cancel, err := callerQueue.SendOfferInit(context.Background(), host, "hello", false)
 		cancel()
 		test.That(t, err, test.ShouldBeNil)
@@ -209,6 +234,9 @@ func testWebRTCCallQueue(t *testing.T, setupQueues func(t *testing.T) (WebRTCCal
 					close(done)
 				}()
 
+				// Give some time for the queue to recognize an answerer is online so we don't error due to thinking the host is offline.
+				time.Sleep(time.Second)
+
 				newUUID, answers, answersDone, cancel, err := callerQueue.SendOfferInit(context.Background(), host, "hello", false)
 				defer cancel()
 				test.That(t, err, test.ShouldBeNil)
@@ -230,7 +258,6 @@ func testWebRTCCallQueue(t *testing.T, setupQueues func(t *testing.T) (WebRTCCal
 	t.Run("sending successfully with an error", func(t *testing.T) {
 		callerQueue, answererQueue, teardown := setupQueues(t)
 		defer teardown()
-
 		host := primitive.NewObjectID().Hex()
 		recvErrCh := make(chan error)
 		done := make(chan struct{})
@@ -247,6 +274,9 @@ func testWebRTCCallQueue(t *testing.T, setupQueues func(t *testing.T) (WebRTCCal
 			close(done)
 		}()
 
+		// Give some time for the queue to recognize an answerer is online so we don't error due to thinking the host is offline.
+		time.Sleep(time.Second)
+
 		newUUID, answers, answersDone, cancel, err := callerQueue.SendOfferInit(context.Background(), host, "hello", false)
 		defer cancel()
 		test.That(t, err, test.ShouldBeNil)
@@ -260,6 +290,7 @@ func testWebRTCCallQueue(t *testing.T, setupQueues func(t *testing.T) (WebRTCCal
 	t.Run("receiving from a host not sent to should not work", func(t *testing.T) {
 		callerQueue, answererQueue, teardown := setupQueues(t)
 		defer teardown()
+		host := primitive.NewObjectID().Hex()
 
 		undo := setDefaultOfferDeadline(10 * time.Second)
 		defer undo()
@@ -276,13 +307,29 @@ func testWebRTCCallQueue(t *testing.T, setupQueues func(t *testing.T) (WebRTCCal
 			close(done)
 		}()
 
+		// We need to have an answerer online to handle this host before sending the offer so it doesn't immediately fail, but we don't care what
+		// happens to the offer.
+		answerCtx, answerCancel := context.WithCancel(context.Background())
+		defer answerCancel()
+		go func() {
+			_, _ = answererQueue.RecvOffer(answerCtx, []string{host})
+		}()
+
+		// Give some time for the queue to recognize an answerer is online so we don't error due to thinking the host is offline.
+		time.Sleep(time.Second)
+
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		_, _, ansCtx, _, err := callerQueue.SendOfferInit(ctx, primitive.NewObjectID().Hex(), "hello", false)
+		_, _, ansCtx, _, err := callerQueue.SendOfferInit(ctx, host, "hello", false)
 		test.That(t, err, test.ShouldBeNil)
 		<-ansCtx
 		recvErr := <-recvErrCh
 		test.That(t, recvErr, test.ShouldNotBeNil)
 		test.That(t, recvErr, test.ShouldWrap, context.DeadlineExceeded)
 	})
+}
+
+func isInMemoryQueue(queue WebRTCCallQueue) bool {
+	_, ok := queue.(*memoryWebRTCCallQueue)
+	return ok
 }
