@@ -324,9 +324,8 @@ func isInMemoryQueue(queue WebRTCCallQueue) bool {
 }
 
 // waitForAnswererOnline waits until an answerer is online for the given hosts if the queue supports it.
-func waitForAnswererOnline(ctx context.Context, hosts []string, queue WebRTCCallQueue) <-chan struct{} {
+func waitForAnswererOnline(ctx context.Context, hosts []string, queue WebRTCCallQueue) {
 	if waiter, ok := queue.(*mongoDBWebRTCCallQueue); ok {
 		<-waiter.WaitForAnswererOnline(ctx, hosts)
 	}
-	return nil
 }

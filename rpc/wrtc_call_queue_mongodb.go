@@ -1520,6 +1520,52 @@ func (queue *mongoDBWebRTCCallQueue) Close() error {
 	return nil
 }
 
+// WaitForAnswererOnline returns a channel that will be closed once there is at least one
+// answerer online for all the given hosts. Used in testing to synchronize callers and answerers so that
+// call attempts don't immediately fail due to answerers not yet registered as being online.
+func (queue *mongoDBWebRTCCallQueue) WaitForAnswererOnline(ctx context.Context, hosts []string) <-chan struct{} {
+	ch := make(chan struct{})
+
+	go func() {
+		defer close(ch)
+
+		ticker := time.NewTicker(50 * time.Millisecond)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
+
+			allOnline := true
+			for _, host := range hosts {
+				if ctx.Err() != nil {
+					return
+				}
+
+				filter := bson.M{
+					webrtcOperatorHostsHostCombinedField:         host,
+					webrtcOperatorHostsAnswererSizeCombinedField: bson.M{"$gt": 0},
+				}
+
+				count, err := queue.operatorsColl.CountDocuments(ctx, filter)
+				if err != nil || count == 0 {
+					allOnline = false
+					break
+				}
+			}
+
+			if allOnline {
+				return
+			}
+		}
+	}()
+
+	return ch
+}
+
 type mongoDBWebRTCCallOfferExchange struct {
 	call             mongodbWebRTCCall
 	coll             *mongo.Collection
@@ -1640,50 +1686,4 @@ func (resp *mongoDBWebRTCCallOfferExchange) AnswererDone(ctx context.Context) er
 		return newInactiveOfferErr(resp.call.ID)
 	}
 	return nil
-}
-
-// WaitForAnswererOnline returns a channel that will be closed once there is at least one
-// answerer online for all the given hosts. Used in testing to synchronize callers and answerers so that
-// call attempts don't immediately fail due to answerers not yet registered as being online.
-func (q *mongoDBWebRTCCallQueue) WaitForAnswererOnline(ctx context.Context, hosts []string) <-chan struct{} {
-	ch := make(chan struct{})
-
-	go func() {
-		defer close(ch)
-
-		ticker := time.NewTicker(50 * time.Millisecond)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-			}
-
-			allOnline := true
-			for _, host := range hosts {
-				if ctx.Err() != nil {
-					return
-				}
-
-				filter := bson.M{
-					webrtcOperatorHostsHostCombinedField:         host,
-					webrtcOperatorHostsAnswererSizeCombinedField: bson.M{"$gt": 0},
-				}
-
-				count, err := q.operatorsColl.CountDocuments(ctx, filter)
-				if err != nil || count == 0 {
-					allOnline = false
-					break
-				}
-			}
-
-			if allOnline {
-				return
-			}
-		}
-	}()
-
-	return ch
 }
