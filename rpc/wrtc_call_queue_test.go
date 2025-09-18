@@ -82,7 +82,7 @@ func testWebRTCCallQueue(t *testing.T, setupQueues func(t *testing.T) (WebRTCCal
 		}()
 
 		// Give some time for the queue to recognize an answerer is online so we don't error due to thinking the host is offline.
-		time.Sleep(time.Second)
+		time.Sleep(2 * time.Second)
 
 		newUUID, answers, answersDone, cancel, err := callerQueue.SendOfferInit(context.Background(), host, "hello", false)
 		defer cancel()
@@ -154,7 +154,7 @@ func testWebRTCCallQueue(t *testing.T, setupQueues func(t *testing.T) (WebRTCCal
 		}()
 
 		// Give some time for the queue to recognize an answerer is online so we don't error due to thinking the host is offline.
-		time.Sleep(time.Second)
+		time.Sleep(2 * time.Second)
 
 		newUUID, answers, answersDone, cancel, err := callerQueue.SendOfferInit(context.Background(), host, "hello", false)
 		defer cancel()
@@ -193,7 +193,7 @@ func testWebRTCCallQueue(t *testing.T, setupQueues func(t *testing.T) (WebRTCCal
 		}()
 
 		// Give some time for the queue to recognize an answerer is online so we don't error due to thinking the host is offline.
-		time.Sleep(time.Second)
+		time.Sleep(2 * time.Second)
 
 		newUUID, _, answersDone, cancel, err := callerQueue.SendOfferInit(context.Background(), host, "hello", false)
 		cancel()
@@ -236,7 +236,7 @@ func testWebRTCCallQueue(t *testing.T, setupQueues func(t *testing.T) (WebRTCCal
 				}()
 
 				// Give some time for the queue to recognize an answerer is online so we don't error due to thinking the host is offline.
-				time.Sleep(time.Second)
+				time.Sleep(2 * time.Second)
 
 				newUUID, answers, answersDone, cancel, err := callerQueue.SendOfferInit(context.Background(), host, "hello", false)
 				defer cancel()
@@ -276,7 +276,7 @@ func testWebRTCCallQueue(t *testing.T, setupQueues func(t *testing.T) (WebRTCCal
 		}()
 
 		// Give some time for the queue to recognize an answerer is online so we don't error due to thinking the host is offline.
-		time.Sleep(time.Second)
+		time.Sleep(2 * time.Second)
 
 		newUUID, answers, answersDone, cancel, err := callerQueue.SendOfferInit(context.Background(), host, "hello", false)
 		defer cancel()
@@ -317,7 +317,7 @@ func testWebRTCCallQueue(t *testing.T, setupQueues func(t *testing.T) (WebRTCCal
 		}()
 
 		// Give some time for the queue to recognize an answerer is online so we don't error due to thinking the host is offline.
-		time.Sleep(time.Second)
+		time.Sleep(2 * time.Second)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
