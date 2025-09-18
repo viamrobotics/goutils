@@ -1651,17 +1651,29 @@ func (q *mongoDBWebRTCCallQueue) WaitForAnswererOnline(ctx context.Context, host
 	go func() {
 		defer close(ch)
 
-		for {
-			allOnline := true
+		ticker := time.NewTicker(50 * time.Millisecond)
+		defer ticker.Stop()
 
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
+
+			allOnline := true
 			for _, host := range hosts {
+				if ctx.Err() != nil {
+					return
+				}
+
 				filter := bson.M{
 					webrtcOperatorHostsHostCombinedField:         host,
 					webrtcOperatorHostsAnswererSizeCombinedField: bson.M{"$gt": 0},
 				}
 
-				count, _ := q.operatorsColl.CountDocuments(ctx, filter)
-				if count == 0 {
+				count, err := q.operatorsColl.CountDocuments(ctx, filter)
+				if err != nil || count == 0 {
 					allOnline = false
 					break
 				}
@@ -1670,8 +1682,6 @@ func (q *mongoDBWebRTCCallQueue) WaitForAnswererOnline(ctx context.Context, host
 			if allOnline {
 				return
 			}
-
-			time.Sleep(50 * time.Millisecond)
 		}
 	}()
 

@@ -146,6 +146,7 @@ func testWebRTCSignaling(t *testing.T, signalingCallQueue WebRTCCallQueue, logge
 							DisableTrickleICE: tc,
 						}),
 					)
+					waitForAnswererOnline(context.Background(), []string{host}, signalingCallQueue)
 					test.That(t, err, test.ShouldBeNil)
 					defer func() {
 						test.That(t, ch.Close(), test.ShouldBeNil)
