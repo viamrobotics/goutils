@@ -1438,6 +1438,7 @@ func iceCandidateToMongo(i *webrtc.ICECandidateInit) mongodbICECandidate {
 func (queue *mongoDBWebRTCCallQueue) Close() error {
 	queue.cancelFunc()
 	queue.activeBackgroundWorkers.Wait()
+	activeHosts.Set(queue.operatorID, 0)
 	return nil
 }
 
