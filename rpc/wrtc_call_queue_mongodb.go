@@ -1641,3 +1641,39 @@ func (resp *mongoDBWebRTCCallOfferExchange) AnswererDone(ctx context.Context) er
 	}
 	return nil
 }
+
+// WaitForAnswererOnline returns a channel that will be closed once there is at least one
+// answerer online for all the given hosts. Used in testing to synchronize callers and answerers so that
+// call attempts don't immediately fail due to answerers not yet registered as being online.
+func (q *mongoDBWebRTCCallQueue) WaitForAnswererOnline(ctx context.Context, hosts []string) <-chan struct{} {
+	ch := make(chan struct{})
+
+	go func() {
+		defer close(ch)
+
+		for {
+			allOnline := true
+
+			for _, host := range hosts {
+				filter := bson.M{
+					webrtcOperatorHostsHostCombinedField:         host,
+					webrtcOperatorHostsAnswererSizeCombinedField: bson.M{"$gt": 0},
+				}
+
+				count, _ := q.operatorsColl.CountDocuments(ctx, filter)
+				if count == 0 {
+					allOnline = false
+					break
+				}
+			}
+
+			if allOnline {
+				return
+			}
+
+			time.Sleep(50 * time.Millisecond)
+		}
+	}()
+
+	return ch
+}
