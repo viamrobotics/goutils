@@ -92,7 +92,8 @@ func TestMongoDBWebRTCCallQueueMulti(t *testing.T) {
 			}
 		}()
 
-		// We need to mock an answerer being online for this host to be able to get offers through otherwise Call attempts will fail due to no answerers being online
+		// We need to mock an answerer being online for this host to be able to get offers through otherwise Call attempts will fail due to no
+		// answerers being online
 		addFakeAnswererForHost(t, client, host)
 		t.Logf("start up %d callers (the max)", maxCallerQueueSize)
 		for i := 0; i < maxCallerQueueSize; i++ {
@@ -209,12 +210,26 @@ func TestMongoDBWebRTCCallQueueMulti(t *testing.T) {
 
 func addFakeAnswererForHost(t *testing.T, client *mongo.Client, host string) {
 	t.Helper()
-	_, err := client.Database(mongodbWebRTCCallQueueDBName).Collection(mongodbWebRTCCallQueueOperatorsCollName).InsertOne(context.Background(), bson.M{"_id": operatorID, "expire_at": time.Now().Add(time.Hour), "hosts": []bson.M{{"host": host, "caller_size": int64(0), "answerer_size": int64(1)}}})
+	_, err := client.Database(mongodbWebRTCCallQueueDBName).Collection(mongodbWebRTCCallQueueOperatorsCollName).InsertOne(context.Background(),
+		bson.M{
+			"_id":       operatorID,
+			"expire_at": time.Now().Add(time.Hour),
+			"hosts": []bson.M{{
+				"host":          host,
+				"caller_size":   int64(0),
+				"answerer_size": int64(1),
+			}},
+		})
 	test.That(t, err, test.ShouldBeNil)
 }
 
 func removeFakeAnswererForHost(t *testing.T, client *mongo.Client, host string) {
 	t.Helper()
-	_, err := client.Database(mongodbWebRTCCallQueueDBName).Collection(mongodbWebRTCCallQueueOperatorsCollName).UpdateOne(context.Background(), bson.M{"_id": operatorID, "hosts.host": host}, bson.M{"$inc": bson.M{"hosts.$.answerer_size": -1}})
+	_, err := client.Database(mongodbWebRTCCallQueueDBName).Collection(mongodbWebRTCCallQueueOperatorsCollName).UpdateOne(context.Background(),
+		bson.M{
+			"_id":        operatorID,
+			"hosts.host": host,
+		},
+		bson.M{"$inc": bson.M{"hosts.$.answerer_size": -1}})
 	test.That(t, err, test.ShouldBeNil)
 }
