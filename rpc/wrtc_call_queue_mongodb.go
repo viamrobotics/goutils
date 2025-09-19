@@ -58,7 +58,7 @@ var (
 	})
 
 	activeHosts = statz.NewGauge2[string, string]("signaling/active_hosts", statz.MetricConfig{
-		Description: "The number of answerers for this hosts that are waiting for a call to come in or processing a call on this operator.",
+		Description: "Indicates whether a specific host is waiting for a call to come in or processing a call on this operator (1 = active, 0 = inactive).",
 		Unit:        units.Dimensionless,
 		Labels: []statz.Label{
 			{Name: "operator_id", Description: "The queue operator ID."},
