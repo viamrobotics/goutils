@@ -109,21 +109,6 @@ func (ans *webrtcSignalingAnswerer) Start() {
 				return
 			}
 
-			// Close existing connection if we're reconnecting
-			ans.connMu.Lock()
-			if ans.conn != nil && !ans.sharedConn {
-				oldConn := ans.conn
-				ans.conn = nil
-				ans.connMu.Unlock()
-
-				// Close old connection outside the lock
-				if err := oldConn.Close(); err != nil {
-					ans.logger.Debugw("error closing old connection during reconnect", "error", err)
-				}
-			} else {
-				ans.connMu.Unlock()
-			}
-
 			timeout := answererConnectTimeout
 			// Bump timeout from 10 seconds to 1 minute if behind a SOCKS proxy. It
 			// may take longer to connect to the signaling server in that case.
