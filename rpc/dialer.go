@@ -23,6 +23,7 @@ import (
 	"golang.org/x/net/proxy"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
@@ -643,6 +644,15 @@ type clientConnRPCAuthenticator struct {
 
 func (cc clientConnRPCAuthenticator) Authenticate(ctx context.Context) (string, error) {
 	return cc.rpcCreds.authenticate(ctx)
+}
+
+// GetState is exposed if it is available on the underlying type.
+func (cc clientConnRPCAuthenticator) GetState() connectivity.State {
+	checker, ok := cc.ClientConn.(GrpcOverHTTPClientConn)
+	if !ok {
+		return connectivity.Idle
+	}
+	return checker.GetState()
 }
 
 type staticPerRPCJWTCredentials struct {
