@@ -491,8 +491,7 @@ func (queue *mongoDBWebRTCCallQueue) changeStreamManager() {
 		}
 
 		queue.csStateMu.RLock()
-		hosts := make([]string, 0, len(queue.waitingForNewCallSubs))
-		activeHosts.Set(queue.operatorID, int64(len(hosts)))
+		activeHosts.Set(queue.operatorID, int64(len(queue.waitingForNewCallSubs)))
 		queue.csStateMu.RUnlock()
 
 		currSeq := queue.csManagerSeq.Load()
@@ -503,6 +502,7 @@ func (queue *mongoDBWebRTCCallQueue) changeStreamManager() {
 		isInitialized = true
 
 		queue.csStateMu.Lock()
+		hosts := make([]string, 0, len(queue.waitingForNewCallSubs))
 		for host := range queue.waitingForNewCallSubs {
 			hosts = append(hosts, host)
 		}
