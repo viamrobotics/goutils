@@ -491,6 +491,12 @@ func (queue *mongoDBWebRTCCallQueue) changeStreamManager() {
 		if !utils.SelectContextOrWaitChan(queue.cancelCtx, ticker.C) {
 			return
 		}
+
+		queue.csStateMu.RLock()
+		hosts := make([]string, 0, len(queue.waitingForNewCallSubs))
+		activeHosts.Set(queue.operatorID, int64(len(hosts)))
+		queue.csStateMu.RUnlock()
+
 		currSeq := queue.csManagerSeq.Load()
 		if isInitialized && lastSeq == currSeq {
 			continue
@@ -499,7 +505,6 @@ func (queue *mongoDBWebRTCCallQueue) changeStreamManager() {
 		isInitialized = true
 
 		queue.csStateMu.Lock()
-		hosts := make([]string, 0, len(queue.waitingForNewCallSubs))
 		for host := range queue.waitingForNewCallSubs {
 			hosts = append(hosts, host)
 		}
@@ -560,6 +565,7 @@ func (queue *mongoDBWebRTCCallQueue) changeStreamManager() {
 		previousHosts := queue.csTrackingHosts.ToList()
 		queue.csTrackingHosts = utils.NewStringSet(hosts...)
 		queue.csStateMu.Unlock()
+<<<<<<< Updated upstream
 
 		currentHostSet := utils.NewStringSet(hosts...)
 
@@ -571,6 +577,8 @@ func (queue *mongoDBWebRTCCallQueue) changeStreamManager() {
 		for _, host := range hosts {
 			activeHosts.Set(queue.operatorID, host, 1)
 		}
+=======
+>>>>>>> Stashed changes
 
 		nextCSCtx, nextCSCtxCancel := context.WithCancel(queue.cancelCtx)
 		csNext, resumeToken, clusterTime := mongoutils.ChangeStreamBackground(nextCSCtx, cs)
