@@ -1008,9 +1008,9 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 		// we can remove sleep and error instantly.
 
 		// Machine is offline but if we return the error instantly, clients can immediately reattempt connection establishment, overwhelming the
-		// signaling server if spammed. Instead, sleep for the default offer deadline duration to slow down reattempts and give robots the chance
-		// to potentially come online.
-		time.Sleep(getDefaultOfferDeadline())
+		// signaling server if spammed. Instead, sleep for a few seconds to slow down reattempts and give robots the chance to potentially come
+		// online.
+		time.Sleep(3 * time.Second)
 		return "", nil, nil, nil, err
 	}
 
