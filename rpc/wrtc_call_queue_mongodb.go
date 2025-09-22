@@ -57,13 +57,11 @@ var (
 		},
 	})
 
-	activeHosts = statz.NewGauge2[string, string]("signaling/active_hosts", statz.MetricConfig{
-		Description: `Indicates whether a specific host is waiting for a call to come in or processing a call on this 
-		operator (1 = active, 0 = inactive).`,
-		Unit: units.Dimensionless,
+	activeHosts = statz.NewGauge1[string]("signaling/active_hosts", statz.MetricConfig{
+		Description: "The number of hosts waiting for a call to come in or processing a call.",
+		Unit:        units.Dimensionless,
 		Labels: []statz.Label{
 			{Name: "operator_id", Description: "The queue operator ID."},
-			{Name: "host", Description: "The individual host/robot name."},
 		},
 	})
 
@@ -562,23 +560,8 @@ func (queue *mongoDBWebRTCCallQueue) changeStreamManager() {
 			readyFunc()
 		}
 		queue.csStateMu.Lock()
-		previousHosts := queue.csTrackingHosts.ToList()
 		queue.csTrackingHosts = utils.NewStringSet(hosts...)
 		queue.csStateMu.Unlock()
-<<<<<<< Updated upstream
-
-		currentHostSet := utils.NewStringSet(hosts...)
-
-		for _, host := range previousHosts {
-			if _, exists := currentHostSet[host]; !exists {
-				activeHosts.Set(queue.operatorID, host, 0)
-			}
-		}
-		for _, host := range hosts {
-			activeHosts.Set(queue.operatorID, host, 1)
-		}
-=======
->>>>>>> Stashed changes
 
 		nextCSCtx, nextCSCtxCancel := context.WithCancel(queue.cancelCtx)
 		csNext, resumeToken, clusterTime := mongoutils.ChangeStreamBackground(nextCSCtx, cs)
