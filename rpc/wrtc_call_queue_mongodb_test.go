@@ -225,11 +225,7 @@ func addFakeAnswererForHost(t *testing.T, client *mongo.Client, host string) {
 
 func removeFakeAnswererForHost(t *testing.T, client *mongo.Client, host string) {
 	t.Helper()
-	_, err := client.Database(mongodbWebRTCCallQueueDBName).Collection(mongodbWebRTCCallQueueOperatorsCollName).UpdateOne(context.Background(),
-		bson.M{
-			"_id":        operatorID,
-			"hosts.host": host,
-		},
-		bson.M{"$inc": bson.M{"hosts.$.answerer_size": -1}})
+	_, err := client.Database(mongodbWebRTCCallQueueDBName).Collection(mongodbWebRTCCallQueueOperatorsCollName).DeleteOne(context.Background(),
+		bson.M{"_id": operatorID})
 	test.That(t, err, test.ShouldBeNil)
 }

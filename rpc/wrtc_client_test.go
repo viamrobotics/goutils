@@ -79,7 +79,7 @@ func testWebRTCClientServer(t *testing.T, signalingCallQueue WebRTCCallQueue, lo
 		logger,
 	)
 	answerer.Start()
-	waitForAnswererOnline(context.Background(), hosts, signalingCallQueue)
+	waitForAnswererOnline(t, context.Background(), hosts, signalingCallQueue)
 
 	for _, host := range hosts {
 		t.Run(host, func(t *testing.T) {
@@ -175,7 +175,7 @@ func testWebRTCClientDialCancel(t *testing.T, signalingCallQueue WebRTCCallQueue
 	answerCtx := metadata.NewOutgoingContext(context.Background(), md)
 	answerClient, err := signalingClient.Answer(answerCtx)
 	test.That(t, err, test.ShouldBeNil)
-	waitForAnswererOnline(context.Background(), []string{host}, signalingCallQueue)
+	waitForAnswererOnline(t, context.Background(), []string{host}, signalingCallQueue)
 
 	cancelCtx, cancel := context.WithCancel(context.Background())
 
@@ -264,7 +264,7 @@ func testWebRTCClientDialReflectAnswererError(t *testing.T, signalingCallQueue W
 	answerCtx := metadata.NewOutgoingContext(context.Background(), md)
 	answerClient, err := signalingClient.Answer(answerCtx)
 	test.That(t, err, test.ShouldBeNil)
-	waitForAnswererOnline(context.Background(), []string{host}, signalingCallQueue)
+	waitForAnswererOnline(t, context.Background(), []string{host}, signalingCallQueue)
 
 	dialErrCh := make(chan error)
 	go func() {
@@ -364,7 +364,7 @@ func testWebRTCClientDialConcurrent(t *testing.T, signalingCallQueue WebRTCCallQ
 	test.That(t, err, test.ShouldBeNil)
 	answerClient2, err := signalingClient.Answer(answerCtx)
 	test.That(t, err, test.ShouldBeNil)
-	waitForAnswererOnline(context.Background(), []string{host}, signalingCallQueue)
+	waitForAnswererOnline(t, context.Background(), []string{host}, signalingCallQueue)
 
 	dialErrCh := make(chan error, 2)
 	go func() {
@@ -502,7 +502,7 @@ func testWebRTCClientAnswerConcurrent(t *testing.T, signalingCallQueue WebRTCCal
 		logger,
 	)
 	answerer.Start()
-	waitForAnswererOnline(context.Background(), []string{host}, signalingCallQueue)
+	waitForAnswererOnline(t, context.Background(), []string{host}, signalingCallQueue)
 
 	grpcConn, err := DialDirectGRPC(context.Background(), grpcListener.Addr().String(), logger, WithInsecure())
 	test.That(t, err, test.ShouldBeNil)

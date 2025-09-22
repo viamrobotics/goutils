@@ -185,6 +185,9 @@ var (
 // this probably matches defaultMaxAnswerers on the signaling answerer.
 const maxHostAnswerersSize = 2
 
+// How long we want to delay clients before retrying to connect to an offline host.
+const offlineHostRetryDelay = 3 * time.Second
+
 // NewMongoDBWebRTCCallQueue returns a new MongoDB based call queue where calls are transferred
 // through the given client. The operator ID must be unique (e.g. a hostname, container ID, UUID, etc.).
 // Currently, the queue can grow to an unbounded size in terms of goroutines in memory but it is expected
@@ -1010,7 +1013,7 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 		// Machine is offline but if we return the error instantly, clients can immediately reattempt connection establishment, overwhelming the
 		// signaling server if spammed. Instead, sleep for a few seconds to slow down reattempts and give robots the chance to potentially come
 		// online.
-		time.Sleep(3 * time.Second)
+		time.Sleep(offlineHostRetryDelay)
 		return "", nil, nil, nil, err
 	}
 
@@ -1520,50 +1523,45 @@ func (queue *mongoDBWebRTCCallQueue) Close() error {
 	return nil
 }
 
-// WaitForAnswererOnline returns a channel that will be closed once there is at least one
-// answerer online for all the given hosts. Used in testing to synchronize callers and answerers so that
-// call attempts don't immediately fail due to answerers not yet registered as being online.
-func (queue *mongoDBWebRTCCallQueue) WaitForAnswererOnline(ctx context.Context, hosts []string) <-chan struct{} {
-	ch := make(chan struct{})
+// waitForAnswererOnline blocks until there is at least one answerer online for all the given hosts.
+// Used in testing to synchronize callers and answerers so that call attempts don't immediately fail
+// due to answerers not yet registered as being online.
+func (queue *mongoDBWebRTCCallQueue) waitForAnswererOnline(ctx context.Context, hosts []string) error {
+	ticker := time.NewTicker(50 * time.Millisecond)
+	defer ticker.Stop()
 
-	go func() {
-		defer close(ch)
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
 
-		ticker := time.NewTicker(50 * time.Millisecond)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
+		allOnline := true
+		for _, host := range hosts {
+			if ctx.Err() != nil {
+				return ctx.Err()
 			}
 
-			allOnline := true
-			for _, host := range hosts {
-				if ctx.Err() != nil {
-					return
-				}
-
-				filter := bson.M{
-					webrtcOperatorHostsHostCombinedField:         host,
-					webrtcOperatorHostsAnswererSizeCombinedField: bson.M{"$gt": 0},
-				}
-
-				count, err := queue.operatorsColl.CountDocuments(ctx, filter)
-				if err != nil || count == 0 {
-					allOnline = false
-					break
-				}
+			filter := bson.M{
+				webrtcOperatorHostsHostCombinedField:         host,
+				webrtcOperatorHostsAnswererSizeCombinedField: bson.M{"$gt": 0},
 			}
 
-			if allOnline {
-				return
+			count, err := queue.operatorsColl.CountDocuments(ctx, filter)
+			if err != nil {
+				return err
+			}
+			if count == 0 {
+				allOnline = false
+				break
 			}
 		}
-	}()
 
-	return ch
+		if allOnline {
+			return nil
+		}
+	}
 }
 
 type mongoDBWebRTCCallOfferExchange struct {
