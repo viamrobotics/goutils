@@ -184,10 +184,8 @@ func testWebRTCCallQueue(t *testing.T, setupQueues func(t *testing.T) (WebRTCCal
 		// happens to the offer.
 		answerCtx, answerCancel := context.WithCancel(context.Background())
 		defer answerCancel()
-
-		var answererErr error
 		go func() {
-			_, answererErr = answererQueue.RecvOffer(answerCtx, []string{host})
+			_, answererErr := answererQueue.RecvOffer(answerCtx, []string{host})
 			test.That(t, answererErr, test.ShouldBeError, context.Canceled)
 		}()
 		waitForAnswererOnline(context.Background(), t, []string{host}, answererQueue)
