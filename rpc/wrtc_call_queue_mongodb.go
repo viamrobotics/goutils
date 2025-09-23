@@ -955,7 +955,7 @@ func (queue *mongoDBWebRTCCallQueue) checkHostQueueSize(ctx context.Context, for
 	return errTooManyConns
 }
 
-var errOffline = status.Error(codes.Unavailable, "robot is offline or you don't have permissions to access it")
+var errOffline = status.Error(codes.Unavailable, "host appears to be offline; ensure machine is online and try again")
 
 // checkHostOnline will check if there is some operator for all the managed hosts that
 // claims to have an answerer online for that host. It does this by running an aggregation
@@ -1013,8 +1013,12 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 		// Machine is offline but if we return the error instantly, clients can immediately reattempt connection establishment, overwhelming the
 		// signaling server if spammed. Instead, sleep for a few seconds to slow down reattempts and give robots the chance to potentially come
 		// online.
-		time.Sleep(offlineHostRetryDelay)
-		return "", nil, nil, nil, err
+		select {
+		case <-time.After(offlineHostRetryDelay):
+			return "", nil, nil, nil, err
+		case <-ctx.Done():
+			return "", nil, nil, nil, ctx.Err()
+		}
 	}
 
 	sdkType, organizationID := "unknown", "unknown"
@@ -1527,22 +1531,21 @@ func (queue *mongoDBWebRTCCallQueue) Close() error {
 // Used in testing to synchronize callers and answerers so that call attempts don't immediately fail
 // due to answerers not yet registered as being online.
 func (queue *mongoDBWebRTCCallQueue) waitForAnswererOnline(ctx context.Context, hosts []string) error {
+	timeoutCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
 	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()
 
 	for {
 		select {
-		case <-ctx.Done():
+		case <-timeoutCtx.Done():
 			return ctx.Err()
 		case <-ticker.C:
 		}
 
 		allOnline := true
 		for _, host := range hosts {
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
-
 			filter := bson.M{
 				webrtcOperatorHostsHostCombinedField:         host,
 				webrtcOperatorHostsAnswererSizeCombinedField: bson.M{"$gt": 0},
