@@ -82,7 +82,7 @@ func testWebRTCSignaling(t *testing.T, signalingCallQueue WebRTCCallQueue, logge
 				logger,
 			)
 			answerer.Start()
-			waitForAnswererOnline(t, context.Background(), []string{host}, signalingCallQueue)
+			waitForAnswererOnline(context.Background(), t, []string{host}, signalingCallQueue)
 
 			//nolint:staticcheck
 			cc, err := grpc.Dial(
@@ -146,7 +146,7 @@ func testWebRTCSignaling(t *testing.T, signalingCallQueue WebRTCCallQueue, logge
 							DisableTrickleICE: tc,
 						}),
 					)
-					waitForAnswererOnline(t, context.Background(), []string{host}, signalingCallQueue)
+					waitForAnswererOnline(context.Background(), t, []string{host}, signalingCallQueue)
 					test.That(t, dialErr, test.ShouldBeNil)
 					defer func() {
 						test.That(t, ch.Close(), test.ShouldBeNil)

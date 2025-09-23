@@ -123,7 +123,7 @@ func TestMongoDBWebRTCCallQueueMulti(t *testing.T) {
 		offers[0] = offerState{CallID: callID, Done: respDone, Cancel: cancel}
 
 		// Now that we are starting up real answerers, we can remove the fake one
-		removeFakeAnswererForHost(t, client, host)
+		removeFakeAnswererForHost(t, client)
 		t.Logf("start up %d answerers (the max)", maxHostAnswerersSize*2)
 		for i := 0; i < maxHostAnswerersSize*2; i++ {
 			exchange, err := answererQueue.RecvOffer(ctx, []string{host})
@@ -223,7 +223,7 @@ func addFakeAnswererForHost(t *testing.T, client *mongo.Client, host string) {
 	test.That(t, err, test.ShouldBeNil)
 }
 
-func removeFakeAnswererForHost(t *testing.T, client *mongo.Client, host string) {
+func removeFakeAnswererForHost(t *testing.T, client *mongo.Client) {
 	t.Helper()
 	_, err := client.Database(mongodbWebRTCCallQueueDBName).Collection(mongodbWebRTCCallQueueOperatorsCollName).DeleteOne(context.Background(),
 		bson.M{"_id": operatorID})
