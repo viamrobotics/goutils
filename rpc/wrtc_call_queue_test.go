@@ -13,7 +13,7 @@ import (
 )
 
 func testWebRTCCallQueue(t *testing.T, setupQueues func(t *testing.T) (WebRTCCallQueue, WebRTCCallQueue, func())) {
-	t.Run("sending an offer for too long should signal done", func(t *testing.T) {
+	t.Run("sending an offer for too long should signal done (in-memory) or error due to offline host (MongoDB)", func(t *testing.T) {
 		callerQueue, _, teardown := setupQueues(t)
 		defer teardown()
 
