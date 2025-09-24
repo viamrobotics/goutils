@@ -1435,9 +1435,9 @@ func TestDialMutualTLSAuth(t *testing.T) {
 				tlsConfig := tlsConfig.Clone()
 				tlsConfig.ClientAuth = tls.VerifyClientCertIfGiven
 				httpServer := &http.Server{
-					ReadTimeout:    10 * time.Second,
-					MaxHeaderBytes: MaxMessageSize,
-					TLSConfig:      tlsConfig,
+					ReadHeaderTimeout: 10 * time.Second,
+					MaxHeaderBytes:    MaxMessageSize,
+					TLSConfig:         tlsConfig,
 				}
 				httpServer.Addr = httpListener.Addr().String()
 				httpServer.Handler = server.GRPCHandler()

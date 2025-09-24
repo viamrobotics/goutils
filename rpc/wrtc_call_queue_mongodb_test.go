@@ -8,11 +8,15 @@ import (
 
 	"github.com/edaniels/golog"
 	"github.com/google/uuid"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
 	"go.viam.com/test"
 
 	"go.viam.com/utils/testutils"
 )
+
+var operatorID = uuid.NewString()
 
 func TestMongoDBWebRTCCallQueue(t *testing.T) {
 	client := testutils.BackingMongoDBClient(t)
@@ -21,7 +25,7 @@ func TestMongoDBWebRTCCallQueue(t *testing.T) {
 		t.Helper()
 		test.That(t, client.Database(mongodbWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
 		logger := golog.NewTestLogger(t)
-		callQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), uuid.NewString(), 50, client, logger,
+		callQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), operatorID, 50, client, logger,
 			func(hosts []string, atTime time.Time) {})
 		test.That(t, err, test.ShouldBeNil)
 		return callQueue, callQueue, func() {
@@ -88,6 +92,9 @@ func TestMongoDBWebRTCCallQueueMulti(t *testing.T) {
 			}
 		}()
 
+		// We need to mock an answerer being online for this host to be able to get offers through otherwise Call attempts will fail due to no
+		// answerers being online
+		addFakeAnswererForHost(t, client, host)
 		t.Logf("start up %d callers (the max)", maxCallerQueueSize)
 		for i := 0; i < maxCallerQueueSize; i++ {
 			callID, _, respDone, cancel, err := callerQueue.SendOfferInit(ctx, host, "somesdp", false)
@@ -115,6 +122,8 @@ func TestMongoDBWebRTCCallQueueMulti(t *testing.T) {
 		t.Logf("sent offer %d=%s", maxCallerQueueSize, callID)
 		offers[0] = offerState{CallID: callID, Done: respDone, Cancel: cancel}
 
+		// Now that we are starting up real answerers, we can remove the fake one
+		removeFakeAnswererForHost(t, client)
 		t.Logf("start up %d answerers (the max)", maxHostAnswerersSize*2)
 		for i := 0; i < maxHostAnswerersSize*2; i++ {
 			exchange, err := answererQueue.RecvOffer(ctx, []string{host})
@@ -197,4 +206,26 @@ func TestMongoDBWebRTCCallQueueMulti(t *testing.T) {
 		}
 		test.That(t, foundHosts, test.ShouldBeTrue)
 	})
+}
+
+func addFakeAnswererForHost(t *testing.T, client *mongo.Client, host string) {
+	t.Helper()
+	_, err := client.Database(mongodbWebRTCCallQueueDBName).Collection(mongodbWebRTCCallQueueOperatorsCollName).InsertOne(context.Background(),
+		bson.M{
+			"_id":       operatorID,
+			"expire_at": time.Now().Add(time.Hour),
+			"hosts": []bson.M{{
+				"host":          host,
+				"caller_size":   int64(0),
+				"answerer_size": int64(1),
+			}},
+		})
+	test.That(t, err, test.ShouldBeNil)
+}
+
+func removeFakeAnswererForHost(t *testing.T, client *mongo.Client) {
+	t.Helper()
+	_, err := client.Database(mongodbWebRTCCallQueueDBName).Collection(mongodbWebRTCCallQueueOperatorsCollName).DeleteOne(context.Background(),
+		bson.M{"_id": operatorID})
+	test.That(t, err, test.ShouldBeNil)
 }
