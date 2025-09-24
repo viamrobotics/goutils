@@ -100,7 +100,7 @@ var (
 			},
 		},
 	)
-  
+
 	connectionEstablishmentExpectedFailures = statz.NewCounter0(
 		"signaling/connection_establishment_expected_failures",
 		statz.MetricConfig{
