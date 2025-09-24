@@ -83,11 +83,21 @@ var (
 		},
 	)
 
-	connectionEstablishmentFailures = statz.NewCounter0(
+	connectionEstablishmentFailures = statz.NewCounter2[string, string](
 		"signaling/connection_establishment_failures",
 		statz.MetricConfig{
 			Description: "The total number of connection establishment failures (all caller or answerer errors).",
 			Unit:        units.Dimensionless,
+			Labels: []statz.Label{
+				{
+					Name:        "sdk_type",
+					Description: "The type of SDK attempting to connect.",
+				},
+				{
+					Name:        "organization_id",
+					Description: "The organization ID of the machine that is being connected to.",
+				},
+			},
 		},
 	)
 
@@ -99,35 +109,75 @@ var (
 		},
 	)
 
-	connectionEstablishmentCallerTimeouts = statz.NewCounter0(
+	connectionEstablishmentCallerTimeouts = statz.NewCounter2[string, string](
 		"signaling/connection_establishment_caller_timeouts",
 		statz.MetricConfig{
 			Description: "The total number of connection establishment failures that were timeouts on the caller side.",
 			Unit:        units.Dimensionless,
+			Labels: []statz.Label{
+				{
+					Name:        "sdk_type",
+					Description: "The type of SDK attempting to connect.",
+				},
+				{
+					Name:        "organization_id",
+					Description: "The organization ID of the machine that is being connected to.",
+				},
+			},
 		},
 	)
 
-	connectionEstablishmentCallerNonTimeoutErrors = statz.NewCounter0(
+	connectionEstablishmentCallerNonTimeoutErrors = statz.NewCounter2[string, string](
 		"signaling/connection_establishment_caller_non_timeouts",
 		statz.MetricConfig{
 			Description: "The total number of connection establishment failures that were NOT timeouts on the caller side.",
 			Unit:        units.Dimensionless,
+			Labels: []statz.Label{
+				{
+					Name:        "sdk_type",
+					Description: "The type of SDK attempting to connect.",
+				},
+				{
+					Name:        "organization_id",
+					Description: "The organization ID of the machine that is being connected to.",
+				},
+			},
 		},
 	)
 
-	connectionEstablishmentAnswererTimeouts = statz.NewCounter0(
+	connectionEstablishmentAnswererTimeouts = statz.NewCounter2[string, string](
 		"signaling/connection_establishment_answerer_timeouts",
 		statz.MetricConfig{
 			Description: "The total number of connection establishment failures that were timeouts on the answerer side.",
 			Unit:        units.Dimensionless,
+			Labels: []statz.Label{
+				{
+					Name:        "sdk_type",
+					Description: "The type of SDK attempting to connect.",
+				},
+				{
+					Name:        "organization_id",
+					Description: "The organization ID of the machine that is being connected to.",
+				},
+			},
 		},
 	)
 
-	connectionEstablishmentAnswererNonTimeoutErrors = statz.NewCounter0(
+	connectionEstablishmentAnswererNonTimeoutErrors = statz.NewCounter2[string, string](
 		"signaling/connection_establishment_answerer_non_timeouts",
 		statz.MetricConfig{
 			Description: "The total number of connection establishment failures that were NOT timeouts on the answerer side.",
 			Unit:        units.Dimensionless,
+			Labels: []statz.Label{
+				{
+					Name:        "sdk_type",
+					Description: "The type of SDK attempting to connect.",
+				},
+				{
+					Name:        "organization_id",
+					Description: "The organization ID of the machine that is being connected to.",
+				},
+			},
 		},
 	)
 )
@@ -345,6 +395,8 @@ type mongodbWebRTCCall struct {
 	AnswererCandidates []mongodbICECandidate `bson:"answerer_candidates,omitempty"`
 	AnswererDone       bool                  `bson:"answerer_done"`
 	AnswererError      string                `bson:"answerer_error,omitempty"`
+	SDKType            string                `bson:"sdk_type,omitempty"`
+	OrganizationID     string                `bson:"organization_id,omitempty"`
 }
 
 const (
@@ -1079,6 +1131,8 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 		CallerOperatorID: queue.operatorID,
 		Host:             host,
 		CallerSDP:        sdp,
+		SDKType:          sdkType,
+		OrganizationID:   organizationID,
 	}
 	events, unsubscribe := queue.subscribeToCall(host, call.ID, "caller")
 
@@ -1231,11 +1285,11 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferError(ctx context.Context, host, u
 	// Increment connection establishment failure counts if we are setting a
 	// `caller_error` and the `answerer_error` has not already been set.
 	if updatedMDBWebRTCCall.AnswererError == "" {
-		connectionEstablishmentFailures.Inc()
+		connectionEstablishmentFailures.Inc(updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID)
 		if errors.Is(err, context.DeadlineExceeded) {
-			connectionEstablishmentCallerTimeouts.Inc()
+			connectionEstablishmentCallerTimeouts.Inc(updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID)
 		} else {
-			connectionEstablishmentCallerNonTimeoutErrors.Inc()
+			connectionEstablishmentCallerNonTimeoutErrors.Inc(updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID)
 		}
 	}
 
@@ -1667,11 +1721,11 @@ func (resp *mongoDBWebRTCCallOfferExchange) AnswererRespond(ctx context.Context,
 		// Increment connection establishment failure counts if we are setting an
 		// `answerer_error` and the `caller_error` has not already been set.
 		if updatedMDBWebRTCCall.CallerError == "" {
-			connectionEstablishmentFailures.Inc()
+			connectionEstablishmentFailures.Inc(updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID)
 			if errors.Is(ans.Err, context.DeadlineExceeded) {
-				connectionEstablishmentAnswererTimeouts.Inc()
+				connectionEstablishmentAnswererTimeouts.Inc(updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID)
 			} else {
-				connectionEstablishmentAnswererNonTimeoutErrors.Inc()
+				connectionEstablishmentAnswererNonTimeoutErrors.Inc(updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID)
 			}
 		}
 	}
