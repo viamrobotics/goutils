@@ -101,11 +101,21 @@ var (
 		},
 	)
 
-	connectionEstablishmentExpectedFailures = statz.NewCounter0(
+	connectionEstablishmentExpectedFailures = statz.NewCounter2[string, string](
 		"signaling/connection_establishment_expected_failures",
 		statz.MetricConfig{
 			Description: "The total number of connection attempts that failed because the target robot was offline or does not exist.",
 			Unit:        units.Dimensionless,
+			Labels: []statz.Label{
+				{
+					Name:        "sdk_type",
+					Description: "The type of SDK attempting to connect.",
+				},
+				{
+					Name:        "organization_id",
+					Description: "The organization ID of the machine that is being connected to.",
+				},
+			},
 		},
 	)
 
@@ -1110,7 +1120,7 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 	connectionEstablishmentAttempts.Inc(sdkType, organizationID)
 
 	if err := queue.checkHostOnline(ctx, host); err != nil {
-		connectionEstablishmentExpectedFailures.Inc()
+		connectionEstablishmentExpectedFailures.Inc(sdkType, organizationID)
 		// TODO(RSDK-11928): Implement proper time-based rate limiting to prevent clients from spamming connection attempts to offline machines so
 		// we can remove sleep and error instantly.
 
