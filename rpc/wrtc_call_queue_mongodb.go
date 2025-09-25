@@ -1061,22 +1061,6 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 		return "", nil, nil, nil, err
 	}
 
-	if err := queue.checkHostOnline(ctx, host); err != nil {
-		connectionEstablishmentExpectedFailures.Inc()
-		// TODO(RSDK-11928): Implement proper time-based rate limiting to prevent clients from spamming connection attempts to offline machines so
-		// we can remove sleep and error instantly.
-
-		// Machine is offline but if we return the error instantly, clients can immediately reattempt connection establishment, overwhelming the
-		// signaling server if spammed. Instead, sleep for a few seconds to slow down reattempts and give robots the chance to potentially come
-		// online.
-		select {
-		case <-time.After(offlineHostRetryDelay):
-			return "", nil, nil, nil, err
-		case <-ctx.Done():
-			return "", nil, nil, nil, ctx.Err()
-		}
-	}
-
 	sdkType, organizationID := "unknown", "unknown"
 	if md, exists := metadata.FromIncomingContext(ctx); exists {
 		// TODO(RSDK-11864): Use actual structured metadata provided by the SDK to determine
@@ -1124,6 +1108,22 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 	// An offer initialization (after verifying the host queue size), indicates an attempted
 	// connection establishment attempt.
 	connectionEstablishmentAttempts.Inc(sdkType, organizationID)
+
+	if err := queue.checkHostOnline(ctx, host); err != nil {
+		connectionEstablishmentExpectedFailures.Inc()
+		// TODO(RSDK-11928): Implement proper time-based rate limiting to prevent clients from spamming connection attempts to offline machines so
+		// we can remove sleep and error instantly.
+
+		// Machine is offline but if we return the error instantly, clients can immediately reattempt connection establishment, overwhelming the
+		// signaling server if spammed. Instead, sleep for a few seconds to slow down reattempts and give robots the chance to potentially come
+		// online.
+		select {
+		case <-time.After(offlineHostRetryDelay):
+			return "", nil, nil, nil, err
+		case <-ctx.Done():
+			return "", nil, nil, nil, ctx.Err()
+		}
+	}
 
 	newUUID := uuid.NewString()
 	call := mongodbWebRTCCall{
