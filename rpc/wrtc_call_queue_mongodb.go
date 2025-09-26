@@ -1067,10 +1067,6 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 	host, sdp string,
 	disableTrickle bool,
 ) (string, <-chan WebRTCCallAnswer, <-chan struct{}, func(), error) {
-	if err := queue.checkHostQueueSize(ctx, true, host); err != nil {
-		return "", nil, nil, nil, err
-	}
-
 	sdkType, organizationID := "unknown", "unknown"
 	if md, exists := metadata.FromIncomingContext(ctx); exists {
 		// TODO(RSDK-11864): Use actual structured metadata provided by the SDK to determine
@@ -1118,6 +1114,11 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 	// An offer initialization (after verifying the host queue size), indicates an attempted
 	// connection establishment attempt.
 	connectionEstablishmentAttempts.Inc(sdkType, organizationID)
+
+	if err := queue.checkHostQueueSize(ctx, true, host); err != nil {
+		connectionEstablishmentExpectedFailures.Inc(sdkType, organizationID)
+		return "", nil, nil, nil, err
+	}
 
 	if err := queue.checkHostOnline(ctx, host); err != nil {
 		connectionEstablishmentExpectedFailures.Inc(sdkType, organizationID)
