@@ -197,7 +197,7 @@ var (
 				},
 				{
 					Name:        "result",
-					Description: "The result of the call exchange (success, caller_error, answerer_error, timeout, expired).",
+					Description: "The result of the call exchange.",
 				},
 			},
 		},
@@ -261,8 +261,8 @@ const maxHostAnswerersSize = 2
 // How long we want to delay clients before retrying to connect to an offline host.
 const offlineHostRetryDelay = 5 * time.Second
 
-const exchangeFailure = "fail"
-const exchangeSuccess = "success"
+const exchangeFailure = "exchange_failure"
+const exchangeSuccess = "exchange_success"
 
 // NewMongoDBWebRTCCallQueue returns a new MongoDB based call queue where calls are transferred
 // through the given client. The operator ID must be unique (e.g. a hostname, container ID, UUID, etc.).
