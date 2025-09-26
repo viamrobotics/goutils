@@ -40,7 +40,7 @@ func TestWebRTCClientServerWithMongoDBQueue(t *testing.T) {
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
 	client := testutils.BackingMongoDBClient(t)
-	test.That(t, client.Database(mongodbWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
+	test.That(t, client.Database(MongodbWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
 	signalingCallQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), uuid.NewString(), 50, client, logger,
 		func(hosts []string, atTime time.Time) {}, nil)
 	test.That(t, err, test.ShouldBeNil)
@@ -53,7 +53,7 @@ func TestWebRTCClientServerWithMongoDBQueue(t *testing.T) {
 //nolint:thelper
 func testWebRTCClientServer(t *testing.T, signalingCallQueue WebRTCCallQueue, logger utils.ZapCompatibleLogger) {
 	signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, logger,
-		defaultHeartbeatInterval)
+		defaultHeartbeatInterval, nil)
 	defer signalingServer.Close()
 
 	grpcListener, err := net.Listen("tcp", "localhost:0")
@@ -135,7 +135,7 @@ func TestWebRTCClientDialCancelWithMongoDBQueue(t *testing.T) {
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
 	client := testutils.BackingMongoDBClient(t)
-	test.That(t, client.Database(mongodbWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
+	test.That(t, client.Database(MongodbWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
 	signalingCallQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), uuid.NewString(), 50, client, logger,
 		func(hosts []string, atTime time.Time) {}, nil)
 	test.That(t, err, test.ShouldBeNil)
@@ -148,7 +148,7 @@ func TestWebRTCClientDialCancelWithMongoDBQueue(t *testing.T) {
 //nolint:thelper
 func testWebRTCClientDialCancel(t *testing.T, signalingCallQueue WebRTCCallQueue, logger utils.ZapCompatibleLogger) {
 	signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, logger,
-		defaultHeartbeatInterval)
+		defaultHeartbeatInterval, nil)
 	defer signalingServer.Close()
 
 	grpcListener, err := net.Listen("tcp", "localhost:0")
@@ -224,7 +224,7 @@ func TestWebRTCClientDialReflectAnswererErrorWithMongoDBQueue(t *testing.T) {
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
 	client := testutils.BackingMongoDBClient(t)
-	test.That(t, client.Database(mongodbWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
+	test.That(t, client.Database(MongodbWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
 	signalingCallQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), uuid.NewString(), 50, client, logger,
 		func(hosts []string, atTime time.Time) {}, nil)
 	test.That(t, err, test.ShouldBeNil)
@@ -237,7 +237,7 @@ func TestWebRTCClientDialReflectAnswererErrorWithMongoDBQueue(t *testing.T) {
 //nolint:thelper
 func testWebRTCClientDialReflectAnswererError(t *testing.T, signalingCallQueue WebRTCCallQueue, logger utils.ZapCompatibleLogger) {
 	signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, logger,
-		defaultHeartbeatInterval)
+		defaultHeartbeatInterval, nil)
 	defer signalingServer.Close()
 
 	grpcListener, err := net.Listen("tcp", "localhost:0")
@@ -318,7 +318,7 @@ func TestWebRTCClientDialConcurrentWithMongoDBQueue(t *testing.T) {
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
 	client := testutils.BackingMongoDBClient(t)
-	test.That(t, client.Database(mongodbWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
+	test.That(t, client.Database(MongodbWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
 	signalingCallQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), uuid.NewString(), 50, client, logger,
 		func(hosts []string, atTime time.Time) {}, nil)
 	test.That(t, err, test.ShouldBeNil)
@@ -335,7 +335,7 @@ func testWebRTCClientDialConcurrent(t *testing.T, signalingCallQueue WebRTCCallQ
 	logger = utils.Sublogger(logger, "test")
 
 	signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, utils.Sublogger(logger, "signaling-server"),
-		defaultHeartbeatInterval)
+		defaultHeartbeatInterval, nil)
 	defer signalingServer.Close()
 
 	grpcListener, err := net.Listen("tcp", "localhost:0")
@@ -462,7 +462,7 @@ func TestWebRTCClientAnswerConcurrentWithMongoDBQueue(t *testing.T) {
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
 	client := testutils.BackingMongoDBClient(t)
-	test.That(t, client.Database(mongodbWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
+	test.That(t, client.Database(MongodbWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
 	signalingCallQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), uuid.NewString(), 50, client, logger,
 		func(hosts []string, atTime time.Time) {}, nil)
 	test.That(t, err, test.ShouldBeNil)
@@ -475,7 +475,7 @@ func TestWebRTCClientAnswerConcurrentWithMongoDBQueue(t *testing.T) {
 //nolint:thelper
 func testWebRTCClientAnswerConcurrent(t *testing.T, signalingCallQueue WebRTCCallQueue, logger utils.ZapCompatibleLogger) {
 	signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, logger,
-		defaultHeartbeatInterval)
+		defaultHeartbeatInterval, nil)
 	defer signalingServer.Close()
 
 	grpcListener, err := net.Listen("tcp", "localhost:0")

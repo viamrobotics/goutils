@@ -50,7 +50,7 @@ func TestDialWithMongoDBQueue(t *testing.T) {
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
 	client := testutils.BackingMongoDBClient(t)
-	test.That(t, client.Database(mongodbWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
+	test.That(t, client.Database(MongodbWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
 	signalingCallQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), uuid.NewString(), 50, client, logger,
 		func(hosts []string, atTime time.Time) {}, nil)
 	test.That(t, err, test.ShouldBeNil)
@@ -204,7 +204,7 @@ func testDial(t *testing.T, signalingCallQueue WebRTCCallQueue, logger utils.Zap
 			test.That(t, err, test.ShouldBeNil)
 
 			signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, logger,
-				defaultHeartbeatInterval, externalSignalingHosts...)
+				defaultHeartbeatInterval, nil, externalSignalingHosts...)
 			test.That(t, rpcServerExternal.RegisterServiceServer(
 				context.Background(),
 				&webrtcpb.SignalingService_ServiceDesc,

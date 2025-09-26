@@ -23,7 +23,7 @@ func TestMongoDBWebRTCCallQueue(t *testing.T) {
 
 	testWebRTCCallQueue(t, func(t *testing.T) (WebRTCCallQueue, WebRTCCallQueue, func()) {
 		t.Helper()
-		test.That(t, client.Database(mongodbWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
+		test.That(t, client.Database(MongodbWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
 		logger := golog.NewTestLogger(t)
 		callQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), operatorID, 50, client, logger,
 			func(hosts []string, atTime time.Time) {}, nil)
@@ -41,7 +41,7 @@ func TestMongoDBWebRTCCallQueueMulti(t *testing.T) {
 	const maxCallerQueueSize = (maxHostAnswerersSize * 2)
 	setupQueues := func(t *testing.T) (WebRTCCallQueue, WebRTCCallQueue, func()) {
 		t.Helper()
-		test.That(t, client.Database(mongodbWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
+		test.That(t, client.Database(MongodbWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
 		logger := golog.NewTestLogger(t)
 		callerQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), uuid.NewString()+"-caller",
 			maxCallerQueueSize, client, logger, func(hosts []string, atTime time.Time) {}, nil)
@@ -175,7 +175,7 @@ func TestMongoDBWebRTCCallQueueMulti(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		test.That(t, client.Database(mongodbWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
+		test.That(t, client.Database(MongodbWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
 		answererQueue, err := NewMongoDBWebRTCCallQueue(
 			context.Background(), uuid.NewString()+"-answerer",
 			1, client, logger, func(hostnames []string, atTime time.Time) { activeAnswererChannelStub <- len(hostnames) }, nil)
@@ -210,7 +210,7 @@ func TestMongoDBWebRTCCallQueueMulti(t *testing.T) {
 
 func addFakeAnswererForHost(t *testing.T, client *mongo.Client, host string) {
 	t.Helper()
-	_, err := client.Database(mongodbWebRTCCallQueueDBName).Collection(mongodbWebRTCCallQueueOperatorsCollName).InsertOne(context.Background(),
+	_, err := client.Database(MongodbWebRTCCallQueueDBName).Collection(mongodbWebRTCCallQueueOperatorsCollName).InsertOne(context.Background(),
 		bson.M{
 			"_id":       operatorID,
 			"expire_at": time.Now().Add(time.Hour),
@@ -225,7 +225,7 @@ func addFakeAnswererForHost(t *testing.T, client *mongo.Client, host string) {
 
 func removeFakeAnswererForHost(t *testing.T, client *mongo.Client) {
 	t.Helper()
-	_, err := client.Database(mongodbWebRTCCallQueueDBName).Collection(mongodbWebRTCCallQueueOperatorsCollName).DeleteOne(context.Background(),
+	_, err := client.Database(MongodbWebRTCCallQueueDBName).Collection(mongodbWebRTCCallQueueOperatorsCollName).DeleteOne(context.Background(),
 		bson.M{"_id": operatorID})
 	test.That(t, err, test.ShouldBeNil)
 }

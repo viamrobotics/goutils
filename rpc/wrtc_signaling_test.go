@@ -41,7 +41,7 @@ func TestWebRTCSignalingWithMongoDBQueue(t *testing.T) {
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
 	client := testutils.BackingMongoDBClient(t)
-	test.That(t, client.Database(mongodbWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
+	test.That(t, client.Database(MongodbWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
 	signalingCallQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), uuid.NewString(), 50, client, logger,
 		func(hosts []string, atTime time.Time) {}, nil)
 	test.That(t, err, test.ShouldBeNil)
@@ -57,7 +57,7 @@ func testWebRTCSignaling(t *testing.T, signalingCallQueue WebRTCCallQueue, logge
 	for _, host := range hosts {
 		t.Run(host, func(t *testing.T) {
 			signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, logger,
-				defaultHeartbeatInterval)
+				defaultHeartbeatInterval, nil)
 			defer signalingServer.Close()
 
 			grpcListener, err := net.Listen("tcp", "localhost:0")
@@ -179,7 +179,7 @@ func TestWebRTCAnswererImmediateStop(t *testing.T) {
 	}()
 
 	signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, logger,
-		defaultHeartbeatInterval)
+		defaultHeartbeatInterval, nil)
 	defer signalingServer.Close()
 
 	grpcListener, err := net.Listen("tcp", "localhost:0")
@@ -225,7 +225,7 @@ func TestSignalingHeartbeats(t *testing.T) {
 	}()
 	// Use a lowered heartbeatInterval (500ms instead of 15s).
 	signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, logger,
-		500*time.Millisecond)
+		500*time.Millisecond, nil)
 	defer signalingServer.Close()
 	grpcListener, err := net.Listen("tcp", "localhost:0")
 	test.That(t, err, test.ShouldBeNil)
