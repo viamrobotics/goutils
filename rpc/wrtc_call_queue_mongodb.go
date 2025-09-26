@@ -83,43 +83,101 @@ var (
 		},
 	)
 
-	connectionEstablishmentFailures = statz.NewCounter0(
+	connectionEstablishmentFailures = statz.NewCounter2[string, string](
 		"signaling/connection_establishment_failures",
 		statz.MetricConfig{
 			Description: "The total number of connection establishment failures (all caller or answerer errors).",
 			Unit:        units.Dimensionless,
+			Labels: []statz.Label{
+				{
+					Name:        "sdk_type",
+					Description: "The type of SDK attempting to connect.",
+				},
+				{
+					Name:        "organization_id",
+					Description: "The organization ID of the machine that is being connected to.",
+				},
+			},
 		},
 	)
 
-	connectionEstablishmentCallerTimeouts = statz.NewCounter0(
+	connectionEstablishmentExpectedFailures = statz.NewCounter0(
+		"signaling/connection_establishment_expected_failures",
+		statz.MetricConfig{
+			Description: "The total number of connection attempts that failed because the target robot was offline or does not exist.",
+			Unit:        units.Dimensionless,
+		},
+	)
+
+	connectionEstablishmentCallerTimeouts = statz.NewCounter2[string, string](
 		"signaling/connection_establishment_caller_timeouts",
 		statz.MetricConfig{
 			Description: "The total number of connection establishment failures that were timeouts on the caller side.",
 			Unit:        units.Dimensionless,
+			Labels: []statz.Label{
+				{
+					Name:        "sdk_type",
+					Description: "The type of SDK attempting to connect.",
+				},
+				{
+					Name:        "organization_id",
+					Description: "The organization ID of the machine that is being connected to.",
+				},
+			},
 		},
 	)
 
-	connectionEstablishmentCallerNonTimeoutErrors = statz.NewCounter0(
+	connectionEstablishmentCallerNonTimeoutErrors = statz.NewCounter2[string, string](
 		"signaling/connection_establishment_caller_non_timeouts",
 		statz.MetricConfig{
 			Description: "The total number of connection establishment failures that were NOT timeouts on the caller side.",
 			Unit:        units.Dimensionless,
+			Labels: []statz.Label{
+				{
+					Name:        "sdk_type",
+					Description: "The type of SDK attempting to connect.",
+				},
+				{
+					Name:        "organization_id",
+					Description: "The organization ID of the machine that is being connected to.",
+				},
+			},
 		},
 	)
 
-	connectionEstablishmentAnswererTimeouts = statz.NewCounter0(
+	connectionEstablishmentAnswererTimeouts = statz.NewCounter2[string, string](
 		"signaling/connection_establishment_answerer_timeouts",
 		statz.MetricConfig{
 			Description: "The total number of connection establishment failures that were timeouts on the answerer side.",
 			Unit:        units.Dimensionless,
+			Labels: []statz.Label{
+				{
+					Name:        "sdk_type",
+					Description: "The type of SDK attempting to connect.",
+				},
+				{
+					Name:        "organization_id",
+					Description: "The organization ID of the machine that is being connected to.",
+				},
+			},
 		},
 	)
 
-	connectionEstablishmentAnswererNonTimeoutErrors = statz.NewCounter0(
+	connectionEstablishmentAnswererNonTimeoutErrors = statz.NewCounter2[string, string](
 		"signaling/connection_establishment_answerer_non_timeouts",
 		statz.MetricConfig{
 			Description: "The total number of connection establishment failures that were NOT timeouts on the answerer side.",
 			Unit:        units.Dimensionless,
+			Labels: []statz.Label{
+				{
+					Name:        "sdk_type",
+					Description: "The type of SDK attempting to connect.",
+				},
+				{
+					Name:        "organization_id",
+					Description: "The organization ID of the machine that is being connected to.",
+				},
+			},
 		},
 	)
 )
@@ -130,6 +188,7 @@ type mongoDBWebRTCCallQueue struct {
 	operatorID                         string
 	hostCallerQueueSizeMatchAggStage   bson.D
 	hostAnswererQueueSizeMatchAggStage bson.D
+	hostAnswererOnlineMatchAggStage    bson.D
 	activeBackgroundWorkers            sync.WaitGroup
 	callsColl                          *mongo.Collection
 	operatorsColl                      *mongo.Collection
@@ -175,6 +234,9 @@ var (
 
 // this probably matches defaultMaxAnswerers on the signaling answerer.
 const maxHostAnswerersSize = 2
+
+// How long we want to delay clients before retrying to connect to an offline host.
+const offlineHostRetryDelay = 5 * time.Second
 
 // NewMongoDBWebRTCCallQueue returns a new MongoDB based call queue where calls are transferred
 // through the given client. The operator ID must be unique (e.g. a hostname, container ID, UUID, etc.).
@@ -260,6 +322,10 @@ func NewMongoDBWebRTCCallQueue(
 		hostAnswererQueueSizeMatchAggStage: bson.D{{"$match", bson.D{
 			{"answerer_size", bson.D{{"$gte", maxHostAnswerersSize * 2}}},
 		}}},
+		hostAnswererOnlineMatchAggStage: bson.D{{"$match", bson.D{
+			{"answerer_size", bson.D{{"$gt", 0}}},
+		}}},
+
 		callsColl:     callsColl,
 		operatorsColl: operatorsColl,
 		cancelCtx:     cancelCtx,
@@ -329,6 +395,8 @@ type mongodbWebRTCCall struct {
 	AnswererCandidates []mongodbICECandidate `bson:"answerer_candidates,omitempty"`
 	AnswererDone       bool                  `bson:"answerer_done"`
 	AnswererError      string                `bson:"answerer_error,omitempty"`
+	SDKType            string                `bson:"sdk_type,omitempty"`
+	OrganizationID     string                `bson:"organization_id,omitempty"`
 }
 
 const (
@@ -489,6 +557,11 @@ func (queue *mongoDBWebRTCCallQueue) changeStreamManager() {
 		if !utils.SelectContextOrWaitChan(queue.cancelCtx, ticker.C) {
 			return
 		}
+
+		queue.csStateMu.RLock()
+		activeHosts.Set(queue.operatorID, int64(len(queue.waitingForNewCallSubs)))
+		queue.csStateMu.RUnlock()
+
 		currSeq := queue.csManagerSeq.Load()
 		if isInitialized && lastSeq == currSeq {
 			continue
@@ -557,7 +630,6 @@ func (queue *mongoDBWebRTCCallQueue) changeStreamManager() {
 		queue.csStateMu.Lock()
 		queue.csTrackingHosts = utils.NewStringSet(hosts...)
 		queue.csStateMu.Unlock()
-		activeHosts.Set(queue.operatorID, int64(len(hosts)))
 
 		nextCSCtx, nextCSCtxCancel := context.WithCancel(queue.cancelCtx)
 		csNext, resumeToken, clusterTime := mongoutils.ChangeStreamBackground(nextCSCtx, cs)
@@ -888,10 +960,27 @@ var (
 		{"caller_size", bson.D{{"$sum", "$" + webrtcOperatorHostsCallerSizeCombinedField}}},
 		{"answerer_size", bson.D{{"$sum", "$" + webrtcOperatorHostsAnswererSizeCombinedField}}},
 	}}}
+	groupAggStageAnswerers = bson.D{{"$group", bson.D{
+		{"_id", "$" + webrtcOperatorHostsHostCombinedField},
+		{"answerer_size", bson.D{{"$sum", "$" + webrtcOperatorHostsAnswererSizeCombinedField}}},
+	}}}
 )
 
 var errTooManyConns = status.Error(codes.Unavailable, "too many connection attempts; please wait a bit and try again")
 
+// checkHostQueueSize checks if the total number of callers to or answerers for a set of
+// hosts exceeds the configured maxima (50 for callers and 4 for answerers). It does this
+// by running an aggregation pipeline against the operators collection. That pipeline will
+// sum `caller_size` and `answerer_size` fields across all operators for the provided
+// hosts. If any of the provided hosts exceeds a total caller or answerer size maximum
+// across all operators, an error is returned. Otherwise, nil is returned. Checking caller
+// or answerer size is controlled via the forCaller flag.
+//
+// NOTE(benjirewis): I believe `len(hosts) == 1`. The hosts list is ultimately derived by
+// the value of `rpc-host` passed to the `Answer` metadata from the answerer for a
+// machine. For external signaling (the only signaling that will route through here) there
+// is only ever one host reported and therefore included in `hosts` here: the
+// `.viam.cloud` URI.
 func (queue *mongoDBWebRTCCallQueue) checkHostQueueSize(ctx context.Context, forCaller bool, hosts ...string) error {
 	hostsMatch := bson.D{
 		{"$match", bson.D{{webrtcOperatorHostsHostCombinedField, bson.D{{"$in", hosts}}}}},
@@ -922,6 +1011,43 @@ func (queue *mongoDBWebRTCCallQueue) checkHostQueueSize(ctx context.Context, for
 	return errTooManyConns
 }
 
+var errOffline = status.Error(codes.Unavailable, "host appears to be offline; ensure machine is online and try again")
+
+// checkHostOnline will check if there is some operator for all the managed hosts that
+// claims to have an answerer online for that host. It does this by running an aggregation
+// pipeline against the operators collection to sum `answerer_size` for each host across
+// all operators. If any of the provided hosts has a total answerer size of 0 or isn't
+// managed by any operator, an error is returned. Otherwise, nil is returned.
+//
+// NOTE(benjirewis): The same NOTE about `len(hosts) == 1` applies here as in the method
+// above.
+func (queue *mongoDBWebRTCCallQueue) checkHostOnline(ctx context.Context, hosts ...string) error {
+	hostsMatch := bson.D{
+		{"$match", bson.D{{webrtcOperatorHostsHostCombinedField, bson.D{{"$in", hosts}}}}},
+	}
+	pipeline := []interface{}{
+		hostsMatch,
+		projectStage,
+		unwindAggStage,
+		hostsMatch,
+		groupAggStageAnswerers,
+		queue.hostAnswererOnlineMatchAggStage,
+	}
+
+	cursor, err := queue.operatorsColl.Aggregate(ctx, pipeline)
+	if err != nil {
+		return err
+	}
+	var ret []interface{}
+	if err := cursor.All(ctx, &ret); err != nil {
+		return err
+	}
+	if len(ret) == 0 {
+		return errOffline
+	}
+	return nil
+}
+
 // SendOfferInit initializes an offer associated with the given SDP to the given host.
 // It returns a UUID to track/authenticate the offer over time, the initial SDP for the
 // sender to start its peer connection with, as well as a channel to receive candidates on
@@ -933,6 +1059,22 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 ) (string, <-chan WebRTCCallAnswer, <-chan struct{}, func(), error) {
 	if err := queue.checkHostQueueSize(ctx, true, host); err != nil {
 		return "", nil, nil, nil, err
+	}
+
+	if err := queue.checkHostOnline(ctx, host); err != nil {
+		connectionEstablishmentExpectedFailures.Inc()
+		// TODO(RSDK-11928): Implement proper time-based rate limiting to prevent clients from spamming connection attempts to offline machines so
+		// we can remove sleep and error instantly.
+
+		// Machine is offline but if we return the error instantly, clients can immediately reattempt connection establishment, overwhelming the
+		// signaling server if spammed. Instead, sleep for a few seconds to slow down reattempts and give robots the chance to potentially come
+		// online.
+		select {
+		case <-time.After(offlineHostRetryDelay):
+			return "", nil, nil, nil, err
+		case <-ctx.Done():
+			return "", nil, nil, nil, ctx.Err()
+		}
 	}
 
 	sdkType, organizationID := "unknown", "unknown"
@@ -989,6 +1131,8 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 		CallerOperatorID: queue.operatorID,
 		Host:             host,
 		CallerSDP:        sdp,
+		SDKType:          sdkType,
+		OrganizationID:   organizationID,
 	}
 	events, unsubscribe := queue.subscribeToCall(host, call.ID, "caller")
 
@@ -1141,11 +1285,11 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferError(ctx context.Context, host, u
 	// Increment connection establishment failure counts if we are setting a
 	// `caller_error` and the `answerer_error` has not already been set.
 	if updatedMDBWebRTCCall.AnswererError == "" {
-		connectionEstablishmentFailures.Inc()
+		connectionEstablishmentFailures.Inc(updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID)
 		if errors.Is(err, context.DeadlineExceeded) {
-			connectionEstablishmentCallerTimeouts.Inc()
+			connectionEstablishmentCallerTimeouts.Inc(updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID)
 		} else {
-			connectionEstablishmentCallerNonTimeoutErrors.Inc()
+			connectionEstablishmentCallerNonTimeoutErrors.Inc(updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID)
 		}
 	}
 
@@ -1441,6 +1585,46 @@ func (queue *mongoDBWebRTCCallQueue) Close() error {
 	return nil
 }
 
+// waitForAnswererOnline blocks until there is at least one answerer online for all the given hosts.
+// Used in testing to synchronize callers and answerers so that call attempts don't immediately fail
+// due to answerers not yet registered as being online.
+func (queue *mongoDBWebRTCCallQueue) waitForAnswererOnline(ctx context.Context, hosts []string) error {
+	timeoutCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	ticker := time.NewTicker(50 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-timeoutCtx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
+
+		allOnline := true
+		for _, host := range hosts {
+			filter := bson.M{
+				webrtcOperatorHostsHostCombinedField:         host,
+				webrtcOperatorHostsAnswererSizeCombinedField: bson.M{"$gt": 0},
+			}
+
+			count, err := queue.operatorsColl.CountDocuments(ctx, filter)
+			if err != nil {
+				return err
+			}
+			if count == 0 {
+				allOnline = false
+				break
+			}
+		}
+
+		if allOnline {
+			return nil
+		}
+	}
+}
+
 type mongoDBWebRTCCallOfferExchange struct {
 	call             mongodbWebRTCCall
 	coll             *mongo.Collection
@@ -1537,11 +1721,11 @@ func (resp *mongoDBWebRTCCallOfferExchange) AnswererRespond(ctx context.Context,
 		// Increment connection establishment failure counts if we are setting an
 		// `answerer_error` and the `caller_error` has not already been set.
 		if updatedMDBWebRTCCall.CallerError == "" {
-			connectionEstablishmentFailures.Inc()
+			connectionEstablishmentFailures.Inc(updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID)
 			if errors.Is(ans.Err, context.DeadlineExceeded) {
-				connectionEstablishmentAnswererTimeouts.Inc()
+				connectionEstablishmentAnswererTimeouts.Inc(updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID)
 			} else {
-				connectionEstablishmentAnswererNonTimeoutErrors.Inc()
+				connectionEstablishmentAnswererNonTimeoutErrors.Inc(updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID)
 			}
 		}
 	}

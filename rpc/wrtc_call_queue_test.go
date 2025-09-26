@@ -13,7 +13,7 @@ import (
 )
 
 func testWebRTCCallQueue(t *testing.T, setupQueues func(t *testing.T) (WebRTCCallQueue, WebRTCCallQueue, func())) {
-	t.Run("sending an offer for too long should signal done", func(t *testing.T) {
+	t.Run("sending an offer for too long should signal done (in-memory) or error due to offline host (MongoDB)", func(t *testing.T) {
 		callerQueue, _, teardown := setupQueues(t)
 		defer teardown()
 
@@ -22,8 +22,16 @@ func testWebRTCCallQueue(t *testing.T, setupQueues func(t *testing.T) (WebRTCCal
 
 		host := primitive.NewObjectID().Hex()
 		_, _, ansCtx, _, err := callerQueue.SendOfferInit(context.Background(), host, "somesdp", false)
-		test.That(t, err, test.ShouldBeNil)
-		<-ansCtx
+
+		// NOTE(danielbotros): This is a little bit ugly but in memory queues are only used for internal signaling to localhosts,
+		// so there isn't a concept of attempting to connect to an offline host.
+		if isInMemoryQueue(callerQueue) {
+			test.That(t, err, test.ShouldBeNil)
+			<-ansCtx
+		} else {
+			test.That(t, err, test.ShouldNotBeNil)
+			test.That(t, err.Error(), test.ShouldContainSubstring, "ensure machine is online")
+		}
 	})
 
 	t.Run("recv can get caller updates and done", func(t *testing.T) {
@@ -72,6 +80,7 @@ func testWebRTCCallQueue(t *testing.T, setupQueues func(t *testing.T) (WebRTCCal
 			<-offer.CallerDone()
 			close(done)
 		}()
+		waitForAnswererOnline(context.Background(), t, []string{host}, answererQueue)
 
 		newUUID, answers, answersDone, cancel, err := callerQueue.SendOfferInit(context.Background(), host, "hello", false)
 		defer cancel()
@@ -141,6 +150,7 @@ func testWebRTCCallQueue(t *testing.T, setupQueues func(t *testing.T) (WebRTCCal
 			recvErrCh <- offer.CallerErr()
 			close(done)
 		}()
+		waitForAnswererOnline(context.Background(), t, []string{host}, answererQueue)
 
 		newUUID, answers, answersDone, cancel, err := callerQueue.SendOfferInit(context.Background(), host, "hello", false)
 		defer cancel()
@@ -165,10 +175,21 @@ func testWebRTCCallQueue(t *testing.T, setupQueues func(t *testing.T) (WebRTCCal
 	})
 
 	t.Run("canceling an offer should eventually close answerer responses", func(t *testing.T) {
-		callerQueue, _, teardown := setupQueues(t)
+		callerQueue, answererQueue, teardown := setupQueues(t)
 		defer teardown()
 
 		host := primitive.NewObjectID().Hex()
+
+		// We need to have an answerer online to handle this host before sending the offer so it doesn't immediately fail, but we don't care what
+		// happens to the offer.
+		answerCtx, answerCancel := context.WithCancel(context.Background())
+		defer answerCancel()
+		go func() {
+			_, answererErr := answererQueue.RecvOffer(answerCtx, []string{host})
+			test.That(t, answererErr, test.ShouldBeError, context.Canceled)
+		}()
+		waitForAnswererOnline(context.Background(), t, []string{host}, answererQueue)
+
 		newUUID, _, answersDone, cancel, err := callerQueue.SendOfferInit(context.Background(), host, "hello", false)
 		cancel()
 		test.That(t, err, test.ShouldBeNil)
@@ -208,6 +229,7 @@ func testWebRTCCallQueue(t *testing.T, setupQueues func(t *testing.T) (WebRTCCal
 					recvErrCh <- offer.AnswererDone(context.Background())
 					close(done)
 				}()
+				waitForAnswererOnline(context.Background(), t, []string{host}, answererQueue)
 
 				newUUID, answers, answersDone, cancel, err := callerQueue.SendOfferInit(context.Background(), host, "hello", false)
 				defer cancel()
@@ -230,7 +252,6 @@ func testWebRTCCallQueue(t *testing.T, setupQueues func(t *testing.T) (WebRTCCal
 	t.Run("sending successfully with an error", func(t *testing.T) {
 		callerQueue, answererQueue, teardown := setupQueues(t)
 		defer teardown()
-
 		host := primitive.NewObjectID().Hex()
 		recvErrCh := make(chan error)
 		done := make(chan struct{})
@@ -246,6 +267,7 @@ func testWebRTCCallQueue(t *testing.T, setupQueues func(t *testing.T) (WebRTCCal
 			recvErrCh <- offer.AnswererDone(context.Background())
 			close(done)
 		}()
+		waitForAnswererOnline(context.Background(), t, []string{host}, answererQueue)
 
 		newUUID, answers, answersDone, cancel, err := callerQueue.SendOfferInit(context.Background(), host, "hello", false)
 		defer cancel()
@@ -260,6 +282,7 @@ func testWebRTCCallQueue(t *testing.T, setupQueues func(t *testing.T) (WebRTCCal
 	t.Run("receiving from a host not sent to should not work", func(t *testing.T) {
 		callerQueue, answererQueue, teardown := setupQueues(t)
 		defer teardown()
+		host := primitive.NewObjectID().Hex()
 
 		undo := setDefaultOfferDeadline(10 * time.Second)
 		defer undo()
@@ -276,13 +299,37 @@ func testWebRTCCallQueue(t *testing.T, setupQueues func(t *testing.T) (WebRTCCal
 			close(done)
 		}()
 
+		// We need to have an answerer online to handle this host before sending the offer so it doesn't immediately fail, but we don't care what
+		// happens to the offer.
+		answerCtx, answerCancel := context.WithCancel(context.Background())
+		defer answerCancel()
+		go func() {
+			offer, err := answererQueue.RecvOffer(answerCtx, []string{host})
+			test.That(t, err, test.ShouldBeNil)
+			test.That(t, offer.SDP(), test.ShouldEqual, "hello")
+		}()
+		waitForAnswererOnline(context.Background(), t, []string{host}, answererQueue)
+
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		_, _, ansCtx, _, err := callerQueue.SendOfferInit(ctx, primitive.NewObjectID().Hex(), "hello", false)
+		_, _, ansCtx, _, err := callerQueue.SendOfferInit(ctx, host, "hello", false)
 		test.That(t, err, test.ShouldBeNil)
 		<-ansCtx
 		recvErr := <-recvErrCh
 		test.That(t, recvErr, test.ShouldNotBeNil)
 		test.That(t, recvErr, test.ShouldWrap, context.DeadlineExceeded)
 	})
+}
+
+func isInMemoryQueue(queue WebRTCCallQueue) bool {
+	_, ok := queue.(*memoryWebRTCCallQueue)
+	return ok
+}
+
+// waitForAnswererOnline waits until an answerer is online for the given hosts if the queue supports it.
+func waitForAnswererOnline(ctx context.Context, t *testing.T, hosts []string, queue WebRTCCallQueue) {
+	t.Helper()
+	if waiter, ok := queue.(*mongoDBWebRTCCallQueue); ok {
+		test.That(t, waiter.waitForAnswererOnline(ctx, hosts), test.ShouldBeNil)
+	}
 }
