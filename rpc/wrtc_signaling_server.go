@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"go.mongodb.org/mongo-driver/mongo"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -41,6 +42,8 @@ type WebRTCSignalingServer struct {
 
 	// Interval at which to send heartbeats.
 	heartbeatInterval time.Duration
+
+	rateLimiter *SignalingRateLimiter
 }
 
 // NewWebRTCSignalingServer makes a new signaling server that uses the given
@@ -54,11 +57,17 @@ func NewWebRTCSignalingServer(
 	webrtcConfigProvider WebRTCConfigProvider,
 	logger utils.ZapCompatibleLogger,
 	heartbeatInterval time.Duration,
+	client *mongo.Client,
 	forHosts ...string,
 ) *WebRTCSignalingServer {
 	forHostsSet := make(map[string]struct{}, len(forHosts))
 	for _, host := range forHosts {
 		forHostsSet[host] = struct{}{}
+	}
+
+	rateLimiter, err := NewSignalingRateLimiter(client, logger)
+	if err != nil {
+		logger.Error("error creating signaling rate limiter, proceeding without rate limiting", "error", err)
 	}
 
 	bgWorkers := utils.NewBackgroundStoppableWorkers()
@@ -70,6 +79,7 @@ func NewWebRTCSignalingServer(
 		bgWorkers:            bgWorkers,
 		logger:               logger,
 		heartbeatInterval:    heartbeatInterval,
+		rateLimiter:          rateLimiter,
 	}
 }
 
@@ -183,6 +193,10 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 	ctx := server.Context()
 	ctx, cancel := context.WithTimeout(ctx, getDefaultOfferDeadline())
 	defer cancel()
+
+	if err := srv.rateLimiter.Allow(ctx); err != nil {
+		srv.logger.Warnw("rate limit exceeded for Call", "error", err)
+	}
 
 	host, err := HostFromCtx(ctx)
 	if err != nil {
