@@ -190,6 +190,33 @@ var (
 			},
 		},
 	)
+
+	callExchangeDuration = statz.NewDistribution4[string, string, string, string](
+		"signaling/call_exchange_duration",
+		statz.MetricConfig{
+			Description: "The duration of call exchanges from initialization to completion.",
+			Unit:        units.Second,
+			Labels: []statz.Label{
+				{
+					Name:        "sdk_type",
+					Description: "The type of SDK attempting to connect.",
+				},
+				{
+					Name:        "organization_id",
+					Description: "The organization ID of the machine that is being connected to.",
+				},
+				{
+					Name:        "side",
+					Description: "The side of the call (caller or answerer).",
+				},
+				{
+					Name:        "result",
+					Description: "The result of the call exchange.",
+				},
+			},
+		},
+		statz.ConnectionTimeDistribution,
+	)
 )
 
 // A mongoDBWebRTCCallQueue is an MongoDB implementation of a call queue designed to be used for
@@ -247,6 +274,11 @@ const maxHostAnswerersSize = 2
 
 // How long we want to delay clients before retrying to connect to an offline host.
 const offlineHostRetryDelay = 5 * time.Second
+
+const (
+	exchangeFailure = "exchange_failure"
+	exchangeSuccess = "exchange_success"
+)
 
 // NewMongoDBWebRTCCallQueue returns a new MongoDB based call queue where calls are transferred
 // through the given client. The operator ID must be unique (e.g. a hostname, container ID, UUID, etc.).
@@ -1191,16 +1223,24 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 		defer cleanup()
 		defer close(answererResponses)
 
+		var finalResult string
+		defer func() {
+			duration := time.Since(call.StartedAt).Seconds()
+			callExchangeDuration.Observe(duration, sdkType, organizationID, "caller", finalResult)
+		}()
+
 		haveInitSDP := false
 		candLen := len(call.AnswererCandidates)
 		for {
 			if sendAndQueueCtx.Err() != nil {
+				finalResult = exchangeFailure
 				sendAnswer(WebRTCCallAnswer{Err: sendAndQueueCtx.Err()})
 				return
 			}
 			var next mongodbCallEvent
 			select {
 			case <-sendAndQueueCtx.Done():
+				finalResult = exchangeFailure
 				sendAnswer(WebRTCCallAnswer{Err: sendAndQueueCtx.Err()})
 				return
 			case next = <-events:
@@ -1209,6 +1249,7 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 			callResp := next.Call
 
 			if callResp.AnswererError != "" {
+				finalResult = exchangeFailure
 				sendAnswer(WebRTCCallAnswer{Err: errors.New(callResp.AnswererError)})
 				return
 			}
@@ -1233,6 +1274,7 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 			}
 
 			if callResp.AnswererDone {
+				finalResult = exchangeSuccess
 				return
 			}
 		}
@@ -1452,6 +1494,10 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 		break
 	}
 
+	startTime := time.Now()
+	sdkType := callReq.SDKType
+	organizationID := callReq.OrganizationID
+
 	events, exchangeUnsubscribe := queue.subscribeToCall(callReq.Host, callReq.ID, "answerer")
 
 	offerDeadline := callReq.StartedAt.Add(getDefaultOfferDeadline())
@@ -1501,6 +1547,12 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 		defer callerDoneCancel()
 		defer cleanup()
 
+		var finalResult string
+		defer func() {
+			duration := time.Since(startTime).Seconds()
+			callExchangeDuration.Observe(duration, sdkType, organizationID, "answerer", finalResult)
+		}()
+
 		candLen := len(callReq.CallerCandidates)
 		latestReq := callReq
 		for {
@@ -1510,6 +1562,7 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 			// wait for more events.
 
 			if latestReq.CallerError != "" {
+				finalResult = exchangeFailure
 				exchange.callerErr = errors.New(latestReq.CallerError)
 				return
 			}
@@ -1527,18 +1580,22 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 			}
 
 			if latestReq.CallerDone {
+				finalResult = exchangeSuccess
 				return
 			}
 
 			if err := recvCtx.Err(); err != nil {
+				finalResult = exchangeFailure
 				return
 			}
 
 			select {
 			case <-recvCtx.Done():
+				finalResult = exchangeFailure
 				return
 			case next := <-events:
 				if next.Expired {
+					finalResult = exchangeFailure
 					exchange.callerErr = errors.New("offer expired")
 					return
 				}
