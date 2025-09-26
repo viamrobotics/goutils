@@ -648,6 +648,8 @@ func (cc clientConnRPCAuthenticator) Authenticate(ctx context.Context) (string, 
 
 // GetState is exposed if it is available on the underlying type.
 func (cc clientConnRPCAuthenticator) GetState() connectivity.State {
+	// GetState is only expected to be called on connections to app,
+	// which we assume will always be GrpcOverHTTPClientConn.
 	checker, ok := cc.ClientConn.(GrpcOverHTTPClientConn)
 	if !ok {
 		return connectivity.Idle
