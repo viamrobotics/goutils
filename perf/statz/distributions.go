@@ -16,6 +16,7 @@ type Distribution struct {
 // LatencyDistribution is a basic latency distribution.
 var LatencyDistribution = DistributionFromBounds(0, 5, 25, 50, 75, 100, 200, 400, 600, 800, 1000, 2000, 4000, 6000)
 
+// ConnectionTimeDistribution is a basic distribution for connection times in seconds.
 var ConnectionTimeDistribution = DistributionFromBounds(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
 
 // DistributionFromBounds create distribution from a list of bounds. Must be incrementing and non-overlapping.
