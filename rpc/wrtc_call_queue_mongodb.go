@@ -101,11 +101,21 @@ var (
 		},
 	)
 
-	connectionEstablishmentExpectedFailures = statz.NewCounter0(
+	connectionEstablishmentExpectedFailures = statz.NewCounter2[string, string](
 		"signaling/connection_establishment_expected_failures",
 		statz.MetricConfig{
 			Description: "The total number of connection attempts that failed because the target robot was offline or does not exist.",
 			Unit:        units.Dimensionless,
+			Labels: []statz.Label{
+				{
+					Name:        "sdk_type",
+					Description: "The type of SDK attempting to connect.",
+				},
+				{
+					Name:        "organization_id",
+					Description: "The organization ID of the machine that is being connected to.",
+				},
+			},
 		},
 	)
 
@@ -1057,26 +1067,6 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 	host, sdp string,
 	disableTrickle bool,
 ) (string, <-chan WebRTCCallAnswer, <-chan struct{}, func(), error) {
-	if err := queue.checkHostQueueSize(ctx, true, host); err != nil {
-		return "", nil, nil, nil, err
-	}
-
-	if err := queue.checkHostOnline(ctx, host); err != nil {
-		connectionEstablishmentExpectedFailures.Inc()
-		// TODO(RSDK-11928): Implement proper time-based rate limiting to prevent clients from spamming connection attempts to offline machines so
-		// we can remove sleep and error instantly.
-
-		// Machine is offline but if we return the error instantly, clients can immediately reattempt connection establishment, overwhelming the
-		// signaling server if spammed. Instead, sleep for a few seconds to slow down reattempts and give robots the chance to potentially come
-		// online.
-		select {
-		case <-time.After(offlineHostRetryDelay):
-			return "", nil, nil, nil, err
-		case <-ctx.Done():
-			return "", nil, nil, nil, ctx.Err()
-		}
-	}
-
 	sdkType, organizationID := "unknown", "unknown"
 	if md, exists := metadata.FromIncomingContext(ctx); exists {
 		// TODO(RSDK-11864): Use actual structured metadata provided by the SDK to determine
@@ -1124,6 +1114,27 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 	// An offer initialization (after verifying the host queue size), indicates an attempted
 	// connection establishment attempt.
 	connectionEstablishmentAttempts.Inc(sdkType, organizationID)
+
+	if err := queue.checkHostQueueSize(ctx, true, host); err != nil {
+		connectionEstablishmentExpectedFailures.Inc(sdkType, organizationID)
+		return "", nil, nil, nil, err
+	}
+
+	if err := queue.checkHostOnline(ctx, host); err != nil {
+		connectionEstablishmentExpectedFailures.Inc(sdkType, organizationID)
+		// TODO(RSDK-11928): Implement proper time-based rate limiting to prevent clients from spamming connection attempts to offline machines so
+		// we can remove sleep and error instantly.
+
+		// Machine is offline but if we return the error instantly, clients can immediately reattempt connection establishment, overwhelming the
+		// signaling server if spammed. Instead, sleep for a few seconds to slow down reattempts and give robots the chance to potentially come
+		// online.
+		select {
+		case <-time.After(offlineHostRetryDelay):
+			return "", nil, nil, nil, err
+		case <-ctx.Done():
+			return "", nil, nil, nil, ctx.Err()
+		}
+	}
 
 	newUUID := uuid.NewString()
 	call := mongodbWebRTCCall{
