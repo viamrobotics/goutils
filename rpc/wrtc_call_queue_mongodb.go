@@ -182,7 +182,7 @@ var (
 	)
 
 	callExchangeDuration = statz.NewDistribution4[string, string, string, string](
-		"signaling/call_exchange_duration_seconds",
+		"signaling/call_exchange_duration",
 		statz.MetricConfig{
 			Description: "The duration of call exchanges from initialization to completion.",
 			Unit:        units.Second,
