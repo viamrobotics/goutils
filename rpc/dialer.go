@@ -62,9 +62,6 @@ type Dialer interface {
 	Close() error
 }
 
-// Unknown indicates an unknown connectivity state.
-const Unknown connectivity.State = 5
-
 // A ClientConn is a wrapper around the gRPC client connection interface but ensures
 // there is a way to close the connection.
 type ClientConn interface {
@@ -74,8 +71,6 @@ type ClientConn interface {
 	// a PeerConnection.
 	PeerConn() *webrtc.PeerConnection
 	Close() error
-
-	GetState() connectivity.State
 }
 
 // A ClientConnAuthenticator supports instructing a connection to authenticate now.
@@ -649,6 +644,17 @@ type clientConnRPCAuthenticator struct {
 
 func (cc clientConnRPCAuthenticator) Authenticate(ctx context.Context) (string, error) {
 	return cc.rpcCreds.authenticate(ctx)
+}
+
+// GetState is exposed if it is available on the underlying type.
+func (cc clientConnRPCAuthenticator) GetState() connectivity.State {
+	// GetState is only expected to be called on connections to app,
+	// which we assume will always be GrpcOverHTTPClientConn.
+	checker, ok := cc.ClientConn.(GrpcOverHTTPClientConn)
+	if !ok {
+		return connectivity.Idle
+	}
+	return checker.GetState()
 }
 
 type staticPerRPCJWTCredentials struct {
