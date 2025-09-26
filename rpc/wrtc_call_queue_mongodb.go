@@ -181,7 +181,7 @@ var (
 		},
 	)
 
-	callExchangeDuration = statz.NewDistribution3[string, string, string](
+	callExchangeDuration = statz.NewDistribution4[string, string, string, string](
 		"signaling/call_exchange_duration_seconds",
 		statz.MetricConfig{
 			Description: "The duration of call exchanges from initialization to completion.",
@@ -194,6 +194,10 @@ var (
 				{
 					Name:        "organization_id",
 					Description: "The organization ID of the machine that is being connected to.",
+				},
+				{
+					Name:        "side",
+					Description: "The side of the call (caller or answerer).",
 				},
 				{
 					Name:        "result",
@@ -1209,7 +1213,7 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 		var finalResult string
 		defer func() {
 			duration := time.Since(call.StartedAt).Seconds()
-			callExchangeDuration.Observe(duration, sdkType, organizationID, finalResult)
+			callExchangeDuration.Observe(duration, sdkType, organizationID, "caller", finalResult)
 		}()
 
 		haveInitSDP := false
@@ -1533,7 +1537,7 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 		var finalResult string
 		defer func() {
 			duration := time.Since(startTime).Seconds()
-			callExchangeDuration.Observe(duration, sdkType, organizationID, finalResult)
+			callExchangeDuration.Observe(duration, sdkType, organizationID, "answerer", finalResult)
 		}()
 
 		candLen := len(callReq.CallerCandidates)
