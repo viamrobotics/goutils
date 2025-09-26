@@ -1481,7 +1481,7 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 		break
 	}
 
-	startTime := callReq.StartedAt
+	startTime := time.Now()
 	sdkType := callReq.SDKType
 	organizationID := callReq.OrganizationID
 
