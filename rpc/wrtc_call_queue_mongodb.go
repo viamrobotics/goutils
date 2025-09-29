@@ -282,7 +282,7 @@ type changeStreamStateUpdate struct {
 
 // Database and collection names used by the mongoDBWebRTCCallQueue.
 var (
-	MongodbWebRTCCallQueueDBName             = "rpc"
+	MongoDBWebRTCCallQueueDBName             = "rpc"
 	mongodbWebRTCCallQueueCallsCollName      = "calls"
 	mongodbWebRTCCallQueueOperatorsCollName  = "operators"
 	mongodbWebRTCCallQueueRPCCallExpireName  = "rpc_call_expire"
