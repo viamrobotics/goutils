@@ -2,7 +2,6 @@ package rpc
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -31,7 +30,7 @@ var (
 		Description: "Total number of requests rate limited.",
 		Unit:        units.Dimensionless,
 		Labels: []statz.Label{
-			{Name: "id", Description: "Fusion Auth ID of the client being rate limited."},
+			{Name: "key", Description: "User ID of the client being rate limited."},
 		},
 	})
 )
@@ -56,12 +55,6 @@ type RateLimitConfig struct {
 	Window      time.Duration
 }
 
-// Default rate limit configuration
-var defaultRateLimitConfig = RateLimitConfig{
-	MaxRequests: 25,
-	Window:      time.Minute,
-}
-
 // mongodbRateLimiter
 type mongodbRateLimiter struct {
 	client        *mongo.Client
@@ -74,6 +67,7 @@ type mongodbRateLimiter struct {
 func NewMongoDBRateLimiter(
 	client *mongo.Client,
 	logger utils.ZapCompatibleLogger,
+	config RateLimitConfig,
 ) (*mongodbRateLimiter, error) {
 	rateLimitColl := client.Database(MongoDBWebRTCCallQueueDBName).Collection(mongodbmongodbRateLimiterCollName)
 
@@ -88,33 +82,33 @@ func NewMongoDBRateLimiter(
 		},
 		{
 			Keys: bson.D{
-				{Key: "fusion_auth_id", Value: 1},
+				{Key: "key", Value: 1},
 				{Key: "created_at", Value: -1},
 			},
 		},
 	}
 
 	if err := mongoutils.EnsureIndexes(context.Background(), rateLimitColl, indexes...); err != nil {
-		return nil, fmt.Errorf("failed to create rate limiter indexes: %w", err)
+		return nil, err
 	}
 
 	return &mongodbRateLimiter{
 		client:        client,
 		rateLimitColl: rateLimitColl,
-		config:        defaultRateLimitConfig,
+		config:        config,
 		logger:        logger,
 	}, nil
 }
 
 // Allow
 func (rl *mongodbRateLimiter) Allow(ctx context.Context, key string) (bool, error) {
-	if err := rl.recordRequest(ctx, key); err != nil {
-		rl.logger.Errorw("failed to record rate limit request", "error", err)
+	if err := rl.checkRateLimit(ctx, key); err != nil {
+		rateLimitDenials.Inc(key)
 		return true, err
 	}
 
-	if err := rl.checkRateLimit(ctx, key); err != nil {
-		rateLimitDenials.Inc(key)
+	if err := rl.recordRequest(ctx, key); err != nil {
+		rl.logger.Errorw("failed to record rate limit request", "error", err)
 		return true, err
 	}
 
@@ -130,8 +124,8 @@ func (rl *mongodbRateLimiter) checkRateLimit(ctx context.Context, key string) er
 	defer cancel()
 
 	filter := bson.M{
-		"key":       key,
-		"timestamp": bson.M{"$gte": windowStart},
+		"key":        key,
+		"created_at": bson.M{"$gte": windowStart},
 	}
 
 	count, err := rl.rateLimitColl.CountDocuments(dbCtx, filter)
@@ -143,8 +137,8 @@ func (rl *mongodbRateLimiter) checkRateLimit(ctx context.Context, key string) er
 	limit := int64(rl.config.MaxRequests)
 	if count >= limit {
 		return status.Errorf(codes.ResourceExhausted,
-			"rate limit exceeded: %d requests in %v (limit: %d) for %s",
-			count, rl.config.Window, limit, key)
+			"request exceed rate limit (limit: %d in %v) for %s",
+			limit, rl.config.Window, key)
 	}
 
 	return nil
