@@ -41,7 +41,7 @@ func TestWebRTCSignalingWithMongoDBQueue(t *testing.T) {
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
 	client := testutils.BackingMongoDBClient(t)
-	test.That(t, client.Database(MongodbWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
+	test.That(t, client.Database(MongoDBWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
 	signalingCallQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), uuid.NewString(), 50, client, logger,
 		func(hosts []string, atTime time.Time) {}, nil)
 	test.That(t, err, test.ShouldBeNil)

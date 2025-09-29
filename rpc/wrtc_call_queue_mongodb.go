@@ -27,8 +27,8 @@ import (
 )
 
 func init() {
-	mongoutils.MustRegisterNamespace(&MongodbWebRTCCallQueueDBName, &mongodbWebRTCCallQueueCallsCollName)
-	mongoutils.MustRegisterNamespace(&MongodbWebRTCCallQueueDBName, &mongodbWebRTCCallQueueOperatorsCollName)
+	mongoutils.MustRegisterNamespace(&MongoDBWebRTCCallQueueDBName, &mongodbWebRTCCallQueueCallsCollName)
+	mongoutils.MustRegisterNamespace(&MongoDBWebRTCCallQueueDBName, &mongodbWebRTCCallQueueOperatorsCollName)
 }
 
 var (
@@ -319,8 +319,8 @@ func NewMongoDBWebRTCCallQueue(
 	if operatorID == "" {
 		return nil, errors.New("expected non-empty operatorID")
 	}
-	callsColl := client.Database(MongodbWebRTCCallQueueDBName).Collection(mongodbWebRTCCallQueueCallsCollName)
-	operatorsColl := client.Database(MongodbWebRTCCallQueueDBName).Collection(mongodbWebRTCCallQueueOperatorsCollName)
+	callsColl := client.Database(MongoDBWebRTCCallQueueDBName).Collection(mongodbWebRTCCallQueueCallsCollName)
+	operatorsColl := client.Database(MongoDBWebRTCCallQueueDBName).Collection(mongodbWebRTCCallQueueOperatorsCollName)
 
 	mongodbWebRTCCallQueueExpireAfter := int32(getDefaultOfferDeadline().Seconds())
 	mongodbWebRTCCallQueueCallsIndexes := []mongo.IndexModel{
