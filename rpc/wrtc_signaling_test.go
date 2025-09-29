@@ -57,7 +57,7 @@ func testWebRTCSignaling(t *testing.T, signalingCallQueue WebRTCCallQueue, logge
 	for _, host := range hosts {
 		t.Run(host, func(t *testing.T) {
 			signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, logger,
-				defaultHeartbeatInterval, nil)
+				defaultHeartbeatInterval)
 			defer signalingServer.Close()
 
 			grpcListener, err := net.Listen("tcp", "localhost:0")
@@ -179,7 +179,7 @@ func TestWebRTCAnswererImmediateStop(t *testing.T) {
 	}()
 
 	signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, logger,
-		defaultHeartbeatInterval, nil)
+		defaultHeartbeatInterval)
 	defer signalingServer.Close()
 
 	grpcListener, err := net.Listen("tcp", "localhost:0")
@@ -225,7 +225,7 @@ func TestSignalingHeartbeats(t *testing.T) {
 	}()
 	// Use a lowered heartbeatInterval (500ms instead of 15s).
 	signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, logger,
-		500*time.Millisecond, nil)
+		500*time.Millisecond)
 	defer signalingServer.Close()
 	grpcListener, err := net.Listen("tcp", "localhost:0")
 	test.That(t, err, test.ShouldBeNil)

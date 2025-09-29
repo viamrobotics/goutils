@@ -3,7 +3,6 @@ package rpc
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -11,7 +10,6 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
 	"go.viam.com/utils"
@@ -20,8 +18,12 @@ import (
 	"go.viam.com/utils/perf/statz/units"
 )
 
+type WebRTCRateLimiter interface {
+	Allow(ctx context.Context, key string) (bool, error)
+}
+
 func init() {
-	mongoutils.MustRegisterNamespace(&MongodbWebRTCCallQueueDBName, &mongodbWebRTCRateLimiterCollName)
+	mongoutils.MustRegisterNamespace(&MongodbWebRTCCallQueueDBName, &mongodbmongodbRateLimiterCollName)
 }
 
 var (
@@ -36,8 +38,8 @@ var (
 
 // Database configuration
 var (
-	mongodbWebRTCRateLimiterCollName = "rate_limiter"
-	mongodbWebRCRateLimiterTTLName   = "rate_limit_expire"
+	mongodbmongodbRateLimiterCollName = "rate_limiter"
+	mongodbWebRCRateLimiterTTLName    = "rate_limit_expire"
 )
 
 // A rateLimitDocument represents a request record in MongoDB
@@ -60,20 +62,20 @@ var defaultRateLimitConfig = RateLimitConfig{
 	Window:      time.Minute,
 }
 
-// SignalingRateLimiter
-type SignalingRateLimiter struct {
+// mongodbRateLimiter
+type mongodbRateLimiter struct {
 	client        *mongo.Client
 	rateLimitColl *mongo.Collection
 	config        RateLimitConfig
 	logger        utils.ZapCompatibleLogger
 }
 
-// NewSignalingRateLimiter
-func NewSignalingRateLimiter(
+// NewMongoDBRateLimiter
+func NewMongoDBRateLimiter(
 	client *mongo.Client,
 	logger utils.ZapCompatibleLogger,
-) (*SignalingRateLimiter, error) {
-	rateLimitColl := client.Database(MongodbWebRTCCallQueueDBName).Collection(mongodbWebRTCRateLimiterCollName)
+) (*mongodbRateLimiter, error) {
+	rateLimitColl := client.Database(MongodbWebRTCCallQueueDBName).Collection(mongodbmongodbRateLimiterCollName)
 
 	maxTTL := int32(2 * time.Minute.Seconds())
 	indexes := []mongo.IndexModel{
@@ -96,7 +98,7 @@ func NewSignalingRateLimiter(
 		return nil, fmt.Errorf("failed to create rate limiter indexes: %w", err)
 	}
 
-	return &SignalingRateLimiter{
+	return &mongodbRateLimiter{
 		client:        client,
 		rateLimitColl: rateLimitColl,
 		config:        defaultRateLimitConfig,
@@ -105,50 +107,22 @@ func NewSignalingRateLimiter(
 }
 
 // Allow
-func (rl *SignalingRateLimiter) Allow(ctx context.Context) error {
-	clientInfo, err := rl.extractClientInfo(ctx)
-	if err != nil {
-		rl.logger.Errorw("failed to extract client info for rate limiting", "error", err)
-		return err
-	}
-
-	if err := rl.checkRateLimit(ctx, clientInfo.Key); err != nil {
-		rateLimitDenials.Inc(clientInfo.Key)
-		return err
-	}
-
-	if err := rl.recordRequest(ctx, clientInfo); err != nil {
+func (rl *mongodbRateLimiter) Allow(ctx context.Context, key string) (bool, error) {
+	if err := rl.recordRequest(ctx, key); err != nil {
 		rl.logger.Errorw("failed to record rate limit request", "error", err)
+		return true, err
 	}
 
-	return nil
-}
-
-// ClientInfo
-type ClientInfo struct {
-	Key string
-}
-
-// extractClientInfo
-func (rl *SignalingRateLimiter) extractClientInfo(ctx context.Context) (*ClientInfo, error) {
-	info := &ClientInfo{}
-
-	if md, ok := metadata.FromIncomingContext(ctx); ok {
-		if authHeaders := md.Get("authorization"); len(authHeaders) > 0 {
-			authHeader := authHeaders[0]
-			if strings.HasPrefix(authHeader, "Bearer ") {
-				info.Key = strings.TrimPrefix(authHeader, "Bearer ")
-			} else {
-				return nil, status.Errorf(codes.Unauthenticated, "invalid authorization header format")
-			}
-		}
+	if err := rl.checkRateLimit(ctx, key); err != nil {
+		rateLimitDenials.Inc(key)
+		return true, err
 	}
 
-	return info, nil
+	return true, nil
 }
 
 // checkRateLimit
-func (rl *SignalingRateLimiter) checkRateLimit(ctx context.Context, fusionAuthID string) error {
+func (rl *mongodbRateLimiter) checkRateLimit(ctx context.Context, key string) error {
 	now := time.Now()
 	windowStart := now.Add(-rl.config.Window)
 
@@ -156,13 +130,13 @@ func (rl *SignalingRateLimiter) checkRateLimit(ctx context.Context, fusionAuthID
 	defer cancel()
 
 	filter := bson.M{
-		"fusion_auth_id": fusionAuthID,
-		"timestamp":      bson.M{"$gte": windowStart},
+		"key":       key,
+		"timestamp": bson.M{"$gte": windowStart},
 	}
 
 	count, err := rl.rateLimitColl.CountDocuments(dbCtx, filter)
 	if err != nil {
-		rl.logger.Errorw("rate limit count query failed", "error", err, "fusion_auth_id", fusionAuthID)
+		rl.logger.Errorw("rate limit count query failed", "error", err, "key", key)
 		return err
 	}
 
@@ -170,18 +144,18 @@ func (rl *SignalingRateLimiter) checkRateLimit(ctx context.Context, fusionAuthID
 	if count >= limit {
 		return status.Errorf(codes.ResourceExhausted,
 			"rate limit exceeded: %d requests in %v (limit: %d) for %s",
-			count, rl.config.Window, limit, fusionAuthID)
+			count, rl.config.Window, limit, key)
 	}
 
 	return nil
 }
 
 // recordRequest
-func (rl *SignalingRateLimiter) recordRequest(ctx context.Context, clientInfo *ClientInfo) error {
+func (rl *mongodbRateLimiter) recordRequest(ctx context.Context, key string) error {
 	now := time.Now()
 
 	doc := rateLimitDocument{
-		Key:       clientInfo.Key,
+		Key:       key,
 		CreatedAt: now,
 		ExpiresAt: now.Add(2 * time.Minute),
 	}
@@ -191,4 +165,15 @@ func (rl *SignalingRateLimiter) recordRequest(ctx context.Context, clientInfo *C
 
 	_, err := rl.rateLimitColl.InsertOne(dbCtx, doc)
 	return err
+}
+
+// memoryRateLimiter is a no-op rate limiter for testing and internal signaling use.
+type memoryRateLimiter struct{}
+
+func NewMemoryRateLimiter() *memoryRateLimiter {
+	return &memoryRateLimiter{}
+}
+
+func (rl *memoryRateLimiter) Allow(ctx context.Context, key string) (bool, error) {
+	return true, nil
 }
