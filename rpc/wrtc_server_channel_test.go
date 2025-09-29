@@ -39,7 +39,7 @@ func TestWebRTCServerChannel(t *testing.T) {
 	// It helps that it is in our package.
 	queue := newMemoryWebRTCCallQueueTest(logger)
 	defer queue.Close()
-	signalServer := NewWebRTCSignalingServer(queue, nil, utils.Sublogger(logger, "signalingServer"), defaultHeartbeatInterval, nil)
+	signalServer := NewWebRTCSignalingServer(queue, nil, utils.Sublogger(logger, "signalingServer"), defaultHeartbeatInterval)
 	defer signalServer.Close()
 	server.RegisterService(
 		&webrtcpb.SignalingService_ServiceDesc,

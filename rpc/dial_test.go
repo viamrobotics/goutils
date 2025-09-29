@@ -204,7 +204,7 @@ func testDial(t *testing.T, signalingCallQueue WebRTCCallQueue, logger utils.Zap
 			test.That(t, err, test.ShouldBeNil)
 
 			signalingServer := NewWebRTCSignalingServer(signalingCallQueue, nil, logger,
-				defaultHeartbeatInterval, nil, externalSignalingHosts...)
+				defaultHeartbeatInterval, externalSignalingHosts...)
 			test.That(t, rpcServerExternal.RegisterServiceServer(
 				context.Background(),
 				&webrtcpb.SignalingService_ServiceDesc,

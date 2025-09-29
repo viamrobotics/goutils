@@ -124,7 +124,6 @@ func dialWebRTC(
 	logger.Debugw("connected to signaling server", "signaling_server", signalingServer)
 
 	md := metadata.New(map[string]string{RPCHostMetadataField: host})
-	md.Set("authorization", "Bearer "+dOpts.webrtcOpts.SignalingAuthEntity)
 	signalCtx := metadata.NewOutgoingContext(dialCtx, md)
 
 	signalingClient := webrtcpb.NewSignalingServiceClient(conn)
