@@ -19,7 +19,7 @@ func TestMongoDBRateLimiter(t *testing.T) {
 
 	config := RateLimitConfig{
 		MaxRequests: 3,
-		Window:      100 * time.Millisecond,
+		Window:      time.Second,
 	}
 
 	setUpLimiter := func(t *testing.T) WebRTCRateLimiter {
@@ -83,7 +83,7 @@ func TestMongoDBRateLimiter(t *testing.T) {
 		test.That(t, allowed, test.ShouldBeTrue)
 
 		// Wait for window to pass and let requests expire
-		time.Sleep(3 * config.Window)
+		time.Sleep(2 * config.Window)
 
 		// Should be allowed again
 		allowed, err = limiter.Allow(ctx, key)
