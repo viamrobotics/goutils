@@ -181,7 +181,7 @@ var (
 		},
 	)
 
-	callExchangeDuration = statz.NewDistribution4[string, string, string, string](
+	callExchangeDuration = statz.NewDistribution3[string, string, string](
 		"signaling/call_exchange_duration",
 		statz.MetricConfig{
 			Description: "The duration of call exchanges from initialization to completion.",
@@ -196,12 +196,8 @@ var (
 					Description: "The organization ID of the machine that is being connected to.",
 				},
 				{
-					Name:        "side",
-					Description: "The side of the call (caller or answerer).",
-				},
-				{
 					Name:        "result",
-					Description: "The result of the call exchange.",
+					Description: "The result of the call exchange (finished or failed).",
 				},
 			},
 		},
