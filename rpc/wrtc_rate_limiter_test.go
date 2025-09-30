@@ -37,9 +37,8 @@ func TestMongoDBRateLimiter(t *testing.T) {
 		key := "test"
 
 		for i := 0; i < config.MaxRequests; i++ {
-			allowed, err := limiter.Allow(ctx, key)
+			err := limiter.Allow(ctx, key)
 			test.That(t, err, test.ShouldBeNil)
-			test.That(t, allowed, test.ShouldBeTrue)
 		}
 	})
 
@@ -50,18 +49,13 @@ func TestMongoDBRateLimiter(t *testing.T) {
 
 		// Fill up to the limit
 		for i := 0; i < config.MaxRequests; i++ {
-			allowed, err := limiter.Allow(ctx, key)
+			err := limiter.Allow(ctx, key)
 			test.That(t, err, test.ShouldBeNil)
-			test.That(t, allowed, test.ShouldBeTrue)
 		}
 
-		// NOTE(danielbotros): Next request should be denied but since we are not denying rate limited requests currently, it will return true
-		// with an error for all tests
-		// TODO(RSDK-12058): Enable rate limiting for signaling
-		allowed, err := limiter.Allow(ctx, key)
+		err := limiter.Allow(ctx, key)
 		test.That(t, err, test.ShouldNotBeNil)
 		test.That(t, err.Error(), test.ShouldContainSubstring, "request exceeds rate limit")
-		test.That(t, allowed, test.ShouldBeTrue)
 	})
 
 	t.Run("sliding window resets after duration", func(t *testing.T) {
@@ -71,24 +65,21 @@ func TestMongoDBRateLimiter(t *testing.T) {
 
 		// Fill up the limit
 		for i := 0; i < config.MaxRequests; i++ {
-			allowed, err := limiter.Allow(ctx, key)
+			err := limiter.Allow(ctx, key)
 			test.That(t, err, test.ShouldBeNil)
-			test.That(t, allowed, test.ShouldBeTrue)
 		}
 
 		// Should be denied
-		allowed, err := limiter.Allow(ctx, key)
+		err := limiter.Allow(ctx, key)
 		test.That(t, err, test.ShouldNotBeNil)
 		test.That(t, err.Error(), test.ShouldContainSubstring, "request exceeds rate limit")
-		test.That(t, allowed, test.ShouldBeTrue)
 
 		// Wait for window to pass and let requests expire
 		time.Sleep(2 * config.Window)
 
 		// Should be allowed again
-		allowed, err = limiter.Allow(ctx, key)
+		err = limiter.Allow(ctx, key)
 		test.That(t, err, test.ShouldBeNil)
-		test.That(t, allowed, test.ShouldBeTrue)
 	})
 
 	t.Run("different keys have separate limits", func(t *testing.T) {
@@ -100,20 +91,18 @@ func TestMongoDBRateLimiter(t *testing.T) {
 
 		// Fill key1's limit
 		for i := 0; i < config.MaxRequests; i++ {
-			allowed, err := limiter.Allow(ctx, key1)
+			err := limiter.Allow(ctx, key1)
 			test.That(t, err, test.ShouldBeNil)
-			test.That(t, allowed, test.ShouldBeTrue)
 		}
 
 		// Key1 should be denied
-		allowed, err := limiter.Allow(ctx, key1)
+		err := limiter.Allow(ctx, key1)
 		test.That(t, err, test.ShouldNotBeNil)
-		test.That(t, allowed, test.ShouldBeTrue)
+		test.That(t, err.Error(), test.ShouldContainSubstring, "request exceeds rate limit")
 
 		// Key2 should still be allowed
-		allowed, err = limiter.Allow(ctx, key2)
+		err = limiter.Allow(ctx, key2)
 		test.That(t, err, test.ShouldBeNil)
-		test.That(t, allowed, test.ShouldBeTrue)
 	})
 
 	t.Run("trims old requests with slice", func(t *testing.T) {
@@ -143,24 +132,20 @@ func TestMongoDBRateLimiter(t *testing.T) {
 
 		// Make double the number of requests concurrently
 		numRequests := config.MaxRequests * 2
-		type result struct {
-			allowed bool
-			err     error
-		}
-		resultChan := make(chan result, numRequests)
+		errChan := make(chan error, numRequests)
 
 		for i := 0; i < numRequests; i++ {
 			go func() {
-				allowed, err := limiter.Allow(ctx, key)
-				resultChan <- result{allowed: allowed, err: err}
+				err := limiter.Allow(ctx, key)
+				errChan <- err
 			}()
 		}
 
 		allowed := 0
 		denied := 0
 		for i := 0; i < numRequests; i++ {
-			res := <-resultChan
-			if res.err == nil {
+			err := <-errChan
+			if err == nil {
 				allowed++
 			} else {
 				denied++
@@ -180,19 +165,15 @@ func TestMongoDBRateLimiter(t *testing.T) {
 		allowedReqs := numUsers * config.MaxRequests
 		totalReqs := allowedReqs + 1
 
-		type result struct {
-			allowed bool
-			err     error
-		}
-		resultChan := make(chan result, totalReqs)
+		errChan := make(chan error, totalReqs)
 
 		// Each user makes requests concurrently
 		for i := 0; i < numUsers; i++ {
 			for j := 0; j < config.MaxRequests; j++ {
 				go func(userIndex int) {
 					userKey := "call:user-" + strconv.Itoa(userIndex)
-					allowed, err := limiter.Allow(ctx, userKey)
-					resultChan <- result{allowed: allowed, err: err}
+					err := limiter.Allow(ctx, userKey)
+					errChan <- err
 				}(i)
 			}
 		}
@@ -200,16 +181,16 @@ func TestMongoDBRateLimiter(t *testing.T) {
 		// One more request from one of the users to test limit
 		go func() {
 			userKey := "call:user-0"
-			allowed, err := limiter.Allow(ctx, userKey)
-			resultChan <- result{allowed: allowed, err: err}
+			err := limiter.Allow(ctx, userKey)
+			errChan <- err
 		}()
 
 		// All requests should be allowed (each user under within limit) except the last one
 		allowed := 0
 		denied := 0
 		for i := 0; i < totalReqs; i++ {
-			res := <-resultChan
-			if res.err == nil {
+			err := <-errChan
+			if err == nil {
 				allowed++
 			} else {
 				denied++

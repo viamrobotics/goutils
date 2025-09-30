@@ -19,7 +19,7 @@ import (
 // A WebRTCRateLimiter rate limits requests used in WebRTC signaling to control the rate of requests
 // made based on a key, typically a combination of method and auth ID.
 type WebRTCRateLimiter interface {
-	Allow(ctx context.Context, key string) (bool, error)
+	Allow(ctx context.Context, key string) error
 }
 
 func init() {
@@ -97,7 +97,7 @@ func NewMongoDBRateLimiter(
 // The document for each key contains an array of timestamps representing the times of requests made, which is trimmed
 // to twice the maximum allowed requests to prevent unbounded growth, and only expires after no requests have been made for
 // twice the time window duration.
-func (rl *mongodbRateLimiter) Allow(ctx context.Context, key string) (bool, error) {
+func (rl *mongodbRateLimiter) Allow(ctx context.Context, key string) error {
 	now := time.Now()
 	windowStart := now.Add(-rl.config.Window)
 
@@ -123,7 +123,7 @@ func (rl *mongodbRateLimiter) Allow(ctx context.Context, key string) (bool, erro
 	err := rl.rateLimitColl.FindOneAndUpdate(ctx, filter, update, opts).Decode(&doc)
 	if err != nil {
 		rl.logger.Errorw("rate limit operation failed", "error", err, "key", key)
-		return true, err
+		return err
 	}
 
 	count := 0
@@ -135,11 +135,10 @@ func (rl *mongodbRateLimiter) Allow(ctx context.Context, key string) (bool, erro
 
 	if count > rl.config.MaxRequests {
 		rateLimitDenials.Inc(key)
-		// TODO(RSDK-12058): Enable rate limiting for signaling
-		return true, status.Errorf(codes.ResourceExhausted,
+		return status.Errorf(codes.ResourceExhausted,
 			"request exceeds rate limit (limit: %d in %v) for %s",
 			rl.config.MaxRequests, rl.config.Window, key)
 	}
 
-	return true, nil
+	return nil
 }
