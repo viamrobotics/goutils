@@ -1211,7 +1211,7 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 		var finalResult string
 		defer func() {
 			duration := time.Since(call.StartedAt).Seconds()
-			callExchangeDuration.Observe(duration, sdkType, organizationID, "caller", finalResult)
+			callExchangeDuration.Observe(duration, sdkType, organizationID, finalResult)
 		}()
 
 		haveInitSDP := false
