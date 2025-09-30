@@ -143,16 +143,3 @@ func (rl *mongodbRateLimiter) Allow(ctx context.Context, key string) (bool, erro
 
 	return true, nil
 }
-
-// memoryRateLimiter is a no-op rate limiter for testing and internal signaling use.
-type memoryRateLimiter struct{}
-
-// NewMemoryRateLimiter returns a new in-memory rate limiter that allows all requests.
-func NewMemoryRateLimiter() WebRTCRateLimiter {
-	return &memoryRateLimiter{}
-}
-
-// Allow always returns true and nil error, allowing all requests.
-func (rl *memoryRateLimiter) Allow(ctx context.Context, key string) (bool, error) {
-	return true, nil
-}
