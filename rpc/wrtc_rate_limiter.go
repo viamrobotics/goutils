@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"google.golang.org/grpc/codes"
@@ -17,6 +16,8 @@ import (
 	"go.viam.com/utils/perf/statz/units"
 )
 
+// A WebRTCRateLimiter rate limits requests used in WebRTC signaling to control the rate of requests
+// made based on a key, typically a combination of method and auth ID.
 type WebRTCRateLimiter interface {
 	Allow(ctx context.Context, key string) (bool, error)
 }
@@ -25,65 +26,57 @@ func init() {
 	mongoutils.MustRegisterNamespace(&MongoDBWebRTCCallQueueDBName, &mongodbmongodbRateLimiterCollName)
 }
 
-var (
-	rateLimitDenials = statz.NewCounter1[string]("signaling/rate_limits_denials", statz.MetricConfig{
-		Description: "Total number of requests rate limited.",
-		Unit:        units.Dimensionless,
-		Labels: []statz.Label{
-			{Name: "key", Description: "User ID of the client being rate limited."},
-		},
-	})
-)
+var rateLimitDenials = statz.NewCounter1[string]("signaling/rate_limits_denials", statz.MetricConfig{
+	Description: "Total number of requests rate limited.",
+	Unit:        units.Dimensionless,
+	Labels: []statz.Label{
+		{Name: "key", Description: "Method and auth ID of the client being rate limited."},
+	},
+})
 
-// Database configuration
+// Database configuration and collection names for MongoDB rate limiter.
 var (
 	mongodbmongodbRateLimiterCollName = "rate_limiter"
 	mongodbWebRCRateLimiterTTLName    = "rate_limit_expire"
 )
 
-// A rateLimitDocument represents a request record in MongoDB
 type rateLimitDocument struct {
-	ID        primitive.ObjectID `bson:"_id,omitempty"`
-	Key       string             `bson:"key"`
-	CreatedAt time.Time          `bson:"created_at"`
-	ExpiresAt time.Time          `bson:"expires_at"`
+	ID        string      `bson:"_id"`
+	Requests  []time.Time `bson:"requests"`
+	ExpiresAt time.Time   `bson:"expires_at"`
 }
 
-// RateLimitConfig
+// RateLimitConfig specifies the configuration for rate limiting in terms of maximum requests allowed in a given time window.
 type RateLimitConfig struct {
 	MaxRequests int
 	Window      time.Duration
 }
 
-// mongodbRateLimiter
+// A mongodbRateLimiter is a MongoDB implementation of a continuous sliding rate limiter designed to be used for
+// multi-node, distributed deployments.
 type mongodbRateLimiter struct {
-	client        *mongo.Client
 	rateLimitColl *mongo.Collection
 	config        RateLimitConfig
 	logger        utils.ZapCompatibleLogger
 }
 
-// NewMongoDBRateLimiter
+// NewMongoDBRateLimiter returns a new MongoDB based rate limiter where requests are allowed or denied based on how many
+// requests have been made by a specific key (e.g., method + auth ID) within a certain time window specified by the limit
+// provided by the config.
 func NewMongoDBRateLimiter(
 	client *mongo.Client,
 	logger utils.ZapCompatibleLogger,
 	config RateLimitConfig,
-) (*mongodbRateLimiter, error) {
+) (WebRTCRateLimiter, error) {
 	rateLimitColl := client.Database(MongoDBWebRTCCallQueueDBName).Collection(mongodbmongodbRateLimiterCollName)
 
-	maxTTL := int32(2 * time.Minute.Seconds())
+	maxTTL := int32(2 * config.Window.Seconds())
 	indexes := []mongo.IndexModel{
 		{
 			Keys: bson.D{{Key: "expires_at", Value: 1}},
 			Options: &options.IndexOptions{
 				Name:               &mongodbWebRCRateLimiterTTLName,
 				ExpireAfterSeconds: &maxTTL,
-			},
-		},
-		{
-			Keys: bson.D{
-				{Key: "key", Value: 1},
-				{Key: "created_at", Value: -1},
 			},
 		},
 	}
@@ -93,81 +86,73 @@ func NewMongoDBRateLimiter(
 	}
 
 	return &mongodbRateLimiter{
-		client:        client,
 		rateLimitColl: rateLimitColl,
 		config:        config,
 		logger:        logger,
 	}, nil
 }
 
-// Allow
+// Allow inserts a timestamp for a request associated with the given key into MongoDB and determines if it is
+// allowed based on the number of requests made in the last time window specificed by the rate limiting configuration.
+// The document for each key contains an array of timestamps representing the times of requests made, which is trimmed
+// to twice the maximum allowed requests to prevent unbounded growth, and only expires after no requests have been made for
+// twice the time window duration.
 func (rl *mongodbRateLimiter) Allow(ctx context.Context, key string) (bool, error) {
-	if err := rl.checkRateLimit(ctx, key); err != nil {
-		rateLimitDenials.Inc(key)
+	now := time.Now()
+	windowStart := now.Add(-rl.config.Window)
+
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	filter := bson.M{"_id": key}
+	update := bson.M{
+		"$push": bson.M{
+			"requests": bson.M{
+				"$each":  []time.Time{now},
+				"$slice": -(rl.config.MaxRequests * 2),
+			},
+		},
+		"$set": bson.M{"expires_at": now.Add(2 * time.Minute)},
+	}
+
+	opts := options.FindOneAndUpdate().
+		SetUpsert(true).
+		SetReturnDocument(options.After)
+
+	var doc rateLimitDocument
+	err := rl.rateLimitColl.FindOneAndUpdate(ctx, filter, update, opts).Decode(&doc)
+	if err != nil {
+		rl.logger.Errorw("rate limit operation failed", "error", err, "key", key)
 		return true, err
 	}
 
-	if err := rl.recordRequest(ctx, key); err != nil {
-		rl.logger.Errorw("failed to record rate limit request", "error", err)
-		return true, err
+	count := 0
+	for _, reqTime := range doc.Requests {
+		if reqTime.After(windowStart) {
+			count++
+		}
+	}
+
+	if count > rl.config.MaxRequests {
+		rateLimitDenials.Inc(key)
+		// TODO(RSDK-12058): Enable rate limiting for signaling
+		return true, status.Errorf(codes.ResourceExhausted,
+			"request exceeds rate limit (limit: %d in %v) for %s",
+			rl.config.MaxRequests, rl.config.Window, key)
 	}
 
 	return true, nil
 }
 
-// checkRateLimit
-func (rl *mongodbRateLimiter) checkRateLimit(ctx context.Context, key string) error {
-	now := time.Now()
-	windowStart := now.Add(-rl.config.Window)
-
-	dbCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
-
-	filter := bson.M{
-		"key":        key,
-		"created_at": bson.M{"$gte": windowStart},
-	}
-
-	count, err := rl.rateLimitColl.CountDocuments(dbCtx, filter)
-	if err != nil {
-		rl.logger.Errorw("rate limit count query failed", "error", err, "key", key)
-		return err
-	}
-
-	limit := int64(rl.config.MaxRequests)
-	if count >= limit {
-		return status.Errorf(codes.ResourceExhausted,
-			"request exceed rate limit (limit: %d in %v) for %s",
-			limit, rl.config.Window, key)
-	}
-
-	return nil
-}
-
-// recordRequest
-func (rl *mongodbRateLimiter) recordRequest(ctx context.Context, key string) error {
-	now := time.Now()
-
-	doc := rateLimitDocument{
-		Key:       key,
-		CreatedAt: now,
-		ExpiresAt: now.Add(2 * time.Minute),
-	}
-
-	dbCtx, cancel := context.WithTimeout(ctx, time.Second)
-	defer cancel()
-
-	_, err := rl.rateLimitColl.InsertOne(dbCtx, doc)
-	return err
-}
-
 // memoryRateLimiter is a no-op rate limiter for testing and internal signaling use.
 type memoryRateLimiter struct{}
 
-func NewMemoryRateLimiter() *memoryRateLimiter {
+// NewMemoryRateLimiter returns a new in-memory rate limiter that allows all requests.
+func NewMemoryRateLimiter() WebRTCRateLimiter {
 	return &memoryRateLimiter{}
 }
 
+// Allow always returns true and nil error, allowing all requests.
 func (rl *memoryRateLimiter) Allow(ctx context.Context, key string) (bool, error) {
 	return true, nil
 }
