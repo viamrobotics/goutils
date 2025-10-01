@@ -27,8 +27,8 @@ import (
 )
 
 func init() {
-	mongoutils.MustRegisterNamespace(&MongoDBWebRTCCallQueueDBName, &mongodbWebRTCCallQueueCallsCollName)
-	mongoutils.MustRegisterNamespace(&MongoDBWebRTCCallQueueDBName, &mongodbWebRTCCallQueueOperatorsCollName)
+	mongoutils.MustRegisterNamespace(&mongodbWebRTCCallQueueDBName, &mongodbWebRTCCallQueueCallsCollName)
+	mongoutils.MustRegisterNamespace(&mongodbWebRTCCallQueueDBName, &mongodbWebRTCCallQueueOperatorsCollName)
 }
 
 var (
@@ -282,7 +282,7 @@ type changeStreamStateUpdate struct {
 
 // Database and collection names used by the mongoDBWebRTCCallQueue.
 var (
-	MongoDBWebRTCCallQueueDBName             = "rpc"
+	mongodbWebRTCCallQueueDBName             = "rpc"
 	mongodbWebRTCCallQueueCallsCollName      = "calls"
 	mongodbWebRTCCallQueueOperatorsCollName  = "operators"
 	mongodbWebRTCCallQueueRPCCallExpireName  = "rpc_call_expire"
@@ -319,8 +319,8 @@ func NewMongoDBWebRTCCallQueue(
 	if operatorID == "" {
 		return nil, errors.New("expected non-empty operatorID")
 	}
-	callsColl := client.Database(MongoDBWebRTCCallQueueDBName).Collection(mongodbWebRTCCallQueueCallsCollName)
-	operatorsColl := client.Database(MongoDBWebRTCCallQueueDBName).Collection(mongodbWebRTCCallQueueOperatorsCollName)
+	callsColl := client.Database(mongodbWebRTCCallQueueDBName).Collection(mongodbWebRTCCallQueueCallsCollName)
+	operatorsColl := client.Database(mongodbWebRTCCallQueueDBName).Collection(mongodbWebRTCCallQueueOperatorsCollName)
 
 	mongodbWebRTCCallQueueExpireAfter := int32(getDefaultOfferDeadline().Seconds())
 	mongodbWebRTCCallQueueCallsIndexes := []mongo.IndexModel{

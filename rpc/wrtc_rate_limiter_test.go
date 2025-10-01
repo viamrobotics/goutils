@@ -24,7 +24,7 @@ func TestMongoDBRateLimiter(t *testing.T) {
 
 	setUpLimiter := func(t *testing.T) WebRTCRateLimiter {
 		t.Helper()
-		test.That(t, client.Database(MongoDBWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
+		test.That(t, client.Database(mongodbWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
 
 		limiter, err := NewMongoDBRateLimiter(client, logger, config)
 		test.That(t, err, test.ShouldBeNil)

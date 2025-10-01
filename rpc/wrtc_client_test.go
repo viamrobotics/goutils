@@ -40,7 +40,7 @@ func TestWebRTCClientServerWithMongoDBQueue(t *testing.T) {
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
 	client := testutils.BackingMongoDBClient(t)
-	test.That(t, client.Database(MongoDBWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
+	test.That(t, client.Database(mongodbWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
 	signalingCallQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), uuid.NewString(), 50, client, logger,
 		func(hosts []string, atTime time.Time) {}, nil)
 	test.That(t, err, test.ShouldBeNil)
@@ -135,7 +135,7 @@ func TestWebRTCClientDialCancelWithMongoDBQueue(t *testing.T) {
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
 	client := testutils.BackingMongoDBClient(t)
-	test.That(t, client.Database(MongoDBWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
+	test.That(t, client.Database(mongodbWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
 	signalingCallQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), uuid.NewString(), 50, client, logger,
 		func(hosts []string, atTime time.Time) {}, nil)
 	test.That(t, err, test.ShouldBeNil)
@@ -224,7 +224,7 @@ func TestWebRTCClientDialReflectAnswererErrorWithMongoDBQueue(t *testing.T) {
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
 	client := testutils.BackingMongoDBClient(t)
-	test.That(t, client.Database(MongoDBWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
+	test.That(t, client.Database(mongodbWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
 	signalingCallQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), uuid.NewString(), 50, client, logger,
 		func(hosts []string, atTime time.Time) {}, nil)
 	test.That(t, err, test.ShouldBeNil)
@@ -318,7 +318,7 @@ func TestWebRTCClientDialConcurrentWithMongoDBQueue(t *testing.T) {
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
 	client := testutils.BackingMongoDBClient(t)
-	test.That(t, client.Database(MongoDBWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
+	test.That(t, client.Database(mongodbWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
 	signalingCallQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), uuid.NewString(), 50, client, logger,
 		func(hosts []string, atTime time.Time) {}, nil)
 	test.That(t, err, test.ShouldBeNil)
@@ -462,7 +462,7 @@ func TestWebRTCClientAnswerConcurrentWithMongoDBQueue(t *testing.T) {
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
 	client := testutils.BackingMongoDBClient(t)
-	test.That(t, client.Database(MongoDBWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
+	test.That(t, client.Database(mongodbWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
 	signalingCallQueue, err := NewMongoDBWebRTCCallQueue(context.Background(), uuid.NewString(), 50, client, logger,
 		func(hosts []string, atTime time.Time) {}, nil)
 	test.That(t, err, test.ShouldBeNil)
