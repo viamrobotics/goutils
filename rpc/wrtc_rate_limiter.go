@@ -23,7 +23,7 @@ type WebRTCRateLimiter interface {
 }
 
 func init() {
-	mongoutils.MustRegisterNamespace(&MongoDBWebRTCCallQueueDBName, &mongodbmongodbRateLimiterCollName)
+	mongoutils.MustRegisterNamespace(&mongodbWebRTCCallQueueDBName, &mongodbmongodbRateLimiterCollName)
 }
 
 var rateLimitDenials = statz.NewCounter1[string]("signaling/rate_limits_denials", statz.MetricConfig{
@@ -68,7 +68,7 @@ func NewMongoDBRateLimiter(
 	logger utils.ZapCompatibleLogger,
 	config RateLimitConfig,
 ) (WebRTCRateLimiter, error) {
-	rateLimitColl := client.Database(MongoDBWebRTCCallQueueDBName).Collection(mongodbmongodbRateLimiterCollName)
+	rateLimitColl := client.Database(mongodbWebRTCCallQueueDBName).Collection(mongodbmongodbRateLimiterCollName)
 
 	maxTTL := int32(2 * config.Window.Seconds())
 	indexes := []mongo.IndexModel{
