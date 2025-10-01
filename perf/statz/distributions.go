@@ -16,6 +16,10 @@ type Distribution struct {
 // LatencyDistribution is a basic latency distribution.
 var LatencyDistribution = DistributionFromBounds(0, 5, 25, 50, 75, 100, 200, 400, 600, 800, 1000, 2000, 4000, 6000)
 
+// ConnectionTimeDistribution is a basic distribution for connection times in milliseconds.
+var ConnectionTimeDistribution = DistributionFromBounds(0, 500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000,
+	5500, 6000, 6500, 7000, 7500, 8000, 8500, 9000, 9500, 10000)
+
 // DistributionFromBounds create distribution from a list of bounds. Must be incrementing and non-overlapping.
 func DistributionFromBounds(bounds ...float64) Distribution {
 	return Distribution{

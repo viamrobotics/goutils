@@ -190,6 +190,29 @@ var (
 			},
 		},
 	)
+
+	callExchangeDuration = statz.NewDistribution3[string, string, string](
+		"signaling/call_exchange_duration",
+		statz.MetricConfig{
+			Description: "The duration of call exchanges from initialization to completion.",
+			Unit:        units.Milliseconds,
+			Labels: []statz.Label{
+				{
+					Name:        "sdk_type",
+					Description: "The type of SDK attempting to connect.",
+				},
+				{
+					Name:        "organization_id",
+					Description: "The organization ID of the machine that is being connected to.",
+				},
+				{
+					Name:        "result",
+					Description: "The result of the call exchange (finished or failed).",
+				},
+			},
+		},
+		statz.ConnectionTimeDistribution,
+	)
 )
 
 // A mongoDBWebRTCCallQueue is an MongoDB implementation of a call queue designed to be used for
@@ -247,6 +270,11 @@ const maxHostAnswerersSize = 2
 
 // How long we want to delay clients before retrying to connect to an offline host.
 const offlineHostRetryDelay = 5 * time.Second
+
+const (
+	exchangeFailed   = "exchange_failed"
+	exchangeFinished = "exchange_finished"
+)
 
 // NewMongoDBWebRTCCallQueue returns a new MongoDB based call queue where calls are transferred
 // through the given client. The operator ID must be unique (e.g. a hostname, container ID, UUID, etc.).
@@ -1260,16 +1288,20 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferUpdate(ctx context.Context, host, 
 // SendOfferDone informs the queue that the offer associated with the UUID is done sending any
 // more information.
 func (queue *mongoDBWebRTCCallQueue) SendOfferDone(ctx context.Context, host, uuid string) error {
-	updateResult, err := queue.callsColl.UpdateOne(ctx, bson.D{
+	updateResult := queue.callsColl.FindOneAndUpdate(ctx, bson.D{
 		{webrtcCallIDField, uuid},
 		{webrtcCallHostField, host},
-	}, bson.D{{"$set", bson.D{{webrtcCallCallerDoneField, true}}}})
-	if err != nil {
+	}, bson.D{{"$set", bson.D{{webrtcCallCallerDoneField, true}}}},
+		options.FindOneAndUpdate().SetReturnDocument(options.After))
+
+	if err := updateResult.Err(); err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return newInactiveOfferErr(uuid)
+		}
 		return err
 	}
-	if updateResult.MatchedCount == 0 {
-		return newInactiveOfferErr(uuid)
-	}
+
+	recordExchangeDuration(updateResult)
 	return nil
 }
 
@@ -1302,6 +1334,8 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferError(ctx context.Context, host, u
 		} else {
 			connectionEstablishmentCallerNonTimeoutErrors.Inc(updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID)
 		}
+		duration := float64(time.Since(updatedMDBWebRTCCall.StartedAt).Milliseconds())
+		callExchangeDuration.Observe(duration, updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID, exchangeFailed)
 	}
 
 	return nil
@@ -1589,6 +1623,34 @@ func iceCandidateToMongo(i *webrtc.ICECandidateInit) mongodbICECandidate {
 	return candidate
 }
 
+func recordExchangeDuration(updateResult *mongo.SingleResult) {
+	var call mongodbWebRTCCall
+	if err := updateResult.Decode(&call); err != nil {
+		return
+	}
+
+	// We cannot consider an exchange finished until both sides are done
+	// because a state of done indicates that a side has finished sending
+	// all its candidates (or the client channel is ready). Recording on
+	// the first done would capture an incomplete exchange where one side
+	// has finished exchanging candidates but the other side has not, so
+	// the exchange is clearly not finished. By waiting until both sides
+	// are done, we ensure that we measure the full end-to-end signaling
+	// process from offer creation to both sides confirming completion.
+	if !call.CallerDone || !call.AnswererDone {
+		return
+	}
+
+	duration := float64(time.Since(call.StartedAt).Milliseconds())
+	var finalResult string
+	if call.CallerError != "" || call.AnswererError != "" {
+		finalResult = exchangeFailed
+	} else {
+		finalResult = exchangeFinished
+	}
+	callExchangeDuration.Observe(duration, call.SDKType, call.OrganizationID, finalResult)
+}
+
 // Close cancels all active offers and waits to cleanly close all background workers.
 func (queue *mongoDBWebRTCCallQueue) Close() error {
 	queue.cancelFunc()
@@ -1738,6 +1800,8 @@ func (resp *mongoDBWebRTCCallOfferExchange) AnswererRespond(ctx context.Context,
 			} else {
 				connectionEstablishmentAnswererNonTimeoutErrors.Inc(updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID)
 			}
+			duration := float64(time.Since(updatedMDBWebRTCCall.StartedAt).Milliseconds())
+			callExchangeDuration.Observe(duration, updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID, exchangeFailed)
 		}
 	}
 
@@ -1745,15 +1809,19 @@ func (resp *mongoDBWebRTCCallOfferExchange) AnswererRespond(ctx context.Context,
 }
 
 func (resp *mongoDBWebRTCCallOfferExchange) AnswererDone(ctx context.Context) error {
-	updateResult, err := resp.coll.UpdateOne(ctx, bson.D{
+	updateResult := resp.coll.FindOneAndUpdate(ctx, bson.D{
 		{webrtcCallIDField, resp.UUID()},
 		{webrtcCallHostField, resp.call.Host},
-	}, bson.D{{"$set", bson.D{{webrtcCallAnswererDoneField, true}}}})
-	if err != nil {
+	}, bson.D{{"$set", bson.D{{webrtcCallAnswererDoneField, true}}}},
+		options.FindOneAndUpdate().SetReturnDocument(options.After))
+
+	if err := updateResult.Err(); err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return newInactiveOfferErr(resp.call.ID)
+		}
 		return err
 	}
-	if updateResult.MatchedCount == 0 || updateResult.ModifiedCount == 0 {
-		return newInactiveOfferErr(resp.call.ID)
-	}
+
+	recordExchangeDuration(updateResult)
 	return nil
 }
