@@ -1780,7 +1780,6 @@ func (resp *mongoDBWebRTCCallOfferExchange) AnswererRespond(ctx context.Context,
 			duration := float64(time.Since(updatedMDBWebRTCCall.StartedAt).Milliseconds())
 			callExchangeDuration.Observe(duration, updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID, exchangeFailed)
 		}
-
 	}
 
 	return nil
