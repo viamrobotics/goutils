@@ -1300,7 +1300,6 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferDone(ctx context.Context, host, uu
 			} else {
 				finalResult = exchangeFinished
 			}
-			queue.logger.Infow("call exchange completed", "duration_secs", duration)
 			callExchangeDuration.Observe(duration, call.SDKType, call.OrganizationID, finalResult)
 		}
 	}
