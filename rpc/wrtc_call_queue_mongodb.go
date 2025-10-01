@@ -1208,24 +1208,16 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 		defer cleanup()
 		defer close(answererResponses)
 
-		var finalResult string
-		defer func() {
-			duration := time.Since(call.StartedAt).Seconds()
-			callExchangeDuration.Observe(duration, sdkType, organizationID, finalResult)
-		}()
-
 		haveInitSDP := false
 		candLen := len(call.AnswererCandidates)
 		for {
 			if sendAndQueueCtx.Err() != nil {
-				finalResult = exchangeFailed
 				sendAnswer(WebRTCCallAnswer{Err: sendAndQueueCtx.Err()})
 				return
 			}
 			var next mongodbCallEvent
 			select {
 			case <-sendAndQueueCtx.Done():
-				finalResult = exchangeFailed
 				sendAnswer(WebRTCCallAnswer{Err: sendAndQueueCtx.Err()})
 				return
 			case next = <-events:
@@ -1234,7 +1226,6 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 			callResp := next.Call
 
 			if callResp.AnswererError != "" {
-				finalResult = exchangeFailed
 				sendAnswer(WebRTCCallAnswer{Err: errors.New(callResp.AnswererError)})
 				return
 			}
@@ -1259,7 +1250,6 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 			}
 
 			if callResp.AnswererDone {
-				finalResult = exchangeFinished
 				return
 			}
 		}
@@ -1287,16 +1277,34 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferUpdate(ctx context.Context, host, 
 // SendOfferDone informs the queue that the offer associated with the UUID is done sending any
 // more information.
 func (queue *mongoDBWebRTCCallQueue) SendOfferDone(ctx context.Context, host, uuid string) error {
-	updateResult, err := queue.callsColl.UpdateOne(ctx, bson.D{
+	updateResult := queue.callsColl.FindOneAndUpdate(ctx, bson.D{
 		{webrtcCallIDField, uuid},
 		{webrtcCallHostField, host},
-	}, bson.D{{"$set", bson.D{{webrtcCallCallerDoneField, true}}}})
-	if err != nil {
+	}, bson.D{{"$set", bson.D{{webrtcCallCallerDoneField, true}}}},
+		options.FindOneAndUpdate().SetReturnDocument(options.After))
+
+	if err := updateResult.Err(); err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return newInactiveOfferErr(uuid)
+		}
 		return err
 	}
-	if updateResult.MatchedCount == 0 {
-		return newInactiveOfferErr(uuid)
+
+	var call mongodbWebRTCCall
+	if err := updateResult.Decode(&call); err == nil {
+		if call.CallerDone && call.AnswererDone {
+			duration := float64(time.Since(call.StartedAt).Milliseconds())
+			var finalResult string
+			if call.CallerError != "" || call.AnswererError != "" {
+				finalResult = exchangeFailed
+			} else {
+				finalResult = exchangeFinished
+			}
+			queue.logger.Infow("call exchange completed", "duration_secs", duration)
+			callExchangeDuration.Observe(duration, call.SDKType, call.OrganizationID, finalResult)
+		}
 	}
+
 	return nil
 }
 
@@ -1307,7 +1315,8 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferError(ctx context.Context, host, u
 		{webrtcCallIDField, uuid},
 		{webrtcCallHostField, host},
 		{webrtcCallCallerDoneField, bson.D{{"$ne", true}}},
-	}, bson.D{{"$set", bson.D{{webrtcCallCallerErrorField, err.Error()}}}})
+	}, bson.D{{"$set", bson.D{{webrtcCallCallerErrorField, err.Error()}}}},
+		options.FindOneAndUpdate().SetReturnDocument(options.After))
 	if err := updateResult.Err(); err != nil {
 		// No matching documents is indicative of an inactive offer.
 		if errors.Is(err, mongo.ErrNoDocuments) {
@@ -1329,6 +1338,8 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferError(ctx context.Context, host, u
 		} else {
 			connectionEstablishmentCallerNonTimeoutErrors.Inc(updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID)
 		}
+		duration := float64(time.Since(updatedMDBWebRTCCall.StartedAt).Milliseconds())
+		callExchangeDuration.Observe(duration, updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID, exchangeFailed)
 	}
 
 	return nil
@@ -1742,6 +1753,7 @@ func (resp *mongoDBWebRTCCallOfferExchange) AnswererRespond(ctx context.Context,
 			{webrtcCallIDField, resp.call.ID},
 		},
 		update,
+		options.FindOneAndUpdate().SetReturnDocument(options.After),
 	)
 	if err := updateResult.Err(); err != nil {
 		// No matching documents is indicative of an inactive offer.
@@ -1765,22 +1777,42 @@ func (resp *mongoDBWebRTCCallOfferExchange) AnswererRespond(ctx context.Context,
 			} else {
 				connectionEstablishmentAnswererNonTimeoutErrors.Inc(updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID)
 			}
+			duration := float64(time.Since(updatedMDBWebRTCCall.StartedAt).Milliseconds())
+			callExchangeDuration.Observe(duration, updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID, exchangeFailed)
 		}
+
 	}
 
 	return nil
 }
 
 func (resp *mongoDBWebRTCCallOfferExchange) AnswererDone(ctx context.Context) error {
-	updateResult, err := resp.coll.UpdateOne(ctx, bson.D{
+	updateResult := resp.coll.FindOneAndUpdate(ctx, bson.D{
 		{webrtcCallIDField, resp.UUID()},
 		{webrtcCallHostField, resp.call.Host},
-	}, bson.D{{"$set", bson.D{{webrtcCallAnswererDoneField, true}}}})
-	if err != nil {
+	}, bson.D{{"$set", bson.D{{webrtcCallAnswererDoneField, true}}}},
+		options.FindOneAndUpdate().SetReturnDocument(options.After))
+
+	if err := updateResult.Err(); err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return newInactiveOfferErr(resp.call.ID)
+		}
 		return err
 	}
-	if updateResult.MatchedCount == 0 || updateResult.ModifiedCount == 0 {
-		return newInactiveOfferErr(resp.call.ID)
+
+	var call mongodbWebRTCCall
+	if err := updateResult.Decode(&call); err == nil {
+		if call.CallerDone && call.AnswererDone {
+			duration := float64(time.Since(call.StartedAt).Milliseconds())
+			var finalResult string
+			if call.CallerError != "" || call.AnswererError != "" {
+				finalResult = exchangeFailed
+			} else {
+				finalResult = exchangeFinished
+			}
+			callExchangeDuration.Observe(duration, call.SDKType, call.OrganizationID, finalResult)
+		}
 	}
+
 	return nil
 }
