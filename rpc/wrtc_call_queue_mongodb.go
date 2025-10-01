@@ -1290,20 +1290,7 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferDone(ctx context.Context, host, uu
 		return err
 	}
 
-	var call mongodbWebRTCCall
-	if err := updateResult.Decode(&call); err == nil {
-		if call.CallerDone && call.AnswererDone {
-			duration := float64(time.Since(call.StartedAt).Milliseconds())
-			var finalResult string
-			if call.CallerError != "" || call.AnswererError != "" {
-				finalResult = exchangeFailed
-			} else {
-				finalResult = exchangeFinished
-			}
-			callExchangeDuration.Observe(duration, call.SDKType, call.OrganizationID, finalResult)
-		}
-	}
-
+	recordExchangeDuration(updateResult)
 	return nil
 }
 
@@ -1314,8 +1301,7 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferError(ctx context.Context, host, u
 		{webrtcCallIDField, uuid},
 		{webrtcCallHostField, host},
 		{webrtcCallCallerDoneField, bson.D{{"$ne", true}}},
-	}, bson.D{{"$set", bson.D{{webrtcCallCallerErrorField, err.Error()}}}},
-		options.FindOneAndUpdate().SetReturnDocument(options.After))
+	}, bson.D{{"$set", bson.D{{webrtcCallCallerErrorField, err.Error()}}}})
 	if err := updateResult.Err(); err != nil {
 		// No matching documents is indicative of an inactive offer.
 		if errors.Is(err, mongo.ErrNoDocuments) {
@@ -1626,6 +1612,34 @@ func iceCandidateToMongo(i *webrtc.ICECandidateInit) mongodbICECandidate {
 	return candidate
 }
 
+func recordExchangeDuration(updateResult *mongo.SingleResult) {
+	var call mongodbWebRTCCall
+	if err := updateResult.Decode(&call); err != nil {
+		return
+	}
+
+	// We cannot consider an exchange finished until both sides are done
+	// because a state of done indicates that a side has finished sending
+	// all its candidates (or the client channel is ready). Recording on
+	// the first done would capture an incomplete exchange where one side
+	// has finished exchanging candidates but the other side has not, so
+	// the exchange is clearly not finished. By waiting until both sides
+	// are done, we ensure that we measure the full end-to-end signaling
+	// process from offer creation to both sides confirming completion.
+	if !call.CallerDone || !call.AnswererDone {
+		return
+	}
+
+	duration := float64(time.Since(call.StartedAt).Milliseconds())
+	var finalResult string
+	if call.CallerError != "" || call.AnswererError != "" {
+		finalResult = exchangeFailed
+	} else {
+		finalResult = exchangeFinished
+	}
+	callExchangeDuration.Observe(duration, call.SDKType, call.OrganizationID, finalResult)
+}
+
 // Close cancels all active offers and waits to cleanly close all background workers.
 func (queue *mongoDBWebRTCCallQueue) Close() error {
 	queue.cancelFunc()
@@ -1752,7 +1766,6 @@ func (resp *mongoDBWebRTCCallOfferExchange) AnswererRespond(ctx context.Context,
 			{webrtcCallIDField, resp.call.ID},
 		},
 		update,
-		options.FindOneAndUpdate().SetReturnDocument(options.After),
 	)
 	if err := updateResult.Err(); err != nil {
 		// No matching documents is indicative of an inactive offer.
@@ -1798,19 +1811,6 @@ func (resp *mongoDBWebRTCCallOfferExchange) AnswererDone(ctx context.Context) er
 		return err
 	}
 
-	var call mongodbWebRTCCall
-	if err := updateResult.Decode(&call); err == nil {
-		if call.CallerDone && call.AnswererDone {
-			duration := float64(time.Since(call.StartedAt).Milliseconds())
-			var finalResult string
-			if call.CallerError != "" || call.AnswererError != "" {
-				finalResult = exchangeFailed
-			} else {
-				finalResult = exchangeFinished
-			}
-			callExchangeDuration.Observe(duration, call.SDKType, call.OrganizationID, finalResult)
-		}
-	}
-
+	recordExchangeDuration(updateResult)
 	return nil
 }
