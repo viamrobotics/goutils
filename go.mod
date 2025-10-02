@@ -30,7 +30,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/rs/cors v1.11.1
 	github.com/samber/lo v1.51.0
-	github.com/viamrobotics/ice/v2 v2.3.40-0.20251001211904-b00d0ad2aa81
+	github.com/viamrobotics/ice/v2 v2.3.40
 	github.com/viamrobotics/webrtc/v3 v3.99.16
 	github.com/viamrobotics/zeroconf v1.0.12
 	github.com/zitadel/oidc/v3 v3.37.0
