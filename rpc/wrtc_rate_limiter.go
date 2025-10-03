@@ -87,18 +87,20 @@ func NewMongoDBRateLimiter(
 // The update creates a new array that adds the current timestamp and removes old timestamps outside the window.
 // This prevents race conditions and keeps the requests array bounded.
 func (rl *MongoDBRateLimiter) Allow(ctx context.Context, key string) error {
-	// Ensure a document exists for the key to handle first request case since a $expr filter can't check for
-	// non-existence and create the document if it doesn't exist. We use $setOnInsert to only set fields if the
-	// document is being created and don't care about the result or error here since a duplicate key error is
-	// fine if another process created it first.
-	//nolint:errcheck
-	_, _ = rl.rateLimitColl.UpdateOne(ctx,
+	// Ensure a document for the key exists or create one to handle first request case since a $expr filter
+	// can't check for non-existence and create the document if it doesn't exist.
+	_, err := rl.rateLimitColl.UpdateOne(ctx,
 		bson.M{"_id": key},
 		bson.M{"$setOnInsert": bson.M{
 			"requests":   bson.A{},
 			"created_at": "$$NOW",
 		}},
 		options.Update().SetUpsert(true))
+
+	if err != nil {
+		rl.logger.Errorw("rate limit doc existence check failed", "error", err, "key", key)
+		return err
+	}
 
 	// Filter: only match if request count within the most recent window for this key is < MaxRequests
 	filter := bson.M{
@@ -162,9 +164,9 @@ func (rl *MongoDBRateLimiter) Allow(ctx context.Context, key string) error {
 		},
 	}
 
-	result := rl.rateLimitColl.FindOneAndUpdate(ctx, filter, update)
+	_, err = rl.rateLimitColl.UpdateOne(ctx, filter, update)
 
-	if err := result.Err(); err != nil {
+	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
 			// Filter didn't match = rate limit exceeded
 			rateLimitDenials.Inc(key)
