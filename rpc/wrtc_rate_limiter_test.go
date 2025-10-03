@@ -166,6 +166,11 @@ func TestMongoDBRateLimiter(t *testing.T) {
 			if err == nil {
 				allowed++
 			} else {
+				test.That(t, err, test.ShouldNotBeNil)
+				test.That(t, err.Error(), test.ShouldContainSubstring, "request exceeds rate limit")
+				errStatus := status.Convert(err)
+				test.That(t, errStatus, test.ShouldNotBeNil)
+				test.That(t, errStatus.Code(), test.ShouldEqual, codes.ResourceExhausted)
 				denied++
 			}
 		}
@@ -211,6 +216,11 @@ func TestMongoDBRateLimiter(t *testing.T) {
 			if err == nil {
 				allowed++
 			} else {
+				test.That(t, err, test.ShouldNotBeNil)
+				test.That(t, err.Error(), test.ShouldContainSubstring, "request exceeds rate limit")
+				errStatus := status.Convert(err)
+				test.That(t, errStatus, test.ShouldNotBeNil)
+				test.That(t, errStatus.Code(), test.ShouldEqual, codes.ResourceExhausted)
 				denied++
 			}
 		}
