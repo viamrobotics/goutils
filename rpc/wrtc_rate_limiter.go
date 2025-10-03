@@ -100,7 +100,7 @@ func (rl *MongoDBRateLimiter) Allow(ctx context.Context, key string) error {
 		}},
 		options.Update().SetUpsert(true))
 
-	// Filter: only match if recent request count < limit
+	// Filter: only match if request count within the most recent window for this key is < MaxRequests
 	filter := bson.M{
 		"_id": key,
 		"$expr": bson.M{
@@ -130,6 +130,7 @@ func (rl *MongoDBRateLimiter) Allow(ctx context.Context, key string) error {
 		},
 	}
 
+	// Update: create new requests array with current timestamp and old timestamps outside the window removed
 	update := bson.A{
 		bson.M{
 			"$set": bson.M{
