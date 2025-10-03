@@ -91,8 +91,14 @@ func (rl *MongoDBRateLimiter) Allow(ctx context.Context, key string) error {
 	_, err := rl.rateLimitColl.UpdateOne(ctx,
 		bson.M{"_id": key},
 		bson.M{"$setOnInsert": bson.M{
-			"requests":   bson.A{},
-			"expires_at": time.Now().Add(rl.config.Window),
+			"requests": bson.A{},
+			"expires_at": bson.M{
+				"$dateAdd": bson.M{
+					"startDate": "$$NOW",
+					"unit":      "second",
+					"amount":    rl.config.Window.Seconds(),
+				},
+			},
 		}},
 		options.Update().SetUpsert(true))
 	if err != nil {
@@ -157,7 +163,13 @@ func (rl *MongoDBRateLimiter) Allow(ctx context.Context, key string) error {
 						bson.A{"$$NOW"},
 					},
 				},
-				"expires_at": time.Now().Add(rl.config.Window),
+				"expires_at": bson.M{
+					"$dateAdd": bson.M{
+						"startDate": "$$NOW",
+						"unit":      "second",
+						"amount":    rl.config.Window.Seconds(),
+					},
+				},
 			},
 		},
 	}
