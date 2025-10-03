@@ -10,6 +10,8 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.viam.com/test"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"go.viam.com/utils/testutils"
 )
@@ -57,6 +59,9 @@ func TestMongoDBRateLimiter(t *testing.T) {
 		err := limiter.Allow(ctx, key)
 		test.That(t, err, test.ShouldNotBeNil)
 		test.That(t, err.Error(), test.ShouldContainSubstring, "request exceeds rate limit")
+		errStatus := status.Convert(err)
+		test.That(t, errStatus, test.ShouldNotBeNil)
+		test.That(t, errStatus.Code(), test.ShouldEqual, codes.ResourceExhausted)
 	})
 
 	t.Run("sliding window resets after duration", func(t *testing.T) {
@@ -74,6 +79,9 @@ func TestMongoDBRateLimiter(t *testing.T) {
 		err := limiter.Allow(ctx, key)
 		test.That(t, err, test.ShouldNotBeNil)
 		test.That(t, err.Error(), test.ShouldContainSubstring, "request exceeds rate limit")
+		errStatus := status.Convert(err)
+		test.That(t, errStatus, test.ShouldNotBeNil)
+		test.That(t, errStatus.Code(), test.ShouldEqual, codes.ResourceExhausted)
 
 		// Wait for window to pass and let requests expire
 		time.Sleep(2*config.Window + 100*time.Millisecond)
@@ -99,6 +107,9 @@ func TestMongoDBRateLimiter(t *testing.T) {
 		err := limiter.Allow(ctx, key1)
 		test.That(t, err, test.ShouldNotBeNil)
 		test.That(t, err.Error(), test.ShouldContainSubstring, "request exceeds rate limit")
+		errStatus := status.Convert(err)
+		test.That(t, errStatus, test.ShouldNotBeNil)
+		test.That(t, errStatus.Code(), test.ShouldEqual, codes.ResourceExhausted)
 
 		// Key2 should still be allowed
 		err = limiter.Allow(ctx, key2)
