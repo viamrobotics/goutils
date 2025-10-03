@@ -60,13 +60,11 @@ func NewMongoDBRateLimiter(
 ) (*MongoDBRateLimiter, error) {
 	rateLimitColl := client.Database(mongodbWebRTCCallQueueDBName).Collection(mongodbWebRTCRateLimiterCollName)
 
-	ttlSeconds := int32((2 * config.Window).Seconds())
 	indexes := []mongo.IndexModel{
 		{
-			Keys: bson.D{{Key: "created_at", Value: 1}},
+			Keys: bson.D{{Key: "expires_at", Value: 1}},
 			Options: &options.IndexOptions{
-				Name:               &mongodbWebRTCRateLimiterTTLName,
-				ExpireAfterSeconds: &ttlSeconds,
+				Name: &mongodbWebRTCRateLimiterTTLName,
 			},
 		},
 	}
@@ -93,7 +91,7 @@ func (rl *MongoDBRateLimiter) Allow(ctx context.Context, key string) error {
 		bson.M{"_id": key},
 		bson.M{"$setOnInsert": bson.M{
 			"requests":   bson.A{},
-			"created_at": "$$NOW",
+			"expires_at": time.Now().Add(rl.config.Window),
 		}},
 		options.Update().SetUpsert(true))
 
@@ -159,7 +157,7 @@ func (rl *MongoDBRateLimiter) Allow(ctx context.Context, key string) error {
 						bson.A{"$$NOW"},
 					},
 				},
-				"created_at": "$$NOW",
+				"expires_at": time.Now().Add(rl.config.Window),
 			},
 		},
 	}
