@@ -86,7 +86,6 @@ func NewMongoDBRateLimiter(
 // The update creates a new array that adds the current timestamp and removes old timestamps outside the window.
 // This prevents race conditions and keeps the requests array bounded.
 func (rl *MongoDBRateLimiter) Allow(ctx context.Context, key string) error {
-
 	// Ensure a document for the key exists or create one to handle first request case since a $expr filter
 	// can't check for non-existence and create the document if it doesn't exist
 	_, err := rl.rateLimitColl.UpdateOne(ctx,
