@@ -18,7 +18,7 @@ import (
 )
 
 func init() {
-	mongoutils.MustRegisterNamespace(&mongodbWebRTCCallQueueDBName, &MongoDBRateLimiterCollName)
+	mongoutils.MustRegisterNamespace(&mongodbWebRTCCallQueueDBName, &mongodbWebRTCRateLimiterCollName)
 }
 
 var rateLimitDenials = statz.NewCounter1[string]("signaling/rate_limits_denials", statz.MetricConfig{
@@ -31,8 +31,8 @@ var rateLimitDenials = statz.NewCounter1[string]("signaling/rate_limits_denials"
 
 // Database configuration and collection names for MongoDB rate limiter.
 var (
-	MongoDBRateLimiterCollName     = "rate_limiter"
-	mongodbWebRCRateLimiterTTLName = "rate_limit_expire"
+	mongodbWebRTCRateLimiterCollName = "rate_limiter"
+	mongodbWebRTCRateLimiterTTLName  = "rate_limit_expire"
 )
 
 // RateLimitConfig specifies the configuration for rate limiting in terms of maximum requests allowed in a given time window.
@@ -58,14 +58,14 @@ func NewMongoDBRateLimiter(
 	config RateLimitConfig,
 	logger utils.ZapCompatibleLogger,
 ) (*MongoDBRateLimiter, error) {
-	rateLimitColl := client.Database(mongodbWebRTCCallQueueDBName).Collection(MongoDBRateLimiterCollName)
+	rateLimitColl := client.Database(mongodbWebRTCCallQueueDBName).Collection(mongodbWebRTCRateLimiterCollName)
 
 	ttlSeconds := int32((2 * config.Window).Seconds())
 	indexes := []mongo.IndexModel{
 		{
 			Keys: bson.D{{Key: "created_at", Value: 1}},
 			Options: &options.IndexOptions{
-				Name:               &mongodbWebRCRateLimiterTTLName,
+				Name:               &mongodbWebRTCRateLimiterTTLName,
 				ExpireAfterSeconds: &ttlSeconds,
 			},
 		},
