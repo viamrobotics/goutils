@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/pkg/errors"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -163,17 +162,18 @@ func (rl *MongoDBRateLimiter) Allow(ctx context.Context, key string) error {
 		},
 	}
 
-	_, err = rl.rateLimitColl.UpdateOne(ctx, filter, update)
+	result, err := rl.rateLimitColl.UpdateOne(ctx, filter, update)
 	if err != nil {
-		if errors.Is(err, mongo.ErrNoDocuments) {
-			// Filter didn't match = rate limit exceeded
-			rateLimitDenials.Inc(key)
-			return status.Errorf(codes.ResourceExhausted,
-				"request exceeds rate limit (limit: %d in %v) for %s",
-				rl.config.MaxRequests, rl.config.Window, key)
-		}
 		rl.logger.Errorw("rate limit operation failed", "error", err, "key", key)
 		return err
+	}
+
+	// No match means rate limit exceeded
+	if result.MatchedCount == 0 {
+		rateLimitDenials.Inc(key)
+		return status.Errorf(codes.ResourceExhausted,
+			"request exceeds rate limit (limit: %d in %v) for %s",
+			rl.config.MaxRequests, rl.config.Window, key)
 	}
 
 	return nil
