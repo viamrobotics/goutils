@@ -8,6 +8,7 @@ import (
 
 	"github.com/edaniels/golog"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.viam.com/test"
 
 	"go.viam.com/utils/testutils"
@@ -22,19 +23,19 @@ func TestMongoDBRateLimiter(t *testing.T) {
 		Window:      time.Second,
 	}
 
-	setUpLimiter := func(t *testing.T) WebRTCRateLimiter {
+	setUpLimiter := func(t *testing.T, ctx context.Context) *MongoDBRateLimiter {
 		t.Helper()
-		test.That(t, client.Database(mongodbWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
+		test.That(t, client.Database(mongodbWebRTCCallQueueDBName).Drop(ctx), test.ShouldBeNil)
 
-		limiter, err := NewMongoDBRateLimiter(client, logger, config)
+		limiter, err := NewMongoDBRateLimiter(ctx, client, config, logger)
 		test.That(t, err, test.ShouldBeNil)
 		return limiter
 	}
 
 	t.Run("allows requests under limit", func(t *testing.T) {
-		limiter := setUpLimiter(t)
 		ctx := context.Background()
 		key := "test"
+		limiter := setUpLimiter(t, ctx)
 
 		for i := 0; i < config.MaxRequests; i++ {
 			err := limiter.Allow(ctx, key)
@@ -43,9 +44,9 @@ func TestMongoDBRateLimiter(t *testing.T) {
 	})
 
 	t.Run("denies requests over limit", func(t *testing.T) {
-		limiter := setUpLimiter(t)
 		ctx := context.Background()
 		key := "test"
+		limiter := setUpLimiter(t, ctx)
 
 		// Fill up to the limit
 		for i := 0; i < config.MaxRequests; i++ {
@@ -59,9 +60,9 @@ func TestMongoDBRateLimiter(t *testing.T) {
 	})
 
 	t.Run("sliding window resets after duration", func(t *testing.T) {
-		limiter := setUpLimiter(t)
 		ctx := context.Background()
 		key := "test"
+		limiter := setUpLimiter(t, ctx)
 
 		// Fill up the limit
 		for i := 0; i < config.MaxRequests; i++ {
@@ -75,7 +76,7 @@ func TestMongoDBRateLimiter(t *testing.T) {
 		test.That(t, err.Error(), test.ShouldContainSubstring, "request exceeds rate limit")
 
 		// Wait for window to pass and let requests expire
-		time.Sleep(2 * config.Window)
+		time.Sleep(2*config.Window + 100*time.Millisecond)
 
 		// Should be allowed again
 		err = limiter.Allow(ctx, key)
@@ -83,11 +84,10 @@ func TestMongoDBRateLimiter(t *testing.T) {
 	})
 
 	t.Run("different keys have separate limits", func(t *testing.T) {
-		limiter := setUpLimiter(t)
-
 		ctx := context.Background()
 		key1 := "test1"
 		key2 := "test2"
+		limiter := setUpLimiter(t, ctx)
 
 		// Fill key1's limit
 		for i := 0; i < config.MaxRequests; i++ {
@@ -105,30 +105,37 @@ func TestMongoDBRateLimiter(t *testing.T) {
 		test.That(t, err, test.ShouldBeNil)
 	})
 
-	t.Run("trims old requests with slice", func(t *testing.T) {
-		limiter := setUpLimiter(t)
+	t.Run("trims old requests outside window", func(t *testing.T) {
 		ctx := context.Background()
 		key := "test"
+		limiter := setUpLimiter(t, ctx)
 
-		// Make way more requests than limit
-		for i := 0; i < config.MaxRequests*3; i++ {
-			limiter.Allow(ctx, key)
+		// Make initial requests (will be filtered out later)
+		for i := 0; i < config.MaxRequests; i++ {
+			err := limiter.Allow(ctx, key)
+			test.That(t, err, test.ShouldBeNil)
 		}
 
-		// Verify array doesn't grow unbounded
-		var doc rateLimitDocument
-		mongoLimiter, ok := limiter.(*mongodbRateLimiter)
-		test.That(t, ok, test.ShouldBeTrue)
-		err := mongoLimiter.rateLimitColl.FindOne(ctx, bson.M{"_id": key}).Decode(&doc)
+		// Wait for window to pass
+		time.Sleep(2*config.Window + 100*time.Millisecond)
+
+		// Make 1 new request
+		err := limiter.Allow(ctx, key)
 		test.That(t, err, test.ShouldBeNil)
-		test.That(t, len(doc.Requests), test.ShouldEqual, config.MaxRequests*2)
+
+		// Verify array contains exactly the 1 new request (old ones filtered out)
+		var doc struct {
+			Requests []primitive.DateTime `bson:"requests"`
+		}
+		err = limiter.rateLimitColl.FindOne(ctx, bson.M{"_id": key}).Decode(&doc)
+		test.That(t, err, test.ShouldBeNil)
+		test.That(t, len(doc.Requests), test.ShouldEqual, 1)
 	})
 
 	t.Run("handles concurrent requests from same key", func(t *testing.T) {
-		limiter := setUpLimiter(t)
-
 		ctx := context.Background()
-		key := "user"
+		key := "test"
+		limiter := setUpLimiter(t, ctx)
 
 		// Make double the number of requests concurrently
 		numRequests := config.MaxRequests * 2
@@ -158,9 +165,9 @@ func TestMongoDBRateLimiter(t *testing.T) {
 	})
 
 	t.Run("handles concurrent requests from different keys", func(t *testing.T) {
-		limiter := setUpLimiter(t)
-
 		ctx := context.Background()
+		limiter := setUpLimiter(t, ctx)
+
 		numUsers := 3
 		allowedReqs := numUsers * config.MaxRequests
 		totalReqs := allowedReqs + 1
