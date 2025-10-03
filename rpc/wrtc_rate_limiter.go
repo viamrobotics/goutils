@@ -96,7 +96,6 @@ func (rl *MongoDBRateLimiter) Allow(ctx context.Context, key string) error {
 			"expires_at": expiryTime,
 		}},
 		options.Update().SetUpsert(true))
-
 	if err != nil {
 		rl.logger.Errorw("rate limit doc existence check failed", "error", err, "key", key)
 		return err
@@ -165,7 +164,6 @@ func (rl *MongoDBRateLimiter) Allow(ctx context.Context, key string) error {
 	}
 
 	_, err = rl.rateLimitColl.UpdateOne(ctx, filter, update)
-
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
 			// Filter didn't match = rate limit exceeded
