@@ -59,11 +59,13 @@ func NewMongoDBRateLimiter(
 ) (*MongoDBRateLimiter, error) {
 	rateLimitColl := client.Database(mongodbWebRTCCallQueueDBName).Collection(mongodbWebRTCRateLimiterCollName)
 
+	ttlSeconds := int32(0)
 	indexes := []mongo.IndexModel{
 		{
 			Keys: bson.D{{Key: "expires_at", Value: 1}},
 			Options: &options.IndexOptions{
-				Name: &mongodbWebRTCRateLimiterTTLName,
+				Name:               &mongodbWebRTCRateLimiterTTLName,
+				ExpireAfterSeconds: &ttlSeconds,
 			},
 		},
 	}
