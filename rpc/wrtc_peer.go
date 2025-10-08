@@ -99,13 +99,6 @@ func newWebRTCAPI(logger utils.ZapCompatibleLogger) (*webrtc.API, error) {
 		return false
 	})
 
-	// When an `ICEServer` is configured with a `turn:...?transport=tcp` string, we will generate
-	// "true" passive TCP local candidates. It's not clear how close to spec we are here, so it's
-	// recommended to also have a UDP turn ICEServer (simply omit `transport=tcp`). When both exist
-	// and result in useable candidate pairs, the UDP one ought to be preferred using ICE
-	// candidate priorities.
-	settingEngine.SetUseTCPAllocationsForLocalRelayCandidates(true)
-
 	// Use SOCKS proxy from environment as ICE proxy dialer and net transport.
 	if proxyAddr := os.Getenv(SocksProxyEnvVar); proxyAddr != "" {
 		logger.Info("behind SOCKS proxy; setting ICE proxy dialer")
@@ -122,6 +115,16 @@ func newWebRTCAPI(logger utils.ZapCompatibleLogger) (*webrtc.API, error) {
 				proxyAddr, err)
 		}
 		settingEngine.SetNet(pn)
+	} else {
+		// When an `ICEServer` is configured with a `turn:...?transport=tcp` string, we will generate
+		// "true" passive TCP local candidates. It's not clear how close to spec we are here, so it's
+		// recommended to also have a UDP turn ICEServer (simply omit `transport=tcp`). When both exist
+		// and result in useable candidate pairs, the UDP one ought to be preferred using ICE
+		// candidate priorities.
+		//
+		// Does not work over socks proxy:
+		// relayAllocation.AcceptTCP() errors with dial tcp [turn server ip]:0: connect: network is unreachable
+		settingEngine.SetUseTCPAllocationsForLocalRelayCandidates(true)
 	}
 
 	options := []func(a *webrtc.API){webrtc.WithMediaEngine(&m), webrtc.WithInterceptorRegistry(&i)}
