@@ -188,7 +188,7 @@ func testWebRTCCallQueue(t *testing.T, setupQueues func(t *testing.T) (WebRTCCal
 			answerCancel()
 			select {
 			case answererErr := <-answererDone:
-				if answererErr != nil && answererErr != context.Canceled {
+				if answererErr != nil && !errors.Is(answererErr, context.Canceled) {
 					t.Errorf("unexpected error: %v", answererErr)
 				}
 			case <-time.After(5 * time.Second):
