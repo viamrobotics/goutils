@@ -172,10 +172,6 @@ func TestTimingReport(t *testing.T) {
 	}}, []string{}, &wd)
 
 	// The "walk data" paths must be in call order. Depend on that for assertions.
-	// A
-	// A -> B
-	// A -> B -> C
-	// A -> C
 	test.That(t, wd.paths, test.ShouldHaveLength, 4)
 	test.That(t, wd.paths[0].spanChain, test.ShouldResemble, []string{"A"})
 	test.That(t, wd.paths[0].count, test.ShouldEqual, 1)

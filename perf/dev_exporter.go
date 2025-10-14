@@ -250,9 +250,9 @@ func (wd *walkData) output(writer io.Writer) {
 	for _, spanPath := range wd.paths {
 		indentedName := fmt.Sprintf("%v%v:", strings.Repeat("  ", len(spanPath.spanChain)-1), spanPath.funcName())
 		trailingSpaces := strings.Repeat(" ", maxLength-len(indentedName))
-		fmt.Fprintf(writer, "%v%v\tCalls: %5d\tTotal time: %-13v\tAverage time: %v\n",
+		utils.UncheckedError(fmt.Fprintf(writer, "%v%v\tCalls: %5d\tTotal time: %-13v\tAverage time: %v\n",
 			indentedName, trailingSpaces,
-			spanPath.count, spanPath.totalTime(), spanPath.averageTime())
+			spanPath.count, spanPath.totalTime(), spanPath.averageTime()))
 	}
 }
 
