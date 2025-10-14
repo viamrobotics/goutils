@@ -12,10 +12,10 @@ import (
 	"github.com/edaniels/golog"
 	"go.opencensus.io/metric/metricexport"
 	"go.opencensus.io/trace"
+	"go.viam.com/test"
 	"goji.io"
 	"goji.io/pat"
 
-	"go.viam.com/test"
 	"go.viam.com/utils/rpc"
 )
 

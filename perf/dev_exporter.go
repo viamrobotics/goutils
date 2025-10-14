@@ -187,7 +187,7 @@ func (wd *walkData) get(caller []string, callee string) *spanPath {
 	if wd.paths == nil {
 		// This is the root span. `caller` is assumed to be empty. Initialize the paths with the
 		// callee.
-		wd.paths = []spanPath{spanPath{
+		wd.paths = []spanPath{{
 			spanChain: []string{callee},
 		}}
 
@@ -250,9 +250,10 @@ func (wd *walkData) output(writer io.Writer) {
 	for _, spanPath := range wd.paths {
 		indentedName := fmt.Sprintf("%v%v:", strings.Repeat("  ", len(spanPath.spanChain)-1), spanPath.funcName())
 		trailingSpaces := strings.Repeat(" ", maxLength-len(indentedName))
-		utils.UncheckedError(fmt.Fprintf(writer, "%v%v\tCalls: %5d\tTotal time: %-13v\tAverage time: %v\n",
+		_, err := fmt.Fprintf(writer, "%v%v\tCalls: %5d\tTotal time: %-13v\tAverage time: %v\n",
 			indentedName, trailingSpaces,
-			spanPath.count, spanPath.totalTime(), spanPath.averageTime()))
+			spanPath.count, spanPath.totalTime(), spanPath.averageTime())
+		utils.UncheckedError(err)
 	}
 }
 
