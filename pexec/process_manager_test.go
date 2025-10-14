@@ -187,7 +187,15 @@ func TestProcessManagerStart(t *testing.T) {
 			if runtime.GOOS == "windows" {
 				// on windows, we return a process not found error here
 				var processNotExistsErr *ProcessNotExistsError
-				test.That(t, errors.As(pm.Stop(), &processNotExistsErr), test.ShouldBeTrue)
+				// NOTE(benjirewis): we do not _always_ return a process not found error here in
+				// CI. Log the error value for now to get more information.
+				stopErr := pm.Stop()
+				if stopErr != nil {
+					t.Logf("error from Stop on windows was %q", stopErr.Error())
+				} else {
+					t.Log("error from Stop on windows was (unexpectedly) nil")
+				}
+				test.That(t, errors.As(stopErr, &processNotExistsErr), test.ShouldBeTrue)
 			} else {
 				test.That(t, pm.Stop(), test.ShouldBeNil)
 			}
