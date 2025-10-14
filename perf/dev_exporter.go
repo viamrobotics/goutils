@@ -7,8 +7,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"os"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -28,6 +31,13 @@ type developmentExporter struct {
 	ir             *metricexport.IntervalReader
 	initReaderOnce sync.Once
 	o              DevelopmentExporterOptions
+
+	// For testing. Disable deleting from `children` such that a test can walk over `children` again
+	// to recreate span information.
+	deleteDisabled bool
+
+	// For testing. By default will be set to stdout.
+	outputWriter io.Writer
 }
 
 // DevelopmentExporterOptions provides options for DevelopmentExporter.
@@ -46,6 +56,7 @@ type DevelopmentExporterOptions struct {
 type mySpanInfo struct {
 	toPrint string
 	id      string
+	Data    *trace.SpanData
 }
 
 var reZero = regexp.MustCompile(`^0+$`)
@@ -60,9 +71,10 @@ func NewDevelopmentExporter() Exporter {
 // NewDevelopmentExporterWithOptions creates a new log exporter with the given options.
 func NewDevelopmentExporterWithOptions(options DevelopmentExporterOptions) Exporter {
 	return &developmentExporter{
-		children: map[string][]mySpanInfo{},
-		reader:   metricexport.NewReader(),
-		o:        options,
+		children:     map[string][]mySpanInfo{},
+		reader:       metricexport.NewReader(),
+		o:            options,
+		outputWriter: os.Stdout,
 	}
 }
 
@@ -162,12 +174,103 @@ func (e *developmentExporter) ExportMetrics(ctx context.Context, metrics []*metr
 	return nil
 }
 
-func (e *developmentExporter) printTree(root, padding string) {
-	for _, s := range e.children[root] {
-		log.Printf("%s %s\n", padding, s.toPrint)
-		e.printTree(s.id, padding+"  ")
+// walkData accumulates all of the sub-spans when walking a completed span.
+type walkData struct {
+	paths []spanPath
+}
+
+// get is called with `parents(currSpan), currSpan`. So if span `A` calls span `B` calls span `C`:
+//
+//	caller: ["A", "B"]
+//	callee: "C"
+func (wd *walkData) get(caller []string, callee string) *spanPath {
+	if wd.paths == nil {
+		// This is the root span. `caller` is assumed to be empty. Initialize the paths with the
+		// callee.
+		wd.paths = []spanPath{spanPath{
+			spanChain: []string{callee},
+		}}
+
+		return &wd.paths[0]
 	}
-	delete(e.children, root)
+
+	// First, see if we have an exact match.
+	for idx, path := range wd.paths {
+		// Below reads as "the prefix of the span chain" is equal to the `caller`.
+		if len(caller)+1 == len(path.spanChain) && slices.Equal(caller, path.spanChain[:len(caller)]) &&
+			// and the tail of the span chain is equal to the `callee`.
+			path.spanChain[len(caller)] == callee {
+			return &wd.paths[idx]
+		}
+	}
+
+	// Otherwise, we are a new `spanChain`. Add to the tally of `paths`.
+	pathCopy := make([]string, len(caller)+1)
+	copy(pathCopy, caller)
+	pathCopy[len(caller)] = callee
+	wd.paths = append(wd.paths, spanPath{
+		spanChain: pathCopy,
+	})
+
+	return &wd.paths[len(wd.paths)-1]
+}
+
+// spanPath represents an entire "invocation chain" from the root span.
+type spanPath struct {
+	// If Span A calls Span B calls Span C, we get `['A", "B", "C"]`. Where `C` is the span/function
+	// the count/timing information is representing.
+	spanChain []string
+	count     int64
+	timeNanos int64
+}
+
+func (sp *spanPath) funcName() string {
+	return sp.spanChain[len(sp.spanChain)-1]
+}
+
+func (sp *spanPath) totalTime() time.Duration {
+	return time.Duration(sp.timeNanos)
+}
+
+func (sp *spanPath) averageTime() time.Duration {
+	// `sp.count` must be at least "1".
+	return time.Duration(sp.timeNanos / sp.count)
+}
+
+func (wd *walkData) output(writer io.Writer) {
+	// For padding, we calculate the maximum length of the indented span/function name for each row.
+	maxLength := 0
+	for _, spanPath := range wd.paths {
+		// We indent each span/function name by two spaces per call depth from the root span. Plus
+		// one for the trailing colon.
+		thisLength := 2*len(spanPath.spanChain) + len(spanPath.funcName()) + 1
+		maxLength = max(maxLength, thisLength)
+	}
+
+	for _, spanPath := range wd.paths {
+		indentedName := fmt.Sprintf("%v%v:", strings.Repeat("  ", len(spanPath.spanChain)-1), spanPath.funcName())
+		trailingSpaces := strings.Repeat(" ", maxLength-len(indentedName))
+		fmt.Fprintf(writer, "%v%v\tCalls: %5d\tTotal time: %-13v\tAverage time: %v\n",
+			indentedName, trailingSpaces,
+			spanPath.count, spanPath.totalTime(), spanPath.averageTime())
+	}
+}
+
+func (e *developmentExporter) recurse(currSpan *mySpanInfo, callerPath []string, wd *walkData) {
+	// Get the accumulator for this
+	myPath := wd.get(callerPath, currSpan.Data.Name)
+	myPath.count++
+	myPath.timeNanos += currSpan.Data.EndTime.UnixNano() - currSpan.Data.StartTime.UnixNano()
+
+	// We incremented our counters. Now walk all of our children spans and do the same.
+	children := e.children[currSpan.id]
+	for idx := range children {
+		e.recurse(&children[idx], myPath.spanChain, wd)
+	}
+
+	if !e.deleteDisabled {
+		delete(e.children, currSpan.id)
+	}
 }
 
 // ExportSpan exports a SpanData to log.
@@ -188,11 +291,11 @@ func (e *developmentExporter) ExportSpan(sd *trace.SpanData) {
 	parentSpanID := hex.EncodeToString(sd.ParentSpanID[:])
 
 	if !reZero.MatchString(parentSpanID) {
-		e.children[parentSpanID] = append(e.children[parentSpanID], mySpanInfo{myinfo, spanID})
+		e.children[parentSpanID] = append(e.children[parentSpanID], mySpanInfo{myinfo, spanID, sd})
 		return
 	}
 
-	// i'm the top of the tree, go me
-	log.Println(myinfo)
-	e.printTree(hex.EncodeToString(sd.SpanContext.SpanID[:]), "  ")
+	wd := walkData{}
+	e.recurse(&mySpanInfo{myinfo, spanID, sd}, []string{}, &wd)
+	wd.output(e.outputWriter)
 }
