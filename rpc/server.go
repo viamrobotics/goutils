@@ -222,7 +222,7 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 	serverOpts := []grpc.ServerOption{
 		grpc.MaxRecvMsgSize(MaxMessageSize),
 		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
-			MinTime:             keepAliveTime / 2, // a little extra buffer to try to avoid ENHANCE_YOUR_CALM
+			MinTime:             KeepAliveTime / 2, // a little extra buffer to try to avoid ENHANCE_YOUR_CALM
 			PermitWithoutStream: true,
 		}),
 	}
