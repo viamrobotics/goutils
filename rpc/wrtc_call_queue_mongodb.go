@@ -119,6 +119,25 @@ var (
 		},
 	)
 
+	connectionEstablishmentBlockedPotentialSuccesses = statz.NewCounter2[string, string](
+		"signaling/connection_establishment_blocked_potential_successes",
+		statz.MetricConfig{
+			Description: "The total number of connection attempts that we blocked that " +
+				"may have succeeded as the machine connected to an operator in the last 10s.",
+			Unit: units.Dimensionless,
+			Labels: []statz.Label{
+				{
+					Name:        "sdk_type",
+					Description: "The type of SDK attempting to connect.",
+				},
+				{
+					Name:        "organization_id",
+					Description: "The organization ID of the machine that is being connected to.",
+				},
+			},
+		},
+	)
+
 	connectionEstablishmentCallerTimeouts = statz.NewCounter2[string, string](
 		"signaling/connection_establishment_caller_timeouts",
 		statz.MetricConfig{
@@ -241,8 +260,13 @@ type mongoDBWebRTCCallQueue struct {
 	csStateUpdates              chan changeStreamStateUpdate
 	csCtxCancel                 func()
 
-	// function to update access times on robot parts based on this call queue
-	activeAnswerersfunc *func(hostnames []string, atTime time.Time)
+	// function passed in during construction to update last_online timestamps for documents
+	// in robot and robot_part based on this call-queue/operator.
+	onAnswererLiveness func(hostnames []string, atTime time.Time)
+	// function passed in during construction to check if the last_online timestamp in the
+	// robot_part collection for hostname was in the past 10s (recently online).
+	checkAnswererLiveness func(hostname string) bool
+
 	// 1 caller/answerer -> 1 caller id -> 1 event stream
 	callExchangeSubs map[string]map[*mongodbCallExchange]struct{}
 
@@ -289,7 +313,8 @@ func NewMongoDBWebRTCCallQueue(
 	maxHostCallers uint64,
 	client *mongo.Client,
 	logger utils.ZapCompatibleLogger,
-	activeAnswerersfunc func(hostnames []string, atTime time.Time),
+	onAnswererLiveness func(hostnames []string, atTime time.Time),
+	checkAnswererLiveness func(hostname string) bool,
 ) (WebRTCCallQueue, error) {
 	if operatorID == "" {
 		return nil, errors.New("expected non-empty operatorID")
@@ -373,7 +398,8 @@ func NewMongoDBWebRTCCallQueue(
 		csStateUpdates:        make(chan changeStreamStateUpdate),
 		callExchangeSubs:      map[string]map[*mongodbCallExchange]struct{}{},
 		waitingForNewCallSubs: map[string]map[*mongodbNewCallEventHandler]struct{}{},
-		activeAnswerersfunc:   &activeAnswerersfunc,
+		onAnswererLiveness:    onAnswererLiveness,
+		checkAnswererLiveness: checkAnswererLiveness,
 	}
 
 	queue.activeBackgroundWorkers.Add(2)
@@ -569,8 +595,8 @@ func (queue *mongoDBWebRTCCallQueue) operatorLivenessLoop() {
 			}
 		}
 
-		if queue.activeAnswerersfunc != nil {
-			(*queue.activeAnswerersfunc)(hostsWithAnswerers, time.Now())
+		if queue.onAnswererLiveness != nil {
+			queue.onAnswererLiveness(hostsWithAnswerers, time.Now())
 		}
 	}
 }
@@ -1149,6 +1175,17 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 	}
 
 	if err := queue.checkHostOnline(ctx, host); err != nil {
+		if queue.checkAnswererLiveness != nil {
+			if answererLive := queue.checkAnswererLiveness(host); !answererLive {
+				// NOTE(RSDK-12228): Increment a metric here. We _could_ use this conditional as
+				// the decision point to return an offlineErr in place of the conditional above,
+				// but, for now, we just want to see where we are blocking connection
+				// establishments in the signaling server to machines that _have_ reportedly
+				// connected to an operator in the past 10s.
+				connectionEstablishmentBlockedPotentialSuccesses.Inc(sdkType, organizationID)
+			}
+		}
+
 		connectionEstablishmentExpectedFailures.Inc(sdkType, organizationID)
 		// TODO(RSDK-11928): Implement proper time-based rate limiting to prevent clients from spamming connection attempts to offline machines so
 		// we can remove sleep and error instantly.
