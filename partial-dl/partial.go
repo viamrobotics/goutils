@@ -1,0 +1,219 @@
+// Package partial provides partial download support using range headers
+package partial
+
+// important: if you modify this file, you must run ./cmd/partial-dl in addition to running the test suite.
+// The test suite contains mocks, but you must test against a live server too.
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"sync"
+
+	"go.viam.com/utils"
+)
+
+const (
+	partSuffix = ".part"
+	etagSuffix = ".etag"
+)
+
+// ErrInterruptedDownload is for testing.
+var ErrInterruptedDownload = errors.New("interrupting download to respect MaxRead")
+
+// ProgressFunc is for wrapping io.Copy with a progress bar.
+type ProgressFunc func(ctx context.Context,
+	outWriter io.WriteSeeker,
+	outPath string,
+	size int64,
+	logger utils.ZapCompatibleLogger,
+	workers *sync.WaitGroup,
+) (io.WriteSeeker, context.CancelFunc)
+
+// Downloader manages on-disk state and decision tree for partial downloads.
+type Downloader struct {
+	Client *http.Client
+	Logger utils.ZapCompatibleLogger
+	// if non-nil, this wraps the io.Copy. See agent codebase for example.
+	Progress ProgressFunc
+	// if non-nil, call this after a successful copy. Used for platform-specific sync.
+	AfterCopy func(path string) error
+
+	// maximum bytes to read in one call to Download(). used only for testing.
+	MaxRead int
+	// turn off the resume path for testing
+	DontResume bool
+}
+
+type downloadState struct {
+	// the ultimate destination of the download
+	dest string
+	// the stat of dest + '.part'
+	partInfo os.FileInfo
+	// contents of dest + '.etag'
+	etag string
+}
+
+func getDownloadState(dest string) (*downloadState, error) {
+	stat, err := os.Stat(dest + partSuffix)
+	if err != nil {
+		return nil, err
+	}
+	etag, err := os.ReadFile(dest + etagSuffix) //nolint:gosec
+	if err != nil {
+		return nil, err
+	}
+	return &downloadState{dest: dest, partInfo: stat, etag: string(etag)}, nil
+}
+
+// Download is the entrypoint for the partial download process.
+func (p *Downloader) Download(ctx context.Context, url, dest string) error {
+	state, err := getDownloadState(dest)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if p.DontResume {
+		p.Logger.Info("setting state=nil because the p.DontResume test flag is set")
+		state = nil
+	}
+	if state == nil {
+		p.Logger.Debug("no partial, downloading from start")
+		return p.downloadFromStart(ctx, url, dest)
+	}
+	p.Logger.Debug("partial found, resuming")
+	return p.resumeDownload(ctx, url, dest, state)
+}
+
+func (p *Downloader) downloadFromStart(ctx context.Context, url, dest string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := p.Client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close() //nolint:errcheck
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("bad status %q", resp.Status)
+	}
+	return p.downloadResponseFromStart(ctx, dest, resp)
+}
+
+// inner from-start logic for downloadFromstart and the fail case in resumeDownload.
+func (p *Downloader) downloadResponseFromStart(ctx context.Context, dest string, resp *http.Response) error {
+	var destFile *os.File
+	var err error
+
+	// "bytes" is the only supported value for this header
+	// per https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Accept-Ranges
+	isPartial := false
+	if resp.Header.Get("Accept-Ranges") == "bytes" && resp.Header.Get("Etag") != "" {
+		p.Logger.Debugf("headers found (%q, %q), starting partial", resp.Header.Get("Accept-Ranges"), resp.Header.Get("Etag"))
+		if err := os.WriteFile(dest+etagSuffix, []byte(resp.Header.Get("Etag")), 0o600); err != nil {
+			return err
+		}
+		isPartial = true
+		destFile, err = os.Create(dest + partSuffix) //nolint:gosec
+	} else {
+		p.Logger.Debugf("missing range or etag header (%q, %q), downloading without resume",
+			resp.Header.Get("Accept-Ranges"), resp.Header.Get("Etag"))
+		destFile, err = os.Create(dest) //nolint:gosec
+	}
+	if err != nil {
+		return err
+	}
+	defer destFile.Close() //nolint:errcheck
+	if err := p.copyWithProgress(ctx, resp, destFile); err != nil {
+		return err
+	}
+	if isPartial {
+		return p.cleanup(dest, true)
+	}
+	return nil
+}
+
+// try to resume a download; if not resumable, clean up state and download from start instead.
+func (p *Downloader) resumeDownload(ctx context.Context, url, dest string, state *downloadState) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Add("Range", fmt.Sprintf("bytes=%d-", state.partInfo.Size()))
+	req.Header.Add("If-Match", state.etag)
+	resp, err := p.Client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close() //nolint:errcheck
+
+	switch resp.StatusCode {
+	case http.StatusOK:
+		fallthrough // I think 200 here means the server isn't serving a range; treat this as an error
+	case http.StatusPreconditionFailed:
+		p.Logger.Debug("precondition failed, downloading from start")
+		if err := p.cleanup(dest, false); err != nil {
+			return err
+		}
+		return p.downloadFromStart(ctx, url, dest)
+	case http.StatusPartialContent:
+		break
+	default:
+		return fmt.Errorf("unexpected status %q", resp.Status)
+	}
+
+	p.Logger.Debug("precondition succeeded, beginning resume")
+	destFile, err := os.OpenFile(dest+partSuffix, os.O_APPEND|os.O_WRONLY, 0o600) //nolint:gosec
+	if err != nil {
+		return err
+	}
+	defer destFile.Close() //nolint:errcheck
+
+	if err := p.copyWithProgress(ctx, resp, destFile); err != nil {
+		return err
+	}
+	return p.cleanup(dest, true)
+}
+
+// rename part to dest if success, otherwise delete part. delete etag. call this after a download succeeds or fails irrecoverably.
+func (p *Downloader) cleanup(dest string, success bool) error {
+	// note: failures here can cause resume to break; the code that uses PartialDownloader needs to check checksum after finishing.
+	var err error
+	if success {
+		p.Logger.Debugf("renaming %q -> %q", dest+partSuffix, dest)
+		err = errors.Join(err, os.Rename(dest+partSuffix, dest))
+	} else {
+		err = errors.Join(err, os.Remove(dest+partSuffix))
+	}
+	return errors.Join(err, os.Remove(dest+etagSuffix))
+}
+
+func (p *Downloader) copyWithProgress(ctx context.Context, resp *http.Response, destFile *os.File) error {
+	workers := &sync.WaitGroup{}
+	defer workers.Wait()
+
+	var writer io.WriteSeeker = destFile
+	cancelFunc := func() {}
+	if p.Progress != nil {
+		writer, cancelFunc = p.Progress(ctx, destFile, destFile.Name(), resp.ContentLength, p.Logger, workers)
+	}
+	defer cancelFunc()
+
+	if p.MaxRead != 0 {
+		_, err := io.CopyN(writer, resp.Body, int64(p.MaxRead))
+		if err != nil {
+			return err
+		}
+		return ErrInterruptedDownload
+	}
+	if _, err := io.Copy(writer, resp.Body); err != nil {
+		return err
+	}
+	if p.AfterCopy != nil {
+		return p.AfterCopy(destFile.Name())
+	}
+	return nil
+}
