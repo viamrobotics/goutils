@@ -181,12 +181,23 @@ func testWebRTCCallQueue(t *testing.T, setupQueues func(t *testing.T) (WebRTCCal
 		host := primitive.NewObjectID().Hex()
 
 		// We need to have an answerer online to handle this host before sending the offer so it doesn't immediately fail, but we don't care what
-		// happens to the offer.
+		// happens to the offer, just that it gets cleaned up.
 		answerCtx, answerCancel := context.WithCancel(context.Background())
-		defer answerCancel()
+		answererDone := make(chan error, 1)
+		defer func() {
+			answerCancel()
+			select {
+			case answererErr := <-answererDone:
+				if answererErr != nil && !errors.Is(answererErr, context.Canceled) {
+					t.Errorf("unexpected error: %v", answererErr)
+				}
+			case <-time.After(5 * time.Second):
+				t.Error("RecvOffer goroutine did not complete")
+			}
+		}()
 		go func() {
 			_, answererErr := answererQueue.RecvOffer(answerCtx, []string{host})
-			test.That(t, answererErr, test.ShouldBeError, context.Canceled)
+			answererDone <- answererErr
 		}()
 		waitForAnswererOnline(context.Background(), t, []string{host}, answererQueue)
 
