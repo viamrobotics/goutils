@@ -323,7 +323,7 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 	var pc *webrtc.PeerConnection
 	defer func() {
 		if err != nil && pc == nil {
-			aa.logger.Warnw("Connection establishment failed",
+			aa.logger.Infow("Diagnostic data for failed webrtc connection attempt",
 				"connection start time", connectionStartTime.String(),
 				"deadline", deadline.String(),
 				"error", err.Error(),
@@ -451,7 +451,7 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 			if err != nil {
 				logFields = append(logFields, "error", err.Error())
 			}
-			aa.logger.Warnw("Connection establishment failed", logFields...)
+			aa.logger.Infow("Diagnostic data for failed webrtc connection attempt", logFields...)
 
 			// Close unhealthy connection.
 			utils.UncheckedError(pc.GracefulClose())
