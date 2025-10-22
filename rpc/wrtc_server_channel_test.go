@@ -268,7 +268,7 @@ func TestWebRTCServerChannelResetStream(t *testing.T) {
 
 	server := newWebRTCServer(logger)
 	defer server.Stop()
-	// use signaling server just as some random service to test against.
+	// use echo server just as some random service to test against.
 	// It helps that it is in our package.
 	queue := newMemoryWebRTCCallQueueTest(logger)
 	defer queue.Close()
