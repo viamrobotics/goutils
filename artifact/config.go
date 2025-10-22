@@ -21,7 +21,7 @@ var (
 // DefaultSourcePullSizeLimitBytes is the limit where if a normal pull happens,
 // a file larger than this size will not be pulled down from source
 // unless pull with ignoring the limit is used.
-const DefaultSourcePullSizeLimitBytes = 1 << 22
+const DefaultSourcePullSizeLimitBytes = 1 << 30
 
 // A Config describes how artifact should function.
 type Config struct {
