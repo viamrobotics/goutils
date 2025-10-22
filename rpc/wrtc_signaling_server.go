@@ -207,7 +207,6 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 		case <-respDone:
 			return nil
 		case resp = <-respCh:
-			time.Sleep(time.Second)
 		}
 		if resp.Err != nil {
 			err := fmt.Errorf("error from answerer: %w", resp.Err)
