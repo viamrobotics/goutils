@@ -133,7 +133,7 @@ func newBaseChannel(
 				// connection has been established.
 				connectionStateChangedLogFields = append(connectionStateChangedLogFields,
 					"candidate_pair", candPair.String())
-				logger.Infow("Connection establishment succeeded", connectionStateChangedLogFields...)
+				logger.Infow("Diagnostic data for successful webrtc connection attempt", connectionStateChangedLogFields...)
 			} else {
 				// Use debug level when there is no selected candidate pair to avoid
 				// noise.
