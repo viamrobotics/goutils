@@ -15,7 +15,9 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"go.viam.com/utils"
+	echopb "go.viam.com/utils/proto/rpc/examples/echo/v1"
 	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
+	echoserver "go.viam.com/utils/rpc/examples/echo/server"
 	"go.viam.com/utils/testutils"
 )
 
@@ -266,16 +268,12 @@ func TestWebRTCServerChannelResetStream(t *testing.T) {
 
 	server := newWebRTCServer(logger)
 	defer server.Stop()
-	// use signaling server just as some random service to test against.
+	// use echo server just as some random service to test against.
 	// It helps that it is in our package.
 	queue := newMemoryWebRTCCallQueueTest(logger)
 	defer queue.Close()
-	signalServer := NewWebRTCSignalingServer(queue, nil, utils.Sublogger(logger, "signalingServer"), defaultHeartbeatInterval)
-	defer signalServer.Close()
-	server.RegisterService(
-		&webrtcpb.SignalingService_ServiceDesc,
-		signalServer,
-	)
+	echoSrv := &delayingEchoServer{}
+	server.RegisterService(&echopb.EchoService_ServiceDesc, echoSrv)
 
 	serverCh := newWebRTCServerChannel(server, pc2, dc2, []string{"one", "two"}, logger)
 	defer serverCh.Close()
@@ -283,26 +281,34 @@ func TestWebRTCServerChannelResetStream(t *testing.T) {
 	<-clientCh.Ready()
 	<-serverCh.Ready()
 
-	var expectedMessagesMu sync.Mutex
-	var expectedMessages []*webrtcpb.Response
-	var messagesRead chan struct{}
-	clientCh.dataChannel.OnMessage(func(msg webrtc.DataChannelMessage) {
-		expectedMessagesMu.Lock()
-		defer expectedMessagesMu.Unlock()
-		req := &webrtcpb.Response{}
-		test.That(t, proto.Unmarshal(msg.Data, req), test.ShouldBeNil)
-		logger.Debugw("got message", "actual", req)
-		test.That(t, expectedMessages, test.ShouldNotBeEmpty)
-		expected := expectedMessages[0]
-		test.That(t, proto.Equal(expected, req), test.ShouldBeTrue)
-		expectedMessages = expectedMessages[1:]
-		if len(expectedMessages) == 0 {
-			close(messagesRead)
-		}
-	})
+	setMessageHandler := func(t *testing.T, expectedMessages []*webrtcpb.Response, messagesRead context.CancelFunc) {
+		// Not sure if OnMessage can call the handler in parallel so put execution
+		// behind a mutex just in case.
+		handlerMu := &sync.Mutex{}
+		clientCh.dataChannel.OnMessage(func(msg webrtc.DataChannelMessage) {
+			defer func() {
+				if t.Failed() {
+					// If the test has already failed then cancel the subtest's context so
+					// it can exit with failure immediately instead of timing out.
+					messagesRead()
+				}
+			}()
+			handlerMu.Lock()
+			defer handlerMu.Unlock()
+			req := &webrtcpb.Response{}
+			test.That(t, proto.Unmarshal(msg.Data, req), test.ShouldBeNil)
+			test.That(t, expectedMessages, test.ShouldNotBeEmpty)
+			expected := expectedMessages[0]
+			test.That(t, req, test.ShouldResembleProto, expected)
+			expectedMessages = expectedMessages[1:]
+			if len(expectedMessages) == 0 {
+				messagesRead()
+			}
+		})
+	}
 	t.Run("reset stream before message sent", func(t *testing.T) {
-		expectedMessagesMu.Lock()
-		expectedMessages = []*webrtcpb.Response{
+		messagesReadCtx, messagesReadCancel := context.WithCancel(context.Background())
+		expectedMessages := []*webrtcpb.Response{
 			{
 				Stream: &webrtcpb.Stream{Id: 1},
 				Type: &webrtcpb.Response_Headers{
@@ -318,23 +324,22 @@ func TestWebRTCServerChannelResetStream(t *testing.T) {
 				},
 			},
 		}
-		messagesRead = make(chan struct{})
-		expectedMessagesMu.Unlock()
+		setMessageHandler(t, expectedMessages, messagesReadCancel)
 
 		test.That(t, clientCh.writeHeaders(&webrtcpb.Stream{
 			Id: 1,
 		}, &webrtcpb.RequestHeaders{
-			Method: "/proto.rpc.webrtc.v1.SignalingService/Call",
+			Method: "/proto.rpc.examples.echo.v1.EchoService/Echo",
 			Metadata: metadataToProto(metadata.MD{
 				"rpc-host": []string{"yeehaw"},
 			}),
 		}), test.ShouldBeNil)
 		test.That(t, clientCh.writeReset(&webrtcpb.Stream{Id: 1}), test.ShouldBeNil)
-		<-messagesRead
+		<-messagesReadCtx.Done()
 	})
 	t.Run("reset stream in middle of message", func(t *testing.T) {
-		expectedMessagesMu.Lock()
-		expectedMessages = []*webrtcpb.Response{
+		messagesReadCtx, messagesReadCancel := context.WithCancel(context.Background())
+		expectedMessages := []*webrtcpb.Response{
 			{
 				Stream: &webrtcpb.Stream{Id: 1},
 				Type: &webrtcpb.Response_Headers{
@@ -350,19 +355,18 @@ func TestWebRTCServerChannelResetStream(t *testing.T) {
 				},
 			},
 		}
-		messagesRead = make(chan struct{})
-		expectedMessagesMu.Unlock()
+		setMessageHandler(t, expectedMessages, messagesReadCancel)
 
 		test.That(t, clientCh.writeHeaders(&webrtcpb.Stream{
 			Id: 1,
 		}, &webrtcpb.RequestHeaders{
-			Method: "/proto.rpc.webrtc.v1.SignalingService/Call",
+			Method: "/proto.rpc.examples.echo.v1.EchoService/Echo",
 			Metadata: metadataToProto(metadata.MD{
 				"rpc-host": []string{"yeehaw"},
 			}),
 		}), test.ShouldBeNil)
 
-		reqMd, err := proto.Marshal(&webrtcpb.CallRequest{Sdp: "hello"})
+		reqMd, err := proto.Marshal(&echopb.EchoRequest{Message: "hello"})
 		test.That(t, err, test.ShouldBeNil)
 
 		test.That(t, clientCh.writeMessage(&webrtcpb.Stream{
@@ -376,20 +380,14 @@ func TestWebRTCServerChannelResetStream(t *testing.T) {
 			Eos: false,
 		}), test.ShouldBeNil)
 		test.That(t, clientCh.writeReset(&webrtcpb.Stream{Id: 1}), test.ShouldBeNil)
-		<-messagesRead
+		<-messagesReadCtx.Done()
 	})
-	t.Run("reset stream after message", func(t *testing.T) {
-		expectedMessagesMu.Lock()
-		respMd, err := proto.Marshal(&webrtcpb.CallResponse{
-			Uuid: "insecure-uuid-1",
-			Stage: &webrtcpb.CallResponse_Init{
-				Init: &webrtcpb.CallResponseInitStage{
-					Sdp: "world",
-				},
-			},
+	t.Run("reset stream after message after server response", func(t *testing.T) {
+		respMd, err := proto.Marshal(&echopb.EchoResponse{
+			Message: "hello",
 		})
 		test.That(t, err, test.ShouldBeNil)
-		expectedMessages = []*webrtcpb.Response{
+		expectedMessages := []*webrtcpb.Response{
 			{
 				Stream: &webrtcpb.Stream{Id: 1},
 				Type: &webrtcpb.Response_Headers{
@@ -411,24 +409,24 @@ func TestWebRTCServerChannelResetStream(t *testing.T) {
 				Stream: &webrtcpb.Stream{Id: 1},
 				Type: &webrtcpb.Response_Trailers{
 					Trailers: &webrtcpb.ResponseTrailers{
-						Status: ErrorToStatus(status.Error(codes.Canceled, "request cancelled")).Proto(),
+						Status: ErrorToStatus(nil).Proto(),
 					},
 				},
 			},
 		}
-		messagesRead = make(chan struct{})
-		expectedMessagesMu.Unlock()
+		messagesReadCtx, messagesReadCancel := context.WithCancel(context.Background())
+		setMessageHandler(t, expectedMessages, messagesReadCancel)
 
 		test.That(t, clientCh.writeHeaders(&webrtcpb.Stream{
 			Id: 1,
 		}, &webrtcpb.RequestHeaders{
-			Method: "/proto.rpc.webrtc.v1.SignalingService/Call",
+			Method: "/proto.rpc.examples.echo.v1.EchoService/Echo",
 			Metadata: metadataToProto(metadata.MD{
 				"rpc-host": []string{"yeehaw"},
 			}),
 		}), test.ShouldBeNil)
 
-		reqMd, err := proto.Marshal(&webrtcpb.CallRequest{Sdp: "hello"})
+		reqMd, err := proto.Marshal(&echopb.EchoRequest{Message: "hello"})
 		test.That(t, err, test.ShouldBeNil)
 
 		test.That(t, clientCh.writeMessage(&webrtcpb.Stream{
@@ -442,12 +440,94 @@ func TestWebRTCServerChannelResetStream(t *testing.T) {
 			Eos: true,
 		}), test.ShouldBeNil)
 
-		offer, err := signalServer.callQueue.RecvOffer(context.Background(), []string{"yeehaw"})
-		test.That(t, err, test.ShouldBeNil)
-		answererSDP := "world"
-		test.That(t, offer.AnswererRespond(context.Background(), WebRTCCallAnswer{InitialSDP: &answererSDP}), test.ShouldBeNil)
+		<-messagesReadCtx.Done()
 		test.That(t, clientCh.writeReset(&webrtcpb.Stream{Id: 1}), test.ShouldBeNil)
-
-		<-messagesRead
 	})
+
+	t.Run("reset stream after message before server response", func(t *testing.T) {
+		respMd, err := proto.Marshal(&echopb.EchoResponse{
+			Message: "hello",
+		})
+		test.That(t, err, test.ShouldBeNil)
+
+		// We need to reset after the service has received the request but before
+		// its response has been written to the wire. To do this we inject a
+		// callback into the echoserver and use channels to coordinate the
+		// goroutines.
+		respWaiting := make(chan struct{})
+		blockResp := make(chan struct{})
+		echoSrv.beforeSend = func() {
+			close(respWaiting)
+			<-blockResp
+		}
+
+		expectedMessages := []*webrtcpb.Response{
+			{
+				Stream: &webrtcpb.Stream{Id: 1},
+				Type: &webrtcpb.Response_Headers{
+					Headers: &webrtcpb.ResponseHeaders{},
+				},
+			},
+			{
+				Stream: &webrtcpb.Stream{Id: 1},
+				Type: &webrtcpb.Response_Message{
+					Message: &webrtcpb.ResponseMessage{
+						PacketMessage: &webrtcpb.PacketMessage{
+							Data: respMd,
+							Eom:  true,
+						},
+					},
+				},
+			},
+			{
+				Stream: &webrtcpb.Stream{Id: 1},
+				Type: &webrtcpb.Response_Trailers{
+					Trailers: &webrtcpb.ResponseTrailers{},
+				},
+			},
+		}
+		messagesReadCtx, messagesReadCancel := context.WithCancel(context.Background())
+		setMessageHandler(t, expectedMessages, messagesReadCancel)
+
+		test.That(t, clientCh.writeHeaders(&webrtcpb.Stream{
+			Id: 1,
+		}, &webrtcpb.RequestHeaders{
+			Method: "/proto.rpc.examples.echo.v1.EchoService/Echo",
+			Metadata: metadataToProto(metadata.MD{
+				"rpc-host": []string{"yeehaw"},
+			}),
+		}), test.ShouldBeNil)
+
+		reqMd, err := proto.Marshal(&echopb.EchoRequest{Message: "hello"})
+		test.That(t, err, test.ShouldBeNil)
+
+		test.That(t, clientCh.writeMessage(&webrtcpb.Stream{
+			Id: 1,
+		}, &webrtcpb.RequestMessage{
+			HasMessage: true,
+			PacketMessage: &webrtcpb.PacketMessage{
+				Data: reqMd,
+				Eom:  true,
+			},
+			Eos: true,
+		}), test.ShouldBeNil)
+
+		<-respWaiting
+		test.That(t, clientCh.writeReset(&webrtcpb.Stream{Id: 1}), test.ShouldBeNil)
+		close(blockResp)
+		<-messagesReadCtx.Done()
+	})
+}
+
+type delayingEchoServer struct {
+	echoserver.Server
+	beforeSend func()
+}
+
+func (srv *delayingEchoServer) Echo(ctx context.Context, req *echopb.EchoRequest) (*echopb.EchoResponse, error) {
+	resp, err := srv.Server.Echo(ctx, req)
+	if srv.beforeSend != nil {
+		srv.beforeSend()
+	}
+	return resp, err
 }
