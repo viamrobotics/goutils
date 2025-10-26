@@ -70,3 +70,42 @@ func (e *NotFoundError) Error() string {
 	}
 	return fmt.Sprintf("artifact not found; hash=%q", *e.hash)
 }
+
+// A ConflictError is used when a write operation fails due to concurrent modification.
+// This implements optimistic locking - the resource was modified since it was last read.
+type ConflictError struct {
+	path            string
+	expectedVersion int64
+	actualVersion   int64
+}
+
+// NewConflictError creates a new conflict error.
+func NewConflictError(path string, expectedVersion, actualVersion int64) error {
+	return &ConflictError{
+		path:            path,
+		expectedVersion: expectedVersion,
+		actualVersion:   actualVersion,
+	}
+}
+
+// Error returns a descriptive error message about the conflict.
+func (e *ConflictError) Error() string {
+	if e.actualVersion == -1 {
+		return fmt.Sprintf(
+			"conflict detected: %q is being modified by another process. "+
+				"Please reload and retry the operation",
+			e.path,
+		)
+	}
+	return fmt.Sprintf(
+		"conflict detected: %q was modified concurrently (expected version %d, found version %d). "+
+			"Please reload and retry the operation",
+		e.path, e.expectedVersion, e.actualVersion,
+	)
+}
+
+// IsConflictError returns true if the error is a conflict error.
+func IsConflictError(err error) bool {
+	var errConflict *ConflictError
+	return errors.As(err, &errConflict)
+}
