@@ -338,7 +338,7 @@ func (srv *WebRTCSignalingServer) clearAdditionalICEServers(hosts []string) {
 // and candidate updates/errors.
 // Note: See SinalingAnswer.answer for the complementary side of this process.
 func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_AnswerServer) error {
-	ctx, span := trace.StartSpan(server.Context(), "SignalingServer::CallUpdate")
+	ctx, span := trace.StartSpan(server.Context(), "SignalingServer::Answer")
 	defer span.End()
 
 	hosts, err := HostsFromCtx(ctx)
