@@ -1185,6 +1185,7 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 
 	if err := queue.checkHostQueueSize(ctx, true, host); err != nil {
 		connectionEstablishmentExpectedFailures.Inc(sdkType, organizationID)
+		span.AddAttributes(trace.StringAttribute("failure", "expected"))
 		return "", nil, nil, nil, err
 	}
 
@@ -1201,6 +1202,7 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 		}
 
 		connectionEstablishmentExpectedFailures.Inc(sdkType, organizationID)
+		span.AddAttributes(trace.StringAttribute("failure", "expected"))
 		// TODO(RSDK-11928): Implement proper time-based rate limiting to prevent clients from spamming connection attempts to offline machines so
 		// we can remove sleep and error instantly.
 
@@ -1391,8 +1393,10 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferError(ctx context.Context, host, u
 		connectionEstablishmentFailures.Inc(updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID)
 		if errors.Is(err, context.DeadlineExceeded) {
 			connectionEstablishmentCallerTimeouts.Inc(updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID)
+			span.AddAttributes(trace.StringAttribute("failure", "caller_timeout"))
 		} else {
 			connectionEstablishmentCallerNonTimeoutErrors.Inc(updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID)
+			span.AddAttributes(trace.StringAttribute("failure", "caller_non_timeout"))
 		}
 		duration := float64(time.Since(updatedMDBWebRTCCall.StartedAt).Milliseconds())
 		callExchangeDuration.Observe(duration, updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID, exchangeFailed)
@@ -1867,8 +1871,10 @@ func (resp *mongoDBWebRTCCallOfferExchange) AnswererRespond(ctx context.Context,
 			connectionEstablishmentFailures.Inc(updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID)
 			if errors.Is(ans.Err, context.DeadlineExceeded) {
 				connectionEstablishmentAnswererTimeouts.Inc(updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID)
+				span.AddAttributes(trace.StringAttribute("failure", "answerer_timeout"))
 			} else {
 				connectionEstablishmentAnswererNonTimeoutErrors.Inc(updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID)
+				span.AddAttributes(trace.StringAttribute("failure", "answerer_non_timeout"))
 			}
 			duration := float64(time.Since(updatedMDBWebRTCCall.StartedAt).Milliseconds())
 			callExchangeDuration.Observe(duration, updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID, exchangeFailed)
