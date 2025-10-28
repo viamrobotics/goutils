@@ -15,6 +15,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.opencensus.io/trace"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -1046,6 +1047,9 @@ var errTooManyConns = status.Error(codes.Unavailable, "too many connection attem
 // is only ever one host reported and therefore included in `hosts` here: the
 // `.viam.cloud` URI.
 func (queue *mongoDBWebRTCCallQueue) checkHostQueueSize(ctx context.Context, forCaller bool, hosts ...string) error {
+	ctx, span := trace.StartSpan(ctx, "CallQueue::checkHostQueueSize")
+	defer span.End()
+
 	hostsMatch := bson.D{
 		{"$match", bson.D{{webrtcOperatorHostsHostCombinedField, bson.D{{"$in", hosts}}}}},
 	}
@@ -1086,6 +1090,9 @@ var errOffline = status.Error(codes.Unavailable, "host appears to be offline; en
 // NOTE(benjirewis): The same NOTE about `len(hosts) == 1` applies here as in the method
 // above.
 func (queue *mongoDBWebRTCCallQueue) checkHostOnline(ctx context.Context, hosts ...string) error {
+	ctx, span := trace.StartSpan(ctx, "CallQueue::checkHostOnline")
+	defer span.End()
+
 	hostsMatch := bson.D{
 		{"$match", bson.D{{webrtcOperatorHostsHostCombinedField, bson.D{{"$in", hosts}}}}},
 	}
@@ -1121,6 +1128,9 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 	host, sdp string,
 	disableTrickle bool,
 ) (string, <-chan WebRTCCallAnswer, <-chan struct{}, func(), error) {
+	ctx, span := trace.StartSpan(ctx, "CallQueue::SendOfferInit")
+	defer span.End()
+
 	sdkType, organizationID := "unknown", "unknown"
 	if md, exists := metadata.FromIncomingContext(ctx); exists {
 		// TODO(RSDK-11864): Use actual structured metadata provided by the SDK to determine
@@ -1164,6 +1174,10 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 			}
 		}
 	}
+	span.AddAttributes(
+		trace.StringAttribute("sdk_type", sdkType),
+		trace.StringAttribute("organization_id", organizationID),
+	)
 
 	// An offer initialization (after verifying the host queue size), indicates an attempted
 	// connection establishment attempt.
@@ -1309,6 +1323,9 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 // SendOfferUpdate updates the offer associated with the given UUID with a newly discovered
 // ICE candidate.
 func (queue *mongoDBWebRTCCallQueue) SendOfferUpdate(ctx context.Context, host, uuid string, candidate webrtc.ICECandidateInit) error {
+	ctx, span := trace.StartSpan(ctx, "CallQueue::SendOfferUpdate")
+	defer span.End()
+
 	updateResult, err := queue.callsColl.UpdateOne(ctx, bson.D{
 		{webrtcCallIDField, uuid},
 		{webrtcCallHostField, host},
@@ -1325,6 +1342,9 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferUpdate(ctx context.Context, host, 
 // SendOfferDone informs the queue that the offer associated with the UUID is done sending any
 // more information.
 func (queue *mongoDBWebRTCCallQueue) SendOfferDone(ctx context.Context, host, uuid string) error {
+	ctx, span := trace.StartSpan(ctx, "CallQueue::SendOfferDone")
+	defer span.End()
+
 	updateResult := queue.callsColl.FindOneAndUpdate(ctx, bson.D{
 		{webrtcCallIDField, uuid},
 		{webrtcCallHostField, host},
@@ -1345,6 +1365,9 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferDone(ctx context.Context, host, uu
 // SendOfferError informs the queue that the offer associated with the UUID has encountered
 // an error from the sender side.
 func (queue *mongoDBWebRTCCallQueue) SendOfferError(ctx context.Context, host, uuid string, err error) error {
+	ctx, span := trace.StartSpan(ctx, "CallQueue::SendOfferError")
+	defer span.End()
+
 	updateResult := queue.callsColl.FindOneAndUpdate(ctx, bson.D{
 		{webrtcCallIDField, uuid},
 		{webrtcCallHostField, host},
@@ -1381,6 +1404,13 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferError(ctx context.Context, host, u
 // RecvOffer receives the next offer for the given host. It should respond with an answer
 // once a decision is made.
 func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []string) (WebRTCCallOfferExchange, error) {
+	ctx, span := trace.StartSpan(ctx, "CallQueue::RecvOffer")
+	defer span.End()
+
+	if len(hosts) > 0 {
+		span.AddAttributes(trace.StringAttribute("host", hosts[0]))
+	}
+
 	if err := queue.checkHostQueueSize(ctx, false, hosts...); err != nil {
 		return nil, err
 	}
@@ -1782,6 +1812,9 @@ func (resp *mongoDBWebRTCCallOfferExchange) CallerErr() error {
 }
 
 func (resp *mongoDBWebRTCCallOfferExchange) AnswererRespond(ctx context.Context, ans WebRTCCallAnswer) error {
+	ctx, span := trace.StartSpan(ctx, "CallOfferExchange::AnswererRespond")
+	defer span.End()
+
 	var toSet bson.D
 	var toPush bson.D
 	var answererErrorSet bool
@@ -1846,6 +1879,9 @@ func (resp *mongoDBWebRTCCallOfferExchange) AnswererRespond(ctx context.Context,
 }
 
 func (resp *mongoDBWebRTCCallOfferExchange) AnswererDone(ctx context.Context) error {
+	ctx, span := trace.StartSpan(ctx, "CallOfferExchange::AnswererDone")
+	defer span.End()
+
 	updateResult := resp.coll.FindOneAndUpdate(ctx, bson.D{
 		{webrtcCallIDField, resp.UUID()},
 		{webrtcCallHostField, resp.call.Host},
