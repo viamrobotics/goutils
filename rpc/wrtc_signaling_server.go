@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"go.opencensus.io/trace"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -180,7 +181,9 @@ func (srv *WebRTCSignalingServer) asyncSendOfferError(host, uuid string, offerEr
 
 // Call is a request/offer to start a caller with the connected answerer.
 func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcpb.SignalingService_CallServer) error {
-	ctx := server.Context()
+	ctx, span := trace.StartSpan(server.Context(), "SignalingServer::Call")
+	defer span.End()
+
 	ctx, cancel := context.WithTimeout(ctx, getDefaultOfferDeadline())
 	defer cancel()
 
@@ -258,6 +261,9 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 // In a world where https://github.com/grpc/grpc-web/issues/24 is fixed,
 // this should be removed in favor of a bidirectional stream on Call.
 func (srv *WebRTCSignalingServer) CallUpdate(ctx context.Context, req *webrtcpb.CallUpdateRequest) (*webrtcpb.CallUpdateResponse, error) {
+	ctx, span := trace.StartSpan(ctx, "SignalingServer::CallUpdate")
+	defer span.End()
+
 	ctx, cancel := context.WithTimeout(ctx, getDefaultOfferDeadline())
 	defer cancel()
 	host, err := HostFromCtx(ctx)
@@ -332,7 +338,9 @@ func (srv *WebRTCSignalingServer) clearAdditionalICEServers(hosts []string) {
 // and candidate updates/errors.
 // Note: See SinalingAnswer.answer for the complementary side of this process.
 func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_AnswerServer) error {
-	ctx := server.Context()
+	ctx, span := trace.StartSpan(server.Context(), "SignalingServer::Answer")
+	defer span.End()
+
 	hosts, err := HostsFromCtx(ctx)
 	if err != nil {
 		return err
@@ -541,6 +549,9 @@ func (srv *WebRTCSignalingServer) OptionalWebRTCConfig(
 	ctx context.Context,
 	req *webrtcpb.OptionalWebRTCConfigRequest,
 ) (*webrtcpb.OptionalWebRTCConfigResponse, error) {
+	ctx, span := trace.StartSpan(ctx, "SignalingServer::OptionalWebRTCConfig")
+	defer span.End()
+
 	ctx, cancel := context.WithTimeout(ctx, getDefaultOfferDeadline())
 	defer cancel()
 	hosts, err := HostsFromCtx(ctx)
