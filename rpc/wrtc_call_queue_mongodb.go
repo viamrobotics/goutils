@@ -1119,7 +1119,8 @@ func (queue *mongoDBWebRTCCallQueue) incrementConnectionEstablishmentExpectedFai
 	// immediately blocks a caller, with a metric. We want to keep track of when and why the
 	// signaling server is making the decision to not even add the caller to the queue.
 
-	// Check if the machine _has_ been online with the last 10s.
+	// Check if the machine _has_ been online within the last 10s.
+	//nolint:goconst
 	onlineRecently := "unknown"
 	if queue.checkAnswererLiveness != nil {
 		if queue.checkAnswererLiveness(host) {
