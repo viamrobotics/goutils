@@ -102,10 +102,10 @@ var (
 		},
 	)
 
-	connectionEstablishmentExpectedFailures = statz.NewCounter2[string, string](
+	connectionEstablishmentExpectedFailures = statz.NewCounter4[string, string, string, string](
 		"signaling/connection_establishment_expected_failures",
 		statz.MetricConfig{
-			Description: "The total number of connection attempts that failed because the target robot was offline or does not exist.",
+			Description: "The total number of connection attempts that failed because they were blocked by the signaling server.",
 			Unit:        units.Dimensionless,
 			Labels: []statz.Label{
 				{
@@ -116,24 +116,13 @@ var (
 					Name:        "organization_id",
 					Description: "The organization ID of the machine that is being connected to.",
 				},
-			},
-		},
-	)
-
-	connectionEstablishmentBlockedPotentialSuccesses = statz.NewCounter2[string, string](
-		"signaling/connection_establishment_blocked_potential_successes",
-		statz.MetricConfig{
-			Description: "The total number of connection attempts that we blocked that " +
-				"may have succeeded as the machine connected to an operator in the last 10s.",
-			Unit: units.Dimensionless,
-			Labels: []statz.Label{
 				{
-					Name:        "sdk_type",
-					Description: "The type of SDK attempting to connect.",
+					Name:        "error",
+					Description: "The error string returned to the caller (the reason the connection was blocked).",
 				},
 				{
-					Name:        "organization_id",
-					Description: "The organization ID of the machine that is being connected to.",
+					Name:        "online_recently",
+					Description: "Whether the target machine was reportedly online in the last 10s (blocked potential success)",
 				},
 			},
 		},
@@ -1119,6 +1108,35 @@ func (queue *mongoDBWebRTCCallQueue) checkHostOnline(ctx context.Context, hosts 
 	return nil
 }
 
+// Uses the passed in parameters to increment the connectionEstablishmentExpectedFailures
+// metric and add attributes to the passed in span.
+func (queue *mongoDBWebRTCCallQueue) incrementConnectionEstablishmentExpectedFailures(
+	host, sdkType, organizationID string,
+	err error,
+	span *trace.Span,
+) {
+	// NOTE(RSDK-12228): Track "expected failures," or failures where the signaling server
+	// immediately blocks a caller, with a metric. We want to keep track of when and why the
+	// signaling server is making the decision to not even add the caller to the queue.
+
+	// Check if the machine _has_ been online with the last 10s.
+	onlineRecently := "unknown"
+	if queue.checkAnswererLiveness != nil {
+		if queue.checkAnswererLiveness(host) {
+			onlineRecently = "true"
+		} else {
+			onlineRecently = "false"
+		}
+	}
+
+	connectionEstablishmentExpectedFailures.Inc(sdkType, organizationID, err.Error(), onlineRecently)
+	span.AddAttributes(
+		trace.StringAttribute("failure", "expected"),
+		trace.StringAttribute("error", err.Error()),
+		trace.StringAttribute("online_recently", onlineRecently),
+	)
+}
+
 // SendOfferInit initializes an offer associated with the given SDP to the given host.
 // It returns a UUID to track/authenticate the offer over time, the initial SDP for the
 // sender to start its peer connection with, as well as a channel to receive candidates on
@@ -1184,25 +1202,13 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 	connectionEstablishmentAttempts.Inc(sdkType, organizationID)
 
 	if err := queue.checkHostQueueSize(ctx, true, host); err != nil {
-		connectionEstablishmentExpectedFailures.Inc(sdkType, organizationID)
-		span.AddAttributes(trace.StringAttribute("failure", "expected"))
+		queue.incrementConnectionEstablishmentExpectedFailures(host, sdkType, organizationID, err, span)
 		return "", nil, nil, nil, err
 	}
 
 	if err := queue.checkHostOnline(ctx, host); err != nil {
-		if queue.checkAnswererLiveness != nil {
-			if answererLive := queue.checkAnswererLiveness(host); !answererLive {
-				// NOTE(RSDK-12228): Increment a metric here. We _could_ use this conditional as
-				// the decision point to return an offlineErr in place of the conditional above,
-				// but, for now, we just want to see where we are blocking connection
-				// establishments in the signaling server to machines that _have_ reportedly
-				// connected to an operator in the past 10s.
-				connectionEstablishmentBlockedPotentialSuccesses.Inc(sdkType, organizationID)
-			}
-		}
+		queue.incrementConnectionEstablishmentExpectedFailures(host, sdkType, organizationID, err, span)
 
-		connectionEstablishmentExpectedFailures.Inc(sdkType, organizationID)
-		span.AddAttributes(trace.StringAttribute("failure", "expected"))
 		// TODO(RSDK-11928): Implement proper time-based rate limiting to prevent clients from spamming connection attempts to offline machines so
 		// we can remove sleep and error instantly.
 
