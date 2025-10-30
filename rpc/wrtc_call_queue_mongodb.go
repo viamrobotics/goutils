@@ -117,8 +117,8 @@ var (
 					Description: "The organization ID of the machine that is being connected to.",
 				},
 				{
-					Name:        "error",
-					Description: "The error string returned to the caller (the reason the connection was blocked).",
+					Name:        "reason",
+					Description: "The reason the connection was blocked ('answerers_offline', 'too_many_callers', or 'other').",
 				},
 				{
 					Name:        "online_recently",
@@ -1119,6 +1119,16 @@ func (queue *mongoDBWebRTCCallQueue) incrementConnectionEstablishmentExpectedFai
 	// immediately blocks a caller, with a metric. We want to keep track of when and why the
 	// signaling server is making the decision to not even add the caller to the queue.
 
+	// Reason for blocking is one of a. neither answerer for the machine currently being
+	// connected to an operator, b. >= 50 callers waiting for same machine, c. some other
+	// error (internal error from MDB query, e.g.). We can tell from the passed in error.
+	reason := "other"
+	if errors.Is(err, errOffline) {
+		reason = "answerers_offline"
+	} else if errors.Is(err, errTooManyConns) {
+		reason = "too_many_callers"
+	}
+
 	// Check if the machine _has_ been online within the last 10s.
 	//nolint:goconst
 	onlineRecently := "unknown"
@@ -1130,10 +1140,10 @@ func (queue *mongoDBWebRTCCallQueue) incrementConnectionEstablishmentExpectedFai
 		}
 	}
 
-	connectionEstablishmentExpectedFailures.Inc(sdkType, organizationID, err.Error(), onlineRecently)
+	connectionEstablishmentExpectedFailures.Inc(sdkType, organizationID, reason, onlineRecently)
 	span.AddAttributes(
 		trace.StringAttribute("failure", "expected"),
-		trace.StringAttribute("error", err.Error()),
+		trace.StringAttribute("reason", reason),
 		trace.StringAttribute("online_recently", onlineRecently),
 	)
 }
