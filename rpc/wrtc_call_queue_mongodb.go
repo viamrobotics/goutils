@@ -539,6 +539,9 @@ func (queue *mongoDBWebRTCCallQueue) operatorLivenessLoop() {
 		if !utils.SelectContextOrWaitChan(queue.cancelCtx, ticker.C) {
 			return
 		}
+
+		queue.logger.Warn("DEADLOCK-DBG operatorLivenessLoop running...")
+
 		type callerAnswererQueueSizes struct {
 			Caller   uint64
 			Answerer uint64
@@ -548,6 +551,8 @@ func (queue *mongoDBWebRTCCallQueue) operatorLivenessLoop() {
 		for host, waiting := range queue.waitingForNewCallSubs {
 			sizes := hosts[host]
 			sizes.Answerer += uint64(len(waiting))
+			queue.logger.Warn("DEADLOCK-DBG Answerer size incremented by", len(waiting), " for", host,
+				" due to answerer(s) waiting for incoming call")
 			hosts[host] = sizes
 		}
 		for _, exchanges := range queue.callExchangeSubs {
@@ -559,6 +564,7 @@ func (queue *mongoDBWebRTCCallQueue) operatorLivenessLoop() {
 					// when an answerer is initially done waiting, we will
 					// account for it here as it becomes an exchanger.
 					sizes.Answerer++
+					queue.logger.Warn("DEADLOCK-DBG Answerer size incremented by 1 for", exchange.Host, " due to active exchanger")
 				}
 				hosts[exchange.Host] = sizes
 			}
@@ -597,8 +603,11 @@ func (queue *mongoDBWebRTCCallQueue) operatorLivenessLoop() {
 		}
 
 		if queue.onAnswererLiveness != nil {
+			queue.logger.Warn("DEADLOCK-DBG Updating LastOnline fields for the following hosts", hostsWithAnswerers)
 			queue.onAnswererLiveness(hostsWithAnswerers, time.Now())
 		}
+
+		queue.logger.Warn("DEADLOCK-DBG operatorLivenessLoop complete")
 	}
 }
 
@@ -1128,6 +1137,11 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 	host, sdp string,
 	disableTrickle bool,
 ) (string, <-chan WebRTCCallAnswer, <-chan struct{}, func(), error) {
+	queue.logger.Warn("DEADLOCK-DBG SendOfferInit received for", host, "...")
+	defer func() {
+		queue.logger.Warn("DEADLOCK-DBG SendOfferInit completed for", host)
+	}()
+
 	ctx, span := trace.StartSpan(ctx, "CallQueue::SendOfferInit")
 	defer span.End()
 
@@ -1408,6 +1422,11 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferError(ctx context.Context, host, u
 // RecvOffer receives the next offer for the given host. It should respond with an answer
 // once a decision is made.
 func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []string) (WebRTCCallOfferExchange, error) {
+	queue.logger.Warn("DEADLOCK-DBG RecvOffer received for", hosts, "...")
+	defer func() {
+		queue.logger.Warn("DEADLOCK-DBG RecvOffer completed for", hosts)
+	}()
+
 	ctx, span := trace.StartSpan(ctx, "CallQueue::RecvOffer")
 	defer span.End()
 
@@ -1556,6 +1575,8 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 		}
 		break
 	}
+
+	queue.logger.Warn("DEADLOCK-DBG RecvOffer got an incoming call for", callReq.Host)
 
 	events, exchangeUnsubscribe := queue.subscribeToCall(callReq.Host, callReq.ID, "answerer")
 

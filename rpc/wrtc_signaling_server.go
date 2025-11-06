@@ -427,11 +427,17 @@ func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 				}
 			}
 		}()
+
+		srv.logger.Warn("DEADLOCK-DBG Beginning callerLoop for", hosts)
+
 		for {
 			select {
 			case <-offerCtx.Done():
+				srv.logger.Warn("DEADLOCK-DBG callerLoop offer context done for", hosts)
+
 				return offerCtx.Err()
 			case <-offer.CallerDone():
+				srv.logger.Warn("DEADLOCK-DBG callerLoop CallerDone for", hosts)
 				callerErr := offer.CallerErr()
 				if callerErr != nil {
 					if err := server.Send(&webrtcpb.AnswerRequest{
@@ -448,6 +454,10 @@ func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 				return callerErr
 			case cand := <-offer.CallerCandidates():
 				ip := iceCandidateInitToProto(cand)
+
+				srv.logger.Warn("DEADLOCK-DBG callerLoop new candidates received for", hosts, "of",
+					ip.String())
+
 				if err := server.Send(&webrtcpb.AnswerRequest{
 					Uuid: uuid,
 					Stage: &webrtcpb.AnswerRequest_Update{
@@ -464,6 +474,9 @@ func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 
 	answererLoop := func() error {
 		haveInit := false
+
+		srv.logger.Warn("DEADLOCK-DBG Beginning answererLoop for", hosts)
+
 		for {
 			answer, err := server.Recv()
 			if err != nil {
@@ -479,6 +492,7 @@ func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 
 			switch s := answer.GetStage().(type) {
 			case *webrtcpb.AnswerResponse_Init:
+				srv.logger.Warn("DEADLOCK-DBG answererLoop received AnswerResponse_Init for", hosts)
 				if haveInit {
 					return errors.New("got init stage more than once")
 				}
@@ -490,6 +504,8 @@ func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 					return err
 				}
 			case *webrtcpb.AnswerResponse_Update:
+				srv.logger.Warn("DEADLOCK-DBG answererLoop received AnswerResponse_Update for", hosts)
+
 				if !haveInit {
 					return errors.New("got update stage before init stage")
 				}
@@ -500,11 +516,15 @@ func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 					return err
 				}
 			case *webrtcpb.AnswerResponse_Done:
+				srv.logger.Warn("DEADLOCK-DBG answererLoop received AnswerResponse_Done for", hosts)
+
 				if !haveInit {
 					return errors.New("got done stage before init stage")
 				}
 				return nil
 			case *webrtcpb.AnswerResponse_Error:
+				srv.logger.Warn("DEADLOCK-DBG answererLoop received AnswerResponse_Error for", hosts)
+
 				respStatus := status.FromProto(s.Error.GetStatus())
 				ans := WebRTCCallAnswer{Err: respStatus.Err()}
 				answererStoppedExchange.Store(true)
