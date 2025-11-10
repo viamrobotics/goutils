@@ -50,6 +50,15 @@ var (
 		},
 	})
 
+	operatorsCollUpdateFailures = statz.NewCounter2[string, string]("signaling/operators_coll_update_failures", statz.MetricConfig{
+		Description: "The number of times the operator failed to update the operators collection.",
+		Unit:        units.Dimensionless,
+		Labels: []statz.Label{
+			{Name: "operator_id", Description: "The queue operator ID."},
+			{Name: "reason", Description: "The reason for failure."},
+		},
+	})
+
 	exchangeChannelAtCapacity = statz.NewCounter1[string]("signaling/exchange_channel_at_capacity", statz.MetricConfig{
 		Description: "The number of times a call exchange has it max channel capacity.",
 		Unit:        units.Dimensionless,
@@ -363,6 +372,7 @@ func NewMongoDBWebRTCCallQueue(
 	}); err != nil {
 		return nil, err
 	}
+	logger.Infow("successfully added operator document to operators collection", "operator_id", operatorID)
 
 	cancelCtx, cancelFunc := context.WithCancel(context.Background())
 	queue := &mongoDBWebRTCCallQueue{
@@ -571,7 +581,7 @@ func (queue *mongoDBWebRTCCallQueue) operatorLivenessLoop() {
 			})
 		}
 
-		if _, err := queue.operatorsColl.UpdateOne(queue.cancelCtx, bson.D{{webrtcOperatorIDField, queue.operatorID}}, bson.D{
+		result, err := queue.operatorsColl.UpdateOne(queue.cancelCtx, bson.D{{webrtcOperatorIDField, queue.operatorID}}, bson.D{
 			{
 				"$set",
 				bson.D{
@@ -579,10 +589,17 @@ func (queue *mongoDBWebRTCCallQueue) operatorLivenessLoop() {
 					{webrtcOperatorHostsField, hostSizes},
 				},
 			},
-		}); err != nil {
+		})
+		if err != nil {
+			reason := "context_canceled"
 			if !errors.Is(err, context.Canceled) {
+				reason = "other"
 				queue.logger.Errorw("failed to update operator document for self", "error", err)
 			}
+			operatorsCollUpdateFailures.Inc(queue.operatorID, reason)
+		} else if result.MatchedCount == 0 {
+			queue.logger.Infow("no existing operator document found, could not update operator document")
+			operatorsCollUpdateFailures.Inc(queue.operatorID, "no_existing_operator_document")
 		}
 
 		if queue.onAnswererLiveness != nil {
