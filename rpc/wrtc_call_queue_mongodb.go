@@ -50,6 +50,15 @@ var (
 		},
 	})
 
+	operatorsCollUpdateFailures = statz.NewCounter2[string, string]("signaling/operators_coll_update_failures", statz.MetricConfig{
+		Description: "The number of times the operator failed to update the operators collection.",
+		Unit:        units.Dimensionless,
+		Labels: []statz.Label{
+			{Name: "operator_id", Description: "The queue operator ID."},
+			{Name: "reason", Description: "The reason for failure."},
+		},
+	})
+
 	exchangeChannelAtCapacity = statz.NewCounter1[string]("signaling/exchange_channel_at_capacity", statz.MetricConfig{
 		Description: "The number of times a call exchange has it max channel capacity.",
 		Unit:        units.Dimensionless,
@@ -357,12 +366,17 @@ func NewMongoDBWebRTCCallQueue(
 		return nil, err
 	}
 
-	if _, err := operatorsColl.InsertOne(ctx, bson.D{
+	result, err := operatorsColl.InsertOne(ctx, bson.D{
 		{webrtcOperatorIDField, operatorID},
 		{webrtcOperatorExpireAtField, time.Now().Add(operatorHeartbeatWindow)},
-	}); err != nil {
+	})
+	if err != nil {
 		return nil, err
 	}
+	logger.Infow(
+		"successfully added operator document to operators collection",
+		"operator_id", operatorID, "document_id", result.InsertedID,
+	)
 
 	cancelCtx, cancelFunc := context.WithCancel(context.Background())
 	queue := &mongoDBWebRTCCallQueue{
@@ -571,7 +585,7 @@ func (queue *mongoDBWebRTCCallQueue) operatorLivenessLoop() {
 			})
 		}
 
-		if _, err := queue.operatorsColl.UpdateOne(queue.cancelCtx, bson.D{{webrtcOperatorIDField, queue.operatorID}}, bson.D{
+		result, err := queue.operatorsColl.UpdateOne(queue.cancelCtx, bson.D{{webrtcOperatorIDField, queue.operatorID}}, bson.D{
 			{
 				"$set",
 				bson.D{
@@ -579,10 +593,21 @@ func (queue *mongoDBWebRTCCallQueue) operatorLivenessLoop() {
 					{webrtcOperatorHostsField, hostSizes},
 				},
 			},
-		}); err != nil {
+		})
+		if err != nil {
+			reason := "context_canceled"
 			if !errors.Is(err, context.Canceled) {
+				//nolint:goconst
+				reason = "other"
 				queue.logger.Errorw("failed to update operator document for self", "error", err)
 			}
+			operatorsCollUpdateFailures.Inc(queue.operatorID, reason)
+		} else if result.MatchedCount == 0 {
+			queue.logger.Errorw(
+				"no existing operator document found, could not update operator document",
+				"operator_id", queue.operatorID,
+			)
+			operatorsCollUpdateFailures.Inc(queue.operatorID, "no_existing_operator_document")
 		}
 
 		if queue.onAnswererLiveness != nil {
@@ -1122,6 +1147,7 @@ func (queue *mongoDBWebRTCCallQueue) incrementConnectionEstablishmentExpectedFai
 	// Reason for blocking is one of a. neither answerer for the machine currently being
 	// connected to an operator, b. >= 50 callers waiting for same machine, c. some other
 	// error (internal error from MDB query, e.g.). We can tell from the passed in error.
+
 	reason := "other"
 	if errors.Is(err, errOffline) {
 		reason = "answerers_offline"
