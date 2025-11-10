@@ -20,11 +20,12 @@ func init() {
 	mongoutils.MustRegisterNamespace(&mongodbWebRTCCallQueueDBName, &mongodbWebRTCRateLimiterCollName)
 }
 
-var rateLimitDenials = statz.NewCounter1[string]("signaling/rate_limits_denials", statz.MetricConfig{
+var rateLimitDenials = statz.NewCounter2[string, string]("signaling/rate_limits_denials", statz.MetricConfig{
 	Description: "Total number of requests rate limited.",
 	Unit:        units.Dimensionless,
 	Labels: []statz.Label{
 		{Name: "key", Description: "Method and auth ID of the client being rate limited."},
+		{Name: "host", Description: "Target host associated with request (host that the client was trying to connect to)."},
 	},
 })
 
@@ -182,10 +183,14 @@ func (rl *MongoDBRateLimiter) Allow(ctx context.Context, key string) error {
 
 	// No match means rate limit exceeded
 	if result.MatchedCount == 0 {
-		rateLimitDenials.Inc(key)
+		host, err := HostFromCtx(ctx)
+		if err != nil {
+			host = "unknown"
+		}
+		rateLimitDenials.Inc(key, host)
 		return status.Errorf(codes.ResourceExhausted,
-			"request exceeds rate limit (limit: %d in %v) for %s",
-			rl.config.MaxRequests, rl.config.Window, key)
+			"request exceeds rate limit (limit: %d in %v) for %s (was to host %s)",
+			rl.config.MaxRequests, rl.config.Window, key, host)
 	}
 
 	return nil
