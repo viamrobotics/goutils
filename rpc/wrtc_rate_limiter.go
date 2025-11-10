@@ -189,8 +189,8 @@ func (rl *MongoDBRateLimiter) Allow(ctx context.Context, key string) error {
 		}
 		rateLimitDenials.Inc(key, host)
 		return status.Errorf(codes.ResourceExhausted,
-			"request exceeds rate limit (limit: %d in %v) for %s",
-			rl.config.MaxRequests, rl.config.Window, key)
+			"request exceeds rate limit (limit: %d in %v) for %s (was to host %s)",
+			rl.config.MaxRequests, rl.config.Window, key, host)
 	}
 
 	return nil
