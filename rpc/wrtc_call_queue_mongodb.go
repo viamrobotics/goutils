@@ -598,7 +598,7 @@ func (queue *mongoDBWebRTCCallQueue) operatorLivenessLoop() {
 			}
 			operatorsCollUpdateFailures.Inc(queue.operatorID, reason)
 		} else if result.MatchedCount == 0 {
-			queue.logger.Infow("no existing operator document found, could not update operator document")
+			queue.logger.Errorw("no existing operator document found, could not update operator document")
 			operatorsCollUpdateFailures.Inc(queue.operatorID, "no_existing_operator_document")
 		}
 
