@@ -597,6 +597,7 @@ func (queue *mongoDBWebRTCCallQueue) operatorLivenessLoop() {
 		if err != nil {
 			reason := "context_canceled"
 			if !errors.Is(err, context.Canceled) {
+				//nolint:goconst
 				reason = "other"
 				queue.logger.Errorw("failed to update operator document for self", "error", err)
 			}
@@ -1143,6 +1144,7 @@ func (queue *mongoDBWebRTCCallQueue) incrementConnectionEstablishmentExpectedFai
 	// Reason for blocking is one of a. neither answerer for the machine currently being
 	// connected to an operator, b. >= 50 callers waiting for same machine, c. some other
 	// error (internal error from MDB query, e.g.). We can tell from the passed in error.
+	//nolint:goconst
 	reason := "other"
 	if errors.Is(err, errOffline) {
 		reason = "answerers_offline"
