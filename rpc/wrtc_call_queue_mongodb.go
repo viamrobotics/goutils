@@ -603,7 +603,10 @@ func (queue *mongoDBWebRTCCallQueue) operatorLivenessLoop() {
 			}
 			operatorsCollUpdateFailures.Inc(queue.operatorID, reason)
 		} else if result.MatchedCount == 0 {
-			queue.logger.Errorw("no existing operator document found, could not update operator document")
+			queue.logger.Errorw(
+				"no existing operator document found, could not update operator document",
+				"operator_id", queue.operatorID,
+			)
 			operatorsCollUpdateFailures.Inc(queue.operatorID, "no_existing_operator_document")
 		}
 
@@ -1144,7 +1147,7 @@ func (queue *mongoDBWebRTCCallQueue) incrementConnectionEstablishmentExpectedFai
 	// Reason for blocking is one of a. neither answerer for the machine currently being
 	// connected to an operator, b. >= 50 callers waiting for same machine, c. some other
 	// error (internal error from MDB query, e.g.). We can tell from the passed in error.
-	
+
 	reason := "other"
 	if errors.Is(err, errOffline) {
 		reason = "answerers_offline"
