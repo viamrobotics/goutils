@@ -366,13 +366,17 @@ func NewMongoDBWebRTCCallQueue(
 		return nil, err
 	}
 
-	if _, err := operatorsColl.InsertOne(ctx, bson.D{
+	result, err := operatorsColl.InsertOne(ctx, bson.D{
 		{webrtcOperatorIDField, operatorID},
 		{webrtcOperatorExpireAtField, time.Now().Add(operatorHeartbeatWindow)},
-	}); err != nil {
+	})
+	if err != nil {
 		return nil, err
 	}
-	logger.Infow("successfully added operator document to operators collection", "operator_id", operatorID)
+	logger.Infow(
+		"successfully added operator document to operators collection",
+		"operator_id", operatorID, "document_id", result.InsertedID,
+	)
 
 	cancelCtx, cancelFunc := context.WithCancel(context.Background())
 	queue := &mongoDBWebRTCCallQueue{
