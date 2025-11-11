@@ -3,6 +3,7 @@ package rpc
 import (
 	"context"
 	"io"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -388,7 +389,9 @@ func dialWebRTC(
 
 	utils.PanicCapturingGo(func() {
 		if err := exchangeCandidates(); err != nil {
-			logger.Warnw("Failed to exchange candidates", "err", err)
+			if !strings.Contains(err.Error(), "host appears to be offline") {
+				logger.Warnw("Failed to exchange candidates", "err", err)
+			}
 			exchangeCancel(err)
 		}
 	})
@@ -411,7 +414,9 @@ func dialWebRTC(
 					Error: ErrorToStatus(exchangeErr).Proto(),
 				},
 			}); err != nil {
-				logger.Warnw("Problem sending error to signaling server", "err", err)
+				if !strings.Contains(err.Error(), "no active offer for \"\"") {
+					logger.Warnw("Problem sending error to signaling server", "err", err)
+				}
 			}
 		})
 		return nil, exchangeErr
