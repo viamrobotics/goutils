@@ -439,9 +439,9 @@ func (p *managedProcess) startLoggers(stdOut, stdErr io.ReadCloser) func() {
 			}
 			if p.shouldLog {
 				if isErr {
-					logger.Error("\n\u001F\\_ " + string(line))
+					logger.Error("\n\\_ " + string(line))
 				} else {
-					logger.Info("\n\u001F\\_ " + string(line))
+					logger.Info("\n\\_ " + string(line))
 				}
 			}
 			if p.logWriter != nil && !logWriterError {
