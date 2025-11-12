@@ -379,7 +379,7 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts dialOptions, logg
 		grpc.WithBlock(), //nolint:staticcheck
 		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(MaxMessageSize)),
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{
-			Time:                keepAliveTime * 2, // a little extra buffer to try to avoid ENHANCE_YOUR_CALM
+			Time:                KeepAliveTime * 2, // a little extra buffer to try to avoid ENHANCE_YOUR_CALM
 			PermitWithoutStream: true,
 		}),
 	}

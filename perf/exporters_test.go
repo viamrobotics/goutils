@@ -1,13 +1,18 @@
 package perf
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log"
 	"net/http"
 	"sync"
+	"testing"
 
 	"github.com/edaniels/golog"
+	"go.opencensus.io/metric/metricexport"
+	"go.opencensus.io/trace"
+	"go.viam.com/test"
 	"goji.io"
 	"goji.io/pat"
 
@@ -105,4 +110,78 @@ func ExampleNewRoundTripperWithStats() {
 		logger.Panic("failed to start grpc server")
 	}
 	defer res.Body.Close()
+}
+
+func TestWalkData(t *testing.T) {
+	wd := &walkData{}
+	path := wd.get([]string{}, "first")
+	test.That(t, path.spanChain, test.ShouldResemble, []string{"first"})
+	test.That(t, wd.paths, test.ShouldHaveLength, 1)
+
+	path = wd.get([]string{}, "first")
+	test.That(t, path.spanChain, test.ShouldResemble, []string{"first"})
+	test.That(t, wd.paths, test.ShouldHaveLength, 1)
+
+	path = wd.get([]string{"first"}, "second")
+	test.That(t, path.spanChain, test.ShouldResemble, []string{"first", "second"})
+	test.That(t, wd.paths, test.ShouldHaveLength, 2)
+
+	path = wd.get([]string{"first"}, "second")
+	test.That(t, path.spanChain, test.ShouldResemble, []string{"first", "second"})
+	test.That(t, wd.paths, test.ShouldHaveLength, 2)
+}
+
+func TestTimingReport(t *testing.T) {
+	outputBuffer := bytes.NewBuffer(nil)
+	devExporter := &developmentExporter{
+		children:       map[string][]mySpanInfo{},
+		reader:         metricexport.NewReader(),
+		deleteDisabled: true,
+		outputWriter:   outputBuffer,
+	}
+
+	devExporter.Start()
+	defer devExporter.Stop()
+
+	// Construct a call sequence of: A calls B calls C. As well as A calls C directly. Assert that
+	// there two "span paths" to C.
+	ctx := context.Background()
+	ctxA, spanA := trace.StartSpan(ctx, "A")
+	ctxAB, spanAB := trace.StartSpan(ctxA, "B")
+	_, spanABC := trace.StartSpan(ctxAB, "C")
+	spanABC.End()
+	spanAB.End()
+
+	// Repeat a second call to B as well as C.
+	ctxAB, spanAB = trace.StartSpan(ctxA, "B")
+	_, spanABC = trace.StartSpan(ctxAB, "C")
+	spanABC.End()
+	spanAB.End()
+
+	// Have A call C directly.
+	_, spanAC := trace.StartSpan(ctxA, "C")
+	spanAC.End()
+	spanA.End()
+
+	// fmt.Println(outputBuffer.String()) -- We could (easily) assert on the text output if it
+	// weren't for timing data.
+
+	wd := walkData{}
+	devExporter.recurse(&mySpanInfo{"A", spanA.SpanContext().SpanID.String(), &trace.SpanData{
+		Name: "A",
+	}}, []string{}, &wd)
+
+	// The "walk data" paths must be in call order. Depend on that for assertions.
+	test.That(t, wd.paths, test.ShouldHaveLength, 4)
+	test.That(t, wd.paths[0].spanChain, test.ShouldResemble, []string{"A"})
+	test.That(t, wd.paths[0].count, test.ShouldEqual, 1)
+
+	test.That(t, wd.paths[1].spanChain, test.ShouldResemble, []string{"A", "B"})
+	test.That(t, wd.paths[2].count, test.ShouldEqual, 2)
+
+	test.That(t, wd.paths[2].spanChain, test.ShouldResemble, []string{"A", "B", "C"})
+	test.That(t, wd.paths[2].count, test.ShouldEqual, 2)
+
+	test.That(t, wd.paths[3].spanChain, test.ShouldResemble, []string{"A", "C"})
+	test.That(t, wd.paths[3].count, test.ShouldEqual, 1)
 }

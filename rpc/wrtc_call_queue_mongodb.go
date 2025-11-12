@@ -15,6 +15,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.opencensus.io/trace"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -46,6 +47,15 @@ var (
 		Labels: []statz.Label{
 			{Name: "operator_id", Description: "The queue operator ID."},
 			{Name: "hostname", Description: "The robot being requested"},
+		},
+	})
+
+	operatorsCollUpdateFailures = statz.NewCounter2[string, string]("signaling/operators_coll_update_failures", statz.MetricConfig{
+		Description: "The number of times the operator failed to update the operators collection.",
+		Unit:        units.Dimensionless,
+		Labels: []statz.Label{
+			{Name: "operator_id", Description: "The queue operator ID."},
+			{Name: "reason", Description: "The reason for failure."},
 		},
 	})
 
@@ -101,10 +111,10 @@ var (
 		},
 	)
 
-	connectionEstablishmentExpectedFailures = statz.NewCounter2[string, string](
+	connectionEstablishmentExpectedFailures = statz.NewCounter4[string, string, string, string](
 		"signaling/connection_establishment_expected_failures",
 		statz.MetricConfig{
-			Description: "The total number of connection attempts that failed because the target robot was offline or does not exist.",
+			Description: "The total number of connection attempts that failed because they were blocked by the signaling server.",
 			Unit:        units.Dimensionless,
 			Labels: []statz.Label{
 				{
@@ -114,6 +124,14 @@ var (
 				{
 					Name:        "organization_id",
 					Description: "The organization ID of the machine that is being connected to.",
+				},
+				{
+					Name:        "reason",
+					Description: "The reason the connection was blocked ('answerers_offline', 'too_many_callers', or 'other').",
+				},
+				{
+					Name:        "online_recently",
+					Description: "Whether the target machine was reportedly online in the last 10s (blocked potential success)",
 				},
 			},
 		},
@@ -241,8 +259,13 @@ type mongoDBWebRTCCallQueue struct {
 	csStateUpdates              chan changeStreamStateUpdate
 	csCtxCancel                 func()
 
-	// function to update access times on robot parts based on this call queue
-	activeAnswerersfunc *func(hostnames []string, atTime time.Time)
+	// function passed in during construction to update last_online timestamps for documents
+	// in robot and robot_part based on this call-queue/operator.
+	onAnswererLiveness func(hostnames []string, atTime time.Time)
+	// function passed in during construction to check if the last_online timestamp in the
+	// robot_part collection for hostname was in the past 10s (recently online).
+	checkAnswererLiveness func(hostname string) bool
+
 	// 1 caller/answerer -> 1 caller id -> 1 event stream
 	callExchangeSubs map[string]map[*mongodbCallExchange]struct{}
 
@@ -289,7 +312,8 @@ func NewMongoDBWebRTCCallQueue(
 	maxHostCallers uint64,
 	client *mongo.Client,
 	logger utils.ZapCompatibleLogger,
-	activeAnswerersfunc func(hostnames []string, atTime time.Time),
+	onAnswererLiveness func(hostnames []string, atTime time.Time),
+	checkAnswererLiveness func(hostname string) bool,
 ) (WebRTCCallQueue, error) {
 	if operatorID == "" {
 		return nil, errors.New("expected non-empty operatorID")
@@ -342,12 +366,17 @@ func NewMongoDBWebRTCCallQueue(
 		return nil, err
 	}
 
-	if _, err := operatorsColl.InsertOne(ctx, bson.D{
+	result, err := operatorsColl.InsertOne(ctx, bson.D{
 		{webrtcOperatorIDField, operatorID},
 		{webrtcOperatorExpireAtField, time.Now().Add(operatorHeartbeatWindow)},
-	}); err != nil {
+	})
+	if err != nil {
 		return nil, err
 	}
+	logger.Infow(
+		"successfully added operator document to operators collection",
+		"operator_id", operatorID, "document_id", result.InsertedID,
+	)
 
 	cancelCtx, cancelFunc := context.WithCancel(context.Background())
 	queue := &mongoDBWebRTCCallQueue{
@@ -373,7 +402,8 @@ func NewMongoDBWebRTCCallQueue(
 		csStateUpdates:        make(chan changeStreamStateUpdate),
 		callExchangeSubs:      map[string]map[*mongodbCallExchange]struct{}{},
 		waitingForNewCallSubs: map[string]map[*mongodbNewCallEventHandler]struct{}{},
-		activeAnswerersfunc:   &activeAnswerersfunc,
+		onAnswererLiveness:    onAnswererLiveness,
+		checkAnswererLiveness: checkAnswererLiveness,
 	}
 
 	queue.activeBackgroundWorkers.Add(2)
@@ -555,7 +585,7 @@ func (queue *mongoDBWebRTCCallQueue) operatorLivenessLoop() {
 			})
 		}
 
-		if _, err := queue.operatorsColl.UpdateOne(queue.cancelCtx, bson.D{{webrtcOperatorIDField, queue.operatorID}}, bson.D{
+		result, err := queue.operatorsColl.UpdateOne(queue.cancelCtx, bson.D{{webrtcOperatorIDField, queue.operatorID}}, bson.D{
 			{
 				"$set",
 				bson.D{
@@ -563,14 +593,25 @@ func (queue *mongoDBWebRTCCallQueue) operatorLivenessLoop() {
 					{webrtcOperatorHostsField, hostSizes},
 				},
 			},
-		}); err != nil {
+		})
+		if err != nil {
+			reason := "context_canceled"
 			if !errors.Is(err, context.Canceled) {
+				//nolint:goconst
+				reason = "other"
 				queue.logger.Errorw("failed to update operator document for self", "error", err)
 			}
+			operatorsCollUpdateFailures.Inc(queue.operatorID, reason)
+		} else if result.MatchedCount == 0 {
+			queue.logger.Errorw(
+				"no existing operator document found, could not update operator document",
+				"operator_id", queue.operatorID,
+			)
+			operatorsCollUpdateFailures.Inc(queue.operatorID, "no_existing_operator_document")
 		}
 
-		if queue.activeAnswerersfunc != nil {
-			(*queue.activeAnswerersfunc)(hostsWithAnswerers, time.Now())
+		if queue.onAnswererLiveness != nil {
+			queue.onAnswererLiveness(hostsWithAnswerers, time.Now())
 		}
 	}
 }
@@ -1020,6 +1061,9 @@ var errTooManyConns = status.Error(codes.Unavailable, "too many connection attem
 // is only ever one host reported and therefore included in `hosts` here: the
 // `.viam.cloud` URI.
 func (queue *mongoDBWebRTCCallQueue) checkHostQueueSize(ctx context.Context, forCaller bool, hosts ...string) error {
+	ctx, span := trace.StartSpan(ctx, "CallQueue::checkHostQueueSize")
+	defer span.End()
+
 	hostsMatch := bson.D{
 		{"$match", bson.D{{webrtcOperatorHostsHostCombinedField, bson.D{{"$in", hosts}}}}},
 	}
@@ -1060,6 +1104,9 @@ var ErrOffline = status.Error(codes.Unavailable, "host appears to be offline; en
 // NOTE(benjirewis): The same NOTE about `len(hosts) == 1` applies here as in the method
 // above.
 func (queue *mongoDBWebRTCCallQueue) checkHostOnline(ctx context.Context, hosts ...string) error {
+	ctx, span := trace.StartSpan(ctx, "CallQueue::checkHostOnline")
+	defer span.End()
+
 	hostsMatch := bson.D{
 		{"$match", bson.D{{webrtcOperatorHostsHostCombinedField, bson.D{{"$in", hosts}}}}},
 	}
@@ -1086,6 +1133,47 @@ func (queue *mongoDBWebRTCCallQueue) checkHostOnline(ctx context.Context, hosts 
 	return nil
 }
 
+// Uses the passed in parameters to increment the connectionEstablishmentExpectedFailures
+// metric and add attributes to the passed in span.
+func (queue *mongoDBWebRTCCallQueue) incrementConnectionEstablishmentExpectedFailures(
+	host, sdkType, organizationID string,
+	err error,
+	span *trace.Span,
+) {
+	// NOTE(RSDK-12228): Track "expected failures," or failures where the signaling server
+	// immediately blocks a caller, with a metric. We want to keep track of when and why the
+	// signaling server is making the decision to not even add the caller to the queue.
+
+	// Reason for blocking is one of a. neither answerer for the machine currently being
+	// connected to an operator, b. >= 50 callers waiting for same machine, c. some other
+	// error (internal error from MDB query, e.g.). We can tell from the passed in error.
+
+	reason := "other"
+	if errors.Is(err, errOffline) {
+		reason = "answerers_offline"
+	} else if errors.Is(err, errTooManyConns) {
+		reason = "too_many_callers"
+	}
+
+	// Check if the machine _has_ been online within the last 10s.
+	//nolint:goconst
+	onlineRecently := "unknown"
+	if queue.checkAnswererLiveness != nil {
+		if queue.checkAnswererLiveness(host) {
+			onlineRecently = "true"
+		} else {
+			onlineRecently = "false"
+		}
+	}
+
+	connectionEstablishmentExpectedFailures.Inc(sdkType, organizationID, reason, onlineRecently)
+	span.AddAttributes(
+		trace.StringAttribute("failure", "expected"),
+		trace.StringAttribute("reason", reason),
+		trace.StringAttribute("online_recently", onlineRecently),
+	)
+}
+
 // SendOfferInit initializes an offer associated with the given SDP to the given host.
 // It returns a UUID to track/authenticate the offer over time, the initial SDP for the
 // sender to start its peer connection with, as well as a channel to receive candidates on
@@ -1095,6 +1183,9 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 	host, sdp string,
 	disableTrickle bool,
 ) (string, <-chan WebRTCCallAnswer, <-chan struct{}, func(), error) {
+	ctx, span := trace.StartSpan(ctx, "CallQueue::SendOfferInit")
+	defer span.End()
+
 	sdkType, organizationID := "unknown", "unknown"
 	if md, exists := metadata.FromIncomingContext(ctx); exists {
 		// TODO(RSDK-11864): Use actual structured metadata provided by the SDK to determine
@@ -1138,18 +1229,23 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 			}
 		}
 	}
+	span.AddAttributes(
+		trace.StringAttribute("sdk_type", sdkType),
+		trace.StringAttribute("organization_id", organizationID),
+	)
 
 	// An offer initialization (after verifying the host queue size), indicates an attempted
 	// connection establishment attempt.
 	connectionEstablishmentAttempts.Inc(sdkType, organizationID)
 
 	if err := queue.checkHostQueueSize(ctx, true, host); err != nil {
-		connectionEstablishmentExpectedFailures.Inc(sdkType, organizationID)
+		queue.incrementConnectionEstablishmentExpectedFailures(host, sdkType, organizationID, err, span)
 		return "", nil, nil, nil, err
 	}
 
 	if err := queue.checkHostOnline(ctx, host); err != nil {
-		connectionEstablishmentExpectedFailures.Inc(sdkType, organizationID)
+		queue.incrementConnectionEstablishmentExpectedFailures(host, sdkType, organizationID, err, span)
+
 		// TODO(RSDK-11928): Implement proper time-based rate limiting to prevent clients from spamming connection attempts to offline machines so
 		// we can remove sleep and error instantly.
 
@@ -1272,6 +1368,9 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 // SendOfferUpdate updates the offer associated with the given UUID with a newly discovered
 // ICE candidate.
 func (queue *mongoDBWebRTCCallQueue) SendOfferUpdate(ctx context.Context, host, uuid string, candidate webrtc.ICECandidateInit) error {
+	ctx, span := trace.StartSpan(ctx, "CallQueue::SendOfferUpdate")
+	defer span.End()
+
 	updateResult, err := queue.callsColl.UpdateOne(ctx, bson.D{
 		{webrtcCallIDField, uuid},
 		{webrtcCallHostField, host},
@@ -1288,6 +1387,9 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferUpdate(ctx context.Context, host, 
 // SendOfferDone informs the queue that the offer associated with the UUID is done sending any
 // more information.
 func (queue *mongoDBWebRTCCallQueue) SendOfferDone(ctx context.Context, host, uuid string) error {
+	ctx, span := trace.StartSpan(ctx, "CallQueue::SendOfferDone")
+	defer span.End()
+
 	updateResult := queue.callsColl.FindOneAndUpdate(ctx, bson.D{
 		{webrtcCallIDField, uuid},
 		{webrtcCallHostField, host},
@@ -1308,6 +1410,9 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferDone(ctx context.Context, host, uu
 // SendOfferError informs the queue that the offer associated with the UUID has encountered
 // an error from the sender side.
 func (queue *mongoDBWebRTCCallQueue) SendOfferError(ctx context.Context, host, uuid string, err error) error {
+	ctx, span := trace.StartSpan(ctx, "CallQueue::SendOfferError")
+	defer span.End()
+
 	updateResult := queue.callsColl.FindOneAndUpdate(ctx, bson.D{
 		{webrtcCallIDField, uuid},
 		{webrtcCallHostField, host},
@@ -1331,8 +1436,10 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferError(ctx context.Context, host, u
 		connectionEstablishmentFailures.Inc(updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID)
 		if errors.Is(err, context.DeadlineExceeded) {
 			connectionEstablishmentCallerTimeouts.Inc(updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID)
+			span.AddAttributes(trace.StringAttribute("failure", "caller_timeout"))
 		} else {
 			connectionEstablishmentCallerNonTimeoutErrors.Inc(updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID)
+			span.AddAttributes(trace.StringAttribute("failure", "caller_non_timeout"))
 		}
 		duration := float64(time.Since(updatedMDBWebRTCCall.StartedAt).Milliseconds())
 		callExchangeDuration.Observe(duration, updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID, exchangeFailed)
@@ -1344,6 +1451,13 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferError(ctx context.Context, host, u
 // RecvOffer receives the next offer for the given host. It should respond with an answer
 // once a decision is made.
 func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []string) (WebRTCCallOfferExchange, error) {
+	ctx, span := trace.StartSpan(ctx, "CallQueue::RecvOffer")
+	defer span.End()
+
+	if len(hosts) > 0 {
+		span.AddAttributes(trace.StringAttribute("host", hosts[0]))
+	}
+
 	if err := queue.checkHostQueueSize(ctx, false, hosts...); err != nil {
 		return nil, err
 	}
@@ -1745,6 +1859,9 @@ func (resp *mongoDBWebRTCCallOfferExchange) CallerErr() error {
 }
 
 func (resp *mongoDBWebRTCCallOfferExchange) AnswererRespond(ctx context.Context, ans WebRTCCallAnswer) error {
+	ctx, span := trace.StartSpan(ctx, "CallOfferExchange::AnswererRespond")
+	defer span.End()
+
 	var toSet bson.D
 	var toPush bson.D
 	var answererErrorSet bool
@@ -1797,8 +1914,10 @@ func (resp *mongoDBWebRTCCallOfferExchange) AnswererRespond(ctx context.Context,
 			connectionEstablishmentFailures.Inc(updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID)
 			if errors.Is(ans.Err, context.DeadlineExceeded) {
 				connectionEstablishmentAnswererTimeouts.Inc(updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID)
+				span.AddAttributes(trace.StringAttribute("failure", "answerer_timeout"))
 			} else {
 				connectionEstablishmentAnswererNonTimeoutErrors.Inc(updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID)
+				span.AddAttributes(trace.StringAttribute("failure", "answerer_non_timeout"))
 			}
 			duration := float64(time.Since(updatedMDBWebRTCCall.StartedAt).Milliseconds())
 			callExchangeDuration.Observe(duration, updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID, exchangeFailed)
@@ -1809,6 +1928,9 @@ func (resp *mongoDBWebRTCCallOfferExchange) AnswererRespond(ctx context.Context,
 }
 
 func (resp *mongoDBWebRTCCallOfferExchange) AnswererDone(ctx context.Context) error {
+	ctx, span := trace.StartSpan(ctx, "CallOfferExchange::AnswererDone")
+	defer span.End()
+
 	updateResult := resp.coll.FindOneAndUpdate(ctx, bson.D{
 		{webrtcCallIDField, resp.UUID()},
 		{webrtcCallHostField, resp.call.Host},
