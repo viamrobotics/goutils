@@ -387,13 +387,11 @@ func dialWebRTC(
 		}
 	}
 
-	isErrOffline := false
 	utils.PanicCapturingGo(func() {
 		if err := exchangeCandidates(); err != nil {
-			if !errors.Is(err, ErrOffline) {
+			if !strings.Contains(err.Error(), "host appears to be offline") {
 				logger.Warnw("Failed to exchange candidates", "err", err)
 			}
-			isErrOffline = true
 			exchangeCancel(err)
 		}
 	})
@@ -416,8 +414,7 @@ func dialWebRTC(
 					Error: ErrorToStatus(exchangeErr).Proto(),
 				},
 			}); err != nil {
-				var errInactive inactiveOfferError
-				if !isErrOffline && !errors.As(err, &errInactive) {
+				if !strings.Contains(err.Error(), "no active offer for \"\"") {
 					logger.Warnw("Problem sending error to signaling server", "err", err)
 				}
 			}
