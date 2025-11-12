@@ -451,11 +451,7 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 			if err != nil {
 				logFields = append(logFields, "error", err.Error())
 			}
-			candidateStatus := "no remote candidates received"
-			if len(connInfo.RemoteCandidates) > 0 {
-				candidateStatus = "candidates received but unreachable"
-			}
-			aa.logger.Infow(fmt.Sprintf("Diagnostic data for failed webrtc connection attempt, %s", candidateStatus), logFields...)
+			aa.logger.Infow("Diagnostic data for failed webrtc connection attempt", logFields...)
 
 			// Close unhealthy connection.
 			utils.UncheckedError(pc.GracefulClose())
