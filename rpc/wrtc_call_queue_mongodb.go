@@ -1049,7 +1049,7 @@ func (queue *mongoDBWebRTCCallQueue) checkHostQueueSize(ctx context.Context, for
 	return errTooManyConns
 }
 
-var errOffline = status.Error(codes.Unavailable, "host appears to be offline; ensure machine is online and try again")
+var ErrOffline = status.Error(codes.Unavailable, "host appears to be offline; ensure machine is online and try again")
 
 // checkHostOnline will check if there is some operator for all the managed hosts that
 // claims to have an answerer online for that host. It does this by running an aggregation
@@ -1081,7 +1081,7 @@ func (queue *mongoDBWebRTCCallQueue) checkHostOnline(ctx context.Context, hosts 
 		return err
 	}
 	if len(ret) == 0 {
-		return errOffline
+		return ErrOffline
 	}
 	return nil
 }
