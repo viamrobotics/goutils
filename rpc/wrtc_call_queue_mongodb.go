@@ -59,6 +59,14 @@ var (
 		},
 	})
 
+	operatorsCollUpserts = statz.NewCounter1[string]("signaling/operators_coll_upserts", statz.MetricConfig{
+		Description: "The number of times the operator upserted into the operators collection.",
+		Unit:        units.Dimensionless,
+		Labels: []statz.Label{
+			{Name: "operator_id", Description: "The queue operator ID."},
+		},
+	})
+
 	exchangeChannelAtCapacity = statz.NewCounter1[string]("signaling/exchange_channel_at_capacity", statz.MetricConfig{
 		Description: "The number of times a call exchange has it max channel capacity.",
 		Unit:        units.Dimensionless,
@@ -529,7 +537,7 @@ type mongodbCallEvent struct {
 
 const (
 	operatorStateUpdateInterval = time.Second
-	operatorHeartbeatWindow     = time.Second * 10
+	operatorHeartbeatWindow     = time.Second * 15
 )
 
 // The operatorLivenessLoop keeps the distributed queue aware of this operator's existence, in
@@ -584,30 +592,46 @@ func (queue *mongoDBWebRTCCallQueue) operatorLivenessLoop() {
 				{webrtcOperatorHostsAnswererSizeField, sizes.Answerer},
 			})
 		}
-
-		result, err := queue.operatorsColl.UpdateOne(queue.cancelCtx, bson.D{{webrtcOperatorIDField, queue.operatorID}}, bson.D{
-			{
-				"$set",
-				bson.D{
-					{webrtcOperatorExpireAtField, time.Now().Add(operatorHeartbeatWindow)},
-					{webrtcOperatorHostsField, hostSizes},
+		updateCtx, cancel := context.WithTimeout(queue.cancelCtx, operatorHeartbeatWindow/3)
+		start := time.Now()
+		result, err := queue.operatorsColl.UpdateOne(
+			updateCtx,
+			bson.D{{webrtcOperatorIDField, queue.operatorID}},
+			bson.D{
+				{
+					"$set",
+					bson.D{
+						{webrtcOperatorExpireAtField, time.Now().Add(operatorHeartbeatWindow)},
+						{webrtcOperatorHostsField, hostSizes},
+					},
 				},
 			},
-		})
+			// There is a chance that multiple previous updates took too long or failed and the document expired.
+			// In these cases it is acceptable to upsert a new operator document.
+			options.Update().SetUpsert(true),
+		)
 		if err != nil {
 			reason := "context_canceled"
 			if !errors.Is(err, context.Canceled) {
-				//nolint:goconst
-				reason = "other"
+				switch {
+				case errors.Is(err, context.DeadlineExceeded):
+					reason = "deadline_exceeded"
+				default:
+					//nolint:goconst
+					reason = "other"
+				}
 				queue.logger.Errorw("failed to update operator document for self", "error", err)
 			}
 			operatorsCollUpdateFailures.Inc(queue.operatorID, reason)
-		} else if result.MatchedCount == 0 {
-			queue.logger.Errorw(
-				"no existing operator document found, could not update operator document",
-				"operator_id", queue.operatorID,
-			)
-			operatorsCollUpdateFailures.Inc(queue.operatorID, "no_existing_operator_document")
+		} else if result.UpsertedCount == 1 {
+			queue.logger.Infow("no existing operator document found, inserted new operator document")
+			// not technically a failure, but interesting to track
+			operatorsCollUpserts.Inc(queue.operatorID)
+		}
+		cancel()
+
+		if time.Since(start) > 3*time.Second {
+			queue.logger.Infow("update to operator document took a long time", "time_elapsed", time.Since(start).String())
 		}
 
 		if queue.onAnswererLiveness != nil {
