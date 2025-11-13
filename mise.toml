@@ -16,7 +16,7 @@ disable_backends = ["asdf"]
 
 [tools]
 buf = "1.55.1"
-go = "1.23.8"
+go = "1.25"
 "go:github.com/AlekSi/gocov-xml" = "1.0.0"
 "go:github.com/axw/gocov/gocov" = "1.1.0"
 "go:github.com/bufbuild/buf/cmd/protoc-gen-buf-breaking" = "1.55.1"
