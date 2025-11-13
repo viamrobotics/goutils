@@ -5,58 +5,49 @@ package trace
 import (
 	"context"
 
-	octrace "go.opencensus.io/trace"
 	otelresource "go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 )
 
-var traceProvider *sdktrace.TracerProvider
-var tracer trace.Tracer
+var (
+	traceProvider trace.TracerProvider = noop.NewTracerProvider()
+	tracer        trace.Tracer         = traceProvider.Tracer("unconfigured")
+)
 
-type SpanData = octrace.SpanData
-type ReadOnlySpan = sdktrace.ReadOnlySpan
+type Span = trace.Span
 
-// Span is a wrapper type that contains either a [trace.trace] or a
-// [octrace.Span].
-type Span trace.Span
-
-func GetProvider() *sdktrace.TracerProvider {
+func GetProvider() trace.TracerProvider {
 	return traceProvider
 }
 
-func SetTracerWithExporter(exporter sdktrace.SpanExporter, resource *otelresource.Resource) {
-	// r, err := otelresource.Merge(
-	// 	otelresource.Default(),
-	// 	otelresource.NewWithAttributes(semconv.SchemaURL, semconv.ServiceName("rdk")),
-	// )
-	// if err != nil {
-	// 	panic(err)
-	// }
-	traceProvider = sdktrace.NewTracerProvider(
-		sdktrace.WithBatcher(exporter),
-		sdktrace.WithResource(resource),
-	)
+func SetTracerWithExporters(resource *otelresource.Resource, exporters ...sdktrace.SpanExporter) {
+	opts := make([]sdktrace.TracerProviderOption, 0, 1+len(exporters))
+	opts = append(opts, sdktrace.WithResource(resource))
+	for _, exp := range exporters {
+		opts = append(opts, sdktrace.WithBatcher(exp))
+	}
+	traceProvider = sdktrace.NewTracerProvider(opts...)
 	tracer = traceProvider.Tracer("go.viam.com/rdk")
 }
 
 func Shutdown(ctx context.Context) error {
-	if traceProvider != nil {
-		traceProvider.ForceFlush(ctx)
-		return traceProvider.Shutdown(ctx)
+	if sdkTraceProvider, ok := traceProvider.(*sdktrace.TracerProvider); ok {
+		return sdkTraceProvider.Shutdown(ctx)
 	}
 	return nil
 }
 
 // StartSpan is a wrapper aronud [trace.Tracer.Start].
 func StartSpan(ctx context.Context, name string, o ...trace.SpanStartOption) (context.Context, Span) {
-		ctx, span := tracer.Start(ctx, name)
-		return ctx, span
+	ctx, span := tracer.Start(ctx, name)
+	return ctx, span
 }
 
 // FromContext is a wrapper around [trace.FromContext].
 func FromContext(ctx context.Context) Span {
-		return trace.SpanFromContext(ctx)
+	return trace.SpanFromContext(ctx)
 }
 
 // NewContext is a wrapper around [trace.ContextWithSpan].
