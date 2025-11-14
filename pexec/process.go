@@ -21,6 +21,7 @@ import (
 const defaultStopTimeout = time.Second * 10
 
 // A ProcessConfig describes how to manage a system process.
+// nolint: recvcheck
 type ProcessConfig struct {
 	ID      string
 	Name    string

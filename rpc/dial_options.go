@@ -10,6 +10,7 @@ import (
 
 // dialOptions configure a Dial call. dialOptions are set by the DialOption
 // values passed to Dial.
+// nolint: recvcheck
 type dialOptions struct {
 	// insecure determines if the RPC connection is TLS based.
 	insecure bool
