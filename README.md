@@ -29,7 +29,7 @@ To run tests that use a backing database, start a local mongo instance in Docker
 ```bash
 docker run -d --name goutils-db-test -p 27017:27017 ghcr.io/viamrobotics/docker-mongo-rs:8.0
 ```
-Then run tests while having `TEST_MONGODB_URI` set like
+Then, run tests while having `TEST_MONGODB_URI` set like
 ```bash
 TEST_MONGODB_URI=mongodb://127.0.0.1:27017 go test <TEST PACKAGE>
 ```
