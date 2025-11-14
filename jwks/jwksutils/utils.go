@@ -119,7 +119,7 @@ func NewTestKeySet(numberOfKeys int) (jwks.KeySet, []*rsa.PrivateKey, error) {
 	for i := 0; i < numberOfKeys; i++ {
 		// keep keysize small to help make tests faster
 		//nolint: gosec
-		privKey, err := rsa.GenerateKey(rand.Reader, 512)
+		privKey, err := rsa.GenerateKey(rand.Reader, 1024)
 		if err != nil {
 			return nil, nil, err
 		}
