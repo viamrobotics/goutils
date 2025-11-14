@@ -597,7 +597,6 @@ func (queue *mongoDBWebRTCCallQueue) operatorLivenessLoop() {
 		if err != nil {
 			reason := "context_canceled"
 			if !errors.Is(err, context.Canceled) {
-				//nolint:goconst
 				reason = "other"
 				queue.logger.Errorw("failed to update operator document for self", "error", err)
 			}
@@ -1156,7 +1155,7 @@ func (queue *mongoDBWebRTCCallQueue) incrementConnectionEstablishmentExpectedFai
 	}
 
 	// Check if the machine _has_ been online within the last 10s.
-	//nolint:goconst
+
 	onlineRecently := "unknown"
 	if queue.checkAnswererLiveness != nil {
 		if queue.checkAnswererLiveness(host) {

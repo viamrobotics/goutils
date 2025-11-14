@@ -16,7 +16,6 @@ import (
 // there is not much port churn. Typically an OS will monotonically increase the
 // port numbers it assigns.
 func TryReserveRandomPort() (port int, err error) {
-	//nolint:gosec
 	var lc net.ListenConfig
 	listener, err := lc.Listen(context.Background(), "tcp", ":0")
 	if err != nil {
@@ -30,7 +29,6 @@ func TryReserveRandomPort() (port int, err error) {
 
 // ReserveRandomPort reserves a random port and returns the port number and the listener.
 func ReserveRandomPort() (int, net.Listener, error) {
-	//nolint:gosec
 	var lc net.ListenConfig
 	listener, err := lc.Listen(context.Background(), "tcp", ":0")
 	if err != nil {

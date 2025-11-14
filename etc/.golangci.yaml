@@ -24,7 +24,6 @@ linters:
     - ginkgolinter
     - gocheckcompilerdirectives
     - gochecksumtype
-    - goconst
     - gocritic
     - godot
     - goheader
@@ -43,6 +42,7 @@ linters:
     - nilerr
     - nilnil
     - noctx
+    - nolintlint
     - predeclared
     - promlinter
     - protogetter
@@ -129,7 +129,6 @@ linters:
           - errcheck
           - exhaustive
           - forcetypeassert
-          - goconst
           - gosec
           - govet
           - noctx
