@@ -262,7 +262,7 @@ func (s *webrtcClientStream) writeMessage(m interface{}, eos bool) (err error) {
 		}
 		data, err = proto.Marshal(m.(proto.Message))
 		if err != nil {
-			return
+			return err
 		}
 	}
 
