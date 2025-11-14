@@ -3,54 +3,68 @@ run:
   modules-download-mode: readonly
   tests: true
 linters:
-  default: all
-  disable:
-    - asasalint
-    - canonicalheader
-    - containedctx
-    - contextcheck
-    - cyclop
-    - depguard
-    - embeddedstructfieldcheck
-    - err113
-    - exhaustruct
-    - forcetypeassert
-    - funcorder
-    - funlen
-    - gochecknoglobals
-    - gochecknoinits
-    - gocognit
-    - gocyclo
-    - godoclint
-    - godox
-    - importas
-    - inamedparam
-    - interfacebloat
-    - intrange
-    - ireturn
-    - maintidx
-    - makezero
-    - mnd
-    - musttag
-    - nakedret
-    - nestif
-    - nlreturn
-    - noctx
-    - noinlineerr
-    - nolintlint
-    - nonamedreturns
-    - nosprintfhostport
-    - paralleltest
-    - perfsprint
-    - prealloc
-    - spancheck
-    - tagliatelle
-    - testpackage
-    - thelper
-    - varnamelen
-    - wrapcheck
-    - wsl
-    - wsl_v5
+  default: standard
+  enable:
+    - asciicheck
+    - bidichk
+    - bodyclose
+    - copyloopvar
+    - decorder
+    - dogsled
+    - dupl
+    - dupword
+    - durationcheck
+    - errcheck
+    - errchkjson
+    - errname
+    - errorlint
+    - exhaustive
+    - fatcontext
+    - forbidigo
+    - ginkgolinter
+    - gocheckcompilerdirectives
+    - gochecksumtype
+    - goconst
+    - gocritic
+    - godot
+    - goheader
+    - gomoddirectives
+    - gomodguard
+    - goprintffuncname
+    - gosec
+    - gosmopolitan
+    - govet
+    - grouper
+    - ineffassign
+    - lll
+    - loggercheck
+    - mirror
+    - misspell
+    - nilerr
+    - nilnil
+    # - noctx
+    # - nolintlint
+    - predeclared
+    - promlinter
+    - protogetter
+    - reassign
+    - revive
+    - rowserrcheck
+    - sloglint
+    - sqlclosecheck
+    - staticcheck
+    - tagalign
+    - testableexamples
+    - testifylint
+    - tparallel
+    - unconvert
+    - unparam
+    - unused
+    - usetesting
+    - usestdlibvars
+    - wastedassign
+    - whitespace
+    - zerologlint
   settings:
     errcheck:
       check-blank: true
@@ -96,19 +110,18 @@ linters:
             - [] # blocklist
             - - skip-package-name-checks: true
     staticcheck:
-      checks: ["all", "-ST1000", "-ST1003", "-ST1016", "-ST1020", "-ST1021", "-ST1022", "-QF1008", "-QF1001", "-QF1006", "-QF1012"]
-    modernize:
-      disable:
-        # Probably want to enable some or all of these eventually
-        - any
-        - rangeint
-        - fmtappendf
-        - minmax
-        - mapsloop
-        - stringscutprefix
-        - slicescontains
-        - reflecttypefor
-        - stringsbuilder
+      checks:
+        - all
+        - -ST1000
+        - -ST1003
+        - -ST1016
+        - -ST1020
+        - -ST1021
+        - -ST1022
+        - -QF1008
+        - -QF1001
+        - -QF1006
+        - -QF1012
   exclusions:
     generated: lax
     rules:
