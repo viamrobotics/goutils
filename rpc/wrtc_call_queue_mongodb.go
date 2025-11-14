@@ -630,8 +630,23 @@ func (queue *mongoDBWebRTCCallQueue) operatorLivenessLoop() {
 		}
 		cancel()
 
+		// Answerer liveness is determined by whether the operator document is updated.
+		// If updates to the operator document fail continuously, the answerers are
+		// not live as callers will not be able to make connections to the answerers connected
+		// to this queue. Therefore, if update failed, do not run the onAnswererLiveness func.
+		// This errcheck is done above as well, but pulled the continue statement out
+		// into a separate block for readability.
+		//
+		// APP-14368: if operator updates have failed continuously for some amount of time, kick off
+		// all connected answerers and refuse new answerers until operator updates are healthy again.
+		if err != nil {
+			continue
+		}
 		if time.Since(start) > 3*time.Second {
-			queue.logger.Infow("update to operator document took a long time", "time_elapsed", time.Since(start).String())
+			queue.logger.Infow(
+				"successful update to operator document took a long time",
+				"time_elapsed", time.Since(start).String(),
+			)
 		}
 
 		if queue.onAnswererLiveness != nil {
