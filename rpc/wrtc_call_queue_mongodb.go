@@ -1104,7 +1104,6 @@ var ErrOffline = errors.New("host appears to be offline; ensure machine is onlin
 // NOTE(benjirewis): The same NOTE about `len(hosts) == 1` applies here as in the method
 // above.
 func (queue *mongoDBWebRTCCallQueue) checkHostOnline(ctx context.Context, hosts ...string) error {
-	return ErrOffline
 	ctx, span := trace.StartSpan(ctx, "CallQueue::checkHostOnline")
 	defer span.End()
 
