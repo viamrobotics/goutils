@@ -1,6 +1,6 @@
 module go.viam.com/utils
 
-go 1.23.8
+go 1.25
 
 require (
 	cloud.google.com/go/compute/metadata v0.5.0
