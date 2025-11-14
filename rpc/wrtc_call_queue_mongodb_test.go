@@ -274,7 +274,7 @@ func addFakeAnswererForHost(t *testing.T, client *mongo.Client, host string) {
 	test.That(t, err, test.ShouldBeNil)
 }
 
-// removeOperatorDocument will remove the specified operator document from the operators collection, which will
+// removeOperatorDocument will remove the specified operator document from the operators collection, which
 // may include fake answerers on that document.
 func removeOperatorDocument(t *testing.T, client *mongo.Client, operatorID string) {
 	t.Helper()
