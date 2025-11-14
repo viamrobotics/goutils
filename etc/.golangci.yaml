@@ -42,7 +42,7 @@ linters:
     - misspell
     - nilerr
     - nilnil
-    # - noctx
+    - noctx
     # - nolintlint
     - predeclared
     - promlinter

@@ -465,7 +465,7 @@ func findPkgs(profiles []*cover.Profile) (map[string]*Pkg, error) {
 	// in which case runtime.GOROOT() does exactly what we want.
 	goTool := filepath.Join(runtime.GOROOT(), "bin/go")
 	//nolint:gosec
-	cmd := exec.Command(goTool, append([]string{"list", "-e", "-json"}, list...)...)
+	cmd := exec.CommandContext(context.Background(), goTool, append([]string{"list", "-e", "-json"}, list...)...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	stdout, err := cmd.Output()
@@ -572,7 +572,7 @@ func findClosestMergeBaseResults(
 	revParse := func(base string, back int) (string, error) {
 		checkRef := fmt.Sprintf("%s~%d", base, back)
 		//nolint:gosec
-		cmd := exec.Command("git", "rev-parse", checkRef)
+		cmd := exec.CommandContext(ctx, "git", "rev-parse", checkRef)
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			if len(out) != 0 {
@@ -584,7 +584,7 @@ func findClosestMergeBaseResults(
 	}
 
 	// look back for results
-	cmd := exec.Command("git", "merge-base", branchSha, baseSha)
+	cmd := exec.CommandContext(ctx, "git", "merge-base", branchSha, baseSha)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		if len(out) != 0 {

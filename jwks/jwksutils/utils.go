@@ -27,7 +27,8 @@ import (
 func ServeFakeOIDCEndpoint(t *testing.T, keyset jwks.KeySet) (string, func()) {
 	t.Helper()
 
-	listener, err := net.Listen("tcp", "localhost:0")
+	var lc net.ListenConfig
+	listener, err := lc.Listen(context.Background(), "tcp", "localhost:0")
 	test.That(t, err, test.ShouldBeNil)
 
 	mux := http.NewServeMux()

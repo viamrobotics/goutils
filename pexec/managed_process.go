@@ -253,7 +253,7 @@ func (p *managedProcess) start(ctx context.Context) error {
 
 	// This is fully managed so we will control when to kill the process and not
 	// use the CommandContext variant.
-	//nolint:gosec
+	//nolint:gosec,noctx
 	cmd := exec.Command(p.name, p.args...)
 	var err error
 	if cmd.SysProcAttr, err = p.sysProcAttr(); err != nil {

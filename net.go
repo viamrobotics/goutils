@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"net"
@@ -16,7 +17,8 @@ import (
 // port numbers it assigns.
 func TryReserveRandomPort() (port int, err error) {
 	//nolint:gosec
-	listener, err := net.Listen("tcp", ":0")
+	var lc net.ListenConfig
+	listener, err := lc.Listen(context.Background(), "tcp", ":0")
 	if err != nil {
 		return 0, err
 	}
@@ -29,7 +31,8 @@ func TryReserveRandomPort() (port int, err error) {
 // ReserveRandomPort reserves a random port and returns the port number and the listener.
 func ReserveRandomPort() (int, net.Listener, error) {
 	//nolint:gosec
-	listener, err := net.Listen("tcp", ":0")
+	var lc net.ListenConfig
+	listener, err := lc.Listen(context.Background(), "tcp", ":0")
 	if err != nil {
 		return 0, nil, err
 	}
@@ -99,7 +102,8 @@ func NewPossiblySecureTCPListenerFromFile(address, tlsCertFile, tlsKeyFile strin
 		address = defaultListenAddress
 	}
 	if tlsCertFile == "" || tlsKeyFile == "" {
-		insecureListener, err := net.Listen("tcp", address)
+		var lc net.ListenConfig
+		insecureListener, err := lc.Listen(context.Background(), "tcp", address)
 		if err != nil {
 			return nil, false, err
 		}
@@ -128,7 +132,8 @@ func NewPossiblySecureTCPListenerFromMemory(address string, tlsCertPEM, tlsKeyPE
 		address = defaultListenAddress
 	}
 	if len(tlsCertPEM) == 0 || len(tlsKeyPEM) == 0 {
-		insecureListener, err := net.Listen("tcp", address)
+		var lc net.ListenConfig
+		insecureListener, err := lc.Listen(context.Background(), "tcp", address)
 		if err != nil {
 			return nil, false, err
 		}
@@ -154,7 +159,8 @@ func NewPossiblySecureTCPListenerFromConfig(address string, tlsConfig *tls.Confi
 	if len(tlsConfig.Certificates) == 0 {
 		// try getting it a different way
 		if _, err := tlsConfig.GetCertificate(&tls.ClientHelloInfo{}); err != nil {
-			insecureListener, err := net.Listen("tcp", address)
+			var lc net.ListenConfig
+			insecureListener, err := lc.Listen(context.Background(), "tcp", address)
 			if err != nil {
 				return nil, false, err
 			}
