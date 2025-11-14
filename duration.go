@@ -9,7 +9,6 @@ import (
 // Duration is a custom duration type that supports marshalling/unmarshalling.
 // This type and supporting functionality can be removed once go supports for
 // [time.Duration], which is planned for go2: https://github.com/golang/go/issues/10275
-// nolint: recvcheck
 type Duration time.Duration
 
 // MarshalJSON marshals a [Duration] into JSON.
