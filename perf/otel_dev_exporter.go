@@ -5,12 +5,9 @@ package perf
 import (
 	"context"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"os"
-	"strings"
 	"sync"
 	"time"
 
@@ -57,10 +54,10 @@ func (e *OtelDevelopmentExporter) ExportSpans(ctx context.Context, spans []sdktr
 			myinfo = myinfo + " " + string(a.Key) + ":" + a.Value.Emit()
 		}
 
-		spanId := sd.SpanContext().SpanID()
-		spanID := hex.EncodeToString(spanId[:])
-		parentSpanId := sd.Parent().SpanID()
-		parentSpanID := hex.EncodeToString(parentSpanId[:])
+		rawSpanID := sd.SpanContext().SpanID()
+		spanID := hex.EncodeToString(rawSpanID[:])
+		rawParentSpanID := sd.Parent().SpanID()
+		parentSpanID := hex.EncodeToString(rawParentSpanID[:])
 
 		if !reZero.MatchString(parentSpanID) {
 			e.children[parentSpanID] = append(e.children[parentSpanID], myOtelSpanInfo{myinfo, spanID, sd})
@@ -144,6 +141,7 @@ func (e *OtelDevelopmentExporter) Start() error {
 
 // Stop stops the metric and span data exporter.
 func (e *OtelDevelopmentExporter) Stop() {
+	//nolint: errcheck,gosec
 	trace.Shutdown(context.Background())
 }
 
@@ -153,62 +151,7 @@ func (e *OtelDevelopmentExporter) Close() {
 
 // ExportMetrics exports to log.
 func (e *OtelDevelopmentExporter) ExportMetrics(ctx context.Context, metrics []*metricdata.Metric) error {
-	metricsTransform := make(map[string]interface{}, len(metrics))
-
-	transformPoint := func(point metricdata.Point) interface{} {
-		switch v := point.Value.(type) {
-		case *metricdata.Distribution:
-			dv := v
-			return map[string]interface{}{
-				"count":      dv.Count,
-				"sum":        dv.Sum,
-				"sum_sq_dev": dv.SumOfSquaredDeviation,
-			}
-		default:
-			return point.Value
-		}
-	}
-
-	for _, metric := range metrics {
-		if len(metric.TimeSeries) == 0 {
-			continue
-		}
-		if len(metric.Descriptor.LabelKeys) == 0 {
-			if len(metric.TimeSeries) == 0 || len(metric.TimeSeries[0].Points) == 0 {
-				continue
-			}
-			metricsTransform[metric.Descriptor.Name] = transformPoint(metric.TimeSeries[0].Points[0])
-			continue
-		}
-
-		var pointVals []interface{}
-		for _, ts := range metric.TimeSeries {
-			if len(ts.Points) == 0 {
-				continue
-			}
-			labels := make([][]string, 0, len(metric.Descriptor.LabelKeys))
-			for idx, key := range metric.Descriptor.LabelKeys {
-				labels = append(labels, []string{key.Key, ts.LabelValues[idx].Value})
-			}
-			if len(labels) == 1 {
-				pointVals = append(pointVals, map[string]interface{}{
-					strings.Join(labels[0], ":"): transformPoint(ts.Points[0]),
-				})
-				continue
-			}
-			pointVals = append(pointVals, map[string]interface{}{
-				"labels": labels,
-				"value":  transformPoint(ts.Points[0]),
-			})
-		}
-		metricsTransform[metric.Descriptor.Name] = pointVals
-	}
-	md, err := json.MarshalIndent(metricsTransform, "", "  ")
-	if err != nil {
-		return err
-	}
-	log.Println(string(md))
-	return nil
+	return exportMetrics(metrics)
 }
 
 func (e *OtelDevelopmentExporter) recurse(currSpan *myOtelSpanInfo, callerPath []string, wd *walkData) {

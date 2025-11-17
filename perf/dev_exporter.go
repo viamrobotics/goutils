@@ -116,6 +116,12 @@ func (e *developmentExporter) Close() {
 
 // ExportMetrics exports to log.
 func (e *developmentExporter) ExportMetrics(ctx context.Context, metrics []*metricdata.Metric) error {
+	return exportMetrics(metrics)
+}
+
+// Internal implementation currently shared between [developmentExporter] and
+// [OtelDevelopmentExporter].
+func exportMetrics(metrics []*metricdata.Metric) error {
 	metricsTransform := make(map[string]interface{}, len(metrics))
 
 	transformPoint := func(point metricdata.Point) interface{} {
