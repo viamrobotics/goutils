@@ -20,7 +20,7 @@ import (
 	"go.viam.com/utils/trace"
 )
 
-// OtelDevelopmentExporter exports metrics and span to log file.
+// OtelDevelopmentExporter exports metrics and spans to log file.
 type OtelDevelopmentExporter struct {
 	mu             sync.Mutex
 	shutdown       bool
@@ -38,7 +38,7 @@ type OtelDevelopmentExporter struct {
 	outputWriter io.Writer
 }
 
-// ExportSpans implements trace.SpanExporter.
+// ExportSpans implements [sdktrace.SpanExporter].
 func (e *OtelDevelopmentExporter) ExportSpans(ctx context.Context, spans []sdktrace.ReadOnlySpan) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -82,7 +82,8 @@ func (e *OtelDevelopmentExporter) Shutdown(ctx context.Context) error {
 	return nil
 }
 
-// OtelDevelopmentExporterOptions provides options for DevelopmentExporter.
+// OtelDevelopmentExporterOptions provides options for
+// [OtelDevelopmentExporter].
 type OtelDevelopmentExporterOptions struct {
 	// reportingInterval is a time interval between two successive metrics
 	// export.
