@@ -1195,7 +1195,6 @@ func (queue *mongoDBWebRTCCallQueue) incrementConnectionEstablishmentExpectedFai
 	}
 
 	// Check if the machine _has_ been online within the last 10s.
-
 	onlineRecently := "unknown"
 	if queue.checkAnswererLiveness != nil {
 		if queue.checkAnswererLiveness(host) {
