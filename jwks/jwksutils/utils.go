@@ -27,7 +27,8 @@ import (
 func ServeFakeOIDCEndpoint(t *testing.T, keyset jwks.KeySet) (string, func()) {
 	t.Helper()
 
-	listener, err := net.Listen("tcp", "localhost:0")
+	var lc net.ListenConfig
+	listener, err := lc.Listen(context.Background(), "tcp", "localhost:0")
 	test.That(t, err, test.ShouldBeNil)
 
 	mux := http.NewServeMux()
@@ -118,7 +119,7 @@ func NewTestKeySet(numberOfKeys int) (jwks.KeySet, []*rsa.PrivateKey, error) {
 	for i := 0; i < numberOfKeys; i++ {
 		// keep keysize small to help make tests faster
 		//nolint: gosec
-		privKey, err := rsa.GenerateKey(rand.Reader, 512)
+		privKey, err := rsa.GenerateKey(rand.Reader, 1024)
 		if err != nil {
 			return nil, nil, err
 		}
