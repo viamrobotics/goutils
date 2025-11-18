@@ -141,6 +141,7 @@ func dial(
 			mdnsLogger := utils.Sublogger(logger, "mdns")
 			defer wg.Done()
 
+			mdnsLogger.Debugw("trying mDNS", "address", address)
 			conn, cached, err := dialMulticastDNS(ctxParallel, address, mdnsLogger, dOpts)
 			if err != nil {
 				dialCh <- dialResult{err: err}
@@ -272,9 +273,6 @@ func dial(
 		return conn, cached, nil
 	}
 	if fatalErr != nil {
-		if errors.Is(fatalErr, ErrOffline) {
-			return nil, false, ErrOffline
-		}
 		return nil, false, fatalErr
 	}
 
@@ -288,9 +286,6 @@ func dial(
 	var directErr error
 	conn, cached, directErr = dialDirectGRPC(ctx, address, dOpts, logger)
 	if directErr != nil {
-		if errors.Is(directErr, ErrOffline) {
-			return nil, false, ErrOffline
-		}
 		return nil, false, multierr.Combine(directErr, nonFatalErr)
 	}
 	if dOpts.debug {
