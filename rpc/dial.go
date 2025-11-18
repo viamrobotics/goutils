@@ -141,7 +141,7 @@ func dial(
 			mdnsLogger := utils.Sublogger(logger, "mdns")
 			defer wg.Done()
 
-			mdnsLogger.Debugw("trying mDNS", "address", address)
+			mdnsLogger.Debugw("dialMulticastDNS CALLED")
 			conn, cached, err := dialMulticastDNS(ctxParallel, address, mdnsLogger, dOpts)
 			if err != nil {
 				dialCh <- dialResult{err: err}
@@ -191,6 +191,7 @@ func dial(
 				"host", originalAddress,
 			)
 
+			webrtcLogger.Debugw("dialFunc WebRTC CALLED")
 			conn, cached, err := dialFunc(
 				ctxParallel,
 				"webrtc",
@@ -273,6 +274,10 @@ func dial(
 		return conn, cached, nil
 	}
 	if fatalErr != nil {
+		logger.Errorw("HERE ",nonFatalErr, fatalErr, errors.Is(fatalErr, ErrOffline))
+		if errors.Is(fatalErr, ErrOffline) {
+			return nil, false, ErrOffline
+		}
 		return nil, false, fatalErr
 	}
 
@@ -284,8 +289,14 @@ func dial(
 	}
 
 	var directErr error
+	logger.Errorw("dialDirectGRPC CALLED")
 	conn, cached, directErr = dialDirectGRPC(ctx, address, dOpts, logger)
 	if directErr != nil {
+		logger.Errorw("HERE 1", directErr, errors.Is(directErr, ErrOffline))
+		logger.Errorw("HERE 2", nonFatalErr, fatalErr)
+		if errors.Is(directErr, ErrOffline) {
+			return nil, false, ErrOffline
+		}
 		return nil, false, multierr.Combine(directErr, nonFatalErr)
 	}
 	if dOpts.debug {
@@ -322,6 +333,9 @@ func listMulticastInterfaces() []net.Interface {
 	return interfaces
 }
 
+// ErrMDNSQueryFailed is returned when a mDNS query fails to find a candidate.
+var ErrMDNSQuery = errors.New("mDNS query failed to find a candidate")
+
 func lookupMDNSCandidate(ctx context.Context, address string, logger utils.ZapCompatibleLogger) (*zeroconf.ServiceEntry, error) {
 	candidates := []string{address, strings.ReplaceAll(address, ".", "-")}
 	// RSDK-8205: logger.Desugar().Sugar() is necessary to massage a ZapCompatibleLogger into a
@@ -356,7 +370,7 @@ func lookupMDNSCandidate(ctx context.Context, address string, logger utils.ZapCo
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
-	return nil, errors.New("mDNS query failed to find a candidate")
+	return nil, ErrMDNSQuery
 }
 
 func dialMulticastDNS(
