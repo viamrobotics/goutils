@@ -145,7 +145,8 @@ func runServer(
 		bindAddress = fmt.Sprintf("localhost:%d", port)
 	}
 
-	listener, err := net.Listen("tcp", bindAddress)
+	var lc net.ListenConfig
+	listener, err := lc.Listen(ctx, "tcp", bindAddress)
 	if err != nil {
 		return err
 	}

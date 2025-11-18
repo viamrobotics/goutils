@@ -42,7 +42,8 @@ func WaitSuccessfulDial(address string) error {
 		default:
 		}
 		var conn net.Conn
-		conn, lastErr = net.Dial("tcp", address)
+		var d net.Dialer
+		conn, lastErr = d.DialContext(ctx, "tcp", address)
 		if lastErr == nil {
 			return conn.Close()
 		}

@@ -252,10 +252,10 @@ func TestWithEd25519PublicKeyProvider(t *testing.T) {
 }
 
 func TestRSAPublicKeyThumbprint(t *testing.T) {
-	privKey1, err := rsa.GenerateKey(rand.Reader, 512)
+	privKey1, err := rsa.GenerateKey(rand.Reader, 1024)
 	test.That(t, err, test.ShouldBeNil)
 
-	privKey2, err := rsa.GenerateKey(rand.Reader, 512)
+	privKey2, err := rsa.GenerateKey(rand.Reader, 1024)
 	test.That(t, err, test.ShouldBeNil)
 
 	thumbPrint1, err := RSAPublicKeyThumbprint(&privKey1.PublicKey)

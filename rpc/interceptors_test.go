@@ -48,7 +48,7 @@ func TestTracingInterceptors(t *testing.T) {
 			return resp, nil
 		}
 		if s, ok := status.FromError(err); ok {
-			return nil, errors.Wrapf(err, s.Message())
+			return nil, errors.Wrap(err, s.Message())
 		}
 		if s := status.FromContextError(err); s != nil {
 			return nil, s.Err()
@@ -71,7 +71,7 @@ func TestTracingInterceptors(t *testing.T) {
 			return nil
 		}
 		if s, ok := status.FromError(err); ok {
-			return errors.Wrapf(err, s.Message())
+			return errors.Wrap(err, s.Message())
 		}
 		if s := status.FromContextError(err); s != nil {
 			return s.Err()
