@@ -31,7 +31,9 @@ func SkipUnlessInternet(tb testing.TB) {
 	tb.Helper()
 	if internetConnected == nil {
 		var connected bool
-		conn, err := net.DialTimeout("tcp", "mozilla.org:80", 5*time.Second)
+		var d net.Dialer
+		d.Timeout = 5 * time.Second
+		conn, err := d.DialContext(tb.Context(), "tcp", "mozilla.org:80")
 		if err == nil {
 			test.That(tb, conn.Close(), test.ShouldBeNil)
 			connected = true
