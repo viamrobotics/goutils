@@ -50,6 +50,23 @@ var (
 		},
 	})
 
+	operatorsCollUpdateFailures = statz.NewCounter2[string, string]("signaling/operators_coll_update_failures", statz.MetricConfig{
+		Description: "The number of times the operator failed to update the operators collection.",
+		Unit:        units.Dimensionless,
+		Labels: []statz.Label{
+			{Name: "operator_id", Description: "The queue operator ID."},
+			{Name: "reason", Description: "The reason for failure."},
+		},
+	})
+
+	operatorsCollUpserts = statz.NewCounter1[string]("signaling/operators_coll_upserts", statz.MetricConfig{
+		Description: "The number of times the operator upserted into the operators collection.",
+		Unit:        units.Dimensionless,
+		Labels: []statz.Label{
+			{Name: "operator_id", Description: "The queue operator ID."},
+		},
+	})
+
 	exchangeChannelAtCapacity = statz.NewCounter1[string]("signaling/exchange_channel_at_capacity", statz.MetricConfig{
 		Description: "The number of times a call exchange has it max channel capacity.",
 		Unit:        units.Dimensionless,
@@ -357,12 +374,17 @@ func NewMongoDBWebRTCCallQueue(
 		return nil, err
 	}
 
-	if _, err := operatorsColl.InsertOne(ctx, bson.D{
+	result, err := operatorsColl.InsertOne(ctx, bson.D{
 		{webrtcOperatorIDField, operatorID},
 		{webrtcOperatorExpireAtField, time.Now().Add(operatorHeartbeatWindow)},
-	}); err != nil {
+	})
+	if err != nil {
 		return nil, err
 	}
+	logger.Infow(
+		"successfully added operator document to operators collection",
+		"operator_id", operatorID, "document_id", result.InsertedID,
+	)
 
 	cancelCtx, cancelFunc := context.WithCancel(context.Background())
 	queue := &mongoDBWebRTCCallQueue{
@@ -515,7 +537,7 @@ type mongodbCallEvent struct {
 
 const (
 	operatorStateUpdateInterval = time.Second
-	operatorHeartbeatWindow     = time.Second * 10
+	operatorHeartbeatWindow     = time.Second * 15
 )
 
 // The operatorLivenessLoop keeps the distributed queue aware of this operator's existence, in
@@ -570,19 +592,61 @@ func (queue *mongoDBWebRTCCallQueue) operatorLivenessLoop() {
 				{webrtcOperatorHostsAnswererSizeField, sizes.Answerer},
 			})
 		}
-
-		if _, err := queue.operatorsColl.UpdateOne(queue.cancelCtx, bson.D{{webrtcOperatorIDField, queue.operatorID}}, bson.D{
-			{
-				"$set",
-				bson.D{
-					{webrtcOperatorExpireAtField, time.Now().Add(operatorHeartbeatWindow)},
-					{webrtcOperatorHostsField, hostSizes},
+		updateCtx, cancel := context.WithTimeout(queue.cancelCtx, operatorHeartbeatWindow/3)
+		start := time.Now()
+		result, err := queue.operatorsColl.UpdateOne(
+			updateCtx,
+			bson.D{{webrtcOperatorIDField, queue.operatorID}},
+			bson.D{
+				{
+					"$set",
+					bson.D{
+						{webrtcOperatorExpireAtField, time.Now().Add(operatorHeartbeatWindow)},
+						{webrtcOperatorHostsField, hostSizes},
+					},
 				},
 			},
-		}); err != nil {
+			// There is a chance that multiple previous updates took too long or failed and the document expired.
+			// In these cases it is acceptable to upsert a new operator document.
+			options.Update().SetUpsert(true),
+		)
+		if err != nil {
+			reason := "context_canceled"
 			if !errors.Is(err, context.Canceled) {
+				switch {
+				case errors.Is(err, context.DeadlineExceeded):
+					reason = "deadline_exceeded"
+				default:
+					//nolint:goconst
+					reason = "other"
+				}
 				queue.logger.Errorw("failed to update operator document for self", "error", err)
 			}
+			operatorsCollUpdateFailures.Inc(queue.operatorID, reason)
+		} else if result.UpsertedCount == 1 {
+			queue.logger.Infow("no existing operator document found, inserted new operator document")
+			// not technically a failure, but interesting to track
+			operatorsCollUpserts.Inc(queue.operatorID)
+		}
+		cancel()
+
+		// Answerer liveness is determined by whether the operator document is updated.
+		// If updates to the operator document fail continuously, the answerers are
+		// not live as callers will not be able to make connections to the answerers connected
+		// to this queue. Therefore, if update failed, do not run the onAnswererLiveness func.
+		// This errcheck is done above as well, but pulled the continue statement out
+		// into a separate block for readability.
+		//
+		// APP-14368: if operator updates have failed continuously for some amount of time, kick off
+		// all connected answerers and refuse new answerers until operator updates are healthy again.
+		if err != nil {
+			continue
+		}
+		if time.Since(start) > 3*time.Second {
+			queue.logger.Infow(
+				"successful update to operator document took a long time",
+				"time_elapsed", time.Since(start).String(),
+			)
 		}
 
 		if queue.onAnswererLiveness != nil {
@@ -1122,6 +1186,7 @@ func (queue *mongoDBWebRTCCallQueue) incrementConnectionEstablishmentExpectedFai
 	// Reason for blocking is one of a. neither answerer for the machine currently being
 	// connected to an operator, b. >= 50 callers waiting for same machine, c. some other
 	// error (internal error from MDB query, e.g.). We can tell from the passed in error.
+
 	reason := "other"
 	if errors.Is(err, errOffline) {
 		reason = "answerers_offline"
@@ -1130,7 +1195,6 @@ func (queue *mongoDBWebRTCCallQueue) incrementConnectionEstablishmentExpectedFai
 	}
 
 	// Check if the machine _has_ been online within the last 10s.
-	//nolint:goconst
 	onlineRecently := "unknown"
 	if queue.checkAnswererLiveness != nil {
 		if queue.checkAnswererLiveness(host) {

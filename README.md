@@ -25,6 +25,15 @@ Once mise is set up you can run `mise tasks` to view the available targets. Some
 - `mise r build` - Build protos and then go code
 - `mise r lint` - Run all linters
 
+To run tests that use a backing database, start a local mongo instance in Docker with
+```bash
+docker run -d --name goutils-db-test -p 27017:27017 ghcr.io/viamrobotics/docker-mongo-rs:8.0
+```
+Then, run tests while having `TEST_MONGODB_URI` set like
+```bash
+TEST_MONGODB_URI=mongodb://127.0.0.1:27017 go test <TEST PACKAGE>
+```
+
 ## Examples
 
 This library includes examples that demonstrate grpc functionality for a variety of contexts - see links for more information:

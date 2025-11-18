@@ -214,7 +214,8 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 		}
 	}
 
-	grpcListener, err := net.Listen("tcp", grpcBindAddr)
+	var lc net.ListenConfig
+	grpcListener, err := lc.Listen(context.Background(), "tcp", grpcBindAddr)
 	if err != nil {
 		return nil, err
 	}

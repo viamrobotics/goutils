@@ -3,6 +3,7 @@ package rpc
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -123,7 +124,7 @@ func TestMongoDBWebRTCCallQueueMulti(t *testing.T) {
 		offers[0] = offerState{CallID: callID, Done: respDone, Cancel: cancel}
 
 		// Now that we are starting up real answerers, we can remove the fake one
-		removeFakeAnswererForHost(t, client)
+		removeOperatorDocument(t, client, operatorID)
 		t.Logf("start up %d answerers (the max)", maxHostAnswerersSize*2)
 		for i := 0; i < maxHostAnswerersSize*2; i++ {
 			exchange, err := answererQueue.RecvOffer(ctx, []string{host})
@@ -177,35 +178,85 @@ func TestMongoDBWebRTCCallQueueMulti(t *testing.T) {
 
 		test.That(t, client.Database(mongodbWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
 		answererQueue, err := NewMongoDBWebRTCCallQueue(
-			context.Background(), uuid.NewString()+"-answerer",
+			ctx, uuid.NewString()+"-answerer",
 			1, client, logger, func(hostnames []string, atTime time.Time) { activeAnswererChannelStub <- len(hostnames) }, nil)
 		test.That(t, err, test.ShouldBeNil)
 		defer answererQueue.Close()
 
 		host1 := primitive.NewObjectID().Hex()
 		host2 := primitive.NewObjectID().Hex()
+
+		var wg sync.WaitGroup
+		wg.Add(1)
 		go func() {
+			defer wg.Done()
 			// this is mimicking the caller - this sets the hostnames into the hosts array in the operatorLivenessLoop
 			_, _ = answererQueue.RecvOffer(ctx, []string{host1, host2})
 		}()
-		time.Sleep(time.Second * 2)
 
-		// val is zero when no hostnames are online, so repeat until ready to validate tests
-		foundHosts := false
-		ctx, _ = context.WithTimeout(ctx, time.Second*5)
-		for {
-			if ctx.Err() != nil || foundHosts {
-				break
-			}
+		// val is zero when no hostnames are online, so repeat until two hostnames are returned.
+		testutils.WaitForAssertion(t, func(tb testing.TB) {
+			tb.Helper()
 			val, ok := <-activeAnswererChannelStub
-			test.That(t, ok, test.ShouldBeTrue)
-			if val > 0 {
-				foundHosts = true
-				test.That(t, val, test.ShouldEqual, 2)
-			}
-		}
-		test.That(t, foundHosts, test.ShouldBeTrue)
+			test.That(tb, ok, test.ShouldBeTrue)
+			test.That(tb, val, test.ShouldEqual, 2)
+		})
+
+		cancel()
+		wg.Wait()
 	})
+}
+
+func TestMongoDBWebRTCCallQueueOperatorDocDeleted(t *testing.T) {
+	logger := golog.NewTestLogger(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	client := testutils.BackingMongoDBClient(t)
+	test.That(t, client.Database(mongodbWebRTCCallQueueDBName).Drop(ctx), test.ShouldBeNil)
+	opID := uuid.NewString() + "-answerer"
+	answererQueue, err := NewMongoDBWebRTCCallQueue(ctx, opID, 1, client, logger, nil, nil)
+	test.That(t, err, test.ShouldBeNil)
+	defer answererQueue.Close()
+
+	host := primitive.NewObjectID().Hex()
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		// this is mimicking the caller - this sets the hostname into the hosts array in the operatorLivenessLoop
+		_, _ = answererQueue.RecvOffer(ctx, []string{host})
+	}()
+
+	waitForHostOnOperator := func(t *testing.T) {
+		testutils.WaitForAssertion(t, func(tb testing.TB) {
+			tb.Helper()
+			filter := bson.M{
+				webrtcOperatorHostsHostCombinedField:         host,
+				webrtcOperatorHostsAnswererSizeCombinedField: bson.M{"$eq": 1},
+			}
+
+			count, err := client.Database(mongodbWebRTCCallQueueDBName).
+				Collection(mongodbWebRTCCallQueueOperatorsCollName).
+				CountDocuments(ctx, filter)
+			test.That(tb, err, test.ShouldBeNil)
+			test.That(tb, count, test.ShouldEqual, 1)
+		})
+	}
+
+	// This test waits for the host to appear on the operator document.
+	// It then:
+	//   1. Deletes the operator document (simulating a document expiration caused
+	//      by network or any other issues)
+	//   2. Asserts that the operator document is re-inserted into the operators collection
+	//      and the host is also on that operator document.
+	waitForHostOnOperator(t)
+	removeOperatorDocument(t, client, opID)
+	waitForHostOnOperator(t)
+
+	cancel()
+	wg.Wait()
 }
 
 func addFakeAnswererForHost(t *testing.T, client *mongo.Client, host string) {
@@ -223,7 +274,9 @@ func addFakeAnswererForHost(t *testing.T, client *mongo.Client, host string) {
 	test.That(t, err, test.ShouldBeNil)
 }
 
-func removeFakeAnswererForHost(t *testing.T, client *mongo.Client) {
+// removeOperatorDocument will remove the specified operator document from the operators collection, which
+// may include fake answerers on that document.
+func removeOperatorDocument(t *testing.T, client *mongo.Client, operatorID string) {
 	t.Helper()
 	_, err := client.Database(mongodbWebRTCCallQueueDBName).Collection(mongodbWebRTCCallQueueOperatorsCollName).DeleteOne(context.Background(),
 		bson.M{"_id": operatorID})

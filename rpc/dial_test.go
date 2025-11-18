@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -1592,11 +1591,7 @@ func TestDialUnix(t *testing.T) {
 	)
 	test.That(t, err, test.ShouldBeNil)
 
-	dir, err := os.MkdirTemp("", "viam-test-*")
-	test.That(t, err, test.ShouldBeNil)
-	defer func() {
-		test.That(t, os.RemoveAll(dir), test.ShouldBeNil)
-	}()
+	dir := t.TempDir()
 	socketPath := filepath.ToSlash(filepath.Join(dir, "test.sock"))
 	if runtime.GOOS == "windows" {
 		// on windows, we need to craft a good enough looking URL for gRPC which

@@ -19,6 +19,7 @@ func TestSetupGlobalCache(t *testing.T) (string, func()) {
 	undoFunc := func() {}
 	if err == nil {
 		undoFunc = func() {
+			//nolint: usetesting
 			test.That(t, os.Chdir(cwd), test.ShouldBeNil)
 			cache, err := GlobalCache()
 			test.That(t, err, test.ShouldBeNil)
@@ -28,6 +29,7 @@ func TestSetupGlobalCache(t *testing.T) (string, func()) {
 	dir := t.TempDir()
 	startAt := filepath.Join(dir, "one", "two", "three")
 	test.That(t, os.MkdirAll(startAt, 0o750), test.ShouldBeNil)
+	//nolint: usetesting
 	test.That(t, os.Chdir(startAt), test.ShouldBeNil)
 	return startAt, undoFunc
 }
