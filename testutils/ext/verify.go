@@ -20,8 +20,29 @@ import (
 	"go.viam.com/utils/testutils"
 )
 
+// VerifyTestMainOpt is a type used to configure the behavior of
+// [VerifyTestMain].
+type VerifyTestMainOpt func(*verifyTestMainOpts)
+
+type verifyTestMainOpts struct {
+	leakOpts []goleak.Option
+}
+
+// WithLeakOpt applies the provided [goleak.Option] to the goroutine leak
+// detection performed by [VerifyTestMain].
+func WithLeakOpt(opt goleak.Option) VerifyTestMainOpt {
+	return func(opts *verifyTestMainOpts) {
+		opts.leakOpts = append(opts.leakOpts, opt)
+	}
+}
+
 // VerifyTestMain preforms various runtime checks on code that tests run.
-func VerifyTestMain(m goleak.TestingM) {
+func VerifyTestMain(m goleak.TestingM, opts ...VerifyTestMainOpt) {
+	tmOpts := &verifyTestMainOpts{}
+	for _, o := range opts {
+		o(tmOpts)
+	}
+
 	func() {
 		// workaround https://github.com/googleapis/google-cloud-go/issues/5430
 		httpClient := &http.Client{Transport: http.DefaultTransport.(*http.Transport).Clone()}
@@ -57,7 +78,8 @@ func VerifyTestMain(m goleak.TestingM) {
 	if exitCode != 0 {
 		os.Exit(exitCode)
 	}
-	if err := utils.FindGoroutineLeaks(currentGoroutines); err != nil {
+	leakOpts := append(tmOpts.leakOpts, currentGoroutines)
+	if err := utils.FindGoroutineLeaks(leakOpts...); err != nil {
 		fmt.Fprintf(os.Stderr, "goleak: Errors on successful test run: %v\n", err)
 		os.Exit(1)
 	}

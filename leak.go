@@ -11,9 +11,6 @@ func FindGoroutineLeaks(options ...goleak.Option) error {
 		goleak.IgnoreTopFunction("go.opencensus.io/stats/view.(*worker).start"),
 		goleak.IgnoreTopFunction("github.com/desertbit/timer.timerRoutine"),              // gRPC uses this
 		goleak.IgnoreTopFunction("github.com/letsencrypt/pebble/va.VAImpl.processTasks"), // no way to stop it,
-		// This is likely a real leak that we're unable to track down.
-		// It was causing intermittent test failures, so we're ignoring it for now.
-		goleak.IgnoreTopFunction("golang.org/x/net/http2.(*ClientConn).readLoop"),
 	)
 	return goleak.Find(optsCopy...)
 }
