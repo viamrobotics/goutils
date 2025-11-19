@@ -1168,7 +1168,7 @@ func (queue *mongoDBWebRTCCallQueue) checkHostOnline(ctx context.Context, hosts 
 		return err
 	}
 	if len(ret) == 0 {
-		return status.Error(codes.Unavailable, ErrOffline.Error())
+		return ErrHostOffline
 	}
 	return nil
 }
@@ -1189,7 +1189,7 @@ func (queue *mongoDBWebRTCCallQueue) incrementConnectionEstablishmentExpectedFai
 	// error (internal error from MDB query, e.g.). We can tell from the passed in error.
 
 	reason := "other"
-	if errors.Is(err, ErrOffline) {
+	if errors.Is(err, ErrHostOffline) {
 		reason = "answerers_offline"
 	} else if errors.Is(err, errTooManyConns) {
 		reason = "too_many_callers"
