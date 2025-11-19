@@ -2,6 +2,7 @@ package artifact
 
 import (
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -88,6 +89,48 @@ func LoadConfigFromFile(path string) (*Config, error) {
 	treePath := filepath.Join(pathDir, TreeName)
 	config.configDir = pathDir
 	config.commitFn = func() error {
+		// Read current version from disk to detect concurrent modifications
+		var currentVersion int64
+		var fileExists bool
+		//nolint:gosec
+		if existingFile, err := os.Open(treePath); err == nil {
+			defer utils.UncheckedErrorFunc(existingFile.Close)
+
+			fileExists = true
+			var existingTreeFile TreeFile
+			if err := json.NewDecoder(existingFile).Decode(&existingTreeFile); err != nil {
+				// If we get EOF or decode error, the file might be being written by another process
+				// Treat this as a concurrent modification
+				if err.Error() == "EOF" || errors.Is(err, os.ErrClosed) {
+					return NewConflictError(treePath, config.treeVersion, -1)
+				}
+
+				// Try backward compatible read
+				if _, seekErr := existingFile.Seek(0, 0); seekErr == nil {
+					var tree TreeNodeTree
+					if decodeErr := json.NewDecoder(existingFile).Decode(&tree); decodeErr == nil {
+						currentVersion = 0 // Old format
+					} else {
+						return errors.Wrap(err, "failed to read existing tree version")
+					}
+				} else {
+					return errors.Wrap(err, "failed to read existing tree version")
+				}
+			} else {
+				currentVersion = existingTreeFile.Version
+			}
+		}
+
+		// Check for concurrent modification (optimistic locking)
+		// Only check if file existed when we tried to read it
+		if fileExists && currentVersion != config.treeVersion {
+			return NewConflictError(treePath, config.treeVersion, currentVersion)
+		}
+
+		// Increment version for this write
+		newVersion := config.treeVersion + 1
+
+		// Write new tree with incremented version
 		//nolint:gosec
 		newTreeFile, err := os.OpenFile(treePath, os.O_RDWR|os.O_CREATE, 0o600)
 		if err != nil {
@@ -97,25 +140,56 @@ func LoadConfigFromFile(path string) (*Config, error) {
 		if err := newTreeFile.Truncate(0); err != nil {
 			return err
 		}
+
+		treeFile := TreeFile{
+			Version: newVersion,
+			Tree:    config.tree,
+		}
+
 		enc := json.NewEncoder(newTreeFile)
 		enc.SetIndent("", "  ")
-		return enc.Encode(config.tree)
+		if err := enc.Encode(treeFile); err != nil {
+			return err
+		}
+
+		// Update in-memory version on successful write
+		config.treeVersion = newVersion
+		return nil
 	}
 
 	//nolint:gosec
-	treeFile, err := os.Open(treePath)
+	treeFileHandle, err := os.Open(treePath)
 	if err == nil {
-		defer utils.UncheckedErrorFunc(treeFile.Close)
+		defer utils.UncheckedErrorFunc(treeFileHandle.Close)
 
-		treeDec := json.NewDecoder(treeFile)
-
-		var tree TreeNodeTree
-		if err := treeDec.Decode(&tree); err != nil {
-			return nil, err
+		// Read file contents for potential backward compatibility
+		var fileData []byte
+		fileData, err = io.ReadAll(treeFileHandle)
+		if err != nil {
+			if err.Error() == "EOF" {
+				return nil, errors.New("tree file is being modified by another process, please retry")
+			}
+			return nil, errors.Wrap(err, "failed to read tree file")
 		}
-		config.tree = tree
+
+		// Try to decode as new format (TreeFile with version)
+		var treeFile TreeFile
+		if err := json.Unmarshal(fileData, &treeFile); err == nil && treeFile.Tree != nil && len(treeFile.Tree) > 0 {
+			// Successfully decoded as new format with content
+			config.tree = treeFile.Tree
+			config.treeVersion = treeFile.Version
+		} else {
+			// Try backward compatibility: decode as raw tree without version wrapper
+			var tree TreeNodeTree
+			if err := json.Unmarshal(fileData, &tree); err != nil {
+				return nil, errors.Wrap(err, "failed to decode tree file in old or new format")
+			}
+			config.tree = tree
+			config.treeVersion = 0 // Old format, start at version 0
+		}
 	} else {
 		config.tree = TreeNodeTree{}
+		config.treeVersion = 0
 	}
 
 	return &config, nil
