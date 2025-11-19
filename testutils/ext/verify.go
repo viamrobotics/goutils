@@ -78,7 +78,8 @@ func VerifyTestMain(m goleak.TestingM, opts ...VerifyTestMainOpt) {
 	if exitCode != 0 {
 		os.Exit(exitCode)
 	}
-	leakOpts := append(tmOpts.leakOpts, currentGoroutines)
+	leakOpts := tmOpts.leakOpts
+	leakOpts = append(leakOpts, currentGoroutines)
 	if err := utils.FindGoroutineLeaks(leakOpts...); err != nil {
 		fmt.Fprintf(os.Stderr, "goleak: Errors on successful test run: %v\n", err)
 		os.Exit(1)
