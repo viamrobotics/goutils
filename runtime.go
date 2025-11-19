@@ -42,7 +42,9 @@ func ContextualMainWithSIGPIPE[L ILogger](main func(ctx context.Context, args []
 	contextualMain(main, false, logger)
 }
 
-func contextualMain[L ILogger](main func(ctx context.Context, args []string, logger L) error, quitSignal bool, logger L, ignoreSignals ...os.Signal) {
+func contextualMain[L ILogger](
+	main func(ctx context.Context, args []string, logger L) error, quitSignal bool, logger L, ignoreSignals ...os.Signal,
+) {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	if len(ignoreSignals) > 0 {
 		signal.Ignore(ignoreSignals...)
