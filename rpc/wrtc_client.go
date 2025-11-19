@@ -389,7 +389,7 @@ func dialWebRTC(
 
 	utils.PanicCapturingGo(func() {
 		if err := exchangeCandidates(); err != nil {
-			logger.Warnw("Failed to exchange candidates", "err", err)
+			logger.Debugw("Failed to exchange candidates", "err", err)
 			exchangeCancel(err)
 		}
 	})
@@ -412,7 +412,7 @@ func dialWebRTC(
 					Error: ErrorToStatus(exchangeErr).Proto(),
 				},
 			}); err != nil {
-				logger.Warnw("Problem sending error to signaling server", "err", err)
+				logger.Debugw("Problem sending error to signaling server", "err", err)
 			}
 		})
 		return nil, exchangeErr
