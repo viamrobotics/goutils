@@ -322,8 +322,8 @@ func listMulticastInterfaces() []net.Interface {
 	return interfaces
 }
 
-// ErrMDNSQueryFailed is returned when a mDNS query fails to find a candidate.
-var ErrMDNSQuery = errors.New("mDNS query failed to find a candidate")
+// ErrMDNSNoCandidatesFound is returned when a mDNS query fails to find a candidate.
+var ErrMDNSNoCandidatesFound = errors.New("mDNS query failed to find a candidate")
 
 func lookupMDNSCandidate(ctx context.Context, address string, logger utils.ZapCompatibleLogger) (*zeroconf.ServiceEntry, error) {
 	candidates := []string{address, strings.ReplaceAll(address, ".", "-")}
@@ -359,7 +359,7 @@ func lookupMDNSCandidate(ctx context.Context, address string, logger utils.ZapCo
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
-	return nil, ErrMDNSQuery
+	return nil, ErrMDNSNoCandidatesFound
 }
 
 func dialMulticastDNS(
