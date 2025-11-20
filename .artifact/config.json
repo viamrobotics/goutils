@@ -1,0 +1,11 @@
+{
+    "cache": "cache",
+    "root": "data",
+    "source_store": {
+        "type": "google_storage",
+        "bucket": "viam-artifacts"
+    },
+    "ignore": [
+        ".DS_Store"
+    ]
+}
