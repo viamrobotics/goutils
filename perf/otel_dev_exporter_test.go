@@ -23,7 +23,6 @@ func TestOtelDevelopmentExporter(t *testing.T) {
 	}
 
 	t.Run("no spans", func(t *testing.T) {
-		t.SkipNow()
 		e, buff := setup()
 		e.ExportSpans(t.Context(), nil)
 		e.Stop()
@@ -32,7 +31,6 @@ func TestOtelDevelopmentExporter(t *testing.T) {
 	})
 
 	t.Run("single span", func(t *testing.T) {
-		t.SkipNow()
 		e, buff := setup()
 		spanStup := &tracetest.SpanStub{
 			Name: "single",
@@ -50,7 +48,6 @@ func TestOtelDevelopmentExporter(t *testing.T) {
 		test.That(t, lines[0], test.ShouldContainSubstring, fmt.Sprintf("Calls: %5d", 1))
 	})
 	t.Run("multiple root spans", func(t *testing.T) {
-		t.SkipNow()
 		e, buff := setup()
 		spanStub := &tracetest.SpanStub{
 			Name: "repeated",
