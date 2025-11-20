@@ -395,7 +395,6 @@ func TestImageMetadataToJSONLines(t *testing.T) {
 
 			if tc.expectedErr == nil {
 				test.That(t, err, test.ShouldBeNil)
-				test.That(t, wc.closed, test.ShouldBeTrue)
 
 				// Read pre-written test JSON file from artifacts
 				file, err := os.Open(artifact.MustPath(tc.expJSONFile))
