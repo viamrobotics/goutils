@@ -200,6 +200,26 @@ var (
 		PartID:        "part1",
 		ComponentName: "component2",
 	}
+
+	fakeCustomDataEmptyBucket = &ImageMetadata{
+		Tags: []string{"cat"},
+		Annotations: &datav1.Annotations{
+			Bboxes: []*datav1.BoundingBox{
+				{
+					Id:             "8",
+					Label:          "cat",
+					XMinNormalized: 0.1,
+					XMaxNormalized: 0.15,
+					YMinNormalized: 0.2,
+					YMaxNormalized: 0.25,
+				},
+			},
+		},
+		Bucket:        "",
+		Path:          "/local/path/filename6.jpeg",
+		PartID:        "part2",
+		ComponentName: "component3",
+	}
 )
 
 // mockWriter implements CloseableWriter for testing.
@@ -285,6 +305,16 @@ func TestImageMetadataToJSONLines(t *testing.T) {
 			modelType:   mlv1.ModelType_MODEL_TYPE_OBJECT_DETECTION,
 			labels:      nil,
 			expJSONFile: filepath.Join(customTrainingDirName, "fakedata_custom_training.jsonl"),
+		},
+		{
+			name: "Empty bucket for custom training " +
+				"results in path without /gcs prefix",
+			imageMetadata: []*ImageMetadata{
+				fakeCustomDataEmptyBucket,
+			},
+			modelType:   mlv1.ModelType_MODEL_TYPE_UNSPECIFIED,
+			labels:      nil,
+			expJSONFile: filepath.Join(customTrainingDirName, "fakedata_empty_bucket.jsonl"),
 		},
 		{
 			name: "Too few images for object detection model " +
