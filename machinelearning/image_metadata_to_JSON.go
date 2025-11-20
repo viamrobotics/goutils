@@ -227,10 +227,6 @@ func ImageMetadataToJSONLines(matchingData []*ImageMetadata,
 		}
 	}
 
-	if err := wc.Close(); err != nil {
-		return errors.Wrap(ErrFileWriting, err.Error())
-	}
-
 	return nil
 }
 
