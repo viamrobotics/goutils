@@ -13,12 +13,11 @@ import (
 	datav1 "go.viam.com/api/app/data/v1"
 	mlv1 "go.viam.com/api/app/mltraining/v1"
 	"go.viam.com/test"
+
 	"go.viam.com/utils/artifact"
 )
 
 var (
-	org1        = "matching_org1"
-	loc1        = "loc1"
 	jpegFileExt = ".jpeg"
 	pngFileExt  = ".png"
 	gifFileExt  = ".gif"
@@ -28,7 +27,6 @@ var (
 	multiLabelDirName     = "test_fake_bucket/multi"
 	objDetectionDirName   = "test_fake_bucket/detection"
 	customTrainingDirName = "test_fake_bucket/custom"
-	someBucket            = "some-bucket-name"
 
 	singleClassificationLabel      = []string{"cat"}
 	singleClassificationMultiLabel = []string{"cat", "dog", "turtle", "penguin"}
@@ -220,7 +218,7 @@ var (
 	}
 )
 
-// mockWriter implements CloseableWriter for testing
+// mockWriter implements CloseableWriter for testing.
 type mockWriter struct {
 	buf    *bytes.Buffer
 	closed bool
@@ -319,7 +317,7 @@ func TestImageMetadataToJSONLines(t *testing.T) {
 			modelType:                mlv1.ModelType_MODEL_TYPE_OBJECT_DETECTION,
 			labels:                   objectDetectionLabels,
 			expJSONFile:              filepath.Join(objDetectionDirName, "fakedata_detection.jsonl"),
-			expectedErr:              ErrDatasetTooSmall("object detection", 4),
+			expectedErr:              errDatasetTooSmall("object detection", 4),
 		},
 		{
 			name:                    "Too few images per class in single-label classification results in an error",
@@ -330,7 +328,7 @@ func TestImageMetadataToJSONLines(t *testing.T) {
 			minImagesPerLabel:       10,
 			maxRatioUnlabeledImages: .2,
 			expJSONFile:             filepath.Join(singleLabelDirName, "fakedata_single_label_binary.jsonl"),
-			expectedErr:             ErrTooFewAnnotations("images", singleClassificationLabel, 10),
+			expectedErr:             errTooFewAnnotations("images", singleClassificationLabel, 10),
 		},
 		{
 			name: "A multi-label classification model with 1 image per label results in an error",
@@ -344,7 +342,7 @@ func TestImageMetadataToJSONLines(t *testing.T) {
 			minImagesPerLabel:       10,
 			maxRatioUnlabeledImages: .2,
 			expJSONFile:             multiLabelDirName + "fakedata_multi_label.jsonl",
-			expectedErr:             ErrTooFewAnnotations("images", multiClassificationLabels, 10),
+			expectedErr:             errTooFewAnnotations("images", multiClassificationLabels, 10),
 		},
 		{
 			name: "Too few bounding boxes per class in an object detection model results in error",
@@ -358,7 +356,7 @@ func TestImageMetadataToJSONLines(t *testing.T) {
 			minImagesObjectDetection: 3, // Set to 3 so dataset size check passes, then bbox count check fails
 			maxRatioUnlabeledImages:  .2,
 			expJSONFile:              objDetectionDirName + "fakedata_detection.jsonl",
-			expectedErr:              ErrTooFewAnnotations("bounding boxes", objectDetectionLabels, 10),
+			expectedErr:              errTooFewAnnotations("bounding boxes", objectDetectionLabels, 10),
 		},
 	}
 

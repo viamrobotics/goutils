@@ -1,3 +1,4 @@
+// Package machine_learning contains utilities for machine learning.
 package machine_learning
 
 import (
@@ -85,8 +86,10 @@ var (
 	minImagesPerLabel        = 10
 	maxRatioUnlabeledImages  = 0.2
 	minImagesObjectDetection = 15
-	ErrJSONFormatting        = errors.New("error formatting JSON")
-	ErrFileWriting           = errors.New("error writing to file")
+	// ErrJSONFormatting is the error returned when formatting JSON fails.
+	ErrJSONFormatting = errors.New("error formatting JSON")
+	// ErrFileWriting is the error returned when writing to a file fails.
+	ErrFileWriting = errors.New("error writing to file")
 )
 
 // UnknownLabel is the label used for unlabeled data.
@@ -114,7 +117,7 @@ func ImageMetadataToJSONLines(matchingData []*ImageMetadata,
 			allLabelsSet[tag] = struct{}{}
 		}
 		for _, annotation := range datum.Annotations.GetClassifications() {
-			allLabelsSet[annotation.Label] = struct{}{}
+			allLabelsSet[annotation.GetLabel()] = struct{}{}
 		}
 		// For custom training, there are no requested tags so all annotations should be returned.
 		if requestedTags == nil {
@@ -248,7 +251,7 @@ func validateDataset(labelsCount map[string]int, modelType mlv1.ModelType, datas
 	}
 
 	if modelType == mlv1.ModelType_MODEL_TYPE_OBJECT_DETECTION && datasetLength < minImagesObjectDetection {
-		return ErrDatasetTooSmall(modelTask, minImagesObjectDetection)
+		return errDatasetTooSmall(modelTask, minImagesObjectDetection)
 	}
 
 	totalLabelCount := 0
@@ -265,18 +268,18 @@ func validateDataset(labelsCount map[string]int, modelType mlv1.ModelType, datas
 
 	// Reject any dataset with a label with too few images
 	if len(tooFewImageLabels) != 0 {
-		return ErrTooFewAnnotations(errorAnnotation, tooFewImageLabels, minPerLabel)
+		return errTooFewAnnotations(errorAnnotation, tooFewImageLabels, minPerLabel)
 	}
 
 	// Reject any dataset with no matching bounding boxes or images
 	if totalLabelCount == labelsCount[UnknownLabel] {
-		return ErrNoMatchingImages(errorAnnotation, modelTask)
+		return errNoMatchingImages(errorAnnotation, modelTask)
 	}
 
 	// Reject any dataset with too many images that have no labels
 	maxEmptyLabels := int(maxRatioUnlabeledImages * float64(totalLabelCount))
 	if labelsCount[UnknownLabel] > maxEmptyLabels {
-		return ErrTooManyUnlabeled()
+		return errTooManyUnlabeled()
 	}
 
 	return nil
@@ -297,25 +300,23 @@ func labelsToErrorString(labels []string) string {
 	return output
 }
 
-func ErrTooFewAnnotations(errorAnnotation string, errorLabels []string, minPerLabel int) error {
-	return errors.New(fmt.Sprintf("too few %s with label(s) %smust have at least %d %s per class",
-		errorAnnotation, labelsToErrorString(errorLabels), minPerLabel, errorAnnotation))
+func errTooFewAnnotations(errorAnnotation string, errorLabels []string, minPerLabel int) error {
+	return errors.Errorf("too few %s with label(s) %smust have at least %d %s per class",
+		errorAnnotation, labelsToErrorString(errorLabels), minPerLabel, errorAnnotation)
 }
 
-func ErrTooManyUnlabeled() error {
+func errTooManyUnlabeled() error {
 	expectedLabeledPct := int((1 - maxRatioUnlabeledImages) * 100)
-	return errors.New(fmt.Sprintf("too many unlabeled images, "+
-		"more than %d%% of images should have at least one annotation", expectedLabeledPct))
+	return errors.Errorf("too many unlabeled images, "+
+		"more than %d%% of images should have at least one annotation", expectedLabeledPct)
 }
 
-func ErrNoMatchingImages(errorAnnotation, modelTask string) error {
-	return errors.New(fmt.Sprintf("no matching %s found for %s", errorAnnotation, modelTask))
+func errNoMatchingImages(errorAnnotation, modelTask string) error {
+	return errors.Errorf("no matching %s found for %s", errorAnnotation, modelTask)
 }
 
-func ErrDatasetTooSmall(modelTask string, minDatasetLength int) error {
-	return errors.New(
-		fmt.Sprintf("too few images for training %s model, must have at least %d images", modelTask, minDatasetLength),
-	)
+func errDatasetTooSmall(modelTask string, minDatasetLength int) error {
+	return errors.Errorf("too few images for training %s model, must have at least %d images", modelTask, minDatasetLength)
 }
 
 // getMatchingTags checks to see if any of the labels are in tags.
@@ -337,15 +338,15 @@ func getMatchingBBoxes(annotations []*datav1.BoundingBox, labels []string) []BBo
 	match := []BBoxAnnotation{}
 	for _, annotation := range annotations {
 		bbox := BBoxAnnotation{
-			AnnotationLabel: annotation.Label,
-			XMinNormalized:  annotation.XMinNormalized,
-			XMaxNormalized:  annotation.XMaxNormalized,
-			YMinNormalized:  annotation.YMinNormalized,
-			YMaxNormalized:  annotation.YMaxNormalized,
+			AnnotationLabel: annotation.GetLabel(),
+			XMinNormalized:  annotation.GetXMinNormalized(),
+			XMaxNormalized:  annotation.GetXMaxNormalized(),
+			YMinNormalized:  annotation.GetYMinNormalized(),
+			YMaxNormalized:  annotation.GetYMaxNormalized(),
 		}
 		if labels != nil {
 			for _, reqLabel := range labels {
-				if annotation.Label == reqLabel {
+				if annotation.GetLabel() == reqLabel {
 					match = append(match, bbox)
 				}
 			}
