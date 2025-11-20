@@ -8,7 +8,6 @@ import (
 	"sort"
 	"strings"
 	"testing"
-	"time"
 
 	datav1 "go.viam.com/api/app/data/v1"
 	mlv1 "go.viam.com/api/app/mltraining/v1"
@@ -39,65 +38,55 @@ var (
 	}
 
 	fakeData1 = &ImageMetadata{
-		Tags:      []string{"cat"},
-		Bucket:    singleLabelDirName,
-		Path:      "filename1.jpeg" + zipExt,
-		Timestamp: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+		Tags:   []string{"cat"},
+		Bucket: singleLabelDirName,
+		Path:   "filename1.jpeg" + zipExt,
 	}
 	fakeData2 = &ImageMetadata{
-		Tags:      []string{"cat"},
-		Bucket:    singleLabelDirName,
-		Path:      "filename2.jpeg" + zipExt,
-		Timestamp: time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC),
+		Tags:   []string{"cat"},
+		Bucket: singleLabelDirName,
+		Path:   "filename2.jpeg" + zipExt,
 	}
 	fakeData3 = &ImageMetadata{
-		Tags:      []string{"dog"},
-		Bucket:    singleLabelDirName,
-		Path:      "filename3.jpeg" + zipExt,
-		Timestamp: time.Date(2024, 1, 3, 0, 0, 0, 0, time.UTC),
+		Tags:   []string{"dog"},
+		Bucket: singleLabelDirName,
+		Path:   "filename3.jpeg" + zipExt,
 	}
 	fakeData4 = &ImageMetadata{
-		Tags:      []string{"turtle"},
-		Bucket:    singleLabelDirName,
-		Path:      "filename4.jpeg" + zipExt,
-		Timestamp: time.Date(2024, 1, 4, 0, 0, 0, 0, time.UTC),
+		Tags:   []string{"turtle"},
+		Bucket: singleLabelDirName,
+		Path:   "filename4.jpeg" + zipExt,
 	}
 	fakeData5 = &ImageMetadata{
-		Tags:      []string{"penguin"},
-		Bucket:    singleLabelDirName,
-		Path:      "filename5.jpeg" + zipExt,
-		Timestamp: time.Date(2024, 1, 5, 0, 0, 0, 0, time.UTC),
+		Tags:   []string{"penguin"},
+		Bucket: singleLabelDirName,
+		Path:   "filename5.jpeg" + zipExt,
 	}
 
 	fakeMultiLabelData1 = &ImageMetadata{
-		Tags:      []string{"daisy", "full_shot"},
-		Bucket:    multiLabelDirName,
-		Path:      "filename1.jpeg" + zipExt,
-		Timestamp: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+		Tags:   []string{"daisy", "full_shot"},
+		Bucket: multiLabelDirName,
+		Path:   "filename1.jpeg" + zipExt,
 	}
 	fakeMultiLabelData2 = &ImageMetadata{
-		Tags:      []string{"dandelion", "medium_shot"},
-		Bucket:    multiLabelDirName,
-		Path:      "filename2" + gifFileExt + zipExt,
-		Timestamp: time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC),
+		Tags:   []string{"dandelion", "medium_shot"},
+		Bucket: multiLabelDirName,
+		Path:   "filename2" + gifFileExt + zipExt,
 	}
 	fakeMultiLabelData3 = &ImageMetadata{
-		Tags:      []string{"roses", "extreme_closeup"},
-		Bucket:    multiLabelDirName,
-		Path:      "filename3" + pngFileExt + zipExt,
-		Timestamp: time.Date(2024, 1, 3, 0, 0, 0, 0, time.UTC),
+		Tags:   []string{"roses", "extreme_closeup"},
+		Bucket: multiLabelDirName,
+		Path:   "filename3" + pngFileExt + zipExt,
 	}
 	fakeMultiLabelData4 = &ImageMetadata{
-		Tags:      []string{"sunflowers", "closeup"},
-		Bucket:    multiLabelDirName,
-		Path:      "filename4" + jpegFileExt + zipExt,
-		Timestamp: time.Date(2024, 1, 4, 0, 0, 0, 0, time.UTC),
+		Tags:   []string{"sunflowers", "closeup"},
+		Bucket: multiLabelDirName,
+		Path:   "filename4" + jpegFileExt + zipExt,
 	}
 	fakeMultiLabelData5 = &ImageMetadata{
-		Tags:      []string{"tulips", "extreme_closeup"},
-		Bucket:    multiLabelDirName,
-		Path:      "filename5" + pngFileExt + zipExt,
-		Timestamp: time.Date(2024, 1, 5, 0, 0, 0, 0, time.UTC),
+		Tags:   []string{"tulips", "extreme_closeup"},
+		Bucket: multiLabelDirName,
+		Path:   "filename5" + pngFileExt + zipExt,
 	}
 
 	fakeObjDetectionData1 = &ImageMetadata{
@@ -121,9 +110,8 @@ var (
 				},
 			},
 		},
-		Bucket:    objDetectionDirName,
-		Path:      "filename1" + pngFileExt + zipExt,
-		Timestamp: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+		Bucket: objDetectionDirName,
+		Path:   "filename1" + pngFileExt + zipExt,
 	}
 	fakeObjDetectionData2 = &ImageMetadata{
 		Annotations: &datav1.Annotations{
@@ -146,9 +134,8 @@ var (
 				},
 			},
 		},
-		Bucket:    objDetectionDirName,
-		Path:      "filename2" + jpegFileExt + zipExt,
-		Timestamp: time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC),
+		Bucket: objDetectionDirName,
+		Path:   "filename2" + jpegFileExt + zipExt,
 	}
 	fakeObjDetectionData3 = &ImageMetadata{
 		Annotations: &datav1.Annotations{
@@ -163,9 +150,8 @@ var (
 				},
 			},
 		},
-		Bucket:    objDetectionDirName,
-		Path:      "filename3" + jpegFileExt + zipExt,
-		Timestamp: time.Date(2024, 1, 3, 0, 0, 0, 0, time.UTC),
+		Bucket: objDetectionDirName,
+		Path:   "filename3" + jpegFileExt + zipExt,
 	}
 
 	fakeCustomData4 = &ImageMetadata{
@@ -186,7 +172,6 @@ var (
 		Path:          "filename4" + jpegFileExt + zipExt,
 		PartID:        "part1",
 		ComponentName: "component1",
-		Timestamp:     time.Time{}, // Zero timestamp to match expected output
 	}
 	fakeCustomData5 = &ImageMetadata{
 		Tags: []string{"cat", "dog"},
@@ -214,7 +199,6 @@ var (
 		Path:          "filename5" + jpegFileExt + zipExt,
 		PartID:        "part1",
 		ComponentName: "component2",
-		Timestamp:     time.Time{}, // Zero timestamp to match expected output
 	}
 )
 
@@ -258,7 +242,6 @@ func TestImageMetadataToJSONLines(t *testing.T) {
 			imageMetadata:           []*ImageMetadata{fakeData1, fakeData2, fakeData3},
 			modelType:               mlv1.ModelType_MODEL_TYPE_SINGLE_LABEL_CLASSIFICATION,
 			labels:                  singleClassificationLabel,
-			minImagesPerLabel:       1, // Lower threshold for this test
 			maxRatioUnlabeledImages: .4,
 			expJSONFile:             filepath.Join(singleLabelDirName, "fakedata_single_label_binary.jsonl"),
 		},
@@ -268,10 +251,9 @@ func TestImageMetadataToJSONLines(t *testing.T) {
 			imageMetadata: []*ImageMetadata{
 				fakeData1, fakeData2, fakeData3, fakeData4, fakeData5,
 			},
-			modelType:         mlv1.ModelType_MODEL_TYPE_SINGLE_LABEL_CLASSIFICATION,
-			labels:            singleClassificationMultiLabel,
-			minImagesPerLabel: 1, // Lower threshold for this test
-			expJSONFile:       filepath.Join(singleLabelDirName, "fakedata_single_label_multi.jsonl"),
+			modelType:   mlv1.ModelType_MODEL_TYPE_SINGLE_LABEL_CLASSIFICATION,
+			labels:      singleClassificationMultiLabel,
+			expJSONFile: filepath.Join(singleLabelDirName, "fakedata_single_label_multi.jsonl"),
 		},
 		{
 			name: "Multiple specified labels for multi label classification " +
@@ -280,10 +262,9 @@ func TestImageMetadataToJSONLines(t *testing.T) {
 				fakeMultiLabelData1, fakeMultiLabelData2, fakeMultiLabelData3,
 				fakeMultiLabelData4, fakeMultiLabelData5,
 			},
-			modelType:         mlv1.ModelType_MODEL_TYPE_MULTI_LABEL_CLASSIFICATION,
-			labels:            multiClassificationLabels,
-			minImagesPerLabel: 1, // Lower threshold for this test
-			expJSONFile:       filepath.Join(multiLabelDirName, "fakedata_multi_label.jsonl"),
+			modelType:   mlv1.ModelType_MODEL_TYPE_MULTI_LABEL_CLASSIFICATION,
+			labels:      multiClassificationLabels,
+			expJSONFile: filepath.Join(multiLabelDirName, "fakedata_multi_label.jsonl"),
 		},
 		{
 			name: "Multiple specified labels for object detection " +
@@ -291,11 +272,9 @@ func TestImageMetadataToJSONLines(t *testing.T) {
 			imageMetadata: []*ImageMetadata{
 				fakeObjDetectionData1, fakeObjDetectionData2, fakeObjDetectionData3,
 			},
-			modelType:                mlv1.ModelType_MODEL_TYPE_OBJECT_DETECTION,
-			labels:                   objectDetectionLabels,
-			minBBoxesPerLabel:        1, // Lower threshold for this test
-			minImagesObjectDetection: 1, // Lower threshold for this test
-			expJSONFile:              filepath.Join(objDetectionDirName, "fakedata_detection.jsonl"),
+			modelType:   mlv1.ModelType_MODEL_TYPE_OBJECT_DETECTION,
+			labels:      objectDetectionLabels,
+			expJSONFile: filepath.Join(objDetectionDirName, "fakedata_detection.jsonl"),
 		},
 		{
 			name: "No specified labels for custom training " +
@@ -349,46 +328,22 @@ func TestImageMetadataToJSONLines(t *testing.T) {
 			imageMetadata: []*ImageMetadata{
 				fakeObjDetectionData1, fakeObjDetectionData2, fakeObjDetectionData3,
 			},
-			modelType:                mlv1.ModelType_MODEL_TYPE_OBJECT_DETECTION,
-			labels:                   objectDetectionLabels,
-			minBBoxesPerLabel:        10,
-			minImagesPerLabel:        10,
-			minImagesObjectDetection: 3, // Set to 3 so dataset size check passes, then bbox count check fails
-			maxRatioUnlabeledImages:  .2,
-			expJSONFile:              objDetectionDirName + "fakedata_detection.jsonl",
-			expectedErr:              errTooFewAnnotations("bounding boxes", objectDetectionLabels, 10),
+			modelType:               mlv1.ModelType_MODEL_TYPE_OBJECT_DETECTION,
+			labels:                  objectDetectionLabels,
+			minBBoxesPerLabel:       10,
+			minImagesPerLabel:       10,
+			maxRatioUnlabeledImages: .2,
+			expJSONFile:             objDetectionDirName + "fakedata_detection.jsonl",
+			expectedErr:             errTooFewAnnotations("bounding boxes", objectDetectionLabels, 10),
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			// Save original values
-			origMinBBoxesPerLabel := minBBoxesPerLabel
-			origMinImagesPerLabel := minImagesPerLabel
-			origMaxRatioUnlabeledImages := maxRatioUnlabeledImages
-			origMinImagesObjectDetection := minImagesObjectDetection
-
-			// Set test-specific values if provided
-			if tc.minBBoxesPerLabel != 0 {
-				minBBoxesPerLabel = tc.minBBoxesPerLabel
-			}
-			if tc.minImagesPerLabel != 0 {
-				minImagesPerLabel = tc.minImagesPerLabel
-			}
-			if tc.maxRatioUnlabeledImages != 0 {
-				maxRatioUnlabeledImages = tc.maxRatioUnlabeledImages
-			}
-			if tc.minImagesObjectDetection != 0 {
-				minImagesObjectDetection = tc.minImagesObjectDetection
-			}
-
-			// Restore original values after test
-			defer func() {
-				minBBoxesPerLabel = origMinBBoxesPerLabel
-				minImagesPerLabel = origMinImagesPerLabel
-				maxRatioUnlabeledImages = origMaxRatioUnlabeledImages
-				minImagesObjectDetection = origMinImagesObjectDetection
-			}()
+			minBBoxesPerLabel = tc.minBBoxesPerLabel
+			minImagesPerLabel = tc.minImagesPerLabel
+			maxRatioUnlabeledImages = tc.maxRatioUnlabeledImages
+			minImagesObjectDetection = tc.minImagesObjectDetection
 
 			wc := newMockWriter()
 			err := ImageMetadataToJSONLines(tc.imageMetadata, tc.labels, tc.modelType, wc)
