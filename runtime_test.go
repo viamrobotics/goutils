@@ -39,6 +39,32 @@ func TestContextualMain(t *testing.T) {
 }
 
 //nolint:dupl
+func TestContextualMainWithSIGPIPE(t *testing.T) {
+	var captured []interface{}
+	fatal = func(logger ILogger, args ...interface{}) {
+		captured = args
+	}
+	err1 := errors.New("whoops")
+	mainWithArgs := func(ctx context.Context, args []string, logger ZapCompatibleLogger) error {
+		return err1
+	}
+	var logger ZapCompatibleLogger = golog.NewTestLogger(t)
+	ContextualMainWithSIGPIPE(mainWithArgs, logger)
+	test.That(t, captured, test.ShouldResemble, []interface{}{err1})
+	captured = nil
+	mainWithArgs = func(ctx context.Context, args []string, logger ZapCompatibleLogger) error {
+		return context.Canceled
+	}
+	ContextualMainWithSIGPIPE(mainWithArgs, logger)
+	test.That(t, captured, test.ShouldBeNil)
+	mainWithArgs = func(ctx context.Context, args []string, logger ZapCompatibleLogger) error {
+		return multierr.Combine(context.Canceled, err1)
+	}
+	ContextualMainWithSIGPIPE(mainWithArgs, logger)
+	test.That(t, captured, test.ShouldResemble, []interface{}{err1})
+}
+
+//nolint:dupl
 func TestContextualMainQuit(t *testing.T) {
 	var captured []interface{}
 	fatal = func(logger ILogger, args ...interface{}) {
