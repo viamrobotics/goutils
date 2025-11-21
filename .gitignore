@@ -57,3 +57,7 @@ bin/
 .artifact/data
 
 etc/test_keys
+
+# artifact
+.artifact/cache
+.artifact/data
