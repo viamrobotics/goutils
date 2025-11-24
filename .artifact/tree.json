@@ -1,0 +1,36 @@
+{
+  "test_fake_bucket": {
+    "custom": {
+      "fakedata_custom_training.jsonl": {
+        "hash": "7e788942eb878d633d3f5155102e2666",
+        "size": 933
+      },
+      "fakedata_empty_bucket.jsonl": {
+        "hash": "6d7c59b1166cb1b0d360baab7d7bd27f",
+        "size": 366
+      }
+    },
+    "detection": {
+      "fakedata_detection.jsonl": {
+        "hash": "12129885a0720465cf97cd2e90cd7db0",
+        "size": 948
+      }
+    },
+    "multi": {
+      "fakedata_multi_label.jsonl": {
+        "hash": "16b6de7244ec1b9ebef226116cc09b7b",
+        "size": 824
+      }
+    },
+    "single": {
+      "fakedata_single_label_binary.jsonl": {
+        "hash": "b8999f6ab92ef175dcd75af43cbfccb4",
+        "size": 375
+      },
+      "fakedata_single_label_multi.jsonl": {
+        "hash": "28f8c948764503fc1dc46f70086965af",
+        "size": 617
+      }
+    }
+  }
+}
