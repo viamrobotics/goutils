@@ -94,6 +94,8 @@ type OtelDevelopmentExporterOptions struct {
 
 	// tracesDisabled determines if trace reporting is disabled or not.
 	tracesDisabled bool
+
+	Out io.Writer
 }
 
 type myOtelSpanInfo struct {
@@ -111,11 +113,15 @@ func NewOtelDevelopmentExporter() *OtelDevelopmentExporter {
 
 // NewOtelDevelopmentExporterWithOptions creates a new log exporter with the given options.
 func NewOtelDevelopmentExporterWithOptions(options OtelDevelopmentExporterOptions) *OtelDevelopmentExporter {
+	out := options.Out
+	if out == nil {
+		out = os.Stdout
+	}
 	return &OtelDevelopmentExporter{
 		children:     map[string][]myOtelSpanInfo{},
 		reader:       metricexport.NewReader(),
 		o:            options,
-		outputWriter: os.Stdout,
+		outputWriter: out,
 	}
 }
 
