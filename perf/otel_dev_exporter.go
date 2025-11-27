@@ -5,16 +5,18 @@ package perf
 import (
 	"context"
 	"encoding/hex"
-	"fmt"
 	"io"
 	"os"
 	"sync"
 	"time"
 
+	"github.com/samber/lo"
 	"go.opencensus.io/metric/metricdata"
 	"go.opencensus.io/metric/metricexport"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	oteltrace "go.opentelemetry.io/otel/trace"
+	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 
 	"go.viam.com/utils"
 	"go.viam.com/utils/trace"
@@ -24,7 +26,7 @@ import (
 type OtelDevelopmentExporter struct {
 	mu             sync.Mutex
 	shutdown       bool
-	children       map[string][]myOtelSpanInfo
+	children       map[string][]*myOtelSpanInfo
 	reader         *metricexport.Reader
 	ir             *metricexport.IntervalReader
 	initReaderOnce sync.Once
@@ -42,33 +44,43 @@ type OtelDevelopmentExporter struct {
 func (e *OtelDevelopmentExporter) ExportSpans(ctx context.Context, spans []sdktrace.ReadOnlySpan) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if e.shutdown {
-		return nil
+	if err := ctx.Err(); err != nil || e.shutdown {
+		return err
 	}
+	spanInfo := lo.Map(spans, func(span sdktrace.ReadOnlySpan, _ int) *myOtelSpanInfo {
+		return sidFromROSpan(span)
+	})
+	e.exportSpans(spanInfo)
+	return nil
+}
 
+// ExportOTLPSpans displays spans that have already been serialized in OTLP format.
+func (e *OtelDevelopmentExporter) ExportOTLPSpans(ctx context.Context, spans []*tracepb.Span) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if err := ctx.Err(); err != nil || e.shutdown {
+		return err
+	}
+	spanInfo := lo.Map(spans, func(span *tracepb.Span, _ int) *myOtelSpanInfo {
+		return sidFromOTLPSpan(span)
+	})
+	e.exportSpans(spanInfo)
+	return nil
+}
+
+// Internal implementation to handle exporting spans after they have been
+// converted to a common struct. Callers must hold OtelDevelopmentExporter.mu.
+func (e *OtelDevelopmentExporter) exportSpans(spans []*myOtelSpanInfo) {
 	for _, sd := range spans {
-		length := (sd.EndTime().UnixNano() - sd.StartTime().UnixNano()) / (1000 * 1000)
-		myinfo := fmt.Sprintf("%s %d ms", sd.Name(), length)
-
-		for _, a := range sd.Attributes() {
-			myinfo = myinfo + " " + string(a.Key) + ":" + a.Value.Emit()
-		}
-
-		rawSpanID := sd.SpanContext().SpanID()
-		spanID := hex.EncodeToString(rawSpanID[:])
-		rawParentSpanID := sd.Parent().SpanID()
-		parentSpanID := hex.EncodeToString(rawParentSpanID[:])
-
-		if !reZero.MatchString(parentSpanID) {
-			e.children[parentSpanID] = append(e.children[parentSpanID], myOtelSpanInfo{myinfo, spanID, sd})
+		if !reZero.MatchString(sd.parentSpanID) {
+			e.children[sd.parentSpanID] = append(e.children[sd.parentSpanID], sd)
 			continue
 		}
 
 		wd := walkData{}
-		e.recurse(&myOtelSpanInfo{myinfo, spanID, sd}, []string{}, &wd)
+		e.recurse(sd, []string{}, &wd)
 		wd.output(e.outputWriter)
 	}
-	return nil
 }
 
 // Shutdown implements [sdktrace.SpanExporter].
@@ -99,9 +111,55 @@ type OtelDevelopmentExporterOptions struct {
 }
 
 type myOtelSpanInfo struct {
-	toPrint string
-	id      string
-	Data    sdktrace.ReadOnlySpan
+	traceID      string
+	spanID       string
+	parentSpanID string
+	name         string
+	startTime    time.Time
+	endTime      time.Time
+}
+
+var emptyTraceID oteltrace.TraceID
+
+func traceIDToStr(id []byte) string {
+	if len(id) == 0 {
+		id = emptyTraceID[:]
+	}
+	return hex.EncodeToString(id)
+}
+
+var emptySpanID oteltrace.SpanID
+
+func spanIDToStr(id []byte) string {
+	if len(id) == 0 {
+		id = emptySpanID[:]
+	}
+	return hex.EncodeToString(id)
+}
+
+func sidFromROSpan(span sdktrace.ReadOnlySpan) *myOtelSpanInfo {
+	traceID := span.SpanContext().TraceID()
+	spanID := span.SpanContext().SpanID()
+	parentSpanID := span.Parent().SpanID()
+	return &myOtelSpanInfo{
+		traceID:      traceIDToStr(traceID[:]),
+		spanID:       spanIDToStr(spanID[:]),
+		parentSpanID: spanIDToStr(parentSpanID[:]),
+		name:         span.Name(),
+		startTime:    span.StartTime(),
+		endTime:      span.EndTime(),
+	}
+}
+
+func sidFromOTLPSpan(span *tracepb.Span) *myOtelSpanInfo {
+	return &myOtelSpanInfo{
+		traceID:      traceIDToStr(span.GetTraceId()),
+		spanID:       spanIDToStr(span.GetSpanId()),
+		parentSpanID: spanIDToStr(span.GetParentSpanId()),
+		name:         span.GetName(),
+		startTime:    time.Unix(0, int64(span.GetStartTimeUnixNano())),
+		endTime:      time.Unix(0, int64(span.GetEndTimeUnixNano())),
+	}
 }
 
 // NewOtelDevelopmentExporter creates a new log exporter.
@@ -118,7 +176,7 @@ func NewOtelDevelopmentExporterWithOptions(options OtelDevelopmentExporterOption
 		out = os.Stdout
 	}
 	return &OtelDevelopmentExporter{
-		children:     map[string][]myOtelSpanInfo{},
+		children:     map[string][]*myOtelSpanInfo{},
 		reader:       metricexport.NewReader(),
 		o:            options,
 		outputWriter: out,
@@ -163,17 +221,17 @@ func (e *OtelDevelopmentExporter) ExportMetrics(ctx context.Context, metrics []*
 
 func (e *OtelDevelopmentExporter) recurse(currSpan *myOtelSpanInfo, callerPath []string, wd *walkData) {
 	// Get the accumulator for this
-	myPath := wd.get(callerPath, currSpan.Data.Name())
+	myPath := wd.get(callerPath, currSpan.name)
 	myPath.count++
-	myPath.timeNanos += currSpan.Data.EndTime().UnixNano() - currSpan.Data.StartTime().UnixNano()
+	myPath.timeNanos += currSpan.endTime.UnixNano() - currSpan.startTime.UnixNano()
 
 	// We incremented our counters. Now walk all of our children spans and do the same.
-	children := e.children[currSpan.id]
+	children := e.children[currSpan.spanID]
 	for idx := range children {
-		e.recurse(&children[idx], myPath.spanChain, wd)
+		e.recurse(children[idx], myPath.spanChain, wd)
 	}
 
 	if !e.deleteDisabled {
-		delete(e.children, currSpan.id)
+		delete(e.children, currSpan.spanID)
 	}
 }
