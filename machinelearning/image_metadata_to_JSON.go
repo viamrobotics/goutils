@@ -53,6 +53,7 @@ type CustomTrainingMetadata struct {
 
 // BBoxAnnotation holds the information associated with each bounding box.
 type BBoxAnnotation struct {
+	ID              string  `json:"id"`
 	AnnotationLabel string  `json:"annotation_label"`
 	XMinNormalized  float64 `json:"x_min_normalized"`
 	XMaxNormalized  float64 `json:"x_max_normalized"`
@@ -334,6 +335,7 @@ func getMatchingBBoxes(annotations []*datav1.BoundingBox, labels []string) []BBo
 	match := []BBoxAnnotation{}
 	for _, annotation := range annotations {
 		bbox := BBoxAnnotation{
+			ID:              annotation.GetId(),
 			AnnotationLabel: annotation.GetLabel(),
 			XMinNormalized:  annotation.GetXMinNormalized(),
 			XMaxNormalized:  annotation.GetXMaxNormalized(),
