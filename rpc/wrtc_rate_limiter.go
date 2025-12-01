@@ -28,6 +28,14 @@ var rateLimitDenials = statz.NewCounter1[string]("signaling/rate_limits_denials"
 	},
 })
 
+var rateLimitErrors = statz.NewCounter1[string]("signaling/rate_limit_errors", statz.MetricConfig{
+	Description: "Total number of errors while applying the rate limit.",
+	Unit:        units.Dimensionless,
+	Labels: []statz.Label{
+		{Name: "reason", Description: "Reason that applying the rate limit failed."},
+	},
+})
+
 // Database configuration and collection names for MongoDB rate limiter.
 var (
 	mongodbWebRTCRateLimiterCollName = "rate_limiter"
@@ -102,7 +110,9 @@ func (rl *MongoDBRateLimiter) Allow(ctx context.Context, key string) error {
 		}},
 		options.Update().SetUpsert(true))
 	if err != nil {
-		rl.logger.Errorw("rate limit doc existence check failed", "error", err, "key", key)
+		// to not erroneously rate limit requests, we log the error but do not return the error.
+		rl.logger.Infow("rate limit doc existence check failed", "error", err, "key", key)
+		rateLimitErrors.Inc("existence_check_failed")
 		return err
 	}
 
@@ -176,8 +186,10 @@ func (rl *MongoDBRateLimiter) Allow(ctx context.Context, key string) error {
 
 	result, err := rl.rateLimitColl.UpdateOne(ctx, filter, update)
 	if err != nil {
-		rl.logger.Errorw("rate limit operation failed", "error", err, "key", key)
-		return err
+		// to not erroneously rate limit requests, we log the error but do not return the error.
+		rl.logger.Infow("rate limit operation failed", "error", err, "key", key)
+		rateLimitErrors.Inc("update_operation_failed")
+		return nil
 	}
 
 	// No match means rate limit exceeded
