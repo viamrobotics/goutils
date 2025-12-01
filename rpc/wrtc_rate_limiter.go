@@ -113,7 +113,7 @@ func (rl *MongoDBRateLimiter) Allow(ctx context.Context, key string) error {
 		// to not erroneously rate limit requests, we log the error but do not return the error.
 		rl.logger.Infow("rate limit doc existence check failed", "error", err, "key", key)
 		rateLimitErrors.Inc("existence_check_failed")
-		return err
+		return nil
 	}
 
 	// Filter: only match if request count within the most recent window for this key is < MaxRequests
