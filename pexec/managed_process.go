@@ -345,6 +345,10 @@ func (p *managedProcess) manage(stdOut, stdErr io.ReadCloser) {
 		// already exited because the kill context was cancelled.
 		oueChan := make(chan bool, 1)
 		p.wg.Add(1)
+		if err := p.killCtx.Err(); err != nil {
+			p.wg.Done()
+			return
+		}
 		go func() {
 			locked = false
 			p.mu.Unlock()
