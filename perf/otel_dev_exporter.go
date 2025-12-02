@@ -76,7 +76,7 @@ func (e *OtelDevelopmentExporter) Shutdown(ctx context.Context) error {
 	e.mu.Lock()
 	e.shutdown = true
 	e.mu.Unlock()
-	if !e.o.metricsDisabled {
+	if !e.o.MetricsDisabled {
 		e.ir.Stop()
 	}
 	return nil
@@ -85,15 +85,18 @@ func (e *OtelDevelopmentExporter) Shutdown(ctx context.Context) error {
 // OtelDevelopmentExporterOptions provides options for
 // [OtelDevelopmentExporter].
 type OtelDevelopmentExporterOptions struct {
-	// reportingInterval is a time interval between two successive metrics
+	// ReportingInterval is a time interval between two successive metrics
 	// export.
-	reportingInterval time.Duration
+	ReportingInterval time.Duration
 
-	// metricsDisabled determines if metrics reporting is disabled or not.
-	metricsDisabled bool
+	// MetricsDisabled determines if metrics reporting is disabled or not.
+	MetricsDisabled bool
 
-	// tracesDisabled determines if trace reporting is disabled or not.
-	tracesDisabled bool
+	// TracesDisabled determines if trace reporting is disabled or not.
+	TracesDisabled bool
+
+	// OutputWriter is the writer to write the output to.
+	OutputWriter io.Writer
 }
 
 type myOtelSpanInfo struct {
@@ -105,17 +108,21 @@ type myOtelSpanInfo struct {
 // NewOtelDevelopmentExporter creates a new log exporter.
 func NewOtelDevelopmentExporter() *OtelDevelopmentExporter {
 	return NewOtelDevelopmentExporterWithOptions(OtelDevelopmentExporterOptions{
-		reportingInterval: 10 * time.Second,
+		ReportingInterval: 10 * time.Second,
+		OutputWriter:      os.Stdout,
 	})
 }
 
 // NewOtelDevelopmentExporterWithOptions creates a new log exporter with the given options.
 func NewOtelDevelopmentExporterWithOptions(options OtelDevelopmentExporterOptions) *OtelDevelopmentExporter {
+	if options.OutputWriter == nil {
+		options.OutputWriter = os.Stdout
+	}
 	return &OtelDevelopmentExporter{
 		children:     map[string][]myOtelSpanInfo{},
 		reader:       metricexport.NewReader(),
 		o:            options,
-		outputWriter: os.Stdout,
+		outputWriter: options.OutputWriter,
 	}
 }
 
@@ -125,16 +132,16 @@ func (e *OtelDevelopmentExporter) Start() error {
 		return err
 	}
 
-	if !e.o.tracesDisabled {
+	if !e.o.TracesDisabled {
 		trace.SetTracerWithExporters(resource.Empty(), e)
 	}
-	if !e.o.metricsDisabled {
+	if !e.o.MetricsDisabled {
 		e.initReaderOnce.Do(func() {
 			var err error
 			e.ir, err = metricexport.NewIntervalReader(&metricexport.Reader{}, e)
 			utils.UncheckedError(err)
 		})
-		e.ir.ReportingInterval = e.o.reportingInterval
+		e.ir.ReportingInterval = e.o.ReportingInterval
 		return e.ir.Start()
 	}
 	return nil
