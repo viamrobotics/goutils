@@ -344,7 +344,9 @@ func (p *managedProcess) manage(stdOut, stdErr io.ReadCloser) {
 		// blocked on writing to the channel even though the management goroutine
 		// already exited because the kill context was cancelled.
 		oueChan := make(chan bool, 1)
+		// increment wg before launching OUE in case user wants to Wait for it. As long as Stop is called before Wait, it should not leak.
 		p.wg.Add(1)
+		// Stop cancels this.
 		if err := p.killCtx.Err(); err != nil {
 			p.wg.Done()
 			return
