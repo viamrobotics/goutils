@@ -2,18 +2,18 @@
   "test_fake_bucket": {
     "custom": {
       "fakedata_custom_training.jsonl": {
-        "hash": "7e788942eb878d633d3f5155102e2666",
-        "size": 933
+        "hash": "c717c47258c132598b53e9ddaa882719",
+        "size": 966
       },
       "fakedata_empty_bucket.jsonl": {
-        "hash": "6d7c59b1166cb1b0d360baab7d7bd27f",
-        "size": 366
+        "hash": "df141cca5941b6724a0e30ed5fce027c",
+        "size": 377
       }
     },
     "detection": {
       "fakedata_detection.jsonl": {
-        "hash": "12129885a0720465cf97cd2e90cd7db0",
-        "size": 948
+        "hash": "c8199766babcdd849f8d3fc15d7b27dc",
+        "size": 1003
       }
     },
     "multi": {

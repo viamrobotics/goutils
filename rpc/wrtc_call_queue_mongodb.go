@@ -620,7 +620,7 @@ func (queue *mongoDBWebRTCCallQueue) operatorLivenessLoop() {
 					//nolint:goconst
 					reason = "other"
 				}
-				queue.logger.Errorw("failed to update operator document for self", "error", err)
+				queue.logger.Infow("failed to update operator document for self", "error", err)
 			}
 			operatorsCollUpdateFailures.Inc(queue.operatorID, reason)
 		} else if result.UpsertedCount == 1 {
@@ -738,7 +738,7 @@ func (queue *mongoDBWebRTCCallQueue) changeStreamManager() {
 		if err != nil {
 			callChangeStreamFailures.Inc(queue.operatorID)
 			queue.csManagerSeq.Add(1)
-			queue.logger.Errorw("failed to create calls change stream", "error", err)
+			queue.logger.Infow("failed to create calls change stream", "error", err)
 			continue
 		}
 
