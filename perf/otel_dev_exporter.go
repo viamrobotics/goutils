@@ -48,7 +48,7 @@ func (e *OtelDevelopmentExporter) ExportSpans(ctx context.Context, spans []sdktr
 		return err
 	}
 	spanInfo := lo.Map(spans, func(span sdktrace.ReadOnlySpan, _ int) *myOtelSpanInfo {
-		return sidFromROSpan(span)
+		return spanInfoFromROSpan(span)
 	})
 	e.exportSpans(spanInfo)
 	return nil
@@ -62,7 +62,7 @@ func (e *OtelDevelopmentExporter) ExportOTLPSpans(ctx context.Context, spans []*
 		return err
 	}
 	spanInfo := lo.Map(spans, func(span *tracepb.Span, _ int) *myOtelSpanInfo {
-		return sidFromOTLPSpan(span)
+		return spanInfoFromOTLPSpan(span)
 	})
 	e.exportSpans(spanInfo)
 	return nil
@@ -137,7 +137,7 @@ func spanIDToStr(id []byte) string {
 	return hex.EncodeToString(id)
 }
 
-func sidFromROSpan(span sdktrace.ReadOnlySpan) *myOtelSpanInfo {
+func spanInfoFromROSpan(span sdktrace.ReadOnlySpan) *myOtelSpanInfo {
 	traceID := span.SpanContext().TraceID()
 	spanID := span.SpanContext().SpanID()
 	parentSpanID := span.Parent().SpanID()
@@ -151,7 +151,7 @@ func sidFromROSpan(span sdktrace.ReadOnlySpan) *myOtelSpanInfo {
 	}
 }
 
-func sidFromOTLPSpan(span *tracepb.Span) *myOtelSpanInfo {
+func spanInfoFromOTLPSpan(span *tracepb.Span) *myOtelSpanInfo {
 	return &myOtelSpanInfo{
 		traceID:      traceIDToStr(span.GetTraceId()),
 		spanID:       spanIDToStr(span.GetSpanId()),
