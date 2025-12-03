@@ -15,27 +15,40 @@ import (
 )
 
 // ContextualMain calls a main entry point function with a cancellable
-// context via SIGTERM. This should be called once per process so as
+// context via SIGTERM and ignores SIGPIPEs. This should be called once per process so as
 // to not clobber the signals from Notify.
 func ContextualMain[L ILogger](main func(ctx context.Context, args []string, logger L) error, logger L) {
-	contextualMain(main, false, logger)
-}
-
-// ContextualMainQuit is the same as ContextualMain but catches quit signals into the provided
-// context accessed via ContextMainQuitSignal.
-func ContextualMainQuit[L ILogger](main func(ctx context.Context, args []string, logger L) error, logger L) {
-	contextualMain(main, true, logger)
-}
-
-func contextualMain[L ILogger](main func(ctx context.Context, args []string, logger L) error, quitSignal bool, logger L) {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	// RSDK-11244: SIGPIPE errors happen when a program writes to a pipe that has no readers. This
 	// can, for example, happen when:
 	// - Piping a program (e.g: viam-server) to `tee` and hitting Ctrl-C.
 	// - Writing a gRPC request over a unix socket to a program that has crashed.
 	//
 	// We want to ignore SIGPIPE errors such that, in the SIGINT case, clean shutdown can proceed.
-	signal.Ignore(syscall.SIGPIPE)
+	contextualMain(main, false, logger, syscall.SIGPIPE)
+}
+
+// ContextualMainQuit is the same as ContextualMain but catches quit signals into the provided
+// context accessed via ContextMainQuitSignal.
+func ContextualMainQuit[L ILogger](main func(ctx context.Context, args []string, logger L) error, logger L) {
+	contextualMain(main, true, logger, syscall.SIGPIPE)
+}
+
+// ContextualMainWithSIGPIPE calls a main entry point function with a cancellable
+// context via SIGTERM and does not ignore SIGPIPEs. This should be called once per process so as
+// to not clobber the signals from Notify.
+// This should be used with processes where SIGPIPEs indicate that it should stop (e.g. child processes which should
+// not live beyond its parent's lifetime).
+func ContextualMainWithSIGPIPE[L ILogger](main func(ctx context.Context, args []string, logger L) error, logger L) {
+	contextualMain(main, false, logger)
+}
+
+func contextualMain[L ILogger](
+	main func(ctx context.Context, args []string, logger L) error, quitSignal bool, logger L, ignoreSignals ...os.Signal,
+) {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	if len(ignoreSignals) > 0 {
+		signal.Ignore(ignoreSignals...)
+	}
 	if quitSignal {
 		quitC := make(chan os.Signal, 1)
 		signal.Notify(quitC, syscall.SIGQUIT)
