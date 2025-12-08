@@ -376,7 +376,7 @@ func TestImageMetadataToJSONLines(t *testing.T) {
 			minImagesObjectDetection = tc.minImagesObjectDetection
 
 			wc := newMockWriter()
-			err := ImageMetadataToJSONLines(tc.imageMetadata, tc.labels, tc.modelType, wc)
+			_, _, err := ImageMetadataToJSONLines(tc.imageMetadata, tc.labels, tc.modelType, wc)
 
 			if tc.expectedErr == nil {
 				test.That(t, err, test.ShouldBeNil)
