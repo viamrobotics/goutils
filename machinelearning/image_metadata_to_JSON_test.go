@@ -445,7 +445,6 @@ func TestImageMetadataToJSONLines(t *testing.T) {
 				test.That(t, err, test.ShouldNotBeNil)
 				test.That(t, err, test.ShouldBeError, tc.expectedErr)
 
-				// Validate that nil/zero values are returned on error
 				test.That(t, labelsCount, test.ShouldResemble, tc.expectedLabelsCount)
 				test.That(t, imageCount, test.ShouldEqual, tc.expectedImageCount)
 			}
