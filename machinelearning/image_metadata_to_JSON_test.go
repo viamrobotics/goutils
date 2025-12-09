@@ -245,27 +245,22 @@ func (m *mockWriter) Close() error {
 
 func TestImageMetadataToJSONLines(t *testing.T) {
 	tests := []struct {
-		name                     string
-		imageMetadata            []*ImageMetadata
-		modelType                mlv1.ModelType
-		labels                   []string
-		minImagesObjectDetection int
-		minBBoxesPerLabel        int
-		minImagesPerLabel        int
-		maxRatioUnlabeledImages  float64
-		expJSONFile              string
-		expectedErr              error
-		expectedLabelsCount      map[string]int32
-		expectedImageCount       int
+		name                string
+		imageMetadata       []*ImageMetadata
+		modelType           mlv1.ModelType
+		labels              []string
+		expJSONFile         string
+		expectedErr         error
+		expectedLabelsCount map[string]int32
+		expectedImageCount  int
 	}{
 		{
 			name: "Only one specified label for single label classification " +
 				"results in file with one classification_annotation with string label and UNSPECIFIED others",
-			imageMetadata:           []*ImageMetadata{fakeData1, fakeData2, fakeData3},
-			modelType:               mlv1.ModelType_MODEL_TYPE_SINGLE_LABEL_CLASSIFICATION,
-			labels:                  singleClassificationLabel,
-			maxRatioUnlabeledImages: .4,
-			expJSONFile:             filepath.Join(singleLabelDirName, "fakedata_single_label_binary.jsonl"),
+			imageMetadata: []*ImageMetadata{fakeData1, fakeData2, fakeData3},
+			modelType:     mlv1.ModelType_MODEL_TYPE_SINGLE_LABEL_CLASSIFICATION,
+			labels:        singleClassificationLabel,
+			expJSONFile:   filepath.Join(singleLabelDirName, "fakedata_single_label_binary.jsonl"),
 			expectedLabelsCount: map[string]int32{
 				"cat":        2,
 				UnknownLabel: 1,
@@ -351,73 +346,10 @@ func TestImageMetadataToJSONLines(t *testing.T) {
 			expectedLabelsCount: map[string]int32{},
 			expectedImageCount:  1,
 		},
-		{
-			name: "Too few images for object detection model " +
-				"results in an error",
-			imageMetadata: []*ImageMetadata{
-				fakeObjDetectionData1, fakeObjDetectionData2, fakeObjDetectionData3,
-			},
-			minImagesObjectDetection: 4,
-			modelType:                mlv1.ModelType_MODEL_TYPE_OBJECT_DETECTION,
-			labels:                   objectDetectionLabels,
-			expJSONFile:              filepath.Join(objDetectionDirName, "fakedata_detection.jsonl"),
-			expectedErr:              errDatasetTooSmall("object detection", 4),
-			expectedLabelsCount:      nil,
-			expectedImageCount:       0,
-		},
-		{
-			name:                    "Too few images per class in single-label classification results in an error",
-			imageMetadata:           []*ImageMetadata{fakeData1, fakeData2, fakeData3},
-			modelType:               mlv1.ModelType_MODEL_TYPE_SINGLE_LABEL_CLASSIFICATION,
-			labels:                  singleClassificationLabel,
-			minBBoxesPerLabel:       10,
-			minImagesPerLabel:       10,
-			maxRatioUnlabeledImages: .2,
-			expJSONFile:             filepath.Join(singleLabelDirName, "fakedata_single_label_binary.jsonl"),
-			expectedErr:             errTooFewAnnotations("images", singleClassificationLabel, 10),
-			expectedLabelsCount:     nil,
-			expectedImageCount:      0,
-		},
-		{
-			name: "A multi-label classification model with 1 image per label results in an error",
-			imageMetadata: []*ImageMetadata{
-				fakeMultiLabelData1, fakeMultiLabelData2, fakeMultiLabelData3,
-				fakeMultiLabelData4, fakeMultiLabelData5,
-			},
-			modelType:               mlv1.ModelType_MODEL_TYPE_MULTI_LABEL_CLASSIFICATION,
-			labels:                  multiClassificationLabels,
-			minBBoxesPerLabel:       10,
-			minImagesPerLabel:       10,
-			maxRatioUnlabeledImages: .2,
-			expJSONFile:             multiLabelDirName + "fakedata_multi_label.jsonl",
-			expectedErr:             errTooFewAnnotations("images", multiClassificationLabels, 10),
-			expectedLabelsCount:     nil,
-			expectedImageCount:      0,
-		},
-		{
-			name: "Too few bounding boxes per class in an object detection model results in error",
-			imageMetadata: []*ImageMetadata{
-				fakeObjDetectionData1, fakeObjDetectionData2, fakeObjDetectionData3,
-			},
-			modelType:               mlv1.ModelType_MODEL_TYPE_OBJECT_DETECTION,
-			labels:                  objectDetectionLabels,
-			minBBoxesPerLabel:       10,
-			minImagesPerLabel:       10,
-			maxRatioUnlabeledImages: .2,
-			expJSONFile:             objDetectionDirName + "fakedata_detection.jsonl",
-			expectedErr:             errTooFewAnnotations("bounding boxes", objectDetectionLabels, 10),
-			expectedLabelsCount:     nil,
-			expectedImageCount:      0,
-		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			minBBoxesPerLabel = tc.minBBoxesPerLabel
-			minImagesPerLabel = tc.minImagesPerLabel
-			maxRatioUnlabeledImages = tc.maxRatioUnlabeledImages
-			minImagesObjectDetection = tc.minImagesObjectDetection
-
 			wc := newMockWriter()
 			labelsCount, imageCount, err := ImageMetadataToJSONLines(tc.imageMetadata, tc.labels, tc.modelType, wc)
 
