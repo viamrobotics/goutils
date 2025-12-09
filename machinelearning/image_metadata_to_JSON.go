@@ -82,6 +82,13 @@ type CloseableWriter interface {
 	io.Closer
 }
 
+// LabelCountsResult packages the results of the image metadata to JSON lines operation.
+type LabelCountsResult struct {
+	LabelCounts     map[string]int32
+	DatasetSize     int
+	MultiLabelCount int
+}
+
 var (
 	minBBoxesPerLabel        = 10
 	minImagesPerLabel        = 10
@@ -100,9 +107,9 @@ const UnknownLabel = "VIAM_UNKNOWN"
 // If no requested tags are provided, all annotations for the data are returned.
 func ImageMetadataToJSONLines(matchingData []*ImageMetadata,
 	requestedTags []string, requestedModelType mlv1.ModelType, wc CloseableWriter,
-) (map[string]int32, int, error) {
+) (LabelCountsResult, error) {
 	if len(matchingData) == 0 {
-		return nil, 0, errors.New("no matching datum to transform")
+		return LabelCountsResult{}, errors.New("no matching datum to transform")
 	}
 
 	var tooManyLabels int
@@ -201,32 +208,40 @@ func ImageMetadataToJSONLines(matchingData []*ImageMetadata,
 				}
 
 			case mlv1.ModelType_MODEL_TYPE_UNSPECIFIED:
-				return nil, 0, errors.New("model type not specified")
+				return LabelCountsResult{}, errors.New("model type not specified")
 			}
 		}
 
 		line, err := json.Marshal(jsonl)
 		if err != nil {
-			return nil, 0, errors.Wrap(ErrJSONFormatting, err.Error())
+			return LabelCountsResult{}, errors.Wrap(ErrJSONFormatting, err.Error())
 		}
 		line = append(line, "\n"...)
 		_, err = wc.Write(line)
 		if err != nil {
-			return nil, 0, errors.Wrap(ErrFileWriting, err.Error())
+			return LabelCountsResult{}, errors.Wrap(ErrFileWriting, err.Error())
 		}
 	}
 
 	// For non-custom training, perform validation on the dataset.
 	if requestedTags != nil {
 		if err := validateDataset(labelsCount, requestedModelType, len(matchingData)); err != nil {
-			return nil, 0, err
+			return LabelCountsResult{}, err
 		}
 	}
 
 	if requestedModelType == mlv1.ModelType_MODEL_TYPE_SINGLE_LABEL_CLASSIFICATION {
-		return labelsCount, len(matchingData) - tooManyLabels, nil
+		return LabelCountsResult{
+			LabelCounts:     labelsCount,
+			DatasetSize:     len(matchingData) - tooManyLabels,
+			MultiLabelCount: tooManyLabels,
+		}, nil
 	}
-	return labelsCount, len(matchingData), nil
+	return LabelCountsResult{
+		LabelCounts:     labelsCount,
+		DatasetSize:     len(matchingData),
+		MultiLabelCount: 0,
+	}, nil
 }
 
 func validateDataset(labelsCount map[string]int32, modelType mlv1.ModelType, datasetLength int) error {
