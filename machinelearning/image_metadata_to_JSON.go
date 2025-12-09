@@ -218,13 +218,6 @@ func ImageMetadataToJSONLines(matchingData []*ImageMetadata,
 
 	// For non-custom training, perform validation on the dataset.
 	if requestedTags != nil {
-		// TODO(DATA-1541): Use DB queries for ML training data validations and move to SubmitTrainingJob
-		// if tooManyLabels == len(matchingData) {
-		// We might not be able to throw this error because we don't know how many images match multiple selected labels.
-		// But I don't think we actually need this error.
-		// return nil, 0, errors.New("all images for single-label classification had multiple labels")
-		// }
-
 		if err := validateDataset(labelsCount, requestedModelType, len(matchingData)); err != nil {
 			return nil, 0, err
 		}
