@@ -84,8 +84,13 @@ type CloseableWriter interface {
 
 // LabelCountsResult packages the results of the image metadata to JSON lines operation.
 type LabelCountsResult struct {
-	LabelCounts     map[string]int32
-	DatasetSize     int
+	// LabelCounts maps label names to counts (images for classification, bounding boxes for object detection).
+	// UnknownLabel maps to images with no matching labels.
+	// For single-label classification, counts must include only images matching exactly one label.
+	LabelCounts map[string]int32
+	// DatasetSize is the filtered dataset size (sum of labelCounts for single-label, original size otherwise).
+	DatasetSize int
+	// MultiLabelCount is the number of images that were skipped due to having multiple labels in single-label classification.
 	MultiLabelCount int
 }
 
