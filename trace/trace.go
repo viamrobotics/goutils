@@ -8,7 +8,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	otelresource "go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
@@ -17,6 +16,7 @@ import (
 // Struct to group all the global state we care about.
 type globalTraceState struct {
 	tracerProvider trace.TracerProvider
+	tracer         trace.Tracer
 	exporter       *mutableBatcher
 	tracer         trace.Tracer
 }
@@ -42,8 +42,9 @@ func init() {
 }
 
 // SetProvider creates a new [sdktrace.TracerProvider] and stores it + a tracer
-// named "unconfigured" in the global state. See [SetTracerWithExporters] to
-// create a tracer with a useful name and install exporters for spans.
+// named "unconfigured" in the global state. To dynamically configure
+// exporters, do _not_ pass exporters with [sdktrace.WithBatcher] or similar
+// here; instead use [AddExporters].
 func SetProvider(ctx context.Context, opts ...sdktrace.TracerProviderOption) error {
 	globalTraceStateDataMu.Lock()
 	defer globalTraceStateDataMu.Unlock()
@@ -51,12 +52,12 @@ func SetProvider(ctx context.Context, opts ...sdktrace.TracerProviderOption) err
 	exporter := newMutableBatcher()
 	opts = append(opts, sdktrace.WithBatcher(exporter))
 	traceProvider := sdktrace.NewTracerProvider(opts...)
-	tracer := traceProvider.Tracer("unconfigured")
+	tracer := traceProvider.Tracer("go.viam.com/utils/trace")
 
 	prev := globalTraceStateData.Swap(&globalTraceState{
-		exporter:       exporter,
 		tracerProvider: traceProvider,
 		tracer:         tracer,
+		exporter:       exporter,
 	})
 
 	if prev != nil {
@@ -146,24 +147,11 @@ func (m *mutableBatcher) Shutdown(ctx context.Context) error {
 // Span is a type alias to [trace.Span].
 type Span = trace.Span
 
-// GetProvider returns the [trace.TracerProvider] configured by the last call to
-// [SetTracerWithExporters].
+// GetProvider returns the [trace.TracerProvider] configured by the last call
+// to [SetProvider].
 func GetProvider() trace.TracerProvider {
 	globals := globalTraceStateData.Load()
 	return globals.tracerProvider
-}
-
-// SetTracerWithExporters creates a [trace.TracerProvider] and stores it for
-// global use.
-func SetTracerWithExporters(resource *otelresource.Resource, exporters ...sdktrace.SpanExporter) {
-	globalTraceStateDataMu.Lock()
-	defer globalTraceStateDataMu.Unlock()
-
-	globals := globalTraceStateData.Load()
-	globalsClone := *globals
-	globalsClone.exporter.addExporters(exporters...)
-	globals.tracer = globals.tracerProvider.Tracer("go.viam.com/rdk")
-	globalTraceStateData.Swap(&globalsClone)
 }
 
 // ClearExporters clears all span exporters that were previously added with
@@ -187,7 +175,7 @@ func RemoveExporters(exporters ...sdktrace.SpanExporter) []sdktrace.SpanExporter
 }
 
 // Shutdown shuts down the global [trace.TracerProvider] created with
-// [SetTracerWithExporters].
+// [SetProvider].
 func Shutdown(ctx context.Context) error {
 	if sdkProvider, ok := globalTraceStateData.Load().tracerProvider.(*sdktrace.TracerProvider); ok {
 		return sdkProvider.Shutdown(ctx)
