@@ -13,6 +13,8 @@ import (
 	"go.opentelemetry.io/otel/trace/noop"
 )
 
+const instrumentationPackage = "go.viam.com/utils/trace"
+
 // Struct to group all the global state we care about.
 type globalTraceState struct {
 	tracerProvider trace.TracerProvider
@@ -36,7 +38,7 @@ func init() {
 	// This will never actually be used because of the noop provider but
 	// initialize it anyway to avoid potential NPEs.
 	globals.exporter = newMutableBatcher()
-	globals.tracer = globals.tracerProvider.Tracer("unconfigured")
+	globals.tracer = globals.tracerProvider.Tracer(instrumentationPackage)
 	globalTraceStateData.Store(globals)
 }
 
@@ -51,7 +53,7 @@ func SetProvider(ctx context.Context, opts ...sdktrace.TracerProviderOption) err
 	exporter := newMutableBatcher()
 	opts = append(opts, sdktrace.WithBatcher(exporter))
 	traceProvider := sdktrace.NewTracerProvider(opts...)
-	tracer := traceProvider.Tracer("go.viam.com/utils/trace")
+	tracer := traceProvider.Tracer(instrumentationPackage)
 
 	prev := globalTraceStateData.Swap(&globalTraceState{
 		tracerProvider: traceProvider,
