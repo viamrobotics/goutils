@@ -17,8 +17,7 @@ import (
 type globalTraceState struct {
 	tracerProvider trace.TracerProvider
 	tracer         trace.Tracer
-	exporter       *mutableBatcher
-	tracer         trace.Tracer
+	exporter       *mutableExporter
 }
 
 // Store the global state in a sync pointer and protect it with a mutex to
@@ -68,19 +67,22 @@ func SetProvider(ctx context.Context, opts ...sdktrace.TracerProviderOption) err
 	return nil
 }
 
-type mutableBatcher struct {
+// mutableExporter contains one or more [sdktrace.SpanExporter]s that it
+// forwards all spans to. It is thread safe to modify this list of exporters at
+// runtime using the provided methods.
+type mutableExporter struct {
 	mu       sync.Mutex
 	children atomic.Pointer[[]sdktrace.SpanExporter]
 }
 
-func newMutableBatcher() *mutableBatcher {
-	batcher := &mutableBatcher{}
+func newMutableBatcher() *mutableExporter {
+	batcher := &mutableExporter{}
 	batcher.children.Store(&[]sdktrace.SpanExporter{})
 	return batcher
 }
 
-// ExportSpans implements trace.SpanExporter.
-func (m *mutableBatcher) ExportSpans(ctx context.Context, spans []sdktrace.ReadOnlySpan) error {
+// ExportSpans implements [sdktrace.SpanExporter].
+func (m *mutableExporter) ExportSpans(ctx context.Context, spans []sdktrace.ReadOnlySpan) error {
 	var err error
 	childrenPtr := m.children.Load()
 	if childrenPtr == nil {
@@ -92,7 +94,7 @@ func (m *mutableBatcher) ExportSpans(ctx context.Context, spans []sdktrace.ReadO
 	return err
 }
 
-func (m *mutableBatcher) addExporters(exporters ...sdktrace.SpanExporter) {
+func (m *mutableExporter) addExporters(exporters ...sdktrace.SpanExporter) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	children := slices.Clone(*m.children.Load())
@@ -105,7 +107,7 @@ func (m *mutableBatcher) addExporters(exporters ...sdktrace.SpanExporter) {
 	m.children.Store(&children)
 }
 
-func (m *mutableBatcher) removeExporters(exporters ...sdktrace.SpanExporter) []sdktrace.SpanExporter {
+func (m *mutableExporter) removeExporters(exporters ...sdktrace.SpanExporter) []sdktrace.SpanExporter {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	children := slices.Clone(*m.children.Load())
@@ -124,7 +126,7 @@ func (m *mutableBatcher) removeExporters(exporters ...sdktrace.SpanExporter) []s
 	return removed
 }
 
-func (m *mutableBatcher) clearExporters() []sdktrace.SpanExporter {
+func (m *mutableExporter) clearExporters() []sdktrace.SpanExporter {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	emptyChildren := []sdktrace.SpanExporter{}
@@ -132,8 +134,8 @@ func (m *mutableBatcher) clearExporters() []sdktrace.SpanExporter {
 	return children
 }
 
-// Shutdown implements trace.SpanExporter.
-func (m *mutableBatcher) Shutdown(ctx context.Context) error {
+// Shutdown implements [sdktrace.SpanExporter].
+func (m *mutableExporter) Shutdown(ctx context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	var err error
