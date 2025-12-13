@@ -18,14 +18,12 @@ func TestOtelDevelopmentExporter(t *testing.T) {
 		e := NewOtelDevelopmentExporter()
 		buff := &bytes.Buffer{}
 		e.outputWriter = buff
-		e.Start()
 		return e, buff
 	}
 
 	t.Run("no spans", func(t *testing.T) {
 		e, buff := setup()
 		e.ExportSpans(t.Context(), nil)
-		e.Stop()
 		output := buff.String()
 		test.That(t, output, test.ShouldBeEmpty)
 	})
@@ -39,7 +37,6 @@ func TestOtelDevelopmentExporter(t *testing.T) {
 			spanStup.Snapshot(),
 		}
 		e.ExportSpans(t.Context(), spans)
-		e.Stop()
 		output := buff.String()
 		test.That(t, output, test.ShouldNotBeEmpty)
 		lines := lo.Filter(strings.Split(output, "\n"), filterEmpty)
@@ -58,7 +55,6 @@ func TestOtelDevelopmentExporter(t *testing.T) {
 			spanStub.Snapshot(),
 		}
 		e.ExportSpans(t.Context(), spans)
-		e.Stop()
 		output := buff.String()
 		test.That(t, output, test.ShouldNotBeEmpty)
 		lines := lo.Filter(strings.Split(output, "\n"), filterEmpty)
@@ -100,7 +96,6 @@ func TestOtelDevelopmentExporter(t *testing.T) {
 		spans = append(spans, rootSpanRO)
 
 		e.ExportSpans(t.Context(), spans)
-		e.Stop()
 		output := buff.String()
 		test.That(t, output, test.ShouldNotBeEmpty)
 		lines := lo.Filter(strings.Split(output, "\n"), filterEmpty)

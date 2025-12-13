@@ -12,25 +12,15 @@ import (
 
 	"github.com/samber/lo"
 	"go.opencensus.io/metric/metricdata"
-	"go.opencensus.io/metric/metricexport"
-	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	oteltrace "go.opentelemetry.io/otel/trace"
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
-
-	"go.viam.com/utils"
-	"go.viam.com/utils/trace"
 )
 
 // OtelDevelopmentExporter exports metrics and spans to log file.
 type OtelDevelopmentExporter struct {
-	mu             sync.Mutex
-	shutdown       bool
-	children       map[string][]*myOtelSpanInfo
-	reader         *metricexport.Reader
-	ir             *metricexport.IntervalReader
-	initReaderOnce sync.Once
-	o              OtelDevelopmentExporterOptions
+	mu       sync.Mutex
+	children map[string][]*myOtelSpanInfo
 
 	// For testing. Disable deleting from `children` such that a test can walk over `children` again
 	// to recreate span information.
@@ -44,7 +34,7 @@ type OtelDevelopmentExporter struct {
 func (e *OtelDevelopmentExporter) ExportSpans(ctx context.Context, spans []sdktrace.ReadOnlySpan) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if err := ctx.Err(); err != nil || e.shutdown {
+	if err := ctx.Err(); err != nil {
 		return err
 	}
 	spanInfo := lo.Map(spans, func(span sdktrace.ReadOnlySpan, _ int) *myOtelSpanInfo {
@@ -58,7 +48,7 @@ func (e *OtelDevelopmentExporter) ExportSpans(ctx context.Context, spans []sdktr
 func (e *OtelDevelopmentExporter) ExportOTLPSpans(ctx context.Context, spans []*tracepb.Span) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if err := ctx.Err(); err != nil || e.shutdown {
+	if err := ctx.Err(); err != nil {
 		return err
 	}
 	spanInfo := lo.Map(spans, func(span *tracepb.Span, _ int) *myOtelSpanInfo {
@@ -85,28 +75,16 @@ func (e *OtelDevelopmentExporter) exportSpans(spans []*myOtelSpanInfo) {
 
 // Shutdown implements [sdktrace.SpanExporter].
 func (e *OtelDevelopmentExporter) Shutdown(ctx context.Context) error {
-	e.mu.Lock()
-	e.shutdown = true
-	e.mu.Unlock()
-	if !e.o.MetricsDisabled {
-		e.ir.Stop()
-	}
+	// Noop. Theoretically we could flush any leftover spans here but would need
+	// to figure out 1) how to format the output to make clear they are missing a
+	// root span and 2) how not to reprint previously exported spans when
+	// OtelDevelopmentExporter.deleteDisabled is true.
 	return nil
 }
 
 // OtelDevelopmentExporterOptions provides options for
 // [OtelDevelopmentExporter].
 type OtelDevelopmentExporterOptions struct {
-	// ReportingInterval is a time interval between two successive metrics
-	// export.
-	ReportingInterval time.Duration
-
-	// MetricsDisabled determines if metrics reporting is disabled or not.
-	MetricsDisabled bool
-
-	// TracesDisabled determines if trace reporting is disabled or not.
-	TracesDisabled bool
-
 	// Out sets the [io.Writer] that formatted traces will be written to. If this
 	// is nil then [os.Stdout] will be used.
 	Out io.Writer
@@ -166,9 +144,7 @@ func spanInfoFromOTLPSpan(span *tracepb.Span) *myOtelSpanInfo {
 
 // NewOtelDevelopmentExporter creates a new log exporter.
 func NewOtelDevelopmentExporter() *OtelDevelopmentExporter {
-	return NewOtelDevelopmentExporterWithOptions(OtelDevelopmentExporterOptions{
-		ReportingInterval: 10 * time.Second,
-	})
+	return NewOtelDevelopmentExporterWithOptions(OtelDevelopmentExporterOptions{})
 }
 
 // NewOtelDevelopmentExporterWithOptions creates a new log exporter with the given options.
@@ -179,41 +155,8 @@ func NewOtelDevelopmentExporterWithOptions(options OtelDevelopmentExporterOption
 	}
 	return &OtelDevelopmentExporter{
 		children:     map[string][]*myOtelSpanInfo{},
-		reader:       metricexport.NewReader(),
-		o:            options,
 		outputWriter: out,
 	}
-}
-
-// Start starts the metric and span data exporter.
-func (e *OtelDevelopmentExporter) Start() error {
-	if err := registerApplicationViews(); err != nil {
-		return err
-	}
-
-	if !e.o.TracesDisabled {
-		trace.SetTracerWithExporters(resource.Empty(), e)
-	}
-	if !e.o.MetricsDisabled {
-		e.initReaderOnce.Do(func() {
-			var err error
-			e.ir, err = metricexport.NewIntervalReader(&metricexport.Reader{}, e)
-			utils.UncheckedError(err)
-		})
-		e.ir.ReportingInterval = e.o.ReportingInterval
-		return e.ir.Start()
-	}
-	return nil
-}
-
-// Stop stops the metric and span data exporter.
-func (e *OtelDevelopmentExporter) Stop() {
-	//nolint: errcheck,gosec
-	trace.Shutdown(context.Background())
-}
-
-// Close closes any files that were opened for logging.
-func (e *OtelDevelopmentExporter) Close() {
 }
 
 // ExportMetrics exports to log.
