@@ -43,7 +43,7 @@ func init() {
 }
 
 // SetProvider creates a new [sdktrace.TracerProvider] and stores it + a tracer
-// named "unconfigured" in the global state. To dynamically configure
+// named "go.viam.com/utils/trace" in the global state. To dynamically configure
 // exporters, do _not_ pass exporters with [sdktrace.WithBatcher] or similar
 // here; instead use [AddExporters].
 func SetProvider(ctx context.Context, opts ...sdktrace.TracerProviderOption) error {
