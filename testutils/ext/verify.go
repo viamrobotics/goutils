@@ -25,7 +25,8 @@ import (
 type VerifyTestMainOpt func(*verifyTestMainOpts)
 
 type verifyTestMainOpts struct {
-	leakOpts []goleak.Option
+	disableGoleak bool
+	leakOpts      []goleak.Option
 }
 
 // WithLeakOpt applies the provided [goleak.Option] to the goroutine leak
@@ -33,6 +34,13 @@ type verifyTestMainOpts struct {
 func WithLeakOpt(opt goleak.Option) VerifyTestMainOpt {
 	return func(opts *verifyTestMainOpts) {
 		opts.leakOpts = append(opts.leakOpts, opt)
+	}
+}
+
+// WithDisableGoleak disables goleak in the current package.
+func WithDisableGoleak() VerifyTestMainOpt {
+	return func(opts *verifyTestMainOpts) {
+		opts.disableGoleak = true
 	}
 }
 
@@ -63,7 +71,10 @@ func VerifyTestMain(m goleak.TestingM, opts ...VerifyTestMainOpt) {
 		}
 	}()
 
-	currentGoroutines := goleak.IgnoreCurrent()
+	var currentGoroutines goleak.Option
+	if !tmOpts.disableGoleak {
+		currentGoroutines = goleak.IgnoreCurrent()
+	}
 
 	cache, err := artifact.GlobalCache()
 	if err != nil {
@@ -78,10 +89,12 @@ func VerifyTestMain(m goleak.TestingM, opts ...VerifyTestMainOpt) {
 	if exitCode != 0 {
 		os.Exit(exitCode)
 	}
-	leakOpts := tmOpts.leakOpts
-	leakOpts = append(leakOpts, currentGoroutines)
-	if err := utils.FindGoroutineLeaks(leakOpts...); err != nil {
-		fmt.Fprintf(os.Stderr, "goleak: Errors on successful test run: %v\n", err)
-		os.Exit(1)
+	if !tmOpts.disableGoleak {
+		leakOpts := tmOpts.leakOpts
+		leakOpts = append(leakOpts, currentGoroutines)
+		if err := utils.FindGoroutineLeaks(leakOpts...); err != nil {
+			fmt.Fprintf(os.Stderr, "goleak: Errors on successful test run: %v\n", err)
+			os.Exit(1)
+		}
 	}
 }

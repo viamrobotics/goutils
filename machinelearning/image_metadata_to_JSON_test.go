@@ -245,27 +245,34 @@ func (m *mockWriter) Close() error {
 
 func TestImageMetadataToJSONLines(t *testing.T) {
 	tests := []struct {
-		name                string
-		imageMetadata       []*ImageMetadata
-		modelType           mlv1.ModelType
-		labels              []string
-		expJSONFile         string
-		expectedErr         error
-		expectedLabelsCount map[string]int32
-		expectedImageCount  int
+		name                     string
+		imageMetadata            []*ImageMetadata
+		modelType                mlv1.ModelType
+		labels                   []string
+		minImagesObjectDetection int
+		minBBoxesPerLabel        int
+		minImagesPerLabel        int
+		maxRatioUnlabeledImages  float64
+		expJSONFile              string
+		expectedErr              error
+		expectedLabelsCount      map[string]int32
+		expectedImageCount       int
+		expectedMultiLabelCount  int
 	}{
 		{
 			name: "Only one specified label for single label classification " +
 				"results in file with one classification_annotation with string label and UNSPECIFIED others",
-			imageMetadata: []*ImageMetadata{fakeData1, fakeData2, fakeData3},
-			modelType:     mlv1.ModelType_MODEL_TYPE_SINGLE_LABEL_CLASSIFICATION,
-			labels:        singleClassificationLabel,
-			expJSONFile:   filepath.Join(singleLabelDirName, "fakedata_single_label_binary.jsonl"),
+			imageMetadata:           []*ImageMetadata{fakeData1, fakeData2, fakeData3},
+			modelType:               mlv1.ModelType_MODEL_TYPE_SINGLE_LABEL_CLASSIFICATION,
+			labels:                  singleClassificationLabel,
+			maxRatioUnlabeledImages: .4,
+			expJSONFile:             filepath.Join(singleLabelDirName, "fakedata_single_label_binary.jsonl"),
 			expectedLabelsCount: map[string]int32{
 				"cat":        2,
 				UnknownLabel: 1,
 			},
-			expectedImageCount: 3,
+			expectedImageCount:      3,
+			expectedMultiLabelCount: 0,
 		},
 		{
 			name: "Multiple specified labels for single label classification " +
@@ -282,7 +289,8 @@ func TestImageMetadataToJSONLines(t *testing.T) {
 				"turtle":  1,
 				"penguin": 1,
 			},
-			expectedImageCount: 5,
+			expectedImageCount:      5,
+			expectedMultiLabelCount: 0,
 		},
 		{
 			name: "Multiple specified labels for multi label classification " +
@@ -305,7 +313,8 @@ func TestImageMetadataToJSONLines(t *testing.T) {
 				"closeup":         1,
 				"extreme_closeup": 2,
 			},
-			expectedImageCount: 5,
+			expectedImageCount:      5,
+			expectedMultiLabelCount: 0,
 		},
 		{
 			name: "Multiple specified labels for object detection " +
@@ -320,7 +329,8 @@ func TestImageMetadataToJSONLines(t *testing.T) {
 				"cat": 3,
 				"dog": 2,
 			},
-			expectedImageCount: 3,
+			expectedImageCount:      3,
+			expectedMultiLabelCount: 0,
 		},
 		{
 			name: "No specified labels for custom training " +
@@ -328,11 +338,12 @@ func TestImageMetadataToJSONLines(t *testing.T) {
 			imageMetadata: []*ImageMetadata{
 				fakeCustomData4, fakeCustomData5,
 			},
-			modelType:           mlv1.ModelType_MODEL_TYPE_OBJECT_DETECTION,
-			labels:              nil,
-			expJSONFile:         filepath.Join(customTrainingDirName, "fakedata_custom_training.jsonl"),
-			expectedLabelsCount: map[string]int32{},
-			expectedImageCount:  2,
+			modelType:               mlv1.ModelType_MODEL_TYPE_OBJECT_DETECTION,
+			labels:                  nil,
+			expJSONFile:             filepath.Join(customTrainingDirName, "fakedata_custom_training.jsonl"),
+			expectedLabelsCount:     map[string]int32{},
+			expectedImageCount:      2,
+			expectedMultiLabelCount: 0,
 		},
 		{
 			name: "Empty bucket for custom training " +
@@ -340,23 +351,87 @@ func TestImageMetadataToJSONLines(t *testing.T) {
 			imageMetadata: []*ImageMetadata{
 				fakeCustomDataEmptyBucket,
 			},
-			modelType:           mlv1.ModelType_MODEL_TYPE_UNSPECIFIED,
-			labels:              nil,
-			expJSONFile:         filepath.Join(customTrainingDirName, "fakedata_empty_bucket.jsonl"),
-			expectedLabelsCount: map[string]int32{},
-			expectedImageCount:  1,
+			modelType:               mlv1.ModelType_MODEL_TYPE_UNSPECIFIED,
+			labels:                  nil,
+			expJSONFile:             filepath.Join(customTrainingDirName, "fakedata_empty_bucket.jsonl"),
+			expectedLabelsCount:     map[string]int32{},
+			expectedImageCount:      1,
+			expectedMultiLabelCount: 0,
+		},
+		{
+			name: "Too few images for object detection model " +
+				"results in an error",
+			imageMetadata: []*ImageMetadata{
+				fakeObjDetectionData1, fakeObjDetectionData2, fakeObjDetectionData3,
+			},
+			minImagesObjectDetection: 4,
+			modelType:                mlv1.ModelType_MODEL_TYPE_OBJECT_DETECTION,
+			labels:                   objectDetectionLabels,
+			expJSONFile:              filepath.Join(objDetectionDirName, "fakedata_detection.jsonl"),
+			expectedErr:              errDatasetTooSmall("object detection", 4),
+			expectedLabelsCount:      nil,
+			expectedImageCount:       0,
+			expectedMultiLabelCount:  0,
+		},
+		{
+			name:                    "Too few images per class in single-label classification results in an error",
+			imageMetadata:           []*ImageMetadata{fakeData1, fakeData2, fakeData3},
+			modelType:               mlv1.ModelType_MODEL_TYPE_SINGLE_LABEL_CLASSIFICATION,
+			labels:                  singleClassificationLabel,
+			minBBoxesPerLabel:       10,
+			minImagesPerLabel:       10,
+			maxRatioUnlabeledImages: .2,
+			expJSONFile:             filepath.Join(singleLabelDirName, "fakedata_single_label_binary.jsonl"),
+			expectedErr:             errTooFewAnnotations("images", singleClassificationLabel, 10),
+			expectedLabelsCount:     nil,
+			expectedImageCount:      0,
+			expectedMultiLabelCount: 0,
+		},
+		{
+			name: "A multi-label classification model with 1 image per label results in an error",
+			imageMetadata: []*ImageMetadata{
+				fakeMultiLabelData1, fakeMultiLabelData2, fakeMultiLabelData3,
+				fakeMultiLabelData4, fakeMultiLabelData5,
+			},
+			modelType:               mlv1.ModelType_MODEL_TYPE_MULTI_LABEL_CLASSIFICATION,
+			labels:                  multiClassificationLabels,
+			minBBoxesPerLabel:       10,
+			minImagesPerLabel:       10,
+			maxRatioUnlabeledImages: .2,
+			expJSONFile:             multiLabelDirName + "fakedata_multi_label.jsonl",
+			expectedErr:             errTooFewAnnotations("images", multiClassificationLabels, 10),
+			expectedLabelsCount:     nil,
+			expectedImageCount:      0,
+			expectedMultiLabelCount: 0,
+		},
+		{
+			name: "Too few bounding boxes per class in an object detection model results in error",
+			imageMetadata: []*ImageMetadata{
+				fakeObjDetectionData1, fakeObjDetectionData2, fakeObjDetectionData3,
+			},
+			modelType:               mlv1.ModelType_MODEL_TYPE_OBJECT_DETECTION,
+			labels:                  objectDetectionLabels,
+			minBBoxesPerLabel:       10,
+			minImagesPerLabel:       10,
+			maxRatioUnlabeledImages: .2,
+			expJSONFile:             objDetectionDirName + "fakedata_detection.jsonl",
+			expectedErr:             errTooFewAnnotations("bounding boxes", objectDetectionLabels, 10),
+			expectedLabelsCount:     nil,
+			expectedImageCount:      0,
+			expectedMultiLabelCount: 0,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			wc := newMockWriter()
-			labelsCount, imageCount, err := ImageMetadataToJSONLines(tc.imageMetadata, tc.labels, tc.modelType, wc)
+			labelCountsResult, err := ImageMetadataToJSONLines(tc.imageMetadata, tc.labels, tc.modelType, wc)
 
 			if tc.expectedErr == nil {
 				test.That(t, err, test.ShouldBeNil)
-				test.That(t, labelsCount, test.ShouldResemble, tc.expectedLabelsCount)
-				test.That(t, imageCount, test.ShouldEqual, tc.expectedImageCount)
+				test.That(t, labelCountsResult.LabelCounts, test.ShouldResemble, tc.expectedLabelsCount)
+				test.That(t, labelCountsResult.DatasetSize, test.ShouldEqual, tc.expectedImageCount)
+				test.That(t, labelCountsResult.MultiLabelCount, test.ShouldEqual, tc.expectedMultiLabelCount)
 
 				// Read pre-written test JSON file from artifacts
 				file, err := os.Open(artifact.MustPath(tc.expJSONFile))
@@ -377,9 +452,9 @@ func TestImageMetadataToJSONLines(t *testing.T) {
 				test.That(t, err, test.ShouldNotBeNil)
 				test.That(t, err, test.ShouldBeError, tc.expectedErr)
 
-				// Validate that nil/zero values are returned on error
-				test.That(t, labelsCount, test.ShouldResemble, tc.expectedLabelsCount)
-				test.That(t, imageCount, test.ShouldEqual, tc.expectedImageCount)
+				test.That(t, labelCountsResult.LabelCounts, test.ShouldResemble, tc.expectedLabelsCount)
+				test.That(t, labelCountsResult.DatasetSize, test.ShouldEqual, tc.expectedImageCount)
+				test.That(t, labelCountsResult.MultiLabelCount, test.ShouldEqual, tc.expectedMultiLabelCount)
 			}
 		})
 	}

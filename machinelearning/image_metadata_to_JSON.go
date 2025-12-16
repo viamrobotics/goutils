@@ -80,6 +80,18 @@ type CloseableWriter interface {
 	io.Closer
 }
 
+// LabelCountsResult packages the results of the image metadata to JSON lines operation.
+type LabelCountsResult struct {
+	// LabelCounts maps label names to counts (images for classification, bounding boxes for object detection).
+	// UnknownLabel maps to images with no matching labels.
+	// For single-label classification, counts must include only images matching exactly one label.
+	LabelCounts map[string]int32
+	// DatasetSize is the filtered dataset size (sum of labelCounts for single-label, original size otherwise).
+	DatasetSize int
+	// MultiLabelCount is the number of images that were skipped due to having multiple labels in single-label classification.
+	MultiLabelCount int
+}
+
 var (
 	// ErrJSONFormatting is the error returned when formatting JSON fails.
 	ErrJSONFormatting = errors.New("error formatting JSON")
@@ -94,9 +106,9 @@ const UnknownLabel = "VIAM_UNKNOWN"
 // If no requested tags are provided, all annotations for the data are returned.
 func ImageMetadataToJSONLines(matchingData []*ImageMetadata,
 	requestedTags []string, requestedModelType mlv1.ModelType, wc CloseableWriter,
-) (map[string]int32, int, error) {
+) (LabelCountsResult, error) {
 	if len(matchingData) == 0 {
-		return nil, 0, errors.New("no matching datum to transform")
+		return LabelCountsResult{}, errors.New("no matching datum to transform")
 	}
 
 	var tooManyLabels int
@@ -195,23 +207,88 @@ func ImageMetadataToJSONLines(matchingData []*ImageMetadata,
 				}
 
 			case mlv1.ModelType_MODEL_TYPE_UNSPECIFIED:
-				return nil, 0, errors.New("model type not specified")
+				return LabelCountsResult{}, errors.New("model type not specified")
 			}
 		}
 
 		line, err := json.Marshal(jsonl)
 		if err != nil {
-			return nil, 0, errors.Wrap(ErrJSONFormatting, err.Error())
+			return LabelCountsResult{}, errors.Wrap(ErrJSONFormatting, err.Error())
 		}
 		line = append(line, "\n"...)
 		_, err = wc.Write(line)
 		if err != nil {
-			return nil, 0, errors.Wrap(ErrFileWriting, err.Error())
+			return LabelCountsResult{}, errors.Wrap(ErrFileWriting, err.Error())
+		}
+	}
+
+	// For non-custom training, perform validation on the dataset.
+	if requestedTags != nil {
+		if err := validateDataset(labelsCount, requestedModelType, len(matchingData)); err != nil {
+			return LabelCountsResult{}, err
 		}
 	}
 
 	if requestedModelType == mlv1.ModelType_MODEL_TYPE_SINGLE_LABEL_CLASSIFICATION {
-		return labelsCount, len(matchingData) - tooManyLabels, nil
+		return LabelCountsResult{
+			LabelCounts:     labelsCount,
+			DatasetSize:     len(matchingData) - tooManyLabels,
+			MultiLabelCount: tooManyLabels,
+		}, nil
+	}
+	return LabelCountsResult{
+		LabelCounts:     labelsCount,
+		DatasetSize:     len(matchingData),
+		MultiLabelCount: 0,
+	}, nil
+}
+
+func validateDataset(labelsCount map[string]int32, modelType mlv1.ModelType, datasetLength int) error {
+	var errorAnnotation string
+	var modelTask string
+	var minPerLabel int
+
+	if modelType == mlv1.ModelType_MODEL_TYPE_MULTI_LABEL_CLASSIFICATION ||
+		modelType == mlv1.ModelType_MODEL_TYPE_SINGLE_LABEL_CLASSIFICATION {
+		errorAnnotation = "images"
+		modelTask = "classification"
+		minPerLabel = minImagesPerLabel
+	} else {
+		errorAnnotation = "bounding boxes"
+		modelTask = "object detection"
+		minPerLabel = minBBoxesPerLabel
+	}
+
+	if modelType == mlv1.ModelType_MODEL_TYPE_OBJECT_DETECTION && datasetLength < minImagesObjectDetection {
+		return errDatasetTooSmall(modelTask, minImagesObjectDetection)
+	}
+
+	totalLabelCount := 0
+	var tooFewImageLabels []string
+	for label, numLabels := range labelsCount {
+		// Keep track of total number of labels for validating number of images with no labels
+		totalLabelCount += int(numLabels)
+
+		// Store all labels with too few images
+		if int(numLabels) < minPerLabel && label != UnknownLabel {
+			tooFewImageLabels = append(tooFewImageLabels, label)
+		}
+	}
+
+	// Reject any dataset with a label with too few images
+	if len(tooFewImageLabels) != 0 {
+		return errTooFewAnnotations(errorAnnotation, tooFewImageLabels, minPerLabel)
+	}
+
+	// Reject any dataset with no matching bounding boxes or images
+	if totalLabelCount == int(labelsCount[UnknownLabel]) {
+		return errNoMatchingImages(errorAnnotation, modelTask)
+	}
+
+	// Reject any dataset with too many images that have no labels
+	maxEmptyLabels := int(maxRatioUnlabeledImages * float64(totalLabelCount))
+	if int(labelsCount[UnknownLabel]) > maxEmptyLabels {
+		return errTooManyUnlabeled()
 	}
 	return labelsCount, len(matchingData), nil
 }
