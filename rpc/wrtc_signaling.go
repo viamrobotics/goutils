@@ -122,6 +122,6 @@ func extendWebRTCConfig(logger utils.ZapCompatibleLogger, original *webrtc.Confi
 	iceURLS := lo.Flatten(lo.Map(configCopy.ICEServers, func(s webrtc.ICEServer, _ int) []string {
 		return s.URLs
 	}))
-	logger.Infow("extended WebRTC config", "iceURLs", iceURLS)
+	logger.Debugw("extended WebRTC config", "iceURLs", iceURLS)
 	return configCopy
 }
