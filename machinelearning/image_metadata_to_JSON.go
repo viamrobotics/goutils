@@ -222,13 +222,6 @@ func ImageMetadataToJSONLines(matchingData []*ImageMetadata,
 		}
 	}
 
-	// For non-custom training, perform validation on the dataset.
-	if requestedTags != nil {
-		if err := validateDataset(labelsCount, requestedModelType, len(matchingData)); err != nil {
-			return LabelCountsResult{}, err
-		}
-	}
-
 	if requestedModelType == mlv1.ModelType_MODEL_TYPE_SINGLE_LABEL_CLASSIFICATION {
 		return LabelCountsResult{
 			LabelCounts:     labelsCount,
@@ -241,56 +234,6 @@ func ImageMetadataToJSONLines(matchingData []*ImageMetadata,
 		DatasetSize:     len(matchingData),
 		MultiLabelCount: 0,
 	}, nil
-}
-
-func validateDataset(labelsCount map[string]int32, modelType mlv1.ModelType, datasetLength int) error {
-	var errorAnnotation string
-	var modelTask string
-	var minPerLabel int
-
-	if modelType == mlv1.ModelType_MODEL_TYPE_MULTI_LABEL_CLASSIFICATION ||
-		modelType == mlv1.ModelType_MODEL_TYPE_SINGLE_LABEL_CLASSIFICATION {
-		errorAnnotation = "images"
-		modelTask = "classification"
-		minPerLabel = minImagesPerLabel
-	} else {
-		errorAnnotation = "bounding boxes"
-		modelTask = "object detection"
-		minPerLabel = minBBoxesPerLabel
-	}
-
-	if modelType == mlv1.ModelType_MODEL_TYPE_OBJECT_DETECTION && datasetLength < minImagesObjectDetection {
-		return errDatasetTooSmall(modelTask, minImagesObjectDetection)
-	}
-
-	totalLabelCount := 0
-	var tooFewImageLabels []string
-	for label, numLabels := range labelsCount {
-		// Keep track of total number of labels for validating number of images with no labels
-		totalLabelCount += int(numLabels)
-
-		// Store all labels with too few images
-		if int(numLabels) < minPerLabel && label != UnknownLabel {
-			tooFewImageLabels = append(tooFewImageLabels, label)
-		}
-	}
-
-	// Reject any dataset with a label with too few images
-	if len(tooFewImageLabels) != 0 {
-		return errTooFewAnnotations(errorAnnotation, tooFewImageLabels, minPerLabel)
-	}
-
-	// Reject any dataset with no matching bounding boxes or images
-	if totalLabelCount == int(labelsCount[UnknownLabel]) {
-		return errNoMatchingImages(errorAnnotation, modelTask)
-	}
-
-	// Reject any dataset with too many images that have no labels
-	maxEmptyLabels := int(maxRatioUnlabeledImages * float64(totalLabelCount))
-	if int(labelsCount[UnknownLabel]) > maxEmptyLabels {
-		return errTooManyUnlabeled()
-	}
-	return labelsCount, len(matchingData), nil
 }
 
 // getMatchingTags checks to see if any of the labels are in tags.
