@@ -283,7 +283,7 @@ func (ch *webrtcClientChannel) onChannelMessage(msg webrtc.DataChannelMessage) {
 	resp := &webrtcpb.Response{}
 	err := proto.Unmarshal(msg.Data, resp)
 	if err != nil {
-		ch.webrtcBaseChannel.logger.Errorw("error unmarshaling message; discarding", "error", err)
+		ch.webrtcBaseChannel.logger.Warnw("message unmarshaling failed; discarding", "error", err)
 		return
 	}
 
