@@ -101,7 +101,7 @@ var (
 		},
 	)
 
-	connectionEstablishmentFailures = statz.NewCounter2[string, string](
+	connectionEstablishmentFailures = statz.NewCounter3[string, string, string](
 		"signaling/connection_establishment_failures",
 		statz.MetricConfig{
 			Description: "The total number of connection establishment failures (all caller or answerer errors).",
@@ -114,6 +114,10 @@ var (
 				{
 					Name:        "organization_id",
 					Description: "The organization ID of the machine that is being connected to.",
+				},
+				{
+					Name:        "reason",
+					Description: "Reason for failure, if known.",
 				},
 			},
 		},
@@ -140,78 +144,6 @@ var (
 				{
 					Name:        "online_recently",
 					Description: "Whether the target machine was reportedly online in the last 10s (blocked potential success)",
-				},
-			},
-		},
-	)
-
-	connectionEstablishmentCallerTimeouts = statz.NewCounter2[string, string](
-		"signaling/connection_establishment_caller_timeouts",
-		statz.MetricConfig{
-			Description: "The total number of connection establishment failures that were timeouts on the caller side.",
-			Unit:        units.Dimensionless,
-			Labels: []statz.Label{
-				{
-					Name:        "sdk_type",
-					Description: "The type of SDK attempting to connect.",
-				},
-				{
-					Name:        "organization_id",
-					Description: "The organization ID of the machine that is being connected to.",
-				},
-			},
-		},
-	)
-
-	connectionEstablishmentCallerNonTimeoutErrors = statz.NewCounter2[string, string](
-		"signaling/connection_establishment_caller_non_timeouts",
-		statz.MetricConfig{
-			Description: "The total number of connection establishment failures that were NOT timeouts on the caller side.",
-			Unit:        units.Dimensionless,
-			Labels: []statz.Label{
-				{
-					Name:        "sdk_type",
-					Description: "The type of SDK attempting to connect.",
-				},
-				{
-					Name:        "organization_id",
-					Description: "The organization ID of the machine that is being connected to.",
-				},
-			},
-		},
-	)
-
-	connectionEstablishmentAnswererTimeouts = statz.NewCounter2[string, string](
-		"signaling/connection_establishment_answerer_timeouts",
-		statz.MetricConfig{
-			Description: "The total number of connection establishment failures that were timeouts on the answerer side.",
-			Unit:        units.Dimensionless,
-			Labels: []statz.Label{
-				{
-					Name:        "sdk_type",
-					Description: "The type of SDK attempting to connect.",
-				},
-				{
-					Name:        "organization_id",
-					Description: "The organization ID of the machine that is being connected to.",
-				},
-			},
-		},
-	)
-
-	connectionEstablishmentAnswererNonTimeoutErrors = statz.NewCounter2[string, string](
-		"signaling/connection_establishment_answerer_non_timeouts",
-		statz.MetricConfig{
-			Description: "The total number of connection establishment failures that were NOT timeouts on the answerer side.",
-			Unit:        units.Dimensionless,
-			Labels: []statz.Label{
-				{
-					Name:        "sdk_type",
-					Description: "The type of SDK attempting to connect.",
-				},
-				{
-					Name:        "organization_id",
-					Description: "The organization ID of the machine that is being connected to.",
 				},
 			},
 		},
@@ -1472,14 +1404,16 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferError(ctx context.Context, host, u
 	// Increment connection establishment failure counts if we are setting a
 	// `caller_error` and the `answerer_error` has not already been set.
 	if updatedMDBWebRTCCall.AnswererError == "" {
-		connectionEstablishmentFailures.Inc(updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID)
+		reason := "caller_unknown"
 		if errors.Is(err, context.DeadlineExceeded) {
-			connectionEstablishmentCallerTimeouts.Inc(updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID)
-			span.AddAttributes(trace.StringAttribute("failure", "caller_timeout"))
+			reason = "caller_timeout"
+		} else if errors.Is(err, context.Canceled) {
+			reason = "caller_cancel"
 		} else {
-			connectionEstablishmentCallerNonTimeoutErrors.Inc(updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID)
-			span.AddAttributes(trace.StringAttribute("failure", "caller_non_timeout"))
+			queue.logger.Warnw("unknown candidate exchange error on caller", "err", err)
 		}
+		connectionEstablishmentFailures.Inc(updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID, reason)
+		span.AddAttributes(trace.StringAttribute("failure", reason))
 		duration := float64(time.Since(updatedMDBWebRTCCall.StartedAt).Milliseconds())
 		callExchangeDuration.Observe(duration, updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID, exchangeFailed)
 	}
@@ -1664,6 +1598,7 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 		callerCandidates: make(chan webrtc.ICECandidateInit),
 		callerDoneCtx:    callerDoneCtx,
 		deadline:         offerDeadline,
+		logger:           queue.logger,
 	}
 	sendCandidate := func(cand webrtc.ICECandidateInit) bool {
 		select {
@@ -1858,6 +1793,7 @@ type mongoDBWebRTCCallOfferExchange struct {
 	callerDoneCtx    context.Context
 	callerErr        error
 	deadline         time.Time
+	logger           utils.ZapCompatibleLogger
 }
 
 func (resp *mongoDBWebRTCCallOfferExchange) UUID() string {
@@ -1950,14 +1886,16 @@ func (resp *mongoDBWebRTCCallOfferExchange) AnswererRespond(ctx context.Context,
 		// Increment connection establishment failure counts if we are setting an
 		// `answerer_error` and the `caller_error` has not already been set.
 		if updatedMDBWebRTCCall.CallerError == "" {
-			connectionEstablishmentFailures.Inc(updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID)
+			reason := "answerer_unknown"
 			if errors.Is(ans.Err, context.DeadlineExceeded) {
-				connectionEstablishmentAnswererTimeouts.Inc(updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID)
-				span.AddAttributes(trace.StringAttribute("failure", "answerer_timeout"))
+				reason = "answerer_timeout"
+			} else if errors.Is(ans.Err, context.Canceled) {
+				reason = "answerer_cancel"
 			} else {
-				connectionEstablishmentAnswererNonTimeoutErrors.Inc(updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID)
-				span.AddAttributes(trace.StringAttribute("failure", "answerer_non_timeout"))
+				resp.logger.Warnw("unknown candidate exchange error on answerer", "err", ans.Err)
 			}
+			connectionEstablishmentFailures.Inc(updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID, reason)
+			span.AddAttributes(trace.StringAttribute("failure", reason))
 			duration := float64(time.Since(updatedMDBWebRTCCall.StartedAt).Milliseconds())
 			callExchangeDuration.Observe(duration, updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID, exchangeFailed)
 		}
