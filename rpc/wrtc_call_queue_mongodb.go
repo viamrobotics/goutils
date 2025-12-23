@@ -1405,12 +1405,13 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferError(ctx context.Context, host, u
 	// `caller_error` and the `answerer_error` has not already been set.
 	if updatedMDBWebRTCCall.AnswererError == "" {
 		reason := "caller_unknown"
-		if errors.Is(err, context.DeadlineExceeded) {
+		switch {
+		case errors.Is(err, context.DeadlineExceeded):
 			reason = "caller_timeout"
-		} else if errors.Is(err, context.Canceled) {
+		case errors.Is(err, context.Canceled):
 			reason = "caller_cancel"
-		} else {
-			queue.logger.Warnw("unknown candidate exchange error on caller", "err", err)
+		default:
+			queue.logger.Warnw("unknown candidate exchange error on caller side", "err", err)
 		}
 		connectionEstablishmentFailures.Inc(updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID, reason)
 		span.AddAttributes(trace.StringAttribute("failure", reason))
@@ -1886,13 +1887,14 @@ func (resp *mongoDBWebRTCCallOfferExchange) AnswererRespond(ctx context.Context,
 		// Increment connection establishment failure counts if we are setting an
 		// `answerer_error` and the `caller_error` has not already been set.
 		if updatedMDBWebRTCCall.CallerError == "" {
-			reason := "answerer_unknown"
-			if errors.Is(ans.Err, context.DeadlineExceeded) {
+			reason := "answerer_other"
+			switch {
+			case errors.Is(ans.Err, context.DeadlineExceeded):
 				reason = "answerer_timeout"
-			} else if errors.Is(ans.Err, context.Canceled) {
+			case errors.Is(ans.Err, context.Canceled):
 				reason = "answerer_cancel"
-			} else {
-				resp.logger.Warnw("unknown candidate exchange error on answerer", "err", ans.Err)
+			default:
+				resp.logger.Warnw("unknown candidate exchange error on answerer side", "err", ans.Err)
 			}
 			connectionEstablishmentFailures.Inc(updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID, reason)
 			span.AddAttributes(trace.StringAttribute("failure", reason))
