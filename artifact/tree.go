@@ -1,6 +1,14 @@
 package artifact
 
-import "encoding/json"
+import (
+	"encoding/json"
+)
+
+// TreeFile represents the structure of the tree.json file with versioning support.
+type TreeFile struct {
+	Version int64        `json:"version"`
+	Tree    TreeNodeTree `json:"tree"`
+}
 
 // A TreeNode represents a node in an artifact tree. The tree
 // is a hierarchy of artifacts that mimics a file system.
