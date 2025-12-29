@@ -1404,7 +1404,7 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferError(ctx context.Context, host, u
 	// Increment connection establishment failure counts if we are setting a
 	// `caller_error` and the `answerer_error` has not already been set.
 	if updatedMDBWebRTCCall.AnswererError == "" {
-		reason := "caller_unknown"
+		reason := "caller_other"
 		switch {
 		case errors.Is(err, context.DeadlineExceeded):
 			reason = "caller_timeout"
