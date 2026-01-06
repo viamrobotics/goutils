@@ -3,6 +3,7 @@ package mongoutils
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -134,6 +135,10 @@ func ChangeStreamBackground(ctx context.Context, cs *mongo.ChangeStream) (<-chan
 				}
 				sendResult(ChangeEventResult{Event: &ce, ResumeToken: rt})
 				continue
+			}
+			if cs.Err() != nil {
+				//nolint:forbidigo
+				fmt.Printf("DEBUG: cs.TryNext error: %+v\n", cs.Err())
 			}
 			if !csStartedOnce {
 				csStartedOnce = true

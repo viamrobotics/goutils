@@ -668,6 +668,14 @@ func (queue *mongoDBWebRTCCallQueue) changeStreamManager() {
 			},
 		}, csOpts)
 		if err != nil {
+			var cmdErr mongo.CommandError
+			if errors.As(err, &cmdErr) {
+				// ChangeStreamHistoryLost
+				if cmdErr.Code == 286 {
+					queue.logger.Errorw("could not resume change stream", "cmdErr", cmdErr,
+						"StartAfter", csOpts.StartAfter, "StartAtOperationTime", csOpts.StartAtOperationTime)
+				}
+			}
 			callChangeStreamFailures.Inc(queue.operatorID)
 			queue.csManagerSeq.Add(1)
 			queue.logger.Infow("failed to create calls change stream", "error", err)
@@ -736,6 +744,7 @@ func (queue *mongoDBWebRTCCallQueue) processNextSubscriptionEvent(next mongoutil
 		// this manager in the changeStreamManager. So signal we need a new
 		// change stream probably.
 		queue.csManagerSeq.Add(1)
+		queue.logger.Infow("improbable !ok requiring new change stream", "next", next)
 		return true
 	}
 
