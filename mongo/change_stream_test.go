@@ -27,7 +27,7 @@ func TestChangeStreamBackground(t *testing.T) {
 	test.That(t, err, test.ShouldBeNil)
 
 	cancelCtx, ctxCancel := context.WithCancel(context.Background())
-	result, _, _ := mongoutils.ChangeStreamBackground(cancelCtx, cs)
+	result, _, _ := mongoutils.ChangeStreamBackground(cancelCtx, cs, nil)
 	ctxCancel()
 	next := <-result
 	test.That(t, next.Error, test.ShouldWrap, context.Canceled)
@@ -40,7 +40,7 @@ func TestChangeStreamBackground(t *testing.T) {
 	test.That(t, err, test.ShouldBeNil)
 
 	cancelCtx, ctxCancel = context.WithCancel(context.Background())
-	result, _, _ = mongoutils.ChangeStreamBackground(cancelCtx, cs)
+	result, _, _ = mongoutils.ChangeStreamBackground(cancelCtx, cs, nil)
 	defer func() {
 		//nolint:revive
 		for range result {
@@ -85,7 +85,7 @@ func TestChangeStreamBackgroundResumeTokenAdvancement(t *testing.T) {
 	test.That(t, err, test.ShouldBeNil)
 
 	cancelCtx, ctxCancel := context.WithCancel(context.Background())
-	result, currentToken, currentClusterTime := mongoutils.ChangeStreamBackground(cancelCtx, cs)
+	result, currentToken, currentClusterTime := mongoutils.ChangeStreamBackground(cancelCtx, cs, nil)
 	defer func() {
 		//nolint:revive
 		for range result {
@@ -146,7 +146,7 @@ func TestChangeStreamBackgroundInvalidate(t *testing.T) {
 	test.That(t, err, test.ShouldBeNil)
 
 	cancelCtx, ctxCancel := context.WithCancel(context.Background())
-	result, _, _ := mongoutils.ChangeStreamBackground(cancelCtx, cs)
+	result, _, _ := mongoutils.ChangeStreamBackground(cancelCtx, cs, nil)
 	defer func() {
 		//nolint:revive
 		for range result {
@@ -187,7 +187,7 @@ func TestChangeStreamBackgroundInvalidate(t *testing.T) {
 	)
 	test.That(t, err, test.ShouldBeNil)
 
-	result, _, _ = mongoutils.ChangeStreamBackground(cancelCtx, cs)
+	result, _, _ = mongoutils.ChangeStreamBackground(cancelCtx, cs, nil)
 	event = <-result
 	test.That(t, event.Error, test.ShouldBeNil)
 	test.That(t, event.Event.DocumentKey, test.ShouldResemble, bson.D{{"_id", someID}})

@@ -690,7 +690,7 @@ func (queue *mongoDBWebRTCCallQueue) changeStreamManager() {
 		queue.csStateMu.Unlock()
 
 		nextCSCtx, nextCSCtxCancel := context.WithCancel(queue.cancelCtx)
-		csNext, resumeToken, clusterTime := mongoutils.ChangeStreamBackground(nextCSCtx, cs)
+		csNext, resumeToken, clusterTime := mongoutils.ChangeStreamBackground(nextCSCtx, cs, queue.logger)
 
 		select {
 		case <-queue.cancelCtx.Done():

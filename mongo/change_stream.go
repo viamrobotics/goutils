@@ -90,7 +90,8 @@ var ErrChangeStreamInvalidateEvent = errors.New("change stream invalidated")
 // is concurrent with that which produces the change stream (rpc.mongoDBWebRTCCallQueue is one such case). This
 // is frankly more complicated though.
 // Note: It is encouraged your change stream match on the invalidate event for better error handling.
-func ChangeStreamBackground(ctx context.Context, cs *mongo.ChangeStream) (<-chan ChangeEventResult, bson.Raw, primitive.Timestamp) {
+func ChangeStreamBackground(ctx context.Context, cs *mongo.ChangeStream, logger utils.ZapCompatibleLogger) (
+	<-chan ChangeEventResult, bson.Raw, primitive.Timestamp) {
 	// having this be buffered probably does not matter very much but it allows for the background
 	// goroutine to be slightly ahead of the consumer in some cases.
 	results := make(chan ChangeEventResult, 1)
@@ -137,8 +138,9 @@ func ChangeStreamBackground(ctx context.Context, cs *mongo.ChangeStream) (<-chan
 				continue
 			}
 			if cs.Err() != nil {
-				//nolint:forbidigo
-				fmt.Printf("DEBUG: cs.TryNext error: %+v\n", cs.Err())
+				if logger != nil {
+					logger.Warnw("cs.TryNext error", "err", cs.Err())
+				}
 			}
 			if !csStartedOnce {
 				csStartedOnce = true
