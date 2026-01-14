@@ -33,10 +33,10 @@ type GCPSource struct {
 // NewGCPSource returns a new GCP secret source that derives its information from
 // the given context.
 func NewGCPSource(ctx context.Context) (*GCPSource, error) {
-	// 5 retries with 100ms timeout
+	// 5 retries with 1s timeout
 	// exponential backoff with a base of 50ms and a +/- 10% jitter
 	retryInterceptor := grpc_retry.UnaryClientInterceptor(
-		grpc_retry.WithPerRetryTimeout(500*time.Millisecond),
+		grpc_retry.WithPerRetryTimeout(time.Second),
 		grpc_retry.WithMax(5),
 		grpc_retry.WithBackoff(grpc_retry.BackoffExponentialWithJitter(50*time.Millisecond, 0.1)),
 	)
