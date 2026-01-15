@@ -160,7 +160,9 @@ func ChangeStreamBackground(ctx context.Context, cs *mongo.ChangeStream, logger 
 				continue
 			}
 			var csErr error
-			if cs.Err() == nil {
+			if cs.Err() != nil {
+				csErr = cs.Err()
+			} else {
 				// As far as we know this is an invalidating event like drop
 				// but we are not seeing it. Better the user filter on invalidate
 				// to catch it above. Otherwise they may need to resume more than
