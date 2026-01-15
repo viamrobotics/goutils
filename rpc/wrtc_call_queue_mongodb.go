@@ -631,7 +631,7 @@ func (queue *mongoDBWebRTCCallQueue) changeStreamManager() {
 		csOpts := options.ChangeStream().SetFullDocument(options.UpdateLookup)
 
 		// only one can ever be set (enforced by processClusterEventState)
-		// otherwise error: Only one type of resume option is allowed, but multiple were found
+		// otherwise MDB server will error: Only one type of resume option is allowed, but multiple were found
 		if len(queue.csLastResumeToken) != 0 {
 			csOpts.SetStartAfter(queue.csLastResumeToken)
 		} else if !queue.csLastEventClusterTime.IsZero() {
