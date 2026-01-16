@@ -199,7 +199,6 @@ type mongoDBWebRTCCallQueue struct {
 	csStateUpdates              chan changeStreamStateUpdate
 
 	// change stream context
-	csCtx       context.Context
 	csCtxCancel func()
 
 	// function passed in during construction to update last_online timestamps for documents
@@ -629,7 +628,6 @@ func (queue *mongoDBWebRTCCallQueue) changeStreamManager() {
 		}
 		readyFuncs := make([]func(), len(queue.csAnswerersWaitingForNextCS))
 		copy(readyFuncs, queue.csAnswerersWaitingForNextCS)
-		queue.csAnswerersWaitingForNextCS = nil
 
 		csOpts := options.ChangeStream().SetFullDocument(options.UpdateLookup)
 
@@ -687,10 +685,6 @@ func (queue *mongoDBWebRTCCallQueue) changeStreamManager() {
 					queue.csLastResumeToken = nil
 					queue.csLastEventClusterTime = primitive.Timestamp{}
 					queue.csStateMu.Unlock()
-					// cancel change stream ctx to unblock answerers waiting on readyFuncs below (see subscribeForNewCallOnHosts)
-					if queue.csCtxCancel != nil {
-						queue.csCtxCancel()
-					}
 				}
 			}
 			continue
@@ -700,6 +694,10 @@ func (queue *mongoDBWebRTCCallQueue) changeStreamManager() {
 			readyFunc()
 		}
 		queue.csStateMu.Lock()
+		// TODO: clear csAnswerersWaitingForNextCS after we have closed all readyFuncs. don't clear immediately after snapshotting,
+		// TODO: since the readyFuncs will be lost of we retry and Answerers will wait indefinitely.
+		// TODO: may have changed while were not holding the lock.
+		queue.csAnswerersWaitingForNextCS = nil
 		queue.csTrackingHosts = utils.NewStringSet(hosts...)
 		queue.csStateMu.Unlock()
 
@@ -721,7 +719,6 @@ func (queue *mongoDBWebRTCCallQueue) changeStreamManager() {
 			if queue.csCtxCancel != nil {
 				queue.csCtxCancel()
 			}
-			queue.csCtx = nextCSCtx
 			queue.csCtxCancel = nextCSCtxCancel
 		}
 	}
@@ -1022,9 +1019,6 @@ func (queue *mongoDBWebRTCCallQueue) subscribeForNewCallOnHosts(
 		// this should be pretty instant after we increase the counter to account for the new answerer
 		// this returns the new subChan and unSub for the existing answerer
 		return subChan, unsub, nil
-	case <-queue.csCtx.Done():
-		unsub()
-		return nil, nil, queue.csCtx.Err()
 	}
 }
 
