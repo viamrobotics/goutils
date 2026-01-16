@@ -197,7 +197,10 @@ type mongoDBWebRTCCallQueue struct {
 	csTrackingHosts             utils.StringSet
 	csAnswerersWaitingForNextCS []func()
 	csStateUpdates              chan changeStreamStateUpdate
-	csCtxCancel                 func()
+
+	// change stream context
+	csCtx       context.Context
+	csCtxCancel func()
 
 	// function passed in during construction to update last_online timestamps for documents
 	// in robot and robot_part based on this call-queue/operator.
@@ -630,11 +633,11 @@ func (queue *mongoDBWebRTCCallQueue) changeStreamManager() {
 
 		csOpts := options.ChangeStream().SetFullDocument(options.UpdateLookup)
 
-		// only one can ever be set
+		// only one can ever be set (enforced by processClusterEventState)
+		// otherwise MDB server will error: Only one type of resume option is allowed, but multiple were found
 		if len(queue.csLastResumeToken) != 0 {
 			csOpts.SetStartAfter(queue.csLastResumeToken)
-		}
-		if !queue.csLastEventClusterTime.IsZero() {
+		} else if !queue.csLastEventClusterTime.IsZero() {
 			ctCopy := queue.csLastEventClusterTime
 			csOpts.SetStartAtOperationTime(&ctCopy)
 		}
@@ -669,8 +672,27 @@ func (queue *mongoDBWebRTCCallQueue) changeStreamManager() {
 		}, csOpts)
 		if err != nil {
 			callChangeStreamFailures.Inc(queue.operatorID)
+			// by incrementing here we will retry
 			queue.csManagerSeq.Add(1)
 			queue.logger.Infow("failed to create calls change stream", "error", err)
+
+			var cmdErr mongo.CommandError
+			if errors.As(err, &cmdErr) {
+				// ChangeStreamHistoryLost
+				if cmdErr.Code == 286 {
+					queue.logger.Warnw("could not resume change stream. retrying with resume points unset", "cmdErr", cmdErr,
+						"StartAfter", csOpts.StartAfter, "StartAtOperationTime", csOpts.StartAtOperationTime)
+
+					queue.csStateMu.Lock()
+					queue.csLastResumeToken = nil
+					queue.csLastEventClusterTime = primitive.Timestamp{}
+					queue.csStateMu.Unlock()
+					// cancel change stream ctx to unblock answerers waiting on readyFuncs below (see subscribeForNewCallOnHosts)
+					if queue.csCtxCancel != nil {
+						queue.csCtxCancel()
+					}
+				}
+			}
 			continue
 		}
 
@@ -699,6 +721,7 @@ func (queue *mongoDBWebRTCCallQueue) changeStreamManager() {
 			if queue.csCtxCancel != nil {
 				queue.csCtxCancel()
 			}
+			queue.csCtx = nextCSCtx
 			queue.csCtxCancel = nextCSCtxCancel
 		}
 	}
@@ -999,6 +1022,9 @@ func (queue *mongoDBWebRTCCallQueue) subscribeForNewCallOnHosts(
 		// this should be pretty instant after we increase the counter to account for the new answerer
 		// this returns the new subChan and unSub for the existing answerer
 		return subChan, unsub, nil
+	case <-queue.csCtx.Done():
+		unsub()
+		return nil, nil, queue.csCtx.Err()
 	}
 }
 
