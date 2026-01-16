@@ -680,7 +680,7 @@ func (queue *mongoDBWebRTCCallQueue) changeStreamManager() {
 			if errors.As(err, &cmdErr) {
 				// ChangeStreamHistoryLost
 				if cmdErr.Code == 286 {
-					queue.logger.Errorw("could not resume change stream. retrying with resume points unset", "cmdErr", cmdErr,
+					queue.logger.Warnw("could not resume change stream. retrying with resume points unset", "cmdErr", cmdErr,
 						"StartAfter", csOpts.StartAfter, "StartAtOperationTime", csOpts.StartAtOperationTime)
 
 					queue.csStateMu.Lock()
@@ -704,7 +704,7 @@ func (queue *mongoDBWebRTCCallQueue) changeStreamManager() {
 		queue.csStateMu.Unlock()
 
 		nextCSCtx, nextCSCtxCancel := context.WithCancel(queue.cancelCtx)
-		csNext, resumeToken, clusterTime := mongoutils.ChangeStreamBackground(nextCSCtx, cs, queue.logger)
+		csNext, resumeToken, clusterTime := mongoutils.ChangeStreamBackground(nextCSCtx, cs)
 
 		select {
 		case <-queue.cancelCtx.Done():
@@ -759,7 +759,6 @@ func (queue *mongoDBWebRTCCallQueue) processNextSubscriptionEvent(next mongoutil
 		// this manager in the changeStreamManager. So signal we need a new
 		// change stream probably.
 		queue.csManagerSeq.Add(1)
-		queue.logger.Infow("improbable !ok requiring new change stream", "next", next)
 		return true
 	}
 

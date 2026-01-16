@@ -3,7 +3,6 @@ package mongoutils
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -90,8 +89,7 @@ var ErrChangeStreamInvalidateEvent = errors.New("change stream invalidated")
 // is concurrent with that which produces the change stream (rpc.mongoDBWebRTCCallQueue is one such case). This
 // is frankly more complicated though.
 // Note: It is encouraged your change stream match on the invalidate event for better error handling.
-func ChangeStreamBackground(ctx context.Context, cs *mongo.ChangeStream, logger utils.ZapCompatibleLogger) (
-	<-chan ChangeEventResult, bson.Raw, primitive.Timestamp) {
+func ChangeStreamBackground(ctx context.Context, cs *mongo.ChangeStream) (<-chan ChangeEventResult, bson.Raw, primitive.Timestamp) {
 	// having this be buffered probably does not matter very much but it allows for the background
 	// goroutine to be slightly ahead of the consumer in some cases.
 	results := make(chan ChangeEventResult, 1)
@@ -137,11 +135,6 @@ func ChangeStreamBackground(ctx context.Context, cs *mongo.ChangeStream, logger 
 				sendResult(ChangeEventResult{Event: &ce, ResumeToken: rt})
 				continue
 			}
-			if cs.Err() != nil {
-				if logger != nil {
-					logger.Warnw("cs.TryNext error", "err", cs.Err())
-				}
-			}
 			if !csStartedOnce {
 				csStartedOnce = true
 				csStarted <- csStartedResult{ResumeToken: cs.ResumeToken()}
@@ -168,8 +161,6 @@ func ChangeStreamBackground(ctx context.Context, cs *mongo.ChangeStream, logger 
 				// to catch it above. Otherwise they may need to resume more than
 				// once (depending on oplog).
 				csErr = ErrChangeStreamInvalidateEvent
-			} else {
-				csErr = cs.Err()
 			}
 			sendResult(ChangeEventResult{Error: csErr, ResumeToken: cs.ResumeToken()})
 			return
