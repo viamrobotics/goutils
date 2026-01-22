@@ -56,7 +56,7 @@ type WebRTCCallQueue interface {
 	SendOfferDone(ctx context.Context, host, uuid string) error
 
 	// SendOfferError informs the queue that the offer associated with the UUID has encountered
-	// an error from the sender side.
+	// an error.
 	SendOfferError(ctx context.Context, host, uuid string, err error) error
 
 	// RecvOffer receives the next offer for the given hosts. It should respond with an answer

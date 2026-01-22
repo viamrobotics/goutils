@@ -218,7 +218,7 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 		}
 
 		if !haveInit && resp.InitialSDP == nil {
-			err := errors.New("expected to have initial SDP if no error")
+			err := errors.New("error from answerer: expected to have initial SDP if no error")
 			srv.asyncSendOfferError(host, uuid, err)
 			return err
 		}
