@@ -1416,7 +1416,7 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferError(ctx context.Context, host, u
 			switch {
 			case errors.Is(err, context.DeadlineExceeded) || strings.Contains(err.Error(), "DeadlineExceeded"):
 				// Answerer timeouts may not actually be (or wrap) context.DeadlineExceeded.
-				// Check for both the actual error and an expected substring. See RSDK-13019.
+				// Check for both the actual error and an expected substring. See RSDK-13058.
 				reason = "answerer_timeout"
 			case errors.Is(err, context.Canceled):
 				reason = "answerer_cancel"
@@ -1425,7 +1425,7 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferError(ctx context.Context, host, u
 			reason = "caller_timeout"
 		case errors.Is(err, context.Canceled) || strings.Contains(err.Error(), "client channel is closed"):
 			// Both a context.Canceled or a "client channel is closed" error can indicate the
-			// caller canceled the exchange. See RSDK-13019.
+			// caller canceled the exchange. See RSDK-13058.
 			reason = "caller_cancel"
 		default:
 			// NetCode uses this log to help catch new types of signaling exchange errors we
@@ -1926,7 +1926,7 @@ func (resp *mongoDBWebRTCCallOfferExchange) AnswererRespond(ctx context.Context,
 			switch {
 			case errors.Is(ans.Err, context.DeadlineExceeded) || strings.Contains(ans.Err.Error(), "DeadlineExceeded"):
 				// Answerer timeouts may not actually be (or wrap) context.DeadlineExceeded.
-				// Check for both the actual error and an expected substring. See RSDK-13019.
+				// Check for both the actual error and an expected substring. See RSDK-13058.
 				reason = "answerer_timeout"
 			case errors.Is(ans.Err, context.Canceled):
 				reason = "answerer_cancel"
