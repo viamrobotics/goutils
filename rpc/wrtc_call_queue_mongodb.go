@@ -55,7 +55,7 @@ var (
 		Unit:        units.Dimensionless,
 		Labels: []statz.Label{
 			{Name: "operator_id", Description: "The queue operator ID."},
-			{Name: "reason", Description: "The reason for failure."},
+			{Name: "reason", Description: "The reason for failure ('context_canceled', 'deadline_exceeded', or 'other')."},
 		},
 	})
 
@@ -117,7 +117,7 @@ var (
 				},
 				{
 					Name:        "reason",
-					Description: "Reason for failure, if known.",
+					Description: "The reason for failure ('[answerer|caller]_cancel', '[answerer|caller]_timeout', or '[answerer|caller]_other').",
 				},
 			},
 		},
@@ -139,7 +139,7 @@ var (
 				},
 				{
 					Name:        "reason",
-					Description: "The reason the connection was blocked ('answerers_offline', 'too_many_callers', or 'other').",
+					Description: "The reason for failure ('answerers_offline', 'too_many_callers', or 'other').",
 				},
 				{
 					Name:        "online_recently",
@@ -165,7 +165,7 @@ var (
 				},
 				{
 					Name:        "result",
-					Description: "The result of the call exchange (finished or failed).",
+					Description: "The result of the call exchange ('finished' or 'failed').",
 				},
 			},
 		},
@@ -1379,7 +1379,7 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferDone(ctx context.Context, host, uu
 }
 
 // SendOfferError informs the queue that the offer associated with the UUID has encountered
-// an error from the sender side.
+// an error.
 func (queue *mongoDBWebRTCCallQueue) SendOfferError(ctx context.Context, host, uuid string, err error) error {
 	ctx, span := trace.StartSpan(ctx, "CallQueue::SendOfferError")
 	defer span.End()
@@ -1401,19 +1401,53 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferError(ctx context.Context, host, u
 		return errors.Wrap(err, "could not decode document where 'caller_error' was set")
 	}
 
-	// Increment connection establishment failure counts if we are setting a
-	// `caller_error` and the `answerer_error` has not already been set.
+	// Increment the appropriate connection establishment failure counts with the
+	// appropriate labels if we are setting a `caller_error` and the `answerer_error` has
+	// not already been set.
 	if updatedMDBWebRTCCall.AnswererError == "" {
 		reason := "caller_other"
 		switch {
+		case strings.HasPrefix(err.Error(), "error from answerer"):
+			// SendOfferError may actually be reporting an error from the answerer's side.
+			// Hypothetically, we _should_ be setting answerer_error and not caller_error on the
+			// MDB document here, but this distinction really only matters for NetCode metrics
+			// right now.
+			reason = "answerer_other"
+			switch {
+			case errors.Is(err, context.DeadlineExceeded) || strings.Contains(err.Error(), "DeadlineExceeded"):
+				// Answerer timeouts may not actually be (or wrap) context.DeadlineExceeded.
+				// Check for both the actual error and an expected substring. See RSDK-13058.
+				reason = "answerer_timeout"
+			case errors.Is(err, context.Canceled):
+				reason = "answerer_cancel"
+			}
 		case errors.Is(err, context.DeadlineExceeded):
 			reason = "caller_timeout"
-		case errors.Is(err, context.Canceled):
+		case errors.Is(err, context.Canceled) || strings.Contains(err.Error(), "client channel is closed"):
+			// Both a context.Canceled or a "client channel is closed" error can indicate the
+			// caller canceled the exchange. See RSDK-13058.
 			reason = "caller_cancel"
 		default:
+			// NetCode uses this log to help catch new types of signaling exchange errors we
+			// were unaware of.
 			queue.logger.Warnw("unknown candidate exchange error on caller side", "err", err)
 		}
-		connectionEstablishmentFailures.Inc(updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID, reason)
+		// The caller or answerer prematurely canceling the signaling exchange is an expected
+		// failure. Anything else is unexpected here.
+		if reason == "caller_cancel" || reason == "answerer_cancel" {
+			connectionEstablishmentExpectedFailures.Inc(
+				updatedMDBWebRTCCall.SDKType,
+				updatedMDBWebRTCCall.OrganizationID,
+				reason,
+				"true", /* assume answerer was online recently if we've gotten this far into a signaling exchange */
+			)
+		} else {
+			connectionEstablishmentFailures.Inc(
+				updatedMDBWebRTCCall.SDKType,
+				updatedMDBWebRTCCall.OrganizationID,
+				reason,
+			)
+		}
 		span.AddAttributes(trace.StringAttribute("failure", reason))
 		duration := float64(time.Since(updatedMDBWebRTCCall.StartedAt).Milliseconds())
 		callExchangeDuration.Observe(duration, updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID, exchangeFailed)
@@ -1884,19 +1918,39 @@ func (resp *mongoDBWebRTCCallOfferExchange) AnswererRespond(ctx context.Context,
 			return errors.Wrap(err, "could not decode document where 'answerer_error' was set")
 		}
 
-		// Increment connection establishment failure counts if we are setting an
-		// `answerer_error` and the `caller_error` has not already been set.
+		// Increment the appropriate connection establishment failure counts with the
+		// appropriate labels if we are setting an `answerer_error` and the `caller_error` has
+		// not already been set.
 		if updatedMDBWebRTCCall.CallerError == "" {
 			reason := "answerer_other"
 			switch {
-			case errors.Is(ans.Err, context.DeadlineExceeded):
+			case errors.Is(ans.Err, context.DeadlineExceeded) || strings.Contains(ans.Err.Error(), "DeadlineExceeded"):
+				// Answerer timeouts may not actually be (or wrap) context.DeadlineExceeded.
+				// Check for both the actual error and an expected substring. See RSDK-13058.
 				reason = "answerer_timeout"
 			case errors.Is(ans.Err, context.Canceled):
 				reason = "answerer_cancel"
 			default:
+				// NetCode uses this log to help catch new types of signaling exchange errors we
+				// were unaware of.
 				resp.logger.Warnw("unknown candidate exchange error on answerer side", "err", ans.Err)
 			}
-			connectionEstablishmentFailures.Inc(updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID, reason)
+			// The answerer prematurely canceling the signaling exchange is an expected failure.
+			// Anything else is unexpected here.
+			if reason == "answerer_cancel" {
+				connectionEstablishmentExpectedFailures.Inc(
+					updatedMDBWebRTCCall.SDKType,
+					updatedMDBWebRTCCall.OrganizationID,
+					reason,
+					"true", /* assume answerer was online recently if we've gotten this far into a signaling exchange */
+				)
+			} else {
+				connectionEstablishmentFailures.Inc(
+					updatedMDBWebRTCCall.SDKType,
+					updatedMDBWebRTCCall.OrganizationID,
+					reason,
+				)
+			}
 			span.AddAttributes(trace.StringAttribute("failure", reason))
 			duration := float64(time.Since(updatedMDBWebRTCCall.StartedAt).Milliseconds())
 			callExchangeDuration.Observe(duration, updatedMDBWebRTCCall.SDKType, updatedMDBWebRTCCall.OrganizationID, exchangeFailed)
