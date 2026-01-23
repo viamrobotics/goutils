@@ -628,6 +628,7 @@ func (queue *mongoDBWebRTCCallQueue) changeStreamManager() {
 		}
 		readyFuncs := make([]func(), len(queue.csAnswerersWaitingForNextCS))
 		copy(readyFuncs, queue.csAnswerersWaitingForNextCS)
+		queue.csAnswerersWaitingForNextCS = nil
 
 		csOpts := options.ChangeStream().SetFullDocument(options.UpdateLookup)
 
@@ -641,9 +642,7 @@ func (queue *mongoDBWebRTCCallQueue) changeStreamManager() {
 		}
 		queue.csStateMu.Unlock()
 
-		// note(roxy): this is updating the changestream based on whether there is a new
-		// answerer that is coming online or if there is a new caller that is coming online
-		cs, err := queue.callsColl.Watch(queue.cancelCtx, []bson.D{
+		watchPipeline := []bson.D{
 			{
 				{"$match", bson.D{
 					{"operationType", bson.D{{"$in", []interface{}{
@@ -667,37 +666,46 @@ func (queue *mongoDBWebRTCCallQueue) changeStreamManager() {
 					}},
 				}},
 			},
-		}, csOpts)
+		}
+		// note(roxy): this is updating the changestream based on whether there is a new
+		// answerer that is coming online or if there is a new caller that is coming online
+		cs, err := queue.callsColl.Watch(queue.cancelCtx, watchPipeline, csOpts)
 		if err != nil {
 			callChangeStreamFailures.Inc(queue.operatorID)
-			// by incrementing here we will retry
-			queue.csManagerSeq.Add(1)
-			queue.logger.Infow("failed to create calls change stream", "error", err)
 
 			var cmdErr mongo.CommandError
 			if errors.As(err, &cmdErr) {
-				// ChangeStreamHistoryLost
+				// ChangeStreamHistoryLost: try again without resume points
 				if cmdErr.Code == 286 {
 					queue.logger.Warnw("could not resume change stream. retrying with resume points unset", "cmdErr", cmdErr,
 						"StartAfter", csOpts.StartAfter, "StartAtOperationTime", csOpts.StartAtOperationTime)
 
-					queue.csStateMu.Lock()
-					queue.csLastResumeToken = nil
-					queue.csLastEventClusterTime = primitive.Timestamp{}
-					queue.csStateMu.Unlock()
+					// if this succeeds, the next processNextSubscriptionEvent will update queue.csLastResumeToken or queue.csLastEventClusterTime
+					csOpts.SetStartAfter(nil)
+					csOpts.SetStartAtOperationTime(nil)
+					cs, err = queue.callsColl.Watch(queue.cancelCtx, watchPipeline, csOpts)
+					if err != nil {
+						queue.logger.Warnw("retry without resume points also unsuccessful", "err", err)
+						callChangeStreamFailures.Inc(queue.operatorID)
+						// we are in an unknown state here if clearing resume points doesn't work.
+						// we could clear queue.csLastResumeToken & queue.csLastEventClusterTime, but unclear if we'd just get here again.
+					}
 				}
 			}
-			continue
+			if err != nil {
+				// by incrementing here we will retry
+				queue.csManagerSeq.Add(1)
+				queue.logger.Infow("failed to create calls change stream", "error", err)
+				// TODO: when we loop around we will lose any new queue.csAnswerersWaitingForNextCS accumulated after we unlocked csStateMu.
+				continue
+			}
 		}
 
+		// unblock answers waiting for this updated CS (see subscribeForNewCallOnHosts)
 		for _, readyFunc := range readyFuncs {
 			readyFunc()
 		}
 		queue.csStateMu.Lock()
-		// TODO: clear csAnswerersWaitingForNextCS after we have closed all readyFuncs. don't clear immediately after snapshotting,
-		// TODO: since the readyFuncs will be lost of we retry and Answerers will wait indefinitely.
-		// TODO: may have changed while were not holding the lock.
-		queue.csAnswerersWaitingForNextCS = nil
 		queue.csTrackingHosts = utils.NewStringSet(hosts...)
 		queue.csStateMu.Unlock()
 
