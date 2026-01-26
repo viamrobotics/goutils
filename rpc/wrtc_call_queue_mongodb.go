@@ -197,7 +197,9 @@ type mongoDBWebRTCCallQueue struct {
 	csTrackingHosts             utils.StringSet
 	csAnswerersWaitingForNextCS []func()
 	csStateUpdates              chan changeStreamStateUpdate
-	csCtxCancel                 func()
+
+	// change stream context
+	csCtxCancel func()
 
 	// function passed in during construction to update last_online timestamps for documents
 	// in robot and robot_part based on this call-queue/operator.
@@ -630,19 +632,17 @@ func (queue *mongoDBWebRTCCallQueue) changeStreamManager() {
 
 		csOpts := options.ChangeStream().SetFullDocument(options.UpdateLookup)
 
-		// only one can ever be set
+		// only one can ever be set (enforced by processClusterEventState)
+		// otherwise MDB server will error: Only one type of resume option is allowed, but multiple were found
 		if len(queue.csLastResumeToken) != 0 {
 			csOpts.SetStartAfter(queue.csLastResumeToken)
-		}
-		if !queue.csLastEventClusterTime.IsZero() {
+		} else if !queue.csLastEventClusterTime.IsZero() {
 			ctCopy := queue.csLastEventClusterTime
 			csOpts.SetStartAtOperationTime(&ctCopy)
 		}
 		queue.csStateMu.Unlock()
 
-		// note(roxy): this is updating the changestream based on whether there is a new
-		// answerer that is coming online or if there is a new caller that is coming online
-		cs, err := queue.callsColl.Watch(queue.cancelCtx, []bson.D{
+		watchPipeline := []bson.D{
 			{
 				{"$match", bson.D{
 					{"operationType", bson.D{{"$in", []interface{}{
@@ -666,14 +666,42 @@ func (queue *mongoDBWebRTCCallQueue) changeStreamManager() {
 					}},
 				}},
 			},
-		}, csOpts)
+		}
+		// note(roxy): this is updating the changestream based on whether there is a new
+		// answerer that is coming online or if there is a new caller that is coming online
+		cs, err := queue.callsColl.Watch(queue.cancelCtx, watchPipeline, csOpts)
 		if err != nil {
 			callChangeStreamFailures.Inc(queue.operatorID)
-			queue.csManagerSeq.Add(1)
-			queue.logger.Infow("failed to create calls change stream", "error", err)
-			continue
+
+			var cmdErr mongo.CommandError
+			if errors.As(err, &cmdErr) {
+				// ChangeStreamHistoryLost: try again without resume points
+				if cmdErr.Code == 286 {
+					queue.logger.Warnw("could not resume change stream. retrying with resume points unset", "cmdErr", cmdErr,
+						"StartAfter", csOpts.StartAfter, "StartAtOperationTime", csOpts.StartAtOperationTime)
+
+					// if this succeeds, the next processNextSubscriptionEvent will update queue.csLastResumeToken or queue.csLastEventClusterTime
+					csOpts.SetStartAfter(nil)
+					csOpts.SetStartAtOperationTime(nil)
+					cs, err = queue.callsColl.Watch(queue.cancelCtx, watchPipeline, csOpts)
+					if err != nil {
+						queue.logger.Warnw("retry without resume points also unsuccessful", "err", err)
+						callChangeStreamFailures.Inc(queue.operatorID)
+						// we are in an unknown state here if clearing resume points doesn't work.
+						// we could clear queue.csLastResumeToken & queue.csLastEventClusterTime, but unclear if we'd just get here again.
+					}
+				}
+			}
+			if err != nil {
+				// by incrementing here we will retry
+				queue.csManagerSeq.Add(1)
+				queue.logger.Infow("failed to create calls change stream", "error", err)
+				// TODO: when we loop around we will lose any new queue.csAnswerersWaitingForNextCS accumulated after we unlocked csStateMu.
+				continue
+			}
 		}
 
+		// unblock answers waiting for this updated CS (see subscribeForNewCallOnHosts)
 		for _, readyFunc := range readyFuncs {
 			readyFunc()
 		}

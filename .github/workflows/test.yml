@@ -83,6 +83,8 @@ jobs:
         mise run build ::: lint
         GEN_DIFF=$(git status -s)
         if [ -n "$GEN_DIFF" ]; then
+            echo '"mise run build ::: lint" resulted in the following untracked changes:' 1>&2
+            git diff
             echo '"mise run build ::: lint" resulted in changes not in git' 1>&2
             git status
             exit 1
