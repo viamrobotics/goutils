@@ -207,6 +207,7 @@ func TestLoadConfigFromFile(t *testing.T) {
 			Ignore:              []string{"one", "two"},
 			ignoreSet:           utils.NewStringSet("one", "two"),
 			configDir:           dir,
+			treeVersion:         1, // Version increments after commit
 			tree: TreeNodeTree{
 				"one": &TreeNode{
 					internal: TreeNodeTree{
@@ -299,6 +300,7 @@ func TestLoadConfigFromFile(t *testing.T) {
 			Ignore:              []string{"one", "two"},
 			ignoreSet:           utils.NewStringSet("one", "two"),
 			configDir:           dir,
+			treeVersion:         1, // Version increments after commit (old tree starts at 0, becomes 1)
 			tree: TreeNodeTree{
 				"one": &TreeNode{
 					internal: TreeNodeTree{

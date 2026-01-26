@@ -48,10 +48,11 @@ type Config struct {
 	// the root.
 	Ignore []string
 
-	ignoreSet utils.StringSet
-	tree      TreeNodeTree
-	configDir string
-	commitFn  func() error
+	ignoreSet   utils.StringSet
+	tree        TreeNodeTree
+	treeVersion int64
+	configDir   string
+	commitFn    func() error
 }
 
 // Lookup looks an artifact up by its path and returns its
