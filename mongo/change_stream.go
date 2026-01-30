@@ -153,14 +153,14 @@ func ChangeStreamBackground(ctx context.Context, cs *mongo.ChangeStream) (<-chan
 				continue
 			}
 			var csErr error
-			if cs.Err() == nil {
+			if cs.Err() != nil {
+				csErr = cs.Err()
+			} else {
 				// As far as we know this is an invalidating event like drop
 				// but we are not seeing it. Better the user filter on invalidate
 				// to catch it above. Otherwise they may need to resume more than
 				// once (depending on oplog).
 				csErr = ErrChangeStreamInvalidateEvent
-			} else {
-				csErr = cs.Err()
 			}
 			sendResult(ChangeEventResult{Error: csErr, ResumeToken: cs.ResumeToken()})
 			return

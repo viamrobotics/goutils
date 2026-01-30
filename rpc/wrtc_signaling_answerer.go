@@ -192,7 +192,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 				return
 			}
 			if err := client.CloseSend(); err != nil {
-				ans.logger.Warnf("error closing send side of answering client", "error", err)
+				ans.logger.Warnf("closing send side of answering client failed", "error", err)
 			}
 		}()
 		for {

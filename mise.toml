@@ -1,7 +1,4 @@
 [settings]
-# (Josh) At time of writing the go backend is experimental. When it's promoted
-# to stable this can be removed.
-experimental = true
 # (Josh) Testing shows that mise only generates new lockfile entries for the
 # platform it is run on, so adding new tools on MacOS causes the CI runs to
 # create a diff for the corresponding Linux entries. We can also assume that
@@ -33,8 +30,8 @@ protoc = "21.12"
 protoc-gen-go = "1.35.1"
 protoc-gen-go-grpc = "1.5.1"
 
-[alias]
-buf = "ubi:bufbuild/buf"
+[tool_alias]
+buf = "github:bufbuild/buf"
 
 [tasks.setup-cert]
 description = "Create a self-signed cert and add it to the system trust store"

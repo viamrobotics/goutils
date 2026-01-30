@@ -80,7 +80,7 @@ func newWebRTCClientStream(
 		<-ctx.Done()
 		if !s.webrtcBaseStream.Closed() {
 			if err := s.resetStream(); err != nil && !errors.Is(err, io.ErrClosedPipe) {
-				s.webrtcBaseStream.logger.Errorw("error resetting stream", "error", err)
+				s.webrtcBaseStream.logger.Warnw("stream reset failed", "error", err)
 			}
 		}
 	})

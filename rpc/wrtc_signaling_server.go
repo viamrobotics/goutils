@@ -174,7 +174,7 @@ func (srv *WebRTCSignalingServer) asyncSendOfferError(host, uuid string, offerEr
 
 		var errInactive inactiveOfferError
 		if !errors.As(sendErr, &errInactive) {
-			srv.logger.Warnw("error sending offer error", "host", host, "id", uuid, "offerErr", offerErr, "sendErr", sendErr)
+			srv.logger.Warnw("sending offer error failed", "host", host, "id", uuid, "offerErr", offerErr, "sendErr", sendErr)
 		}
 	})
 }
@@ -218,7 +218,7 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 		}
 
 		if !haveInit && resp.InitialSDP == nil {
-			err := errors.New("expected to have initial SDP if no error")
+			err := errors.New("error from answerer: expected to have initial SDP if no error")
 			srv.asyncSendOfferError(host, uuid, err)
 			return err
 		}
@@ -369,7 +369,7 @@ func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 						Stage: &webrtcpb.AnswerRequest_Heartbeat{},
 					}); err != nil {
 						srv.logger.Debugw(
-							"error sending answer heartbeat",
+							"sending answer heartbeat failed",
 							"error", err,
 						)
 					}
@@ -420,7 +420,7 @@ func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 					},
 				}); err != nil {
 					srv.logger.Debugw(
-						"error sending answer request done",
+						"sending answer request done failed",
 						"uuid", uuid,
 						"error", err,
 					)

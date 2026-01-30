@@ -162,7 +162,7 @@ func (queue *memoryWebRTCCallQueue) SendOfferDone(ctx context.Context, host, uui
 }
 
 // SendOfferError informs the queue that the offer associated with the UUID has encountered
-// an error from the sender side.
+// an error.
 func (queue *memoryWebRTCCallQueue) SendOfferError(ctx context.Context, host, uuid string, err error) error {
 	hostQueue := queue.getOrMakeHostsQueue([]string{host})
 

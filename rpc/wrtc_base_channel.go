@@ -210,7 +210,7 @@ func (ch *webrtcBaseChannel) onChannelError(err error) {
 		isUserInitiatedAbortChunkErr(err) {
 		return
 	}
-	ch.logger.Errorw("channel error", "error", err)
+	ch.logger.Warnw("channel error", "error", err)
 	ch.Close()
 }
 

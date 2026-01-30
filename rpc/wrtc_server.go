@@ -145,7 +145,7 @@ func (srv *webrtcServer) Stop() {
 
 	for _, pc := range peerConns {
 		if err := pc.GracefulClose(); err != nil {
-			srv.logger.Errorw("error closing peer connection", "error", err)
+			srv.logger.Debugw("peer connection close failed", "error", err)
 		}
 	}
 	srv.logger.Info("lingering peer connections closed")
