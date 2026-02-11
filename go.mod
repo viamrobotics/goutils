@@ -58,6 +58,7 @@ require (
 require go.viam.com/api v0.1.493
 
 require (
+	contrib.go.opencensus.io/exporter/jaeger v0.2.1
 	go.opentelemetry.io/otel/sdk v1.37.0
 	go.opentelemetry.io/otel/trace v1.37.0
 	go.opentelemetry.io/proto/otlp v1.9.0
@@ -126,6 +127,7 @@ require (
 	github.com/srikrsna/protoc-gen-gotag v0.6.2 // indirect
 	github.com/stretchr/testify v1.10.0 // indirect
 	github.com/tidwall/pretty v1.2.0 // indirect
+	github.com/uber/jaeger-client-go v2.25.0+incompatible // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
 	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
 	github.com/xdg-go/scram v1.1.1 // indirect
