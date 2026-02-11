@@ -421,8 +421,8 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 			return sOpts.streamInterceptor(srv, serverStream, info, handler)
 		})
 	}
-	streamInterceptor := grpc_middleware.ChainStreamServer(streamInterceptors...)
-	serverOpts = append(serverOpts, grpc.StreamInterceptor(streamInterceptor))
+	// streamInterceptor := grpc_middleware.ChainStreamServer(streamInterceptors...)
+	// serverOpts = append(serverOpts, grpc.StreamInterceptor(streamInterceptor))
 
 	if sOpts.statsHandler != nil {
 		serverOpts = append(serverOpts, grpc.StatsHandler(sOpts.statsHandler))
