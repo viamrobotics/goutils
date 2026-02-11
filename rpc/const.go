@@ -4,7 +4,7 @@ import "time"
 
 var (
 	// MaxMessageSize is the maximum size a gRPC message can be.
-	MaxMessageSize = 1 << 25
+	MaxMessageSize = 1 << 20
 
 	// KeepAliveTime is how often to establish client-side Keepalive pings/expectations.
 	KeepAliveTime = 10 * time.Second
