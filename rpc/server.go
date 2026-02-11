@@ -431,9 +431,12 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 	// Limit gRPC buffer accumulation for large streaming uploads.
 	// Without these limits, gRPC can buffer unlimited data if the receiver
 	// processes slower than the network receives.
+	// Disable BDP-based dynamic window sizing which causes windows to grow beyond initial limits.
 	serverOpts = append(serverOpts,
 		grpc.InitialWindowSize(64*1024),     // 64KB per stream
 		grpc.InitialConnWindowSize(64*1024), // 64KB per connection
+		grpc.WriteBufferSize(0),             // Disable write buffering - immediate window updates
+		grpc.ReadBufferSize(64*1024),        // Limit read buffer to 64KB
 	)
 
 	serverOpts = append(serverOpts, grpc.WaitForHandlers(true))
