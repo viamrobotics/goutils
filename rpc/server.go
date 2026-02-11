@@ -421,8 +421,8 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 			return sOpts.streamInterceptor(srv, serverStream, info, handler)
 		})
 	}
-	// streamInterceptor := grpc_middleware.ChainStreamServer(streamInterceptors...)
-	// serverOpts = append(serverOpts, grpc.StreamInterceptor(streamInterceptor))
+	streamInterceptor := grpc_middleware.ChainStreamServer(streamInterceptors...)
+	serverOpts = append(serverOpts, grpc.StreamInterceptor(streamInterceptor))
 
 	if sOpts.statsHandler != nil {
 		serverOpts = append(serverOpts, grpc.StatsHandler(sOpts.statsHandler))
@@ -435,8 +435,7 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 	serverOpts = append(serverOpts,
 		grpc.InitialWindowSize(64*1024),     // 64KB per stream
 		grpc.InitialConnWindowSize(64*1024), // 64KB per connection
-		grpc.WriteBufferSize(0),             // Disable write buffering - immediate window updates
-		grpc.ReadBufferSize(64*1024),        // Limit read buffer to 64KB
+		grpc.MaxConcurrentStreams(100),      // Limit the number of concurrent streams
 	)
 
 	serverOpts = append(serverOpts, grpc.WaitForHandlers(true))
