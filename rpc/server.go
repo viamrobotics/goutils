@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -859,28 +860,97 @@ func (ss *simpleServer) EnsureAuthed(ctx context.Context) (context.Context, erro
 	return ss.ensureAuthed(ctx)
 }
 
-// rateLimitedReader wraps an io.ReadCloser and rate-limits Read() calls to prevent
-// unbounded buffering in the HTTP/2 layer. This is specifically needed for FileUpload
-// requests over h2c, where the golang.org/x/net/http2 dataBuffer can grow unbounded.
+// rateLimitedReader wraps an io.ReadCloser and adaptively rate-limits Read() calls
+// to prevent unbounded buffering in the HTTP/2 layer. This is specifically needed for
+// FileUpload requests over h2c, where the golang.org/x/net/http2 dataBuffer can grow unbounded.
 //
 // By rate-limiting Read() calls, we slow down when WINDOW_UPDATE frames are sent,
 // which prevents DATA frames from arriving faster than the application can process them.
+//
+// The rate limiter is adaptive: it monitors heap size and reduces the rate when memory
+// pressure increases, providing automatic backpressure.
 type rateLimitedReader struct {
 	underlying io.ReadCloser
 	limiter    *rate.Limiter
 	logger     utils.ZapCompatibleLogger
 	totalBytes int64
 	startTime  time.Time
+
+	// Adaptive rate limiting based on heap pressure
+	baseRate       int64         // Maximum rate when no memory pressure (bytes/sec)
+	minRate        int64         // Minimum rate even under high pressure (bytes/sec)
+	heapThreshold  uint64        // Start reducing rate when heap exceeds this (bytes)
+	lastAdjustTime time.Time     // Last time we adjusted the rate
+	adjustInterval time.Duration // How often to check heap and adjust rate
 }
 
-// newRateLimitedReader creates a rate-limited reader with the specified bytes/second limit.
-func newRateLimitedReader(underlying io.ReadCloser, bytesPerSecond int, logger utils.ZapCompatibleLogger) *rateLimitedReader {
+// newRateLimitedReader creates an adaptive rate-limited reader.
+// It starts with baseRate and adaptively adjusts based on heap pressure.
+func newRateLimitedReader(underlying io.ReadCloser, baseRate int, logger utils.ZapCompatibleLogger) *rateLimitedReader {
+	// Start at base rate, will adjust down if heap pressure increases
 	return &rateLimitedReader{
 		underlying: underlying,
-		// rate.Limit is tokens per second, burst allows some burstiness
-		limiter:   rate.NewLimiter(rate.Limit(bytesPerSecond), bytesPerSecond),
-		logger:    logger,
-		startTime: time.Now(),
+		limiter:    rate.NewLimiter(rate.Limit(baseRate), baseRate),
+		logger:     logger,
+		startTime:  time.Now(),
+
+		// Adaptive parameters
+		baseRate:       int64(baseRate),               // e.g., 100 MB/s
+		minRate:        int64(10 * 1024 * 1024),       // 10 MB/s minimum
+		heapThreshold:  500 * 1024 * 1024,             // 500 MB - start slowing down
+		lastAdjustTime: time.Now(),
+		adjustInterval: 1 * time.Second, // Check heap every second
+	}
+}
+
+// adjustRateIfNeeded checks heap size and adjusts the rate limiter to provide
+// adaptive backpressure based on memory pressure.
+func (r *rateLimitedReader) adjustRateIfNeeded() {
+	now := time.Now()
+	if now.Sub(r.lastAdjustTime) < r.adjustInterval {
+		return // Don't adjust too frequently
+	}
+	r.lastAdjustTime = now
+
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+
+	currentRate := int64(r.limiter.Limit())
+	var newRate int64
+
+	if m.HeapAlloc > r.heapThreshold {
+		// Memory pressure - reduce rate by 20%
+		newRate = int64(float64(currentRate) * 0.8)
+		if newRate < r.minRate {
+			newRate = r.minRate
+		}
+		if newRate != currentRate {
+			r.logger.Warnw("Adaptive rate limiter: REDUCING rate due to heap pressure",
+				"heap_alloc_mb", m.HeapAlloc/(1024*1024),
+				"threshold_mb", r.heapThreshold/(1024*1024),
+				"old_rate_mbps", currentRate/(1024*1024),
+				"new_rate_mbps", newRate/(1024*1024))
+		}
+	} else if currentRate < r.baseRate {
+		// No pressure and below baseline - increase rate by 10% toward baseline
+		newRate = int64(float64(currentRate) * 1.1)
+		if newRate > r.baseRate {
+			newRate = r.baseRate
+		}
+		if newRate != currentRate {
+			r.logger.Infow("Adaptive rate limiter: increasing rate (heap normal)",
+				"heap_alloc_mb", m.HeapAlloc/(1024*1024),
+				"threshold_mb", r.heapThreshold/(1024*1024),
+				"old_rate_mbps", currentRate/(1024*1024),
+				"new_rate_mbps", newRate/(1024*1024))
+		}
+	} else {
+		// At baseline and no pressure - no change needed
+		return
+	}
+
+	if newRate != currentRate {
+		r.limiter.SetLimit(rate.Limit(newRate))
 	}
 }
 
@@ -888,6 +958,8 @@ func newRateLimitedReader(underlying io.ReadCloser, bytesPerSecond int, logger u
 // according to the rate limiter before returning. This delays when the HTTP/2
 // layer sends WINDOW_UPDATE frames, providing backpressure.
 func (r *rateLimitedReader) Read(p []byte) (n int, err error) {
+	// Adjust rate based on heap pressure before each read
+	r.adjustRateIfNeeded()
 	// Read from underlying (this reads from http2's dataBuffer)
 	n, err = r.underlying.Read(p)
 
@@ -908,11 +980,13 @@ func (r *rateLimitedReader) Read(p []byte) (n int, err error) {
 		if waitTime > 100*time.Millisecond {
 			elapsed := time.Since(r.startTime)
 			avgMBps := float64(r.totalBytes) / elapsed.Seconds() / (1024 * 1024)
-			r.logger.Debugw("Rate-limited FileUpload read",
+			currentRate := int64(r.limiter.Limit())
+			r.logger.Debugw("Rate-limited read",
 				"bytes_this_read", n,
 				"wait_time", waitTime,
 				"total_bytes", r.totalBytes,
-				"avg_mbps", avgMBps)
+				"avg_mbps", avgMBps,
+				"current_rate_mbps", currentRate/(1024*1024))
 		}
 	}
 
@@ -923,10 +997,13 @@ func (r *rateLimitedReader) Read(p []byte) (n int, err error) {
 func (r *rateLimitedReader) Close() error {
 	elapsed := time.Since(r.startTime)
 	avgMBps := float64(r.totalBytes) / elapsed.Seconds() / (1024 * 1024)
-	r.logger.Infow("FileUpload read completed",
+	finalRate := int64(r.limiter.Limit())
+	r.logger.Infow("Rate-limited read completed",
 		"total_bytes", r.totalBytes,
 		"elapsed", elapsed,
-		"avg_mbps", avgMBps)
+		"avg_mbps", avgMBps,
+		"final_rate_mbps", finalRate/(1024*1024),
+		"base_rate_mbps", r.baseRate/(1024*1024))
 	return r.underlying.Close()
 }
 
@@ -943,21 +1020,22 @@ func (ss *simpleServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		"body_nil", r.Body == nil,
 		"content_length", r.ContentLength)
 
-	// Rate limit ALL requests with a body to prevent unbounded buffering in http2 layer
-	// Testing: Apply to everything to verify rate limiting works
+	// Apply adaptive rate limiting to prevent unbounded buffering in http2 layer
+	// The rate limiter starts at baseRate and automatically reduces when heap pressure increases
 	// Note: ContentLength is -1 for streaming/chunked requests (like gRPC)
 	if r.Body != nil {
-		// Rate limit to 50 MB/s to prevent http2 dataBuffer from growing unbounded
-		const rateLimitMBps = 50
-		const rateLimitBytesPerSec = rateLimitMBps * 1024 * 1024
+		// Start with 100 MB/s, will reduce if heap grows above 500MB
+		const baseRateMBps = 100
+		const baseRateBytesPerSec = baseRateMBps * 1024 * 1024
 
-		ss.logger.Infow("Rate-limiting request over HTTP",
+		ss.logger.Infow("Applying adaptive rate limiter",
 			"path", r.URL.Path,
 			"client", r.RemoteAddr,
 			"content_length", r.ContentLength,
-			"rate_limit_mbps", rateLimitMBps)
+			"base_rate_mbps", baseRateMBps,
+			"heap_threshold_mb", 500)
 
-		r.Body = newRateLimitedReader(r.Body, rateLimitBytesPerSec, ss.logger)
+		r.Body = newRateLimitedReader(r.Body, baseRateBytesPerSec, ss.logger)
 	}
 
 	switch ss.getRequestType(r) {
