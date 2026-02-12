@@ -12,7 +12,7 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"runtime"
+	sysruntime "runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -912,8 +912,8 @@ func (r *rateLimitedReader) adjustRateIfNeeded() {
 	}
 	r.lastAdjustTime = now
 
-	var m runtime.MemStats
-	runtime.ReadMemStats(&m)
+	var m sysruntime.MemStats
+	sysruntime.ReadMemStats(&m)
 
 	currentRate := int64(r.limiter.Limit())
 	var newRate int64
