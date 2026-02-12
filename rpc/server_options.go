@@ -250,15 +250,14 @@ func WithUnauthenticated() ServerOption {
 
 // WithMinimalInterceptors returns a ServerOption that skips all interceptors
 // (auth, logging, recovery, tracing) for flow control testing. Only the basic
-// gRPC flow control settings are applied. FOR TESTING ONLY.
-// Note: This also disables auth checking, so don't use in production.
+// gRPC flow control settings are applied.
+// Note: Auth services remain registered but interceptors are bypassed, so auth
+// is effectively disabled. FOR TESTING ONLY.
 func WithMinimalInterceptors() ServerOption {
 	return newFuncServerOption(func(o *serverOptions) error {
 		o.minimalInterceptors = true
-		o.unauthenticated = true
-		// Clear auth handlers to avoid conflict
-		o.authHandlersForCreds = make(map[CredentialsType]credAuthHandlers)
-		o.tlsAuthHandler = nil
+		// Don't set unauthenticated - keep auth services registered
+		// but skip the auth interceptors (done in server.go)
 		return nil
 	})
 }
