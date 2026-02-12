@@ -790,8 +790,10 @@ const (
 
 func (ss *simpleServer) getRequestType(r *http.Request) requestType {
 	if ss.grpcWebServer.IsAcceptableGrpcCorsRequest(r) || ss.grpcWebServer.IsGrpcWebRequest(r) {
+		ss.logger.Warnw("Request using grpc-web (HTTP/1.1) - flow control disabled", "path", r.URL.Path)
 		return requestTypeGRPCWeb
 	} else if r.ProtoMajor == 2 && strings.HasPrefix(r.Header.Get("Content-Type"), "application/grpc") {
+		ss.logger.Infow("Request using native gRPC (HTTP/2) - flow control enabled", "path", r.URL.Path)
 		return requestTypeGRPC
 	}
 	return requestTypeNone
