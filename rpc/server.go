@@ -870,6 +870,8 @@ func (ss *simpleServer) Start() error {
 
 	var err error
 	var errMu sync.Mutex
+	ss.logger.Infow("Starting direct gRPC server (no HTTP wrapper)",
+		"address", ss.grpcListener.Addr().String())
 	utils.PanicCapturingGo(func() {
 		if serveErr := ss.grpcServer.Serve(ss.grpcListener); serveErr != nil {
 			errMu.Lock()
