@@ -86,6 +86,9 @@ func NewHTTP2Server() (*HTTP2Server, error) {
 	if err := http2.ConfigureServer(&http1Server, &http2Server); err != nil {
 		return nil, err
 	}
+	// Match gRPC flow control settings: 64KB static windows to prevent unbounded buffering
+	http2Server.MaxUploadBufferPerConnection = 64 * 1024
+	http2Server.MaxUploadBufferPerStream = 64 * 1024
 	return &HTTP2Server{&http1Server, &http2Server}, nil
 }
 
