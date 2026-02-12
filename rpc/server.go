@@ -838,6 +838,17 @@ func (ss *simpleServer) EnsureAuthed(ctx context.Context) (context.Context, erro
 // gRPC being served from a non-root path.
 func (ss *simpleServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r = requestWithHost(r)
+
+	// Block FileUpload over HTTP - must use direct gRPC listener for proper flow control
+	if strings.Contains(r.URL.Path, "/FileUpload") {
+		ss.logger.Warnw("FileUpload rejected over HTTP - use direct gRPC listener",
+			"path", r.URL.Path,
+			"client", r.RemoteAddr)
+		w.WriteHeader(http.StatusNotImplemented)
+		w.Write([]byte("FileUpload must use direct gRPC connection (not HTTP/h2c) for flow control. Connect to the direct gRPC port."))
+		return
+	}
+
 	switch ss.getRequestType(r) {
 	case requestTypeGRPC:
 		ss.counters.TCPGrpcRequestsStarted.Add(1)
