@@ -356,73 +356,78 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 		serverOpts = append(serverOpts, grpc.UnknownServiceHandler(sOpts.unknownStreamDesc.Handler))
 	}
 
-	grpcLogger := utils.Sublogger(logger, "grpc_requests")
+	// Skip all interceptors in minimal mode (for flow control testing)
+	if sOpts.minimalInterceptors {
+		logger.Warn("Using MINIMAL interceptors mode - NO AUTH, NO LOGGING, NO RECOVERY - FOR TESTING ONLY")
+	} else {
+		grpcLogger := utils.Sublogger(logger, "grpc_requests")
 
-	var unaryInterceptors []grpc.UnaryServerInterceptor
-	unaryInterceptors = append(unaryInterceptors,
-		grpc_recovery.UnaryServerInterceptor(grpc_recovery.WithRecoveryHandler(
-			grpc_recovery.RecoveryHandlerFunc(func(p interface{}) error {
-				err := status.Errorf(codes.Internal, "%v", p)
-				grpcLogger.Errorw("panicked while calling unary server method", "error", errors.WithStack(err))
-				return err
-			}))),
-		grpcUnaryServerInterceptor(grpcLogger),
-		unaryServerCodeInterceptor(),
-	)
-	unaryInterceptors = append(unaryInterceptors, UnaryServerTracingInterceptor())
-	unaryAuthIntPos := -1
-	if !sOpts.unauthenticated {
-		unaryInterceptors = append(unaryInterceptors, server.authUnaryInterceptor)
-		unaryAuthIntPos = len(unaryInterceptors) - 1
-	}
-	if sOpts.unaryInterceptor != nil {
-		unaryInterceptors = append(unaryInterceptors, func(
-			ctx context.Context,
-			req interface{},
-			info *grpc.UnaryServerInfo,
-			handler grpc.UnaryHandler,
-		) (interface{}, error) {
-			if server.exemptMethods[info.FullMethod] {
-				return handler(ctx, req)
-			}
-			return sOpts.unaryInterceptor(ctx, req, info, handler)
-		})
-	}
-	unaryInterceptor := grpc_middleware.ChainUnaryServer(unaryInterceptors...)
-	serverOpts = append(serverOpts, grpc.UnaryInterceptor(unaryInterceptor))
+		var unaryInterceptors []grpc.UnaryServerInterceptor
+		unaryInterceptors = append(unaryInterceptors,
+			grpc_recovery.UnaryServerInterceptor(grpc_recovery.WithRecoveryHandler(
+				grpc_recovery.RecoveryHandlerFunc(func(p interface{}) error {
+					err := status.Errorf(codes.Internal, "%v", p)
+					grpcLogger.Errorw("panicked while calling unary server method", "error", errors.WithStack(err))
+					return err
+				}))),
+			grpcUnaryServerInterceptor(grpcLogger),
+			unaryServerCodeInterceptor(),
+		)
+		unaryInterceptors = append(unaryInterceptors, UnaryServerTracingInterceptor())
+		unaryAuthIntPos := -1
+		if !sOpts.unauthenticated {
+			unaryInterceptors = append(unaryInterceptors, server.authUnaryInterceptor)
+			unaryAuthIntPos = len(unaryInterceptors) - 1
+		}
+		if sOpts.unaryInterceptor != nil {
+			unaryInterceptors = append(unaryInterceptors, func(
+				ctx context.Context,
+				req interface{},
+				info *grpc.UnaryServerInfo,
+				handler grpc.UnaryHandler,
+			) (interface{}, error) {
+				if server.exemptMethods[info.FullMethod] {
+					return handler(ctx, req)
+				}
+				return sOpts.unaryInterceptor(ctx, req, info, handler)
+			})
+		}
+		unaryInterceptor := grpc_middleware.ChainUnaryServer(unaryInterceptors...)
+		serverOpts = append(serverOpts, grpc.UnaryInterceptor(unaryInterceptor))
 
-	var streamInterceptors []grpc.StreamServerInterceptor
-	streamInterceptors = append(streamInterceptors,
-		grpc_recovery.StreamServerInterceptor(grpc_recovery.WithRecoveryHandler(
-			grpc_recovery.RecoveryHandlerFunc(func(p interface{}) error {
-				err := status.Errorf(codes.Internal, "%s", p)
-				grpcLogger.Errorw("panicked while calling stream server method", "error", errors.WithStack(err))
-				return err
-			}))),
-		grpcStreamServerInterceptor(grpcLogger),
-		streamServerCodeInterceptor(),
-	)
-	streamInterceptors = append(streamInterceptors, StreamServerTracingInterceptor())
-	streamAuthIntPos := -1
-	if !sOpts.unauthenticated {
-		streamInterceptors = append(streamInterceptors, server.authStreamInterceptor)
-		streamAuthIntPos = len(streamInterceptors) - 1
+		var streamInterceptors []grpc.StreamServerInterceptor
+		streamInterceptors = append(streamInterceptors,
+			grpc_recovery.StreamServerInterceptor(grpc_recovery.WithRecoveryHandler(
+				grpc_recovery.RecoveryHandlerFunc(func(p interface{}) error {
+					err := status.Errorf(codes.Internal, "%s", p)
+					grpcLogger.Errorw("panicked while calling stream server method", "error", errors.WithStack(err))
+					return err
+				}))),
+			grpcStreamServerInterceptor(grpcLogger),
+			streamServerCodeInterceptor(),
+		)
+		streamInterceptors = append(streamInterceptors, StreamServerTracingInterceptor())
+		streamAuthIntPos := -1
+		if !sOpts.unauthenticated {
+			streamInterceptors = append(streamInterceptors, server.authStreamInterceptor)
+			streamAuthIntPos = len(streamInterceptors) - 1
+		}
+		if sOpts.streamInterceptor != nil {
+			streamInterceptors = append(streamInterceptors, func(
+				srv interface{},
+				serverStream grpc.ServerStream,
+				info *grpc.StreamServerInfo,
+				handler grpc.StreamHandler,
+			) error {
+				if server.exemptMethods[info.FullMethod] {
+					return handler(srv, serverStream)
+				}
+				return sOpts.streamInterceptor(srv, serverStream, info, handler)
+			})
+		}
+		streamInterceptor := grpc_middleware.ChainStreamServer(streamInterceptors...)
+		serverOpts = append(serverOpts, grpc.StreamInterceptor(streamInterceptor))
 	}
-	if sOpts.streamInterceptor != nil {
-		streamInterceptors = append(streamInterceptors, func(
-			srv interface{},
-			serverStream grpc.ServerStream,
-			info *grpc.StreamServerInfo,
-			handler grpc.StreamHandler,
-		) error {
-			if server.exemptMethods[info.FullMethod] {
-				return handler(srv, serverStream)
-			}
-			return sOpts.streamInterceptor(srv, serverStream, info, handler)
-		})
-	}
-	streamInterceptor := grpc_middleware.ChainStreamServer(streamInterceptors...)
-	serverOpts = append(serverOpts, grpc.StreamInterceptor(streamInterceptor))
 
 	if sOpts.statsHandler != nil {
 		serverOpts = append(serverOpts, grpc.StatsHandler(sOpts.statsHandler))

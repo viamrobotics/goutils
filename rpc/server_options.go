@@ -34,6 +34,9 @@ type serverOptions struct {
 	// unauthenticated determines if requests should be authenticated.
 	unauthenticated bool
 
+	// minimalInterceptors skips all auth/logging/recovery interceptors for testing
+	minimalInterceptors bool
+
 	// allowUnauthenticatedHealthCheck allows the server to have an unauthenticated healthcheck endpoint
 	allowUnauthenticatedHealthCheck bool
 
@@ -241,6 +244,17 @@ func WithInstanceNames(names ...string) ServerOption {
 func WithUnauthenticated() ServerOption {
 	return newFuncServerOption(func(o *serverOptions) error {
 		o.unauthenticated = true
+		return nil
+	})
+}
+
+// WithMinimalInterceptors returns a ServerOption that skips all interceptors
+// (auth, logging, recovery, tracing) for flow control testing. Only the basic
+// gRPC flow control settings are applied. FOR TESTING ONLY.
+func WithMinimalInterceptors() ServerOption {
+	return newFuncServerOption(func(o *serverOptions) error {
+		o.minimalInterceptors = true
+		o.unauthenticated = true // Also disable auth in minimal mode
 		return nil
 	})
 }
