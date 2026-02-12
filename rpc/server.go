@@ -912,16 +912,17 @@ func (r *rateLimitedReader) Close() error {
 func (ss *simpleServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r = requestWithHost(r)
 
-	// Wrap FileUpload requests with rate limiter to prevent unbounded buffering
-	if strings.Contains(r.URL.Path, "/FileUpload") {
-		// Rate limit to 100 MB/s to prevent http2 dataBuffer from growing unbounded
-		// This can be tuned based on actual GCS upload throughput
-		const rateLimitMBps = 100
+	// Rate limit ALL requests with a body to prevent unbounded buffering in http2 layer
+	// Testing: Apply to everything to verify rate limiting works
+	if r.Body != nil && r.ContentLength != 0 {
+		// Rate limit to 50 MB/s to prevent http2 dataBuffer from growing unbounded
+		const rateLimitMBps = 50
 		const rateLimitBytesPerSec = rateLimitMBps * 1024 * 1024
 
-		ss.logger.Infow("Rate-limiting FileUpload over HTTP",
+		ss.logger.Infow("Rate-limiting request over HTTP",
 			"path", r.URL.Path,
 			"client", r.RemoteAddr,
+			"content_length", r.ContentLength,
 			"rate_limit_mbps", rateLimitMBps)
 
 		r.Body = newRateLimitedReader(r.Body, rateLimitBytesPerSec, ss.logger)
