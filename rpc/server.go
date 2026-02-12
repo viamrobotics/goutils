@@ -818,6 +818,30 @@ func (ss *simpleServer) GatewayHandler() http.Handler {
 func (ss *simpleServer) GRPCHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r = requestWithHost(r)
+
+		// Debug: Log every request to see if GRPCHandler is being called
+		ss.logger.Infow("GRPCHandler called",
+			"path", r.URL.Path,
+			"method", r.Method,
+			"body_nil", r.Body == nil,
+			"content_length", r.ContentLength)
+
+		// Rate limit ALL requests with a body to prevent unbounded buffering in http2 layer
+		// Note: ContentLength is -1 for streaming/chunked requests (like gRPC)
+		if r.Body != nil {
+			// Rate limit to 50 MB/s to prevent http2 dataBuffer from growing unbounded
+			const rateLimitMBps = 50
+			const rateLimitBytesPerSec = rateLimitMBps * 1024 * 1024
+
+			ss.logger.Infow("Rate-limiting request in GRPCHandler",
+				"path", r.URL.Path,
+				"client", r.RemoteAddr,
+				"content_length", r.ContentLength,
+				"rate_limit_mbps", rateLimitMBps)
+
+			r.Body = newRateLimitedReader(r.Body, rateLimitBytesPerSec, ss.logger)
+		}
+
 		switch ss.getRequestType(r) {
 		case requestTypeGRPC:
 			ss.grpcServer.ServeHTTP(w, r)
