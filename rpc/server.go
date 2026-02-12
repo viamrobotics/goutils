@@ -844,13 +844,13 @@ func (ss *simpleServer) EnsureAuthed(ctx context.Context) (context.Context, erro
 type rateLimitedReader struct {
 	underlying io.ReadCloser
 	limiter    *rate.Limiter
-	logger     *utils.ZapCompatibleLogger
+	logger     utils.ZapCompatibleLogger
 	totalBytes int64
 	startTime  time.Time
 }
 
 // newRateLimitedReader creates a rate-limited reader with the specified bytes/second limit.
-func newRateLimitedReader(underlying io.ReadCloser, bytesPerSecond int, logger *utils.ZapCompatibleLogger) *rateLimitedReader {
+func newRateLimitedReader(underlying io.ReadCloser, bytesPerSecond int, logger utils.ZapCompatibleLogger) *rateLimitedReader {
 	return &rateLimitedReader{
 		underlying: underlying,
 		// rate.Limit is tokens per second, burst allows some burstiness
