@@ -356,11 +356,12 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 		serverOpts = append(serverOpts, grpc.UnknownServiceHandler(sOpts.unknownStreamDesc.Handler))
 	}
 
-	// Skip all interceptors in minimal mode (for flow control testing)
-	if !sOpts.minimalInterceptors {
-		grpcLogger := utils.Sublogger(logger, "grpc_requests")
+	grpcLogger := utils.Sublogger(logger, "grpc_requests")
 
-		var unaryInterceptors []grpc.UnaryServerInterceptor
+	var unaryInterceptors []grpc.UnaryServerInterceptor
+
+	// In minimal mode, skip logging/recovery/tracing but keep auth
+	if !sOpts.minimalInterceptors {
 		unaryInterceptors = append(unaryInterceptors,
 			grpc_recovery.UnaryServerInterceptor(grpc_recovery.WithRecoveryHandler(
 				grpc_recovery.RecoveryHandlerFunc(func(p interface{}) error {
@@ -372,26 +373,35 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 			unaryServerCodeInterceptor(),
 		)
 		unaryInterceptors = append(unaryInterceptors, UnaryServerTracingInterceptor())
-		if !sOpts.unauthenticated {
-			unaryInterceptors = append(unaryInterceptors, server.authUnaryInterceptor)
-		}
-		if sOpts.unaryInterceptor != nil {
-			unaryInterceptors = append(unaryInterceptors, func(
-				ctx context.Context,
-				req interface{},
-				info *grpc.UnaryServerInfo,
-				handler grpc.UnaryHandler,
-			) (interface{}, error) {
-				if server.exemptMethods[info.FullMethod] {
-					return handler(ctx, req)
-				}
-				return sOpts.unaryInterceptor(ctx, req, info, handler)
-			})
-		}
-		unaryInterceptor := grpc_middleware.ChainUnaryServer(unaryInterceptors...)
-		serverOpts = append(serverOpts, grpc.UnaryInterceptor(unaryInterceptor))
+	} else {
+		logger.Warn("Using MINIMAL interceptors mode - skipping logging/recovery/tracing (auth preserved) - FOR TESTING ONLY")
+	}
 
-		var streamInterceptors []grpc.StreamServerInterceptor
+	// Always add auth interceptor if not unauthenticated
+	if !sOpts.unauthenticated {
+		unaryInterceptors = append(unaryInterceptors, server.authUnaryInterceptor)
+	}
+
+	if sOpts.unaryInterceptor != nil {
+		unaryInterceptors = append(unaryInterceptors, func(
+			ctx context.Context,
+			req interface{},
+			info *grpc.UnaryServerInfo,
+			handler grpc.UnaryHandler,
+		) (interface{}, error) {
+			if server.exemptMethods[info.FullMethod] {
+				return handler(ctx, req)
+			}
+			return sOpts.unaryInterceptor(ctx, req, info, handler)
+		})
+	}
+	unaryInterceptor := grpc_middleware.ChainUnaryServer(unaryInterceptors...)
+	serverOpts = append(serverOpts, grpc.UnaryInterceptor(unaryInterceptor))
+
+	var streamInterceptors []grpc.StreamServerInterceptor
+
+	// In minimal mode, skip logging/recovery/tracing but keep auth
+	if !sOpts.minimalInterceptors {
 		streamInterceptors = append(streamInterceptors,
 			grpc_recovery.StreamServerInterceptor(grpc_recovery.WithRecoveryHandler(
 				grpc_recovery.RecoveryHandlerFunc(func(p interface{}) error {
@@ -403,27 +413,28 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 			streamServerCodeInterceptor(),
 		)
 		streamInterceptors = append(streamInterceptors, StreamServerTracingInterceptor())
-		if !sOpts.unauthenticated {
-			streamInterceptors = append(streamInterceptors, server.authStreamInterceptor)
-		}
-		if sOpts.streamInterceptor != nil {
-			streamInterceptors = append(streamInterceptors, func(
-				srv interface{},
-				serverStream grpc.ServerStream,
-				info *grpc.StreamServerInfo,
-				handler grpc.StreamHandler,
-			) error {
-				if server.exemptMethods[info.FullMethod] {
-					return handler(srv, serverStream)
-				}
-				return sOpts.streamInterceptor(srv, serverStream, info, handler)
-			})
-		}
-		streamInterceptor := grpc_middleware.ChainStreamServer(streamInterceptors...)
-		serverOpts = append(serverOpts, grpc.StreamInterceptor(streamInterceptor))
-	} else {
-		logger.Warn("Using MINIMAL interceptors mode - NO AUTH, NO LOGGING, NO RECOVERY - FOR TESTING ONLY")
 	}
+
+	// Always add auth interceptor if not unauthenticated
+	if !sOpts.unauthenticated {
+		streamInterceptors = append(streamInterceptors, server.authStreamInterceptor)
+	}
+
+	if sOpts.streamInterceptor != nil {
+		streamInterceptors = append(streamInterceptors, func(
+			srv interface{},
+			serverStream grpc.ServerStream,
+			info *grpc.StreamServerInfo,
+			handler grpc.StreamHandler,
+		) error {
+			if server.exemptMethods[info.FullMethod] {
+				return handler(srv, serverStream)
+			}
+			return sOpts.streamInterceptor(srv, serverStream, info, handler)
+		})
+	}
+	streamInterceptor := grpc_middleware.ChainStreamServer(streamInterceptors...)
+	serverOpts = append(serverOpts, grpc.StreamInterceptor(streamInterceptor))
 
 	if sOpts.statsHandler != nil {
 		serverOpts = append(serverOpts, grpc.StatsHandler(sOpts.statsHandler))
