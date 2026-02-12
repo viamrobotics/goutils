@@ -357,9 +357,7 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 	}
 
 	// Skip all interceptors in minimal mode (for flow control testing)
-	if sOpts.minimalInterceptors {
-		logger.Warn("Using MINIMAL interceptors mode - NO AUTH, NO LOGGING, NO RECOVERY - FOR TESTING ONLY")
-	} else {
+	if !sOpts.minimalInterceptors {
 		grpcLogger := utils.Sublogger(logger, "grpc_requests")
 
 		var unaryInterceptors []grpc.UnaryServerInterceptor
@@ -374,10 +372,8 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 			unaryServerCodeInterceptor(),
 		)
 		unaryInterceptors = append(unaryInterceptors, UnaryServerTracingInterceptor())
-		unaryAuthIntPos := -1
 		if !sOpts.unauthenticated {
 			unaryInterceptors = append(unaryInterceptors, server.authUnaryInterceptor)
-			unaryAuthIntPos = len(unaryInterceptors) - 1
 		}
 		if sOpts.unaryInterceptor != nil {
 			unaryInterceptors = append(unaryInterceptors, func(
@@ -407,10 +403,8 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 			streamServerCodeInterceptor(),
 		)
 		streamInterceptors = append(streamInterceptors, StreamServerTracingInterceptor())
-		streamAuthIntPos := -1
 		if !sOpts.unauthenticated {
 			streamInterceptors = append(streamInterceptors, server.authStreamInterceptor)
-			streamAuthIntPos = len(streamInterceptors) - 1
 		}
 		if sOpts.streamInterceptor != nil {
 			streamInterceptors = append(streamInterceptors, func(
@@ -427,6 +421,8 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 		}
 		streamInterceptor := grpc_middleware.ChainStreamServer(streamInterceptors...)
 		serverOpts = append(serverOpts, grpc.StreamInterceptor(streamInterceptor))
+	} else {
+		logger.Warn("Using MINIMAL interceptors mode - NO AUTH, NO LOGGING, NO RECOVERY - FOR TESTING ONLY")
 	}
 
 	if sOpts.statsHandler != nil {
