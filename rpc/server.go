@@ -884,27 +884,36 @@ type rateLimitedReader struct {
 	adjustInterval time.Duration // How often to check heap and adjust rate
 }
 
-// newRateLimitedReader creates an adaptive rate-limited reader.
-// It starts with baseRate and adaptively adjusts based on heap pressure.
+// newRateLimitedReader creates an adaptive rate-limited reader with tiered backpressure.
+// It starts with baseRate and uses aggressive tiered thresholds optimized for 4GB servers
+// with up to 100 concurrent connections.
 func newRateLimitedReader(underlying io.ReadCloser, baseRate int, logger utils.ZapCompatibleLogger) *rateLimitedReader {
-	// Start at base rate, will adjust down if heap pressure increases
 	return &rateLimitedReader{
 		underlying: underlying,
 		limiter:    rate.NewLimiter(rate.Limit(baseRate), baseRate),
 		logger:     logger,
 		startTime:  time.Now(),
 
-		// Adaptive parameters
-		baseRate:       int64(baseRate),               // e.g., 100 MB/s
-		minRate:        int64(10 * 1024 * 1024),       // 10 MB/s minimum
-		heapThreshold:  500 * 1024 * 1024,             // 500 MB - start slowing down
+		// Adaptive parameters - uses tiered thresholds (see adjustRateIfNeeded)
+		baseRate:       int64(baseRate),     // e.g., 100 MB/s
 		lastAdjustTime: time.Now(),
 		adjustInterval: 1 * time.Second, // Check heap every second
+
+		// Legacy fields (kept for struct compatibility, not used in tiered approach)
+		minRate:       int64(50 * 1024),         // 50 KB/s emergency minimum
+		heapThreshold: 500 * 1024 * 1024,        // 500 MB first tier
 	}
 }
 
 // adjustRateIfNeeded checks heap size and adjusts the rate limiter to provide
 // adaptive backpressure based on memory pressure.
+//
+// Tiered thresholds optimized for 4GB total memory with up to 100 concurrent connections:
+// - < 500MB (12.5%): Normal operation
+// - 500MB-1GB (12.5-25%): Caution - reduce by 30%
+// - 1GB-1.5GB (25-37.5%): Warning - reduce by 50%, cap at 2 MB/s
+// - 1.5GB-2GB (37.5-50%): Critical - cap at 500 KB/s
+// - > 2GB (>50%): Emergency - cap at 50 KB/s
 func (r *rateLimitedReader) adjustRateIfNeeded() {
 	now := time.Now()
 	if now.Sub(r.lastAdjustTime) < r.adjustInterval {
@@ -916,37 +925,87 @@ func (r *rateLimitedReader) adjustRateIfNeeded() {
 	sysruntime.ReadMemStats(&m)
 
 	currentRate := int64(r.limiter.Limit())
+	heapMB := m.HeapAlloc / (1024 * 1024)
 	var newRate int64
+	var tier string
 
-	if m.HeapAlloc > r.heapThreshold {
-		// Memory pressure - reduce rate by 20%
-		newRate = int64(float64(currentRate) * 0.8)
-		if newRate < r.minRate {
-			newRate = r.minRate
+	// Tiered response based on heap size
+	switch {
+	case m.HeapAlloc > 2*1024*1024*1024: // > 2GB (>50% of 4GB) - EMERGENCY
+		tier = "EMERGENCY (>50% memory)"
+		newRate = 50 * 1024 // 50 KB/s - essentially paused
+		if newRate != currentRate {
+			r.logger.Errorw("Adaptive rate limiter: EMERGENCY - heap > 2GB",
+				"heap_alloc_mb", heapMB,
+				"old_rate_mbps", currentRate/(1024*1024),
+				"new_rate_kbps", newRate/1024)
+		}
+
+	case m.HeapAlloc > 1536*1024*1024: // > 1.5GB (>37.5%) - CRITICAL
+		tier = "CRITICAL (>37.5% memory)"
+		maxRate := int64(500 * 1024) // 500 KB/s max
+		newRate = int64(float64(currentRate) * 0.5)
+		if newRate > maxRate {
+			newRate = maxRate
+		}
+		if newRate < 50*1024 {
+			newRate = 50 * 1024 // Min 50 KB/s
 		}
 		if newRate != currentRate {
-			r.logger.Warnw("Adaptive rate limiter: REDUCING rate due to heap pressure",
-				"heap_alloc_mb", m.HeapAlloc/(1024*1024),
-				"threshold_mb", r.heapThreshold/(1024*1024),
+			r.logger.Errorw("Adaptive rate limiter: CRITICAL - heap > 1.5GB",
+				"heap_alloc_mb", heapMB,
+				"old_rate_kbps", currentRate/1024,
+				"new_rate_kbps", newRate/1024)
+		}
+
+	case m.HeapAlloc > 1024*1024*1024: // > 1GB (>25%) - WARNING
+		tier = "WARNING (>25% memory)"
+		maxRate := int64(2 * 1024 * 1024) // 2 MB/s max
+		newRate = int64(float64(currentRate) * 0.5) // Reduce by 50%
+		if newRate > maxRate {
+			newRate = maxRate
+		}
+		if newRate < 50*1024 {
+			newRate = 50 * 1024
+		}
+		if newRate != currentRate {
+			r.logger.Warnw("Adaptive rate limiter: WARNING - heap > 1GB",
+				"heap_alloc_mb", heapMB,
 				"old_rate_mbps", currentRate/(1024*1024),
 				"new_rate_mbps", newRate/(1024*1024))
 		}
-	} else if currentRate < r.baseRate {
-		// No pressure and below baseline - increase rate by 10% toward baseline
-		newRate = int64(float64(currentRate) * 1.1)
-		if newRate > r.baseRate {
-			newRate = r.baseRate
+
+	case m.HeapAlloc > 500*1024*1024: // > 500MB (>12.5%) - CAUTION
+		tier = "CAUTION (>12.5% memory)"
+		newRate = int64(float64(currentRate) * 0.7) // Reduce by 30%
+		if newRate < 50*1024 {
+			newRate = 50 * 1024
 		}
 		if newRate != currentRate {
-			r.logger.Infow("Adaptive rate limiter: increasing rate (heap normal)",
-				"heap_alloc_mb", m.HeapAlloc/(1024*1024),
-				"threshold_mb", r.heapThreshold/(1024*1024),
+			r.logger.Warnw("Adaptive rate limiter: CAUTION - heap > 500MB",
+				"heap_alloc_mb", heapMB,
 				"old_rate_mbps", currentRate/(1024*1024),
 				"new_rate_mbps", newRate/(1024*1024))
 		}
-	} else {
-		// At baseline and no pressure - no change needed
-		return
+
+	default: // < 500MB - NORMAL
+		tier = "NORMAL (<12.5% memory)"
+		if currentRate < r.baseRate {
+			// No pressure and below baseline - increase rate by 20% toward baseline
+			newRate = int64(float64(currentRate) * 1.2)
+			if newRate > r.baseRate {
+				newRate = r.baseRate
+			}
+			if newRate != currentRate {
+				r.logger.Infow("Adaptive rate limiter: increasing rate (heap normal)",
+					"heap_alloc_mb", heapMB,
+					"old_rate_mbps", currentRate/(1024*1024),
+					"new_rate_mbps", newRate/(1024*1024))
+			}
+		} else {
+			// At baseline and no pressure - no change needed
+			return
+		}
 	}
 
 	if newRate != currentRate {
@@ -1021,19 +1080,19 @@ func (ss *simpleServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		"content_length", r.ContentLength)
 
 	// Apply adaptive rate limiting to prevent unbounded buffering in http2 layer
-	// The rate limiter starts at baseRate and automatically reduces when heap pressure increases
+	// Uses tiered backpressure optimized for 4GB servers with 100 concurrent connections
 	// Note: ContentLength is -1 for streaming/chunked requests (like gRPC)
 	if r.Body != nil {
-		// Start with 100 MB/s, will reduce if heap grows above 500MB
+		// Start with 100 MB/s, uses tiered thresholds: 500MB/1GB/1.5GB/2GB
 		const baseRateMBps = 100
 		const baseRateBytesPerSec = baseRateMBps * 1024 * 1024
 
-		ss.logger.Infow("Applying adaptive rate limiter",
+		ss.logger.Infow("Applying tiered adaptive rate limiter",
 			"path", r.URL.Path,
 			"client", r.RemoteAddr,
 			"content_length", r.ContentLength,
 			"base_rate_mbps", baseRateMBps,
-			"heap_threshold_mb", 500)
+			"tiers", "500MB/1GB/1.5GB/2GB")
 
 		r.Body = newRateLimitedReader(r.Body, baseRateBytesPerSec, ss.logger)
 	}
