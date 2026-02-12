@@ -912,9 +912,17 @@ func (r *rateLimitedReader) Close() error {
 func (ss *simpleServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r = requestWithHost(r)
 
+	// Debug: Log every request to see if ServeHTTP is being called
+	ss.logger.Debugw("ServeHTTP called",
+		"path", r.URL.Path,
+		"method", r.Method,
+		"body_nil", r.Body == nil,
+		"content_length", r.ContentLength)
+
 	// Rate limit ALL requests with a body to prevent unbounded buffering in http2 layer
 	// Testing: Apply to everything to verify rate limiting works
-	if r.Body != nil && r.ContentLength != 0 {
+	// Note: ContentLength is -1 for streaming/chunked requests (like gRPC)
+	if r.Body != nil {
 		// Rate limit to 50 MB/s to prevent http2 dataBuffer from growing unbounded
 		const rateLimitMBps = 50
 		const rateLimitBytesPerSec = rateLimitMBps * 1024 * 1024
