@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -26,6 +27,7 @@ import (
 	"github.com/viamrobotics/zeroconf"
 	"go.uber.org/multierr"
 	"golang.org/x/net/http2/h2c"
+	"golang.org/x/time/rate"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -833,20 +835,96 @@ func (ss *simpleServer) EnsureAuthed(ctx context.Context) (context.Context, erro
 	return ss.ensureAuthed(ctx)
 }
 
+// rateLimitedReader wraps an io.ReadCloser and rate-limits Read() calls to prevent
+// unbounded buffering in the HTTP/2 layer. This is specifically needed for FileUpload
+// requests over h2c, where the golang.org/x/net/http2 dataBuffer can grow unbounded.
+//
+// By rate-limiting Read() calls, we slow down when WINDOW_UPDATE frames are sent,
+// which prevents DATA frames from arriving faster than the application can process them.
+type rateLimitedReader struct {
+	underlying io.ReadCloser
+	limiter    *rate.Limiter
+	logger     *utils.ZapCompatibleLogger
+	totalBytes int64
+	startTime  time.Time
+}
+
+// newRateLimitedReader creates a rate-limited reader with the specified bytes/second limit.
+func newRateLimitedReader(underlying io.ReadCloser, bytesPerSecond int, logger *utils.ZapCompatibleLogger) *rateLimitedReader {
+	return &rateLimitedReader{
+		underlying: underlying,
+		// rate.Limit is tokens per second, burst allows some burstiness
+		limiter:   rate.NewLimiter(rate.Limit(bytesPerSecond), bytesPerSecond),
+		logger:    logger,
+		startTime: time.Now(),
+	}
+}
+
+// Read implements io.Reader. It reads from the underlying reader, then waits
+// according to the rate limiter before returning. This delays when the HTTP/2
+// layer sends WINDOW_UPDATE frames, providing backpressure.
+func (r *rateLimitedReader) Read(p []byte) (n int, err error) {
+	// Read from underlying (this reads from http2's dataBuffer)
+	n, err = r.underlying.Read(p)
+
+	if n > 0 {
+		r.totalBytes += int64(n)
+
+		// Wait according to rate limiter before returning
+		// This delays when noteBodyReadFromHandler is called
+		// Which delays WINDOW_UPDATE being sent
+		ctx := context.Background()
+		start := time.Now()
+		if waitErr := r.limiter.WaitN(ctx, n); waitErr != nil {
+			r.logger.Warnw("Rate limiter wait failed", "error", waitErr)
+		}
+		waitTime := time.Since(start)
+
+		// Log periodically to show rate limiting is working
+		if waitTime > 100*time.Millisecond {
+			elapsed := time.Since(r.startTime)
+			avgMBps := float64(r.totalBytes) / elapsed.Seconds() / (1024 * 1024)
+			r.logger.Debugw("Rate-limited FileUpload read",
+				"bytes_this_read", n,
+				"wait_time", waitTime,
+				"total_bytes", r.totalBytes,
+				"avg_mbps", avgMBps)
+		}
+	}
+
+	return n, err
+}
+
+// Close implements io.Closer.
+func (r *rateLimitedReader) Close() error {
+	elapsed := time.Since(r.startTime)
+	avgMBps := float64(r.totalBytes) / elapsed.Seconds() / (1024 * 1024)
+	r.logger.Infow("FileUpload read completed",
+		"total_bytes", r.totalBytes,
+		"elapsed", elapsed,
+		"avg_mbps", avgMBps)
+	return r.underlying.Close()
+}
+
 // ServeHTTP is an all-in-one handler for any kind of gRPC traffic. This is useful
 // in a scenario where all gRPC is served from the root path due to limitations of normal
 // gRPC being served from a non-root path.
 func (ss *simpleServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r = requestWithHost(r)
 
-	// Block FileUpload over HTTP - must use direct gRPC listener for proper flow control
+	// Wrap FileUpload requests with rate limiter to prevent unbounded buffering
 	if strings.Contains(r.URL.Path, "/FileUpload") {
-		ss.logger.Warnw("FileUpload rejected over HTTP - use direct gRPC listener",
+		// Rate limit to 100 MB/s to prevent http2 dataBuffer from growing unbounded
+		// This can be tuned based on actual GCS upload throughput
+		const rateLimitMBps = 100
+		const rateLimitBytesPerSec = rateLimitMBps * 1024 * 1024
+
+		ss.logger.Infow("Rate-limiting FileUpload over HTTP",
 			"path", r.URL.Path,
-			"client", r.RemoteAddr)
-		w.WriteHeader(http.StatusNotImplemented)
-		w.Write([]byte("FileUpload must use direct gRPC connection (not HTTP/h2c) for flow control. Connect to the direct gRPC port."))
-		return
+			"client", r.RemoteAddr,
+			"rate_limit_mbps", rateLimitMBps)
+
+		r.Body = newRateLimitedReader(r.Body, rateLimitBytesPerSec, ss.logger)
 	}
 
 	switch ss.getRequestType(r) {
