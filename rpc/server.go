@@ -927,12 +927,10 @@ func (r *rateLimitedReader) adjustRateIfNeeded() {
 	currentRate := int64(r.limiter.Limit())
 	heapMB := m.HeapAlloc / (1024 * 1024)
 	var newRate int64
-	var tier string
 
 	// Tiered response based on heap size
 	switch {
 	case m.HeapAlloc > 2*1024*1024*1024: // > 2GB (>50% of 4GB) - EMERGENCY
-		tier = "EMERGENCY (>50% memory)"
 		newRate = 50 * 1024 // 50 KB/s - essentially paused
 		if newRate != currentRate {
 			r.logger.Errorw("Adaptive rate limiter: EMERGENCY - heap > 2GB",
@@ -942,7 +940,7 @@ func (r *rateLimitedReader) adjustRateIfNeeded() {
 		}
 
 	case m.HeapAlloc > 1536*1024*1024: // > 1.5GB (>37.5%) - CRITICAL
-		tier = "CRITICAL (>37.5% memory)"
+		//"CRITICAL (>37.5% memory)"
 		maxRate := int64(500 * 1024) // 500 KB/s max
 		newRate = int64(float64(currentRate) * 0.5)
 		if newRate > maxRate {
@@ -959,7 +957,7 @@ func (r *rateLimitedReader) adjustRateIfNeeded() {
 		}
 
 	case m.HeapAlloc > 1024*1024*1024: // > 1GB (>25%) - WARNING
-		tier = "WARNING (>25% memory)"
+		//"WARNING (>25% memory)"
 		maxRate := int64(2 * 1024 * 1024) // 2 MB/s max
 		newRate = int64(float64(currentRate) * 0.5) // Reduce by 50%
 		if newRate > maxRate {
@@ -976,7 +974,7 @@ func (r *rateLimitedReader) adjustRateIfNeeded() {
 		}
 
 	case m.HeapAlloc > 500*1024*1024: // > 500MB (>12.5%) - CAUTION
-		tier = "CAUTION (>12.5% memory)"
+		//"CAUTION (>12.5% memory)"
 		newRate = int64(float64(currentRate) * 0.7) // Reduce by 30%
 		if newRate < 50*1024 {
 			newRate = 50 * 1024
@@ -989,7 +987,7 @@ func (r *rateLimitedReader) adjustRateIfNeeded() {
 		}
 
 	default: // < 500MB - NORMAL
-		tier = "NORMAL (<12.5% memory)"
+		//"NORMAL (<12.5% memory)"
 		if currentRate < r.baseRate {
 			// No pressure and below baseline - increase rate by 20% toward baseline
 			newRate = int64(float64(currentRate) * 1.2)
