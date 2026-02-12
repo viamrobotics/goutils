@@ -660,24 +660,13 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 		}
 	}
 
-	if sOpts.webrtcOpts.Enable {
+	if sOpts.webrtcOpts.Enable && !sOpts.minimalInterceptors {
 		// TODO(GOUT-11): Handle auth; right now we assume
 		// successful auth to the signaler implies that auth should be allowed here, which is not 100%
 		// true.
-		webrtcUnaryInterceptors := make([]grpc.UnaryServerInterceptor, 0, len(unaryInterceptors))
-		webrtcStreamInterceptors := make([]grpc.StreamServerInterceptor, 0, len(streamInterceptors))
-		for idx, interceptor := range unaryInterceptors {
-			if idx == unaryAuthIntPos {
-				continue
-			}
-			webrtcUnaryInterceptors = append(webrtcUnaryInterceptors, interceptor)
-		}
-		for idx, interceptor := range streamInterceptors {
-			if idx == streamAuthIntPos {
-				continue
-			}
-			webrtcStreamInterceptors = append(webrtcStreamInterceptors, interceptor)
-		}
+		// Skip WebRTC in minimal mode since interceptors aren't available
+		webrtcUnaryInterceptors := []grpc.UnaryServerInterceptor{}
+		webrtcStreamInterceptors := []grpc.StreamServerInterceptor{}
 		unaryInterceptor := grpc_middleware.ChainUnaryServer(webrtcUnaryInterceptors...)
 		streamInterceptor := grpc_middleware.ChainStreamServer(webrtcStreamInterceptors...)
 
