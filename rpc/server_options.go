@@ -34,9 +34,6 @@ type serverOptions struct {
 	// unauthenticated determines if requests should be authenticated.
 	unauthenticated bool
 
-	// minimalInterceptors skips all auth/logging/recovery interceptors for testing
-	minimalInterceptors bool
-
 	// allowUnauthenticatedHealthCheck allows the server to have an unauthenticated healthcheck endpoint
 	allowUnauthenticatedHealthCheck bool
 
@@ -250,18 +247,6 @@ func WithUnauthenticated() ServerOption {
 
 // WithMinimalInterceptors returns a ServerOption that skips all interceptors
 // (auth, logging, recovery, tracing) for flow control testing. Only the basic
-// gRPC flow control settings are applied.
-// Note: Auth services remain registered but interceptors are bypassed, so auth
-// is effectively disabled. FOR TESTING ONLY.
-func WithMinimalInterceptors() ServerOption {
-	return newFuncServerOption(func(o *serverOptions) error {
-		o.minimalInterceptors = true
-		// Don't set unauthenticated - keep auth services registered
-		// but skip the auth interceptors (done in server.go)
-		return nil
-	})
-}
-
 // WithAuthRSAPrivateKey returns a ServerOption which sets the RSA private key to
 // use for signed JWTs.
 func WithAuthRSAPrivateKey(authRSAPrivateKey *rsa.PrivateKey) (ServerOption, string, error) {

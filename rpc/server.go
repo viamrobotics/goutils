@@ -363,22 +363,17 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 
 	var unaryInterceptors []grpc.UnaryServerInterceptor
 
-	// In minimal mode, skip logging/recovery/tracing but keep auth
-	if !sOpts.minimalInterceptors {
-		unaryInterceptors = append(unaryInterceptors,
-			grpc_recovery.UnaryServerInterceptor(grpc_recovery.WithRecoveryHandler(
-				grpc_recovery.RecoveryHandlerFunc(func(p interface{}) error {
-					err := status.Errorf(codes.Internal, "%v", p)
-					grpcLogger.Errorw("panicked while calling unary server method", "error", errors.WithStack(err))
-					return err
-				}))),
-			grpcUnaryServerInterceptor(grpcLogger),
-			unaryServerCodeInterceptor(),
-		)
-		unaryInterceptors = append(unaryInterceptors, UnaryServerTracingInterceptor())
-	} else {
-		logger.Warn("Using MINIMAL interceptors mode - skipping logging/recovery/tracing (auth preserved) - FOR TESTING ONLY")
-	}
+	unaryInterceptors = append(unaryInterceptors,
+		grpc_recovery.UnaryServerInterceptor(grpc_recovery.WithRecoveryHandler(
+			grpc_recovery.RecoveryHandlerFunc(func(p interface{}) error {
+				err := status.Errorf(codes.Internal, "%v", p)
+				grpcLogger.Errorw("panicked while calling unary server method", "error", errors.WithStack(err))
+				return err
+			}))),
+		grpcUnaryServerInterceptor(grpcLogger),
+		unaryServerCodeInterceptor(),
+	)
+	unaryInterceptors = append(unaryInterceptors, UnaryServerTracingInterceptor())
 
 	// Always add auth interceptor if not unauthenticated
 	if !sOpts.unauthenticated {
@@ -403,20 +398,17 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 
 	var streamInterceptors []grpc.StreamServerInterceptor
 
-	// In minimal mode, skip logging/recovery/tracing but keep auth
-	if !sOpts.minimalInterceptors {
-		streamInterceptors = append(streamInterceptors,
-			grpc_recovery.StreamServerInterceptor(grpc_recovery.WithRecoveryHandler(
-				grpc_recovery.RecoveryHandlerFunc(func(p interface{}) error {
-					err := status.Errorf(codes.Internal, "%s", p)
-					grpcLogger.Errorw("panicked while calling stream server method", "error", errors.WithStack(err))
-					return err
-				}))),
-			grpcStreamServerInterceptor(grpcLogger),
-			streamServerCodeInterceptor(),
-		)
-		streamInterceptors = append(streamInterceptors, StreamServerTracingInterceptor())
-	}
+	streamInterceptors = append(streamInterceptors,
+		grpc_recovery.StreamServerInterceptor(grpc_recovery.WithRecoveryHandler(
+			grpc_recovery.RecoveryHandlerFunc(func(p interface{}) error {
+				err := status.Errorf(codes.Internal, "%s", p)
+				grpcLogger.Errorw("panicked while calling stream server method", "error", errors.WithStack(err))
+				return err
+			}))),
+		grpcStreamServerInterceptor(grpcLogger),
+		streamServerCodeInterceptor(),
+	)
+	streamInterceptors = append(streamInterceptors, StreamServerTracingInterceptor())
 
 	// Always add auth interceptor if not unauthenticated
 	if !sOpts.unauthenticated {
@@ -442,20 +434,6 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 	if sOpts.statsHandler != nil {
 		serverOpts = append(serverOpts, grpc.StatsHandler(sOpts.statsHandler))
 	}
-
-	// Limit gRPC buffer accumulation for large streaming uploads.
-	// Without these limits, gRPC can buffer unlimited data if the receiver
-	// processes slower than the network receives.
-	// Use Static window sizes to disable BDP estimation which would grow windows to 16MB.
-	// BDP estimation measures local network bandwidth and dynamically increases windows,
-	// causing excessive buffering when the bottleneck is downstream (e.g., GCS writes).
-	serverOpts = append(serverOpts,
-		grpc.StaticStreamWindowSize(64*1024),     // 64KB per stream, BDP disabled
-		grpc.StaticConnWindowSize(64*1024),       // 64KB per connection, BDP disabled
-		grpc.WriteBufferSize(0),                  // Disable write buffering for immediate window updates
-		grpc.ReadBufferSize(64*1024),             // Limit read buffer size
-		grpc.MaxConcurrentStreams(100),           // Limit concurrent streams
-	)
 
 	serverOpts = append(serverOpts, grpc.WaitForHandlers(true))
 
@@ -674,11 +652,10 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 		}
 	}
 
-	if sOpts.webrtcOpts.Enable && !sOpts.minimalInterceptors {
+	if sOpts.webrtcOpts.Enable {
 		// TODO(GOUT-11): Handle auth; right now we assume
 		// successful auth to the signaler implies that auth should be allowed here, which is not 100%
 		// true.
-		// Skip WebRTC in minimal mode since interceptors aren't available
 		webrtcUnaryInterceptors := []grpc.UnaryServerInterceptor{}
 		webrtcStreamInterceptors := []grpc.StreamServerInterceptor{}
 		unaryInterceptor := grpc_middleware.ChainUnaryServer(webrtcUnaryInterceptors...)
@@ -793,10 +770,8 @@ const (
 
 func (ss *simpleServer) getRequestType(r *http.Request) requestType {
 	if ss.grpcWebServer.IsAcceptableGrpcCorsRequest(r) || ss.grpcWebServer.IsGrpcWebRequest(r) {
-		ss.logger.Warnw("Request using grpc-web (HTTP/1.1) - flow control disabled", "path", r.URL.Path)
 		return requestTypeGRPCWeb
 	} else if r.ProtoMajor == 2 && strings.HasPrefix(r.Header.Get("Content-Type"), "application/grpc") {
-		ss.logger.Infow("Request using native gRPC (HTTP/2) - flow control enabled", "path", r.URL.Path)
 		return requestTypeGRPC
 	}
 	return requestTypeNone
@@ -820,27 +795,22 @@ func (ss *simpleServer) GRPCHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r = requestWithHost(r)
 
-		// Debug: Log every request to see if GRPCHandler is being called
-		ss.logger.Infow("GRPCHandler called",
-			"path", r.URL.Path,
-			"method", r.Method,
-			"body_nil", r.Body == nil,
-			"content_length", r.ContentLength)
-
-		// Rate limit ALL requests with a body to prevent unbounded buffering in http2 layer
+		// Apply adaptive rate limiting to prevent unbounded buffering in http2 layer
+		// Uses tiered backpressure optimized for 4GB servers with 100 concurrent connections
 		// Note: ContentLength is -1 for streaming/chunked requests (like gRPC)
 		if r.Body != nil {
-			// Rate limit to 50 MB/s to prevent http2 dataBuffer from growing unbounded
-			const rateLimitMBps = 50
-			const rateLimitBytesPerSec = rateLimitMBps * 1024 * 1024
+			// Start with 100 MB/s, uses tiered thresholds: 500MB/1GB/1.5GB/2GB
+			const baseRateMBps = 100
+			const baseRateBytesPerSec = baseRateMBps * 1024 * 1024
 
-			ss.logger.Infow("Rate-limiting request in GRPCHandler",
+			ss.logger.Infow("Applying tiered adaptive rate limiter",
 				"path", r.URL.Path,
 				"client", r.RemoteAddr,
 				"content_length", r.ContentLength,
-				"rate_limit_mbps", rateLimitMBps)
+				"base_rate_mbps", baseRateMBps,
+				"tiers", "500MB/1GB/1.5GB/2GB")
 
-			r.Body = newRateLimitedReader(r.Body, rateLimitBytesPerSec, ss.logger)
+			r.Body = newRateLimitedReader(r.Body, baseRateBytesPerSec, ss.logger)
 		}
 
 		switch ss.getRequestType(r) {
@@ -895,13 +865,13 @@ func newRateLimitedReader(underlying io.ReadCloser, baseRate int, logger utils.Z
 		startTime:  time.Now(),
 
 		// Adaptive parameters - uses tiered thresholds (see adjustRateIfNeeded)
-		baseRate:       int64(baseRate),     // e.g., 100 MB/s
+		baseRate:       int64(baseRate), // e.g., 100 MB/s
 		lastAdjustTime: time.Now(),
 		adjustInterval: 1 * time.Second, // Check heap every second
 
 		// Legacy fields (kept for struct compatibility, not used in tiered approach)
-		minRate:       int64(50 * 1024),         // 50 KB/s emergency minimum
-		heapThreshold: 500 * 1024 * 1024,        // 500 MB first tier
+		minRate:       int64(50 * 1024),  // 50 KB/s emergency minimum
+		heapThreshold: 500 * 1024 * 1024, // 500 MB first tier
 	}
 }
 
@@ -958,7 +928,7 @@ func (r *rateLimitedReader) adjustRateIfNeeded() {
 
 	case m.HeapAlloc > 1024*1024*1024: // > 1GB (>25%) - WARNING
 		//"WARNING (>25% memory)"
-		maxRate := int64(2 * 1024 * 1024) // 2 MB/s max
+		maxRate := int64(2 * 1024 * 1024)           // 2 MB/s max
 		newRate = int64(float64(currentRate) * 0.5) // Reduce by 50%
 		if newRate > maxRate {
 			newRate = maxRate
@@ -1070,13 +1040,6 @@ func (r *rateLimitedReader) Close() error {
 func (ss *simpleServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r = requestWithHost(r)
 
-	// Debug: Log every request to see if ServeHTTP is being called
-	ss.logger.Debugw("ServeHTTP called",
-		"path", r.URL.Path,
-		"method", r.Method,
-		"body_nil", r.Body == nil,
-		"content_length", r.ContentLength)
-
 	// Apply adaptive rate limiting to prevent unbounded buffering in http2 layer
 	// Uses tiered backpressure optimized for 4GB servers with 100 concurrent connections
 	// Note: ContentLength is -1 for streaming/chunked requests (like gRPC)
@@ -1127,8 +1090,6 @@ func (ss *simpleServer) Start() error {
 
 	var err error
 	var errMu sync.Mutex
-	ss.logger.Infow("Starting direct gRPC server (no HTTP wrapper)",
-		"address", ss.grpcListener.Addr().String())
 	utils.PanicCapturingGo(func() {
 		if serveErr := ss.grpcServer.Serve(ss.grpcListener); serveErr != nil {
 			errMu.Lock()
