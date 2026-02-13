@@ -245,8 +245,6 @@ func WithUnauthenticated() ServerOption {
 	})
 }
 
-// WithMinimalInterceptors returns a ServerOption that skips all interceptors
-// (auth, logging, recovery, tracing) for flow control testing. Only the basic
 // WithAuthRSAPrivateKey returns a ServerOption which sets the RSA private key to
 // use for signed JWTs.
 func WithAuthRSAPrivateKey(authRSAPrivateKey *rsa.PrivateKey) (ServerOption, string, error) {

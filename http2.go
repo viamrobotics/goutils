@@ -3,7 +3,6 @@ package utils
 import (
 	"context"
 	"crypto/tls"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -87,21 +86,6 @@ func NewHTTP2Server() (*HTTP2Server, error) {
 	if err := http2.ConfigureServer(&http1Server, &http2Server); err != nil {
 		return nil, err
 	}
-	// Match gRPC flow control settings: 64KB static windows to prevent unbounded buffering
-	// Note: MaxUploadBuffer controls the initial flow control window size sent to clients
-	http2Server.MaxUploadBufferPerConnection = 64 * 1024
-	http2Server.MaxUploadBufferPerStream = 64 * 1024
-
-	// Try extremely restrictive settings to verify they're taking effect
-	http2Server.MaxConcurrentStreams = 1
-	http2Server.MaxReadFrameSize = 16 * 1024  // 16KB min allowed
-
-	// Enable HTTP/2 debug logging to verify settings
-	fmt.Printf("[HTTP/2] Configured with MaxUploadBufferPerConnection=%d, MaxUploadBufferPerStream=%d, MaxConcurrentStreams=%d, MaxReadFrameSize=%d\n",
-		http2Server.MaxUploadBufferPerConnection,
-		http2Server.MaxUploadBufferPerStream,
-		http2Server.MaxConcurrentStreams,
-		http2Server.MaxReadFrameSize)
 
 	return &HTTP2Server{&http1Server, &http2Server}, nil
 }
