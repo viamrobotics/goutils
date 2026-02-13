@@ -374,10 +374,11 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 		unaryServerCodeInterceptor(),
 	)
 	unaryInterceptors = append(unaryInterceptors, UnaryServerTracingInterceptor())
+	unaryAuthIntPos := -1
 
-	// Always add auth interceptor if not unauthenticated
 	if !sOpts.unauthenticated {
 		unaryInterceptors = append(unaryInterceptors, server.authUnaryInterceptor)
+		unaryAuthIntPos = len(unaryInterceptors) - 1
 	}
 
 	if sOpts.unaryInterceptor != nil {
@@ -409,10 +410,12 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 		streamServerCodeInterceptor(),
 	)
 	streamInterceptors = append(streamInterceptors, StreamServerTracingInterceptor())
+	streamAuthIntPos := -1
 
 	// Always add auth interceptor if not unauthenticated
 	if !sOpts.unauthenticated {
 		streamInterceptors = append(streamInterceptors, server.authStreamInterceptor)
+		streamAuthIntPos = len(streamInterceptors) - 1
 	}
 
 	if sOpts.streamInterceptor != nil {
@@ -658,6 +661,18 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 		// true.
 		webrtcUnaryInterceptors := []grpc.UnaryServerInterceptor{}
 		webrtcStreamInterceptors := []grpc.StreamServerInterceptor{}
+		for idx, interceptor := range unaryInterceptors {
+			if idx == unaryAuthIntPos {
+				continue
+			}
+			webrtcUnaryInterceptors = append(webrtcUnaryInterceptors, interceptor)
+		}
+		for idx, interceptor := range streamInterceptors {
+			if idx == streamAuthIntPos {
+				continue
+			}
+			webrtcStreamInterceptors = append(webrtcStreamInterceptors, interceptor)
+		}
 		unaryInterceptor := grpc_middleware.ChainUnaryServer(webrtcUnaryInterceptors...)
 		streamInterceptor := grpc_middleware.ChainStreamServer(webrtcStreamInterceptors...)
 
