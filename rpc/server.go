@@ -841,6 +841,23 @@ func (ss *simpleServer) GRPCHandler() http.Handler {
 	})
 }
 
+// InternalGRPCServer returns the underlying *grpc.Server for advanced use cases
+// like connection multiplexing with cmux. This is only available on the standard
+// simpleServer implementation.
+func (ss *simpleServer) InternalGRPCServer() *grpc.Server {
+	return ss.grpcServer
+}
+
+// GetInternalGRPCServer returns the underlying *grpc.Server from an rpc.Server
+// if it's implemented by simpleServer. Returns nil if the server doesn't support
+// this operation.
+func GetInternalGRPCServer(srv Server) *grpc.Server {
+	if ss, ok := srv.(*simpleServer); ok {
+		return ss.InternalGRPCServer()
+	}
+	return nil
+}
+
 func (ss *simpleServer) EnsureAuthed(ctx context.Context) (context.Context, error) {
 	return ss.ensureAuthed(ctx)
 }
