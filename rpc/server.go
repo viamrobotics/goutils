@@ -736,8 +736,16 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 			)
 			var answererDialOpts []DialOption
 			if sOpts.tlsConfig != nil {
+
+				// Clone the TLS config but remove GetClientCertificate to avoid presenting
+				// a client certificate. This allows TLS encryption without requiring the cert
+				// to have clientAuth EKU. Authentication proceeds via WithEntityCredentials below.
+				// The server's ClientAuth is set to tls.VerifyClientCertIfGiven, so not presenting
+				// a client cert is allowed.
 				tlsConfig := sOpts.tlsConfig.Clone()
 				tlsConfig.ServerName = server.firstSeenTLSCertLeaf.Subject.CommonName
+				tlsConfig.GetClientCertificate = nil
+				tlsConfig.Certificates = nil
 				answererDialOpts = append(answererDialOpts, WithTLSConfig(tlsConfig))
 			} else {
 				answererDialOpts = append(answererDialOpts, WithInsecure())
@@ -1030,8 +1038,13 @@ func (ss *simpleServer) RegisterServiceServer(
 		if ss.tlsConfig == nil {
 			opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		} else {
+			// Clone the TLS config but remove GetClientCertificate to avoid presenting
+			// a client certificate on this loopback connection. This allows TLS encryption
+			// without requiring the cert to have clientAuth EKU.
 			tlsConfig := ss.tlsConfig.Clone()
 			tlsConfig.ServerName = ss.firstSeenTLSCertLeaf.DNSNames[0]
+			tlsConfig.GetClientCertificate = nil
+			tlsConfig.Certificates = nil
 			opts = append(opts, grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)))
 		}
 		for _, h := range svcHandlers {
