@@ -252,7 +252,7 @@ var (
 				},
 			},
 		},
-		Bucket: objDetectionDirName,
+		Bucket: customTrainingDirName,
 		Path:   "filename_bbox_conf.jpeg" + zipExt,
 	}
 )
@@ -394,6 +394,28 @@ func TestImageMetadataToJSONLines(t *testing.T) {
 			expectedMultiLabelCount: 0,
 		},
 		{
+			name: "Custom training with classification confidence " +
+				"serializes confidence in classification_annotations",
+			imageMetadata:           []*ImageMetadata{fakeDataWithClassificationConfidence},
+			modelType:               mlv1.ModelType_MODEL_TYPE_OBJECT_DETECTION,
+			labels:                  nil,
+			expJSONFile:             filepath.Join(customTrainingDirName, "fakedata_classification_confidence.jsonl"),
+			expectedLabelsCount:     map[string]int32{},
+			expectedImageCount:      1,
+			expectedMultiLabelCount: 0,
+		},
+		{
+			name: "Object detection with bounding box confidence " +
+				"serializes confidence in bounding_box_annotations",
+			imageMetadata:           []*ImageMetadata{fakeDataWithBBoxConfidence},
+			modelType:               mlv1.ModelType_MODEL_TYPE_OBJECT_DETECTION,
+			labels:                  objectDetectionLabels,
+			expJSONFile:             filepath.Join(customTrainingDirName, "fakedata_bbox_confidence.jsonl"),
+			expectedLabelsCount:     map[string]int32{"cat": 1},
+			expectedImageCount:      1,
+			expectedMultiLabelCount: 0,
+		},
+		{
 			name: "Model type unspecified with requested labels " +
 				"results in error",
 			imageMetadata: []*ImageMetadata{
@@ -484,64 +506,4 @@ func normalizeJSON(t *testing.T, jsonString string) string {
 	}
 
 	return strings.Join(result, "\n") + "\n"
-}
-
-// TestImageMetadataToJSONLinesConfidence verifies that confidence is serialized when present
-// in classification annotations and bounding box annotations.
-func TestImageMetadataToJSONLinesConfidence(t *testing.T) {
-	t.Run("custom training with classification confidence", func(t *testing.T) {
-		wc := newMockWriter()
-		_, err := ImageMetadataToJSONLines(
-			[]*ImageMetadata{fakeDataWithClassificationConfidence},
-			nil, // requestedTags nil for custom training
-			mlv1.ModelType_MODEL_TYPE_OBJECT_DETECTION,
-			wc,
-		)
-		test.That(t, err, test.ShouldBeNil)
-
-		lines := strings.Split(strings.TrimSpace(wc.buf.String()), "\n")
-		test.That(t, len(lines), test.ShouldEqual, 1)
-
-		var obj map[string]any
-		err = json.Unmarshal([]byte(lines[0]), &obj)
-		test.That(t, err, test.ShouldBeNil)
-
-		classifications, ok := obj["classification_annotations"].([]any)
-		test.That(t, ok, test.ShouldBeTrue)
-		test.That(t, len(classifications), test.ShouldEqual, 1)
-
-		ann := classifications[0].(map[string]any)
-		test.That(t, ann["annotation_label"], test.ShouldEqual, "cat")
-		conf, ok := ann["confidence"].(float64)
-		test.That(t, ok, test.ShouldBeTrue)
-		test.That(t, conf, test.ShouldEqual, 0.9)
-	})
-
-	t.Run("object detection with bounding box confidence", func(t *testing.T) {
-		wc := newMockWriter()
-		_, err := ImageMetadataToJSONLines(
-			[]*ImageMetadata{fakeDataWithBBoxConfidence},
-			objectDetectionLabels,
-			mlv1.ModelType_MODEL_TYPE_OBJECT_DETECTION,
-			wc,
-		)
-		test.That(t, err, test.ShouldBeNil)
-
-		lines := strings.Split(strings.TrimSpace(wc.buf.String()), "\n")
-		test.That(t, len(lines), test.ShouldEqual, 1)
-
-		var obj map[string]any
-		err = json.Unmarshal([]byte(lines[0]), &obj)
-		test.That(t, err, test.ShouldBeNil)
-
-		bboxes, ok := obj["bounding_box_annotations"].([]any)
-		test.That(t, ok, test.ShouldBeTrue)
-		test.That(t, len(bboxes), test.ShouldEqual, 1)
-
-		bbox := bboxes[0].(map[string]any)
-		test.That(t, bbox["annotation_label"], test.ShouldEqual, "cat")
-		conf, ok := bbox["confidence"].(float64)
-		test.That(t, ok, test.ShouldBeTrue)
-		test.That(t, conf, test.ShouldEqual, 0.7)
-	})
 }
