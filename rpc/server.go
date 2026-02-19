@@ -25,6 +25,9 @@ import (
 	"github.com/pkg/errors"
 	"github.com/viamrobotics/zeroconf"
 	"go.uber.org/multierr"
+	"go.viam.com/utils"
+	rpcpb "go.viam.com/utils/proto/rpc/v1"
+	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
 	"golang.org/x/net/http2/h2c"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -35,10 +38,6 @@ import (
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
-
-	"go.viam.com/utils"
-	rpcpb "go.viam.com/utils/proto/rpc/v1"
-	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
 )
 
 const (
@@ -68,9 +67,8 @@ type Server interface {
 
 	// ServeTLS will externally serve, using the given cert/key, the
 	// all in one handler described by http.Handler. The provided tlsConfig
-	// will be used for any extra TLS settings. If using mutual TLS authentication
-	// (see WithTLSAuthHandler), then the tls.Config should have ClientAuth,
-	// at a minimum, set to tls.VerifyClientCertIfGiven.
+	// will be used for any extra TLS settings. Client authentication is handled
+	// at the application level; the internal listener uses tls.NoClientCert.
 	ServeTLS(listener net.Listener, certFile, keyFile string, tlsConfig *tls.Config) error
 
 	// Stop stops the internal gRPC and the HTTP server if it
