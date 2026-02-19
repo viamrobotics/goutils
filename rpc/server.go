@@ -25,9 +25,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/viamrobotics/zeroconf"
 	"go.uber.org/multierr"
-	"go.viam.com/utils"
-	rpcpb "go.viam.com/utils/proto/rpc/v1"
-	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
 	"golang.org/x/net/http2/h2c"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -38,6 +35,10 @@ import (
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
+
+	"go.viam.com/utils"
+	rpcpb "go.viam.com/utils/proto/rpc/v1"
+	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
 )
 
 const (
@@ -135,7 +136,6 @@ type simpleServer struct {
 	authKeyForJWTSigning authKeyData
 	internalUUID         string
 	internalCreds        Credentials
-	tlsAuthHandler       func(ctx context.Context, entities ...string) error
 	authHandlersForCreds map[CredentialsType]credAuthHandlers
 	authToHandler        AuthenticateToHandler
 	ensureAuthedHandler  func(ctx context.Context) (context.Context, error)
@@ -199,7 +199,7 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 			return nil, err
 		}
 	}
-	if sOpts.unauthenticated && (len(sOpts.authHandlersForCreds) != 0 || sOpts.tlsAuthHandler != nil) {
+	if sOpts.unauthenticated && len(sOpts.authHandlersForCreds) != 0 {
 		return nil, errMixedUnauthAndAuth
 	}
 
@@ -337,7 +337,6 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 			Type:    credentialsTypeInternal,
 			Payload: base64.StdEncoding.EncodeToString(internalCredsKey),
 		},
-		tlsAuthHandler:       sOpts.tlsAuthHandler,
 		authHandlersForCreds: sOpts.authHandlersForCreds,
 		authToHandler:        sOpts.authToHandler,
 		authAudience:         sOpts.authAudience,

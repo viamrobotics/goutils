@@ -16,11 +16,6 @@ This example server demonstrates how to run gRPC accessible via `grpc`, `grpc-we
 1. `make run-server-auth`
 1. `make run-client-auth`
 
-### With auth via mTLS (no UI)
-
-1. `make run-server-auth-tls`
-1. `make run-client-auth-tls`
-
 ### With an external auth source
 
 1. `make run-server-auth-internal` # Use the UI on this one

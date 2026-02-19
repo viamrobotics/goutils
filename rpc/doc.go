@@ -44,10 +44,8 @@ will convey information about its internal gRPC IP address so that a connection 
 either via gRPC or WebRTC. This is powerful in situations where clients/servers can only communicate in
 a local direct or a faster connection can be made without going out to the internet. Not that the broadcasted
 address is that of the internal gRPC listener. That behavior can be changed via the WithExternalListenerAddress
-ServerOption. That means, if the WithInternalTLSConfig option is used, any mDNS connections made will
-request client certificates. This will not negatively affect any UI hosted (peer certificate prompt) that uses
-the server's GRPCHandler because since that handler will only use the tls.Config of the http.Server hosting it,
-separate from the internal one.
+ServerOption. The internal gRPC listener configured by WithInternalTLSConfig does not request client certificates;
+client authentication is handled at the application level.
 
 # Authentication Modes
 
@@ -65,13 +63,6 @@ An optionally supplied TokenVerificationKeyProvider associated with the credenti
 a key used to verify the JWT if it was not signed by the RPC service provider. Once verified an optionally supplied
 EntityDataLoader associated with the credential type can use the JWT metadata to produce application to produce
 data for the entity to be accessible via rpc.MustContextAuthEntity.
-
-Additionally, authentication via mutual TLS is supported by way of the WithTLSAuthHandler and
-WithInternalTLSConfig ServerOptions. Using these two options in tandem will ask clients connecting
-to present a client certificate, which will be verified. This verified certificate is then caught by
-the authentication middleware before JWT presence is checked. If any of the DNS names in the verified
-client certificate match that of the entities checked in WithTLSAuthHandler, then the request will be
-allowed to proceed.
 
 For WebRTC, we assume that signaling is implemented as an authenticated/authorized service and for now,
 do not pass any JWTs over the WebRTC data channels that are established.

@@ -48,7 +48,6 @@ type serverOptions struct {
 	// It will output much more logs.
 	debug bool
 
-	tlsAuthHandler       func(ctx context.Context, entities ...string) error
 	authHandlersForCreds map[CredentialsType]credAuthHandlers
 
 	// authAudience is the JWT audience (aud) that will be used/expected
@@ -179,7 +178,7 @@ func WithExternalListenerAddress(address *net.TCPAddr) ServerOption {
 // WithInternalTLSConfig returns a ServerOption which sets the TLS config
 // for the internal listener. The internal listener does not request client
 // certificates; client authentication is handled at the application level
-// via WithTLSAuthHandler or credential-based auth.
+// via credential-based auth.
 func WithInternalTLSConfig(config *tls.Config) ServerOption {
 	return newFuncServerOption(func(o *serverOptions) error {
 		o.tlsConfig = config.Clone()
@@ -324,22 +323,6 @@ func WithAuthIssuer(authIssuer string) ServerOption {
 func WithDebug() ServerOption {
 	return newFuncServerOption(func(o *serverOptions) error {
 		o.debug = true
-		return nil
-	})
-}
-
-// WithTLSAuthHandler returns a ServerOption which when TLS info is available to a connection, it will
-// authenticate the given entities in the event that no other authentication has been established via
-// the standard auth handler.
-func WithTLSAuthHandler(entities []string) ServerOption {
-	return newFuncServerOption(func(o *serverOptions) error {
-		entityChecker := MakeEntitiesChecker(entities)
-		o.tlsAuthHandler = func(ctx context.Context, recvEntities ...string) error {
-			if err := entityChecker(ctx, recvEntities...); err != nil {
-				return errNotTLSAuthed
-			}
-			return nil
-		}
 		return nil
 	})
 }

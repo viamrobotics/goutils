@@ -4,12 +4,9 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/base64"
 	"fmt"
 	"net"
-	"net/http"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -22,7 +19,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.uber.org/multierr"
 	"go.viam.com/test"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -1358,199 +1354,6 @@ func TestDialMulticastDNS(t *testing.T) {
 
 		test.That(t, rpcServer.Stop(), test.ShouldBeNil)
 	})
-}
-
-func TestDialMutualTLSAuth(t *testing.T) {
-	testutils.SkipUnlessInternet(t)
-	logger := golog.NewTestLogger(t)
-
-	cert, certFile, keyFile, certPool, err := testutils.GenerateSelfSignedCertificate("somename", "altname")
-	test.That(t, err, test.ShouldBeNil)
-
-	leaf, err := x509.ParseCertificate(cert.Certificate[0])
-	test.That(t, err, test.ShouldBeNil)
-
-	tlsConfig := &tls.Config{
-		RootCAs:      certPool,
-		ClientCAs:    certPool,
-		Certificates: []tls.Certificate{cert},
-		MinVersion:   tls.VersionTLS12,
-	}
-
-	for _, viaServerServe := range []bool{false, true} {
-		tcName := "via server start"
-		if viaServerServe {
-			tcName = "via server serve"
-		}
-
-		makeServer := func(differentTLSNames ...string) (string, func() error, error) {
-			tlsNames := leaf.DNSNames
-			if len(differentTLSNames) != 0 {
-				tlsNames = differentTLSNames
-			}
-			var server Server
-			var err error
-			opts := []ServerOption{WithTLSAuthHandler(tlsNames)}
-			if viaServerServe {
-				server, err = NewServer(
-					logger,
-					opts...,
-				)
-			} else {
-				opts = append(opts, WithInternalTLSConfig(tlsConfig))
-				server, err = NewServer(
-					logger,
-					opts...,
-				)
-			}
-			if err != nil {
-				return "", nil, err
-			}
-
-			echoServer := &echoserver.Server{
-				MustContextAuthEntity: func(ctx context.Context) echoserver.RPCEntityInfo {
-					ent := MustContextAuthEntity(ctx)
-					return echoserver.RPCEntityInfo{
-						Entity: ent.Entity,
-						Data:   ent.Data,
-					}
-				},
-			}
-			echoServer.SetExpectedAuthEntity(leaf.Issuer.String() + ":" + leaf.SerialNumber.String())
-			echoServer.SetAuthorized(true)
-			server.RegisterServiceServer(
-				context.Background(),
-				&pb.EchoService_ServiceDesc,
-				echoServer,
-				pb.RegisterEchoServiceHandlerFromEndpoint,
-			)
-
-			if viaServerServe {
-				httpListener, err := net.Listen("tcp", "localhost:0")
-				if err != nil {
-					return "", nil, err
-				}
-
-				tlsConfig := tlsConfig.Clone()
-				tlsConfig.ClientAuth = tls.VerifyClientCertIfGiven
-				httpServer := &http.Server{
-					ReadHeaderTimeout: 10 * time.Second,
-					MaxHeaderBytes:    MaxMessageSize,
-					TLSConfig:         tlsConfig,
-				}
-				httpServer.Addr = httpListener.Addr().String()
-				httpServer.Handler = server.GRPCHandler()
-
-				errChan := make(chan error)
-				go func() {
-					serveErr := httpServer.ServeTLS(httpListener, certFile, keyFile)
-					if serveErr != nil && errors.Is(serveErr, http.ErrServerClosed) {
-						serveErr = nil
-					}
-					errChan <- serveErr
-				}()
-				return httpListener.Addr().String(), func() error {
-					return multierr.Combine(httpServer.Shutdown(context.Background()), <-errChan, server.Stop())
-				}, nil
-			}
-
-			if err := server.Start(); err != nil {
-				return "", nil, err
-			}
-			return server.InternalAddr().String(), server.Stop, nil
-		}
-
-		t.Run(tcName, func(t *testing.T) {
-			t.Run("unauthenticated", func(t *testing.T) {
-				serverAddr, stopServer, err := makeServer()
-				test.That(t, err, test.ShouldBeNil)
-
-				tlsConfig := tlsConfig.Clone()
-				tlsConfig.Certificates = nil
-				tlsConfig.ServerName = "somename"
-				conn, err := Dial(
-					context.Background(),
-					serverAddr,
-					logger,
-					WithDialDebug(),
-					WithTLSConfig(tlsConfig),
-				)
-				test.That(t, err, test.ShouldBeNil)
-				client := pb.NewEchoServiceClient(conn)
-				_, err = client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
-				test.That(t, err, test.ShouldNotBeNil)
-				gStatus, ok := status.FromError(err)
-				test.That(t, ok, test.ShouldBeTrue)
-				test.That(t, gStatus.Code(), test.ShouldEqual, codes.Unauthenticated)
-				test.That(t, conn.Close(), test.ShouldBeNil)
-
-				test.That(t, stopServer(), test.ShouldBeNil)
-			})
-
-			t.Run("authenticated", func(t *testing.T) {
-				serverAddr, stopServer, err := makeServer()
-				test.That(t, err, test.ShouldBeNil)
-
-				tlsConfig := tlsConfig.Clone()
-				tlsConfig.ServerName = "somename"
-				conn, err := Dial(
-					context.Background(),
-					serverAddr,
-					logger,
-					WithDialDebug(),
-					WithTLSConfig(tlsConfig),
-				)
-				test.That(t, err, test.ShouldBeNil)
-				client := pb.NewEchoServiceClient(conn)
-				echoResp, err := client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
-				test.That(t, err, test.ShouldBeNil)
-				test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
-				test.That(t, conn.Close(), test.ShouldBeNil)
-
-				tlsConfig.ServerName = "altname"
-				conn, err = Dial(
-					context.Background(),
-					serverAddr,
-					logger,
-					WithDialDebug(),
-					WithTLSConfig(tlsConfig),
-				)
-				test.That(t, err, test.ShouldBeNil)
-				client = pb.NewEchoServiceClient(conn)
-				echoResp, err = client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
-				test.That(t, err, test.ShouldBeNil)
-				test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
-				test.That(t, conn.Close(), test.ShouldBeNil)
-
-				test.That(t, stopServer(), test.ShouldBeNil)
-			})
-
-			t.Run("verified cert but unaccepted", func(t *testing.T) {
-				serverAddr, stopServer, err := makeServer("unknown-name")
-				test.That(t, err, test.ShouldBeNil)
-
-				tlsConfig := tlsConfig.Clone()
-				tlsConfig.ServerName = "somename"
-				conn, err := Dial(
-					context.Background(),
-					serverAddr,
-					logger,
-					WithDialDebug(),
-					WithTLSConfig(tlsConfig),
-				)
-				test.That(t, err, test.ShouldBeNil)
-				client := pb.NewEchoServiceClient(conn)
-				_, err = client.Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
-				test.That(t, err, test.ShouldNotBeNil)
-				gStatus, ok := status.FromError(err)
-				test.That(t, ok, test.ShouldBeTrue)
-				test.That(t, gStatus.Code(), test.ShouldEqual, codes.Unauthenticated)
-				test.That(t, conn.Close(), test.ShouldBeNil)
-
-				test.That(t, stopServer(), test.ShouldBeNil)
-			})
-		})
-	}
 }
 
 func TestDialForceDirect(t *testing.T) {

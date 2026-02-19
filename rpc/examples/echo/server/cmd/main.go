@@ -6,7 +6,6 @@ package main
 import (
 	"context"
 	"crypto/ed25519"
-	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
@@ -44,7 +43,6 @@ type Arguments struct {
 	SignalingAddress   string            `flag:"signaling-address"`
 	TLSCertFile        string            `flag:"tls-cert"`
 	TLSKeyFile         string            `flag:"tls-key"`
-	TLSAuth            bool              `flag:"tls-auth"`
 	AuthPrivateKeyFile string            `flag:"auth-private-key"`
 	AuthPublicKeyFile  string            `flag:"auth-public-key"`
 	APIKey             string            `flag:"api-key"`
@@ -73,7 +71,6 @@ func mainWithArgs(ctx context.Context, args []string, logger utils.ZapCompatible
 		argsParsed.SignalingAddress,
 		argsParsed.TLSCertFile,
 		argsParsed.TLSKeyFile,
-		argsParsed.TLSAuth,
 		argsParsed.AuthPrivateKeyFile,
 		argsParsed.AuthPublicKeyFile,
 		argsParsed.APIKey,
@@ -92,7 +89,6 @@ func runServer(
 	signalingAddress string,
 	tlsCertFile string,
 	tlsKeyFile string,
-	tlsAuth bool,
 	authPrivateKeyFile string,
 	authPublicKeyFile string,
 	apiKey string,
@@ -186,18 +182,6 @@ func runServer(
 		handler := rpc.MakeSimpleAuthHandler(authEntities, apiKey)
 		serverOpts = append(serverOpts, rpc.WithAuthHandler(rpc.CredentialsTypeAPIKey, handler))
 
-		if secure && tlsAuth {
-			cert, err := tls.LoadX509KeyPair(tlsCertFile, tlsKeyFile)
-			if err != nil {
-				return err
-			}
-			leaf, err := x509.ParseCertificate(cert.Certificate[0])
-			if err != nil {
-				return err
-			}
-			serverOpts = append(serverOpts, rpc.WithTLSAuthHandler(leaf.DNSNames))
-		}
-
 		if authPublicKey != nil {
 			serverOpts = append(serverOpts, rpc.WithExternalAuthEd25519PublicKeyTokenVerifier(authPublicKey))
 		}
@@ -242,7 +226,6 @@ func runServer(
 
 	httpServer, err := utils.NewPossiblySecureHTTPServer(mux, utils.HTTPServerOptions{
 		Secure:         secure,
-		TLSAuth:        tlsAuth,
 		MaxHeaderBytes: rpc.MaxMessageSize,
 		Addr:           listenerAddr,
 	})

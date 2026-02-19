@@ -2,7 +2,6 @@ package utils
 
 import (
 	"context"
-	"crypto/tls"
 	"net/http"
 	"time"
 
@@ -13,7 +12,6 @@ import (
 // HTTPServerOptions define options to use when calling NewPossiblySecureHTTPServer.
 type HTTPServerOptions struct {
 	Secure         bool
-	TLSAuth        bool
 	MaxHeaderBytes int
 	Addr           string
 }
@@ -30,21 +28,6 @@ func NewPossiblySecureHTTPServer(handler http.Handler, opts HTTPServerOptions) (
 			ReadHeaderTimeout: 10 * time.Second,
 			MaxHeaderBytes:    opts.MaxHeaderBytes,
 			Handler:           handler,
-		}
-		// TlS settings configured using https://ssl-config.mozilla.org/
-		if opts.TLSAuth {
-			httpServer.TLSConfig = &tls.Config{
-				MinVersion: tls.VersionTLS12,
-				CipherSuites: []uint16{
-					tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
-					tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-					tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
-					tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
-					tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305,
-					tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305,
-				},
-				ClientAuth: tls.VerifyClientCertIfGiven,
-			}
 		}
 	} else {
 		var err error

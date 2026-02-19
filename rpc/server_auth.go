@@ -2,7 +2,6 @@ package rpc
 
 import (
 	"context"
-	"crypto/x509"
 	"fmt"
 	"strings"
 	"time"
@@ -10,12 +9,9 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
-	"go.uber.org/multierr"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/metadata"
-	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 
 	rpcpb "go.viam.com/utils/proto/rpc/v1"
@@ -255,8 +251,6 @@ func TokenFromContext(ctx context.Context) (string, error) {
 	return strings.TrimPrefix(authHeader[0], AuthorizationValuePrefixBearer), nil
 }
 
-var errNotTLSAuthed = errors.New("not authenticated via TLS")
-
 var validSigningMethods = []string{
 	"ES256",
 	"ES512",
@@ -293,38 +287,6 @@ func (ss *simpleServer) ensureAuthed(ctx context.Context) (context.Context, erro
 
 	tokenString, err := TokenFromContext(ctx)
 	if err != nil {
-		// check TLS state
-		if ss.tlsAuthHandler == nil {
-			return nil, err
-		}
-		var verifiedCert *x509.Certificate
-		if p, ok := peer.FromContext(ctx); ok && p.AuthInfo != nil {
-			if authInfo, ok := p.AuthInfo.(credentials.TLSInfo); ok {
-				verifiedChains := authInfo.State.VerifiedChains
-				if len(verifiedChains) != 0 && len(verifiedChains[0]) != 0 {
-					verifiedCert = verifiedChains[0][0]
-				}
-			}
-		}
-		if verifiedCert == nil {
-			return nil, err
-		}
-		if tlsErr := ss.tlsAuthHandler(ctx, verifiedCert.DNSNames...); tlsErr == nil {
-			// mTLS based authentication contexts do not really have a sense of a unique identifier
-			// when considering multiple clients using the certificate. We deem this okay but it does
-			// mean that if the identifier is used to bind to the concept of a unique session, it is
-			// not sufficient without another piece of information (like an address and port).
-			// Furthermore, if TLS certificate verification is disabled, this trust is lost.
-			// Our best chance at uniqueness with a compliant CA is to use the issuer DN (Distinguished Name)
-			// along with the serial number; compliancy hinges on issuing unique serial numbers and if this
-			// is an intermediate CA, their parent issuing unique DNs.
-			nextCtx := ContextWithAuthEntity(ctx, EntityInfo{
-				Entity: verifiedCert.Issuer.String() + ":" + verifiedCert.SerialNumber.String(),
-			})
-			return nextCtx, nil
-		} else if !errors.Is(tlsErr, errNotTLSAuthed) {
-			return nil, multierr.Combine(err, tlsErr)
-		}
 		return nil, err
 	}
 
