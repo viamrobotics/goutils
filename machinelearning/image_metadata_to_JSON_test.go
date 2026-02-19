@@ -221,6 +221,40 @@ var (
 		PartID:        "part2",
 		ComponentName: "component3",
 	}
+
+	// Confidence values for testing.
+	conf09 = 0.9
+	conf07 = 0.7
+
+	// fakeDataWithClassificationConfidence has classification annotations with confidence for custom training.
+	fakeDataWithClassificationConfidence = &ImageMetadata{
+		Tags: []string{"cat"},
+		Annotations: &datav1.Annotations{
+			Classifications: []*datav1.Classification{
+				{Label: "cat", Confidence: &conf09},
+			},
+		},
+		Bucket: customTrainingDirName,
+		Path:   "filename_conf.jpeg" + zipExt,
+	}
+	// fakeDataWithBBoxConfidence has bounding box annotations with confidence for object detection.
+	fakeDataWithBBoxConfidence = &ImageMetadata{
+		Annotations: &datav1.Annotations{
+			Bboxes: []*datav1.BoundingBox{
+				{
+					Id:             "10",
+					Label:          "cat",
+					XMinNormalized: 0.2,
+					XMaxNormalized: 0.22,
+					YMinNormalized: 0.3,
+					YMaxNormalized: 0.33,
+					Confidence:     &conf07,
+				},
+			},
+		},
+		Bucket: objDetectionDirName,
+		Path:   "filename_bbox_conf.jpeg" + zipExt,
+	}
 )
 
 // mockWriter implements CloseableWriter for testing.
@@ -450,4 +484,64 @@ func normalizeJSON(t *testing.T, jsonString string) string {
 	}
 
 	return strings.Join(result, "\n") + "\n"
+}
+
+// TestImageMetadataToJSONLinesConfidence verifies that confidence is serialized when present
+// in classification annotations and bounding box annotations.
+func TestImageMetadataToJSONLinesConfidence(t *testing.T) {
+	t.Run("custom training with classification confidence", func(t *testing.T) {
+		wc := newMockWriter()
+		_, err := ImageMetadataToJSONLines(
+			[]*ImageMetadata{fakeDataWithClassificationConfidence},
+			nil, // requestedTags nil for custom training
+			mlv1.ModelType_MODEL_TYPE_OBJECT_DETECTION,
+			wc,
+		)
+		test.That(t, err, test.ShouldBeNil)
+
+		lines := strings.Split(strings.TrimSpace(wc.buf.String()), "\n")
+		test.That(t, len(lines), test.ShouldEqual, 1)
+
+		var obj map[string]any
+		err = json.Unmarshal([]byte(lines[0]), &obj)
+		test.That(t, err, test.ShouldBeNil)
+
+		classifications, ok := obj["classification_annotations"].([]any)
+		test.That(t, ok, test.ShouldBeTrue)
+		test.That(t, len(classifications), test.ShouldEqual, 1)
+
+		ann := classifications[0].(map[string]any)
+		test.That(t, ann["annotation_label"], test.ShouldEqual, "cat")
+		conf, ok := ann["confidence"].(float64)
+		test.That(t, ok, test.ShouldBeTrue)
+		test.That(t, conf, test.ShouldEqual, 0.9)
+	})
+
+	t.Run("object detection with bounding box confidence", func(t *testing.T) {
+		wc := newMockWriter()
+		_, err := ImageMetadataToJSONLines(
+			[]*ImageMetadata{fakeDataWithBBoxConfidence},
+			objectDetectionLabels,
+			mlv1.ModelType_MODEL_TYPE_OBJECT_DETECTION,
+			wc,
+		)
+		test.That(t, err, test.ShouldBeNil)
+
+		lines := strings.Split(strings.TrimSpace(wc.buf.String()), "\n")
+		test.That(t, len(lines), test.ShouldEqual, 1)
+
+		var obj map[string]any
+		err = json.Unmarshal([]byte(lines[0]), &obj)
+		test.That(t, err, test.ShouldBeNil)
+
+		bboxes, ok := obj["bounding_box_annotations"].([]any)
+		test.That(t, ok, test.ShouldBeTrue)
+		test.That(t, len(bboxes), test.ShouldEqual, 1)
+
+		bbox := bboxes[0].(map[string]any)
+		test.That(t, bbox["annotation_label"], test.ShouldEqual, "cat")
+		conf, ok := bbox["confidence"].(float64)
+		test.That(t, ok, test.ShouldBeTrue)
+		test.That(t, conf, test.ShouldEqual, 0.7)
+	})
 }
