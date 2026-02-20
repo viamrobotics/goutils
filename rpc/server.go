@@ -68,9 +68,8 @@ type Server interface {
 
 	// ServeTLS will externally serve, using the given cert/key, the
 	// all in one handler described by http.Handler. The provided tlsConfig
-	// will be used for any extra TLS settings. If using mutual TLS authentication
-	// (see WithTLSAuthHandler), then the tls.Config should have ClientAuth,
-	// at a minimum, set to tls.VerifyClientCertIfGiven.
+	// will be used for any extra TLS settings. Client authentication is handled
+	// at the application level; the internal listener uses tls.NoClientCert.
 	ServeTLS(listener net.Listener, certFile, keyFile string, tlsConfig *tls.Config) error
 
 	// Stop stops the internal gRPC and the HTTP server if it
