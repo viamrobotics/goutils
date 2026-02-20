@@ -810,22 +810,21 @@ func (ss *simpleServer) GRPCHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r = requestWithHost(r)
 
-		// Apply adaptive rate limiting to prevent unbounded buffering in http2 layer
-		// Uses tiered backpressure optimized for 4GB servers with 100 concurrent connections
+		// Apply intermediate buffering to prevent unbounded buffering in http2 layer
+		// When the buffer fills up, reads from gRPC slow down naturally
 		// Note: ContentLength is -1 for streaming/chunked requests (like gRPC)
 		if r.Body != nil {
-			// Start with 100 MB/s, uses tiered thresholds: 500MB/1GB/1.5GB/2GB
-			const baseRateMBps = 100
-			const baseRateBytesPerSec = baseRateMBps * 1024 * 1024
+			// Use a 10MB intermediate buffer
+			const bufferSizeMB = 10
+			const bufferSizeBytes = bufferSizeMB * 1024 * 1024
 
-			ss.logger.Infow("Applying tiered adaptive rate limiter",
+			ss.logger.Infow("Applying intermediate buffer",
 				"path", r.URL.Path,
 				"client", r.RemoteAddr,
 				"content_length", r.ContentLength,
-				"base_rate_mbps", baseRateMBps,
-				"tiers", "500MB/1GB/1.5GB/2GB")
+				"buffer_size_mb", bufferSizeMB)
 
-			r.Body = newRateLimitedReader(r.Body, baseRateBytesPerSec, ss.logger)
+			r.Body = newBufferedReader(r.Body, bufferSizeBytes, ss.logger)
 		}
 
 		switch ss.getRequestType(r) {
@@ -871,199 +870,139 @@ func (ss *simpleServer) EnsureAuthed(ctx context.Context) (context.Context, erro
 //
 // The rate limiter is adaptive: it monitors heap size and reduces the rate when memory
 // pressure increases, providing automatic backpressure.
-type rateLimitedReader struct {
+type bufferedReader struct {
 	underlying io.ReadCloser
-	limiter    *rate.Limiter
 	logger     utils.ZapCompatibleLogger
+
+	// Buffered channel for intermediate storage
+	chunks chan []byte
+
+	// Current chunk being read
+	current []byte
+	pos     int
+
+	// Background reader state
+	readerDone chan struct{}
+	readErr    error
+
+	// Metrics
 	totalBytes int64
 	startTime  time.Time
-
-	// Adaptive rate limiting based on heap pressure
-	baseRate       int64         // Maximum rate when no memory pressure (bytes/sec)
-	minRate        int64         // Minimum rate even under high pressure (bytes/sec)
-	heapThreshold  uint64        // Start reducing rate when heap exceeds this (bytes)
-	lastAdjustTime time.Time     // Last time we adjusted the rate
-	adjustInterval time.Duration // How often to check heap and adjust rate
+	maxBufSize int
 }
 
-// newRateLimitedReader creates an adaptive rate-limited reader with tiered backpressure.
-// It starts with baseRate and uses aggressive tiered thresholds optimized for 4GB servers
-// with up to 100 concurrent connections.
-func newRateLimitedReader(underlying io.ReadCloser, baseRate int, logger utils.ZapCompatibleLogger) *rateLimitedReader {
-	return &rateLimitedReader{
+// newBufferedReader creates a buffered reader with a fixed-size intermediate buffer.
+// It provides natural backpressure to gRPC clients by blocking when the buffer fills up.
+func newBufferedReader(underlying io.ReadCloser, maxBufSize int, logger utils.ZapCompatibleLogger) *bufferedReader {
+	// Calculate number of chunks: use 32KB chunks, buffer holds maxBufSize worth
+	const chunkSize = 32 * 1024
+	numChunks := maxBufSize / chunkSize
+	if numChunks < 1 {
+		numChunks = 1
+	}
+
+	br := &bufferedReader{
 		underlying: underlying,
-		limiter:    rate.NewLimiter(rate.Limit(baseRate), baseRate),
 		logger:     logger,
+		chunks:     make(chan []byte, numChunks),
+		readerDone: make(chan struct{}),
 		startTime:  time.Now(),
-
-		// Adaptive parameters - uses tiered thresholds (see adjustRateIfNeeded)
-		baseRate:       int64(baseRate), // e.g., 100 MB/s
-		lastAdjustTime: time.Now(),
-		adjustInterval: 1 * time.Second, // Check heap every second
-
-		// Legacy fields (kept for struct compatibility, not used in tiered approach)
-		minRate:       int64(50 * 1024),  // 50 KB/s emergency minimum
-		heapThreshold: 500 * 1024 * 1024, // 500 MB first tier
+		maxBufSize: maxBufSize,
 	}
+
+	// Start background goroutine to read from underlying into channel
+	go br.fillBuffer(chunkSize)
+
+	return br
 }
 
-// adjustRateIfNeeded checks heap size and adjusts the rate limiter to provide
-// adaptive backpressure based on memory pressure.
-//
-// Tiered thresholds optimized for 4GB total memory with up to 100 concurrent connections:
-// - < 500MB (12.5%): Normal operation
-// - 500MB-1GB (12.5-25%): Caution - reduce by 30%
-// - 1GB-1.5GB (25-37.5%): Warning - reduce by 50%, cap at 2 MB/s
-// - 1.5GB-2GB (37.5-50%): Critical - cap at 500 KB/s
-// - > 2GB (>50%): Emergency - cap at 50 KB/s
-func (r *rateLimitedReader) adjustRateIfNeeded() {
-	now := time.Now()
-	if now.Sub(r.lastAdjustTime) < r.adjustInterval {
-		return // Don't adjust too frequently
-	}
-	r.lastAdjustTime = now
+// fillBuffer runs in a background goroutine and continuously reads from the
+// underlying reader into chunks sent on the channel. When the channel is full,
+// it blocks, providing natural backpressure to the gRPC stream.
+func (br *bufferedReader) fillBuffer(chunkSize int) {
+	defer close(br.readerDone)
+	defer close(br.chunks)
 
-	var m sysruntime.MemStats
-	sysruntime.ReadMemStats(&m)
+	for {
+		buf := make([]byte, chunkSize)
+		n, err := br.underlying.Read(buf)
 
-	currentRate := int64(r.limiter.Limit())
-	heapMB := m.HeapAlloc / (1024 * 1024)
-	var newRate int64
-
-	// Tiered response based on heap size
-	switch {
-	case m.HeapAlloc > 2*1024*1024*1024: // > 2GB (>50% of 4GB) - EMERGENCY
-		newRate = 50 * 1024 // 50 KB/s - essentially paused
-		if newRate != currentRate {
-			r.logger.Errorw("Adaptive rate limiter: EMERGENCY - heap > 2GB",
-				"heap_alloc_mb", heapMB,
-				"old_rate_mbps", currentRate/(1024*1024),
-				"new_rate_kbps", newRate/1024)
-		}
-
-	case m.HeapAlloc > 1536*1024*1024: // > 1.5GB (>37.5%) - CRITICAL
-		//"CRITICAL (>37.5% memory)"
-		maxRate := int64(500 * 1024) // 500 KB/s max
-		newRate = int64(float64(currentRate) * 0.5)
-		if newRate > maxRate {
-			newRate = maxRate
-		}
-		if newRate < 50*1024 {
-			newRate = 50 * 1024 // Min 50 KB/s
-		}
-		if newRate != currentRate {
-			r.logger.Errorw("Adaptive rate limiter: CRITICAL - heap > 1.5GB",
-				"heap_alloc_mb", heapMB,
-				"old_rate_kbps", currentRate/1024,
-				"new_rate_kbps", newRate/1024)
-		}
-
-	case m.HeapAlloc > 1024*1024*1024: // > 1GB (>25%) - WARNING
-		//"WARNING (>25% memory)"
-		maxRate := int64(2 * 1024 * 1024)           // 2 MB/s max
-		newRate = int64(float64(currentRate) * 0.5) // Reduce by 50%
-		if newRate > maxRate {
-			newRate = maxRate
-		}
-		if newRate < 50*1024 {
-			newRate = 50 * 1024
-		}
-		if newRate != currentRate {
-			r.logger.Warnw("Adaptive rate limiter: WARNING - heap > 1GB",
-				"heap_alloc_mb", heapMB,
-				"old_rate_mbps", currentRate/(1024*1024),
-				"new_rate_mbps", newRate/(1024*1024))
-		}
-
-	case m.HeapAlloc > 500*1024*1024: // > 500MB (>12.5%) - CAUTION
-		//"CAUTION (>12.5% memory)"
-		newRate = int64(float64(currentRate) * 0.7) // Reduce by 30%
-		if newRate < 50*1024 {
-			newRate = 50 * 1024
-		}
-		if newRate != currentRate {
-			r.logger.Warnw("Adaptive rate limiter: CAUTION - heap > 500MB",
-				"heap_alloc_mb", heapMB,
-				"old_rate_mbps", currentRate/(1024*1024),
-				"new_rate_mbps", newRate/(1024*1024))
-		}
-
-	default: // < 500MB - NORMAL
-		//"NORMAL (<12.5% memory)"
-		if currentRate < r.baseRate {
-			// No pressure and below baseline - increase rate by 20% toward baseline
-			newRate = int64(float64(currentRate) * 1.2)
-			if newRate > r.baseRate {
-				newRate = r.baseRate
+		if n > 0 {
+			// Send chunk to channel (blocks if channel is full)
+			select {
+			case br.chunks <- buf[:n]:
+				// Chunk sent successfully
+			case <-br.readerDone:
+				return
 			}
-			if newRate != currentRate {
-				r.logger.Infow("Adaptive rate limiter: increasing rate (heap normal)",
-					"heap_alloc_mb", heapMB,
-					"old_rate_mbps", currentRate/(1024*1024),
-					"new_rate_mbps", newRate/(1024*1024))
-			}
-		} else {
-			// At baseline and no pressure - no change needed
+		}
+
+		if err != nil {
+			br.readErr = err
 			return
 		}
 	}
-
-	if newRate != currentRate {
-		r.limiter.SetLimit(rate.Limit(newRate))
-	}
 }
 
-// Read implements io.Reader. It reads from the underlying reader, then waits
-// according to the rate limiter before returning. This delays when the HTTP/2
-// layer sends WINDOW_UPDATE frames, providing backpressure.
-func (r *rateLimitedReader) Read(p []byte) (n int, err error) {
-	// Adjust rate based on heap pressure before each read
-	r.adjustRateIfNeeded()
-	// Read from underlying (this reads from http2's dataBuffer)
-	n, err = r.underlying.Read(p)
+// Read implements io.Reader. It reads from the buffered chunks, blocking
+// if no data is available. This provides natural backpressure to the gRPC
+// stream when the buffer fills up.
+func (br *bufferedReader) Read(p []byte) (n int, err error) {
+	for {
+		// If we have a current chunk, read from it
+		if br.current != nil && br.pos < len(br.current) {
+			copied := copy(p[n:], br.current[br.pos:])
+			br.pos += copied
+			n += copied
+			br.totalBytes += int64(copied)
 
-	if n > 0 {
-		r.totalBytes += int64(n)
+			// If we've filled the destination buffer, return
+			if n == len(p) {
+				return n, nil
+			}
 
-		// Wait according to rate limiter before returning
-		// This delays when noteBodyReadFromHandler is called
-		// Which delays WINDOW_UPDATE being sent
-		ctx := context.Background()
-		start := time.Now()
-		if waitErr := r.limiter.WaitN(ctx, n); waitErr != nil {
-			r.logger.Warnw("Rate limiter wait failed", "error", waitErr)
+			// If we've consumed the current chunk, get next chunk
+			if br.pos >= len(br.current) {
+				br.current = nil
+				br.pos = 0
+			}
 		}
-		waitTime := time.Since(start)
 
-		// Log periodically to show rate limiting is working
-		if waitTime > 100*time.Millisecond {
-			elapsed := time.Since(r.startTime)
-			avgMBps := float64(r.totalBytes) / elapsed.Seconds() / (1024 * 1024)
-			currentRate := int64(r.limiter.Limit())
-			r.logger.Debugw("Rate-limited read",
-				"bytes_this_read", n,
-				"wait_time", waitTime,
-				"total_bytes", r.totalBytes,
-				"avg_mbps", avgMBps,
-				"current_rate_mbps", currentRate/(1024*1024))
+		// Need a new chunk
+		if br.current == nil {
+			chunk, ok := <-br.chunks
+			if !ok {
+				// Channel closed, check for error
+				if br.readErr != nil && br.readErr != io.EOF {
+					return n, br.readErr
+				}
+				if n > 0 {
+					return n, nil
+				}
+				return 0, io.EOF
+			}
+			br.current = chunk
+			br.pos = 0
 		}
 	}
-
-	return n, err
 }
 
 // Close implements io.Closer.
-func (r *rateLimitedReader) Close() error {
-	elapsed := time.Since(r.startTime)
-	avgMBps := float64(r.totalBytes) / elapsed.Seconds() / (1024 * 1024)
-	finalRate := int64(r.limiter.Limit())
-	r.logger.Infow("Rate-limited read completed",
-		"total_bytes", r.totalBytes,
+func (br *bufferedReader) Close() error {
+	close(br.readerDone)
+
+	// Wait for background goroutine to finish
+	<-br.readerDone
+
+	elapsed := time.Since(br.startTime)
+	avgMBps := float64(br.totalBytes) / elapsed.Seconds() / (1024 * 1024)
+	br.logger.Infow("Buffered read completed",
+		"total_bytes", br.totalBytes,
 		"elapsed", elapsed,
 		"avg_mbps", avgMBps,
-		"final_rate_mbps", finalRate/(1024*1024),
-		"base_rate_mbps", r.baseRate/(1024*1024))
-	return r.underlying.Close()
+		"buffer_size_mb", br.maxBufSize/(1024*1024))
+
+	return br.underlying.Close()
 }
 
 // ServeHTTP is an all-in-one handler for any kind of gRPC traffic. This is useful
@@ -1072,22 +1011,21 @@ func (r *rateLimitedReader) Close() error {
 func (ss *simpleServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r = requestWithHost(r)
 
-	// Apply adaptive rate limiting to prevent unbounded buffering in http2 layer
-	// Uses tiered backpressure optimized for 4GB servers with 100 concurrent connections
+	// Apply intermediate buffering to prevent unbounded buffering in http2 layer
+	// When the buffer fills up, reads from gRPC slow down naturally
 	// Note: ContentLength is -1 for streaming/chunked requests (like gRPC)
 	if r.Body != nil {
-		// Start with 100 MB/s, uses tiered thresholds: 500MB/1GB/1.5GB/2GB
-		const baseRateMBps = 100
-		const baseRateBytesPerSec = baseRateMBps * 1024 * 1024
+		// Use a 10MB intermediate buffer
+		const bufferSizeMB = 10
+		const bufferSizeBytes = bufferSizeMB * 1024 * 1024
 
-		ss.logger.Infow("Applying tiered adaptive rate limiter",
+		ss.logger.Infow("Applying intermediate buffer",
 			"path", r.URL.Path,
 			"client", r.RemoteAddr,
 			"content_length", r.ContentLength,
-			"base_rate_mbps", baseRateMBps,
-			"tiers", "500MB/1GB/1.5GB/2GB")
+			"buffer_size_mb", bufferSizeMB)
 
-		r.Body = newRateLimitedReader(r.Body, baseRateBytesPerSec, ss.logger)
+		r.Body = newBufferedReader(r.Body, bufferSizeBytes, ss.logger)
 	}
 
 	switch ss.getRequestType(r) {
