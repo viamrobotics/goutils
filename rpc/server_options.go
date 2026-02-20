@@ -183,7 +183,6 @@ func WithExternalListenerAddress(address *net.TCPAddr) ServerOption {
 func WithInternalTLSConfig(config *tls.Config) ServerOption {
 	return newFuncServerOption(func(o *serverOptions) error {
 		o.tlsConfig = config.Clone()
-		o.tlsConfig.ClientAuth = tls.NoClientCert
 		return nil
 	})
 }

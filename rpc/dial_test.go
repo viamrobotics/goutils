@@ -1397,7 +1397,9 @@ func TestDialMutualTLSAuth(t *testing.T) {
 					opts...,
 				)
 			} else {
-				opts = append(opts, WithInternalTLSConfig(tlsConfig))
+				internalTLSConfig := tlsConfig.Clone()
+				internalTLSConfig.ClientAuth = tls.VerifyClientCertIfGiven
+				opts = append(opts, WithInternalTLSConfig(internalTLSConfig))
 				server, err = NewServer(
 					logger,
 					opts...,
