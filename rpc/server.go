@@ -806,23 +806,6 @@ func (ss *simpleServer) GRPCHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r = requestWithHost(r)
 
-		// Apply intermediate buffering to prevent unbounded buffering in http2 layer
-		// When the buffer fills up, reads from gRPC slow down naturally
-		// Note: ContentLength is -1 for streaming/chunked requests (like gRPC)
-		if r.Body != nil {
-			// Use a 10MB intermediate buffer
-			const bufferSizeMB = 10
-			const bufferSizeBytes = bufferSizeMB * 1024 * 1024
-
-			ss.logger.Infow("Applying intermediate buffer",
-				"path", r.URL.Path,
-				"client", r.RemoteAddr,
-				"content_length", r.ContentLength,
-				"buffer_size_mb", bufferSizeMB)
-
-			r.Body = newBufferedReader(r.Body, bufferSizeBytes, ss.logger)
-		}
-
 		switch ss.getRequestType(r) {
 		case requestTypeGRPC:
 			ss.grpcServer.ServeHTTP(w, r)
