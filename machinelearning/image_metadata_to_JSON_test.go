@@ -13,7 +13,6 @@ import (
 	datav1 "go.viam.com/api/app/data/v1"
 	mlv1 "go.viam.com/api/app/mltraining/v1"
 	"go.viam.com/test"
-
 	"go.viam.com/utils/artifact"
 )
 
@@ -234,8 +233,10 @@ var (
 				{Label: "cat", Confidence: &conf09},
 			},
 		},
-		Bucket: customTrainingDirName,
-		Path:   "filename_conf.jpeg" + zipExt,
+		PartID:        "part1",
+		ComponentName: "component2",
+		Bucket:        customTrainingDirName,
+		Path:          "filename_class_conf" + jpegFileExt + zipExt,
 	}
 	// fakeDataWithBBoxConfidence has bounding box annotations with confidence for object detection.
 	fakeDataWithBBoxConfidence = &ImageMetadata{
@@ -252,8 +253,10 @@ var (
 				},
 			},
 		},
-		Bucket: customTrainingDirName,
-		Path:   "filename_bbox_conf.jpeg" + zipExt,
+		PartID:        "part1",
+		ComponentName: "component1",
+		Bucket:        customTrainingDirName,
+		Path:          "filename_bbox_conf" + jpegFileExt + zipExt,
 	}
 )
 
@@ -405,13 +408,13 @@ func TestImageMetadataToJSONLines(t *testing.T) {
 			expectedMultiLabelCount: 0,
 		},
 		{
-			name: "Object detection with bounding box confidence " +
+			name: "Custom training with bounding box confidence " +
 				"serializes confidence in bounding_box_annotations",
 			imageMetadata:           []*ImageMetadata{fakeDataWithBBoxConfidence},
 			modelType:               mlv1.ModelType_MODEL_TYPE_OBJECT_DETECTION,
-			labels:                  objectDetectionLabels,
+			labels:                  nil,
 			expJSONFile:             filepath.Join(customTrainingDirName, "fakedata_bbox_confidence.jsonl"),
-			expectedLabelsCount:     map[string]int32{"cat": 1},
+			expectedLabelsCount:     map[string]int32{},
 			expectedImageCount:      1,
 			expectedMultiLabelCount: 0,
 		},

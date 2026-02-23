@@ -1,6 +1,14 @@
 {
   "test_fake_bucket": {
     "custom": {
+      "fakedata_bbox_confidence.jsonl": {
+        "hash": "cfb41a666a5ae6a978a68a2b5e405b75",
+        "size": 357
+      },
+      "fakedata_classification_confidence.jsonl": {
+        "hash": "d4d521bd9af340f9aedf44683d26ee97",
+        "size": 271
+      },
       "fakedata_custom_training.jsonl": {
         "hash": "c717c47258c132598b53e9ddaa882719",
         "size": 966

@@ -263,7 +263,6 @@ func getMatchingBBoxes(annotations []*datav1.BoundingBox, labels []string) []BBo
 			XMaxNormalized:  annotation.GetXMaxNormalized(),
 			YMinNormalized:  annotation.GetYMinNormalized(),
 			YMaxNormalized:  annotation.GetYMaxNormalized(),
-			Confidence:      annotation.Confidence,
 		}
 		if labels != nil {
 			for _, reqLabel := range labels {
@@ -272,6 +271,7 @@ func getMatchingBBoxes(annotations []*datav1.BoundingBox, labels []string) []BBo
 				}
 			}
 		} else {
+			bbox.Confidence = annotation.Confidence
 			match = append(match, bbox)
 		}
 	}
