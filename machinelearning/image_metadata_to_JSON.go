@@ -268,9 +268,11 @@ func getMatchingBBoxes(annotations []*datav1.BoundingBox, labels []string) []BBo
 			for _, reqLabel := range labels {
 				if annotation.GetLabel() == reqLabel {
 					match = append(match, bbox)
+					break
 				}
 			}
 		} else {
+			// We only add confidence if there are no requested labels, meaning this is a custom training job.
 			bbox.Confidence = annotation.Confidence
 			match = append(match, bbox)
 		}
