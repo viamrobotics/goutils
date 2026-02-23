@@ -8,11 +8,9 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"os"
-	sysruntime "runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -28,7 +26,6 @@ import (
 	"github.com/viamrobotics/zeroconf"
 	"go.uber.org/multierr"
 	"golang.org/x/net/http2/h2c"
-	"golang.org/x/time/rate"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -861,172 +858,11 @@ func (ss *simpleServer) EnsureAuthed(ctx context.Context) (context.Context, erro
 	return ss.ensureAuthed(ctx)
 }
 
-// rateLimitedReader wraps an io.ReadCloser and adaptively rate-limits Read() calls
-// to prevent unbounded buffering in the HTTP/2 layer. This is specifically needed for
-// FileUpload requests over h2c, where the golang.org/x/net/http2 dataBuffer can grow unbounded.
-//
-// By rate-limiting Read() calls, we slow down when WINDOW_UPDATE frames are sent,
-// which prevents DATA frames from arriving faster than the application can process them.
-//
-// The rate limiter is adaptive: it monitors heap size and reduces the rate when memory
-// pressure increases, providing automatic backpressure.
-type bufferedReader struct {
-	underlying io.ReadCloser
-	logger     utils.ZapCompatibleLogger
-
-	// Buffered channel for intermediate storage
-	chunks chan []byte
-
-	// Current chunk being read
-	current []byte
-	pos     int
-
-	// Background reader state
-	readerDone chan struct{}
-	readErr    error
-
-	// Metrics
-	totalBytes int64
-	startTime  time.Time
-	maxBufSize int
-}
-
-// newBufferedReader creates a buffered reader with a fixed-size intermediate buffer.
-// It provides natural backpressure to gRPC clients by blocking when the buffer fills up.
-func newBufferedReader(underlying io.ReadCloser, maxBufSize int, logger utils.ZapCompatibleLogger) *bufferedReader {
-	// Calculate number of chunks: use 32KB chunks, buffer holds maxBufSize worth
-	const chunkSize = 32 * 1024
-	numChunks := maxBufSize / chunkSize
-	if numChunks < 1 {
-		numChunks = 1
-	}
-
-	br := &bufferedReader{
-		underlying: underlying,
-		logger:     logger,
-		chunks:     make(chan []byte, numChunks),
-		readerDone: make(chan struct{}),
-		startTime:  time.Now(),
-		maxBufSize: maxBufSize,
-	}
-
-	// Start background goroutine to read from underlying into channel
-	go br.fillBuffer(chunkSize)
-
-	return br
-}
-
-// fillBuffer runs in a background goroutine and continuously reads from the
-// underlying reader into chunks sent on the channel. When the channel is full,
-// it blocks, providing natural backpressure to the gRPC stream.
-func (br *bufferedReader) fillBuffer(chunkSize int) {
-	defer close(br.readerDone)
-	defer close(br.chunks)
-
-	for {
-		buf := make([]byte, chunkSize)
-		n, err := br.underlying.Read(buf)
-
-		if n > 0 {
-			// Send chunk to channel (blocks if channel is full)
-			select {
-			case br.chunks <- buf[:n]:
-				// Chunk sent successfully
-			case <-br.readerDone:
-				return
-			}
-		}
-
-		if err != nil {
-			br.readErr = err
-			return
-		}
-	}
-}
-
-// Read implements io.Reader. It reads from the buffered chunks, blocking
-// if no data is available. This provides natural backpressure to the gRPC
-// stream when the buffer fills up.
-func (br *bufferedReader) Read(p []byte) (n int, err error) {
-	for {
-		// If we have a current chunk, read from it
-		if br.current != nil && br.pos < len(br.current) {
-			copied := copy(p[n:], br.current[br.pos:])
-			br.pos += copied
-			n += copied
-			br.totalBytes += int64(copied)
-
-			// If we've filled the destination buffer, return
-			if n == len(p) {
-				return n, nil
-			}
-
-			// If we've consumed the current chunk, get next chunk
-			if br.pos >= len(br.current) {
-				br.current = nil
-				br.pos = 0
-			}
-		}
-
-		// Need a new chunk
-		if br.current == nil {
-			chunk, ok := <-br.chunks
-			if !ok {
-				// Channel closed, check for error
-				if br.readErr != nil && br.readErr != io.EOF {
-					return n, br.readErr
-				}
-				if n > 0 {
-					return n, nil
-				}
-				return 0, io.EOF
-			}
-			br.current = chunk
-			br.pos = 0
-		}
-	}
-}
-
-// Close implements io.Closer.
-func (br *bufferedReader) Close() error {
-	close(br.readerDone)
-
-	// Wait for background goroutine to finish
-	<-br.readerDone
-
-	elapsed := time.Since(br.startTime)
-	avgMBps := float64(br.totalBytes) / elapsed.Seconds() / (1024 * 1024)
-	br.logger.Infow("Buffered read completed",
-		"total_bytes", br.totalBytes,
-		"elapsed", elapsed,
-		"avg_mbps", avgMBps,
-		"buffer_size_mb", br.maxBufSize/(1024*1024))
-
-	return br.underlying.Close()
-}
-
 // ServeHTTP is an all-in-one handler for any kind of gRPC traffic. This is useful
 // in a scenario where all gRPC is served from the root path due to limitations of normal
 // gRPC being served from a non-root path.
 func (ss *simpleServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r = requestWithHost(r)
-
-	// Apply intermediate buffering to prevent unbounded buffering in http2 layer
-	// When the buffer fills up, reads from gRPC slow down naturally
-	// Note: ContentLength is -1 for streaming/chunked requests (like gRPC)
-	if r.Body != nil {
-		// Use a 10MB intermediate buffer
-		const bufferSizeMB = 10
-		const bufferSizeBytes = bufferSizeMB * 1024 * 1024
-
-		ss.logger.Infow("Applying intermediate buffer",
-			"path", r.URL.Path,
-			"client", r.RemoteAddr,
-			"content_length", r.ContentLength,
-			"buffer_size_mb", bufferSizeMB)
-
-		r.Body = newBufferedReader(r.Body, bufferSizeBytes, ss.logger)
-	}
 
 	switch ss.getRequestType(r) {
 	case requestTypeGRPC:
