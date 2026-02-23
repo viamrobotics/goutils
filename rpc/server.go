@@ -409,7 +409,6 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 	streamInterceptors = append(streamInterceptors, StreamServerTracingInterceptor())
 	streamAuthIntPos := -1
 
-	// Always add auth interceptor if not unauthenticated
 	if !sOpts.unauthenticated {
 		streamInterceptors = append(streamInterceptors, server.authStreamInterceptor)
 		streamAuthIntPos = len(streamInterceptors) - 1
@@ -656,8 +655,8 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 		// TODO(GOUT-11): Handle auth; right now we assume
 		// successful auth to the signaler implies that auth should be allowed here, which is not 100%
 		// true.
-		webrtcUnaryInterceptors := []grpc.UnaryServerInterceptor{}
-		webrtcStreamInterceptors := []grpc.StreamServerInterceptor{}
+		webrtcUnaryInterceptors := make([]grpc.UnaryServerInterceptor, 0, len(unaryInterceptors))
+		webrtcStreamInterceptors := make([]grpc.StreamServerInterceptor, 0, len(streamInterceptors))
 		for idx, interceptor := range unaryInterceptors {
 			if idx == unaryAuthIntPos {
 				continue
