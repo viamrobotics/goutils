@@ -221,6 +221,44 @@ var (
 		PartID:        "part2",
 		ComponentName: "component3",
 	}
+
+	// Confidence values for testing.
+	conf09 = 0.9
+	conf07 = 0.7
+
+	// fakeDataWithClassificationConfidence has classification annotations with confidence for custom training.
+	fakeDataWithClassificationConfidence = &ImageMetadata{
+		Tags: []string{"cat"},
+		Annotations: &datav1.Annotations{
+			Classifications: []*datav1.Classification{
+				{Label: "cat", Confidence: &conf09},
+			},
+		},
+		PartID:        "part1",
+		ComponentName: "component2",
+		Bucket:        customTrainingDirName,
+		Path:          "filename_class_conf" + jpegFileExt + zipExt,
+	}
+	// fakeDataWithBBoxConfidence has bounding box annotations with confidence for object detection.
+	fakeDataWithBBoxConfidence = &ImageMetadata{
+		Annotations: &datav1.Annotations{
+			Bboxes: []*datav1.BoundingBox{
+				{
+					Id:             "10",
+					Label:          "cat",
+					XMinNormalized: 0.2,
+					XMaxNormalized: 0.22,
+					YMinNormalized: 0.3,
+					YMaxNormalized: 0.33,
+					Confidence:     &conf07,
+				},
+			},
+		},
+		PartID:        "part1",
+		ComponentName: "component1",
+		Bucket:        customTrainingDirName,
+		Path:          "filename_bbox_conf" + jpegFileExt + zipExt,
+	}
 )
 
 // mockWriter implements CloseableWriter for testing.
@@ -355,6 +393,28 @@ func TestImageMetadataToJSONLines(t *testing.T) {
 			modelType:               mlv1.ModelType_MODEL_TYPE_UNSPECIFIED,
 			labels:                  nil,
 			expJSONFile:             filepath.Join(customTrainingDirName, "fakedata_empty_bucket.jsonl"),
+			expectedLabelsCount:     map[string]int32{},
+			expectedImageCount:      1,
+			expectedMultiLabelCount: 0,
+		},
+		{
+			name: "Custom training with classification confidence " +
+				"serializes confidence in classification_annotations",
+			imageMetadata:           []*ImageMetadata{fakeDataWithClassificationConfidence},
+			modelType:               mlv1.ModelType_MODEL_TYPE_OBJECT_DETECTION,
+			labels:                  nil,
+			expJSONFile:             filepath.Join(customTrainingDirName, "fakedata_classification_confidence.jsonl"),
+			expectedLabelsCount:     map[string]int32{},
+			expectedImageCount:      1,
+			expectedMultiLabelCount: 0,
+		},
+		{
+			name: "Custom training with bounding box confidence " +
+				"serializes confidence in bounding_box_annotations",
+			imageMetadata:           []*ImageMetadata{fakeDataWithBBoxConfidence},
+			modelType:               mlv1.ModelType_MODEL_TYPE_OBJECT_DETECTION,
+			labels:                  nil,
+			expJSONFile:             filepath.Join(customTrainingDirName, "fakedata_bbox_confidence.jsonl"),
 			expectedLabelsCount:     map[string]int32{},
 			expectedImageCount:      1,
 			expectedMultiLabelCount: 0,

@@ -26,7 +26,8 @@ type MultiLabelClassification struct {
 
 // Annotation holds the label associated with the image.
 type Annotation struct {
-	AnnotationLabel string `json:"annotation_label"`
+	AnnotationLabel string   `json:"annotation_label"`
+	Confidence      *float64 `json:"confidence,omitempty"`
 }
 
 // ObjectDetection defines the format of the data in jsonlines for object detection.
@@ -51,12 +52,13 @@ type CustomTrainingMetadata struct {
 
 // BBoxAnnotation holds the information associated with each bounding box.
 type BBoxAnnotation struct {
-	ID              string  `json:"id"`
-	AnnotationLabel string  `json:"annotation_label"`
-	XMinNormalized  float64 `json:"x_min_normalized"`
-	XMaxNormalized  float64 `json:"x_max_normalized"`
-	YMinNormalized  float64 `json:"y_min_normalized"`
-	YMaxNormalized  float64 `json:"y_max_normalized"`
+	ID              string   `json:"id"`
+	AnnotationLabel string   `json:"annotation_label"`
+	XMinNormalized  float64  `json:"x_min_normalized"`
+	XMaxNormalized  float64  `json:"x_max_normalized"`
+	YMinNormalized  float64  `json:"y_min_normalized"`
+	YMaxNormalized  float64  `json:"y_max_normalized"`
+	Confidence      *float64 `json:"confidence,omitempty"`
 }
 
 // ImageMetadata defines the metadata for an image.
@@ -119,18 +121,18 @@ func ImageMetadataToJSONLines(matchingData []*ImageMetadata,
 		blobPath := strings.Join([]string{datum.Bucket, datum.Path}, "/")
 		var jsonl any
 
-		allLabelsSet := make(map[string]struct{})
+		labelToConfidence := make(map[string]*float64)
 		for _, tag := range datum.Tags {
-			allLabelsSet[tag] = struct{}{}
+			labelToConfidence[tag] = nil
 		}
-		for _, annotation := range datum.Annotations.GetClassifications() {
-			allLabelsSet[annotation.GetLabel()] = struct{}{}
+		for _, c := range datum.Annotations.GetClassifications() {
+			labelToConfidence[c.GetLabel()] = c.Confidence
 		}
 		// For custom training, there are no requested tags so all annotations should be returned.
 		if requestedTags == nil {
-			annotations := []Annotation{}
-			for label := range allLabelsSet {
-				annotations = append(annotations, Annotation{AnnotationLabel: label})
+			annotations := make([]Annotation, 0, len(labelToConfidence))
+			for label, conf := range labelToConfidence {
+				annotations = append(annotations, Annotation{AnnotationLabel: label, Confidence: conf})
 			}
 
 			matchingAnnotations := getMatchingBBoxes(datum.Annotations.GetBboxes(), nil)
@@ -153,8 +155,8 @@ func ImageMetadataToJSONLines(matchingData []*ImageMetadata,
 				ComponentName:             datum.ComponentName,
 			}
 		} else {
-			var labels []string
-			for label := range allLabelsSet {
+			labels := make([]string, 0, len(labelToConfidence))
+			for label := range labelToConfidence {
 				labels = append(labels, label)
 			}
 			switch requestedModelType {
@@ -266,9 +268,12 @@ func getMatchingBBoxes(annotations []*datav1.BoundingBox, labels []string) []BBo
 			for _, reqLabel := range labels {
 				if annotation.GetLabel() == reqLabel {
 					match = append(match, bbox)
+					break
 				}
 			}
 		} else {
+			// We only add confidence if there are no requested labels, meaning this is a custom training job.
+			bbox.Confidence = annotation.Confidence
 			match = append(match, bbox)
 		}
 	}
