@@ -51,7 +51,6 @@ type WebRTCGrpcStats struct {
 	PeerConnectionErrors      int64
 	PeerConnectionCloses      int64
 	HeadersProcessed          int64
-	CallTicketsAvailable      int32
 	TotalTimeConnectingMillis int64
 
 	// When the FTDC frontend is more feature rich, we can remove this and let the frontend compute
