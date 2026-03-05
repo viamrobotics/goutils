@@ -177,17 +177,12 @@ func WithExternalListenerAddress(address *net.TCPAddr) ServerOption {
 }
 
 // WithInternalTLSConfig returns a ServerOption which sets the TLS config
-// for the internal listener. This is needed to have mutual TLS authentication
-// work (see WithTLSAuthHandler). When using ServeTLS on the server, which serves
-// from an external listener, with mutual TLS authentication, you will want to pass
-// its own tls.Config with ClientAuth, at a minimum, set to tls.VerifyClientCertIfGiven.
+// for the internal listener. The internal listener does not request client
+// certificates; client authentication is handled at the application level
+// via credential-based auth.
 func WithInternalTLSConfig(config *tls.Config) ServerOption {
 	return newFuncServerOption(func(o *serverOptions) error {
 		o.tlsConfig = config.Clone()
-		if o.tlsConfig.ClientAuth == 0 {
-			o.tlsConfig.ClientAuth = tls.VersionTLS12
-		}
-		o.tlsConfig.ClientAuth = tls.VerifyClientCertIfGiven
 		return nil
 	})
 }
