@@ -61,3 +61,6 @@ etc/test_keys
 # artifact
 .artifact/cache
 .artifact/data
+
+# Claude Code
+.claude/worktrees
