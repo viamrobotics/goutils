@@ -64,3 +64,4 @@ etc/test_keys
 
 # Claude Code
 .claude/worktrees
+.claude/settings.local.json
