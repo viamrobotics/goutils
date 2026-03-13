@@ -400,6 +400,10 @@ func dialWebRTC(
 		sendDone()
 		successful = true
 
+		// Best-effort report of the selected ICE candidate type for per-org metrics.
+		// Must be called before exchangeCancel so the signaling conn is still open.
+		reportSelectedICECandidateType(ctx, host, signalingClient, peerConn, logger)
+
 		// Ensure the exchange goroutine has exited.
 		exchangeCancel(nil)
 		<-exchangeCtx.Done()
