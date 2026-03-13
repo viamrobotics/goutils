@@ -47,6 +47,14 @@ service SignalingService {
 			get: "/rpc/webrtc/v1/optional_webrtc_config"
 		};
 	}
+
+	// ReportICECandidateSelected reports the ICE candidate type selected for a WebRTC
+	// connection. The host must be in the rpc-host metadata field.
+	rpc ReportICECandidateSelected(ReportICECandidateSelectedRequest) returns (ReportICECandidateSelectedResponse) {
+		option (google.api.http) = {
+			post: "/rpc/webrtc/v1/report_ice_candidate_selected"
+		};
+	}
 }
 
 // ICECandidate represents an ICE candidate.
@@ -209,6 +217,29 @@ message OptionalWebRTCConfigRequest {
 // to use for the peer connection.
 message OptionalWebRTCConfigResponse {
 	WebRTCConfig config = 1;
+}
+
+// ICECandidateType represents the type of ICE candidate selected for a WebRTC connection.
+enum ICECandidateType {
+	ICE_CANDIDATE_TYPE_UNSPECIFIED = 0;
+	// ICE_CANDIDATE_TYPE_HOST indicates a direct connection was established.
+	ICE_CANDIDATE_TYPE_HOST = 1;
+	// ICE_CANDIDATE_TYPE_STUN indicates a STUN-assisted connection was established.
+	ICE_CANDIDATE_TYPE_STUN = 2;
+	// ICE_CANDIDATE_TYPE_COTURN_RELAY indicates relay via Viam's coturn server.
+	ICE_CANDIDATE_TYPE_COTURN_RELAY = 3;
+	// ICE_CANDIDATE_TYPE_TWILIO_RELAY indicates relay via Twilio TURN.
+	ICE_CANDIDATE_TYPE_TWILIO_RELAY = 4;
+}
+
+// ReportICECandidateSelectedRequest reports the ICE candidate type selected for a connection.
+// The host must be in the rpc-host metadata field.
+message ReportICECandidateSelectedRequest {
+	ICECandidateType candidate_type = 1;
+}
+
+// ReportICECandidateSelectedResponse is empty.
+message ReportICECandidateSelectedResponse {
 }
 
 

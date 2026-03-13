@@ -156,6 +156,42 @@ func local_request_SignalingService_OptionalWebRTCConfig_0(ctx context.Context, 
 
 }
 
+var (
+	filter_SignalingService_ReportICECandidateSelected_0 = &utilities.DoubleArray{Encoding: map[string]int{}, Base: []int(nil), Check: []int(nil)}
+)
+
+func request_SignalingService_ReportICECandidateSelected_0(ctx context.Context, marshaler runtime.Marshaler, client SignalingServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq ReportICECandidateSelectedRequest
+	var metadata runtime.ServerMetadata
+
+	if err := req.ParseForm(); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_SignalingService_ReportICECandidateSelected_0); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+
+	msg, err := client.ReportICECandidateSelected(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	return msg, metadata, err
+
+}
+
+func local_request_SignalingService_ReportICECandidateSelected_0(ctx context.Context, marshaler runtime.Marshaler, server SignalingServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq ReportICECandidateSelectedRequest
+	var metadata runtime.ServerMetadata
+
+	if err := req.ParseForm(); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_SignalingService_ReportICECandidateSelected_0); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+
+	msg, err := server.ReportICECandidateSelected(ctx, &protoReq)
+	return msg, metadata, err
+
+}
+
 // RegisterSignalingServiceHandlerServer registers the http handlers for service SignalingService to "mux".
 // UnaryRPC     :call SignalingServiceServer directly.
 // StreamingRPC :currently unsupported pending https://github.com/grpc/grpc-go/issues/906.
@@ -223,6 +259,31 @@ func RegisterSignalingServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_SignalingService_OptionalWebRTCConfig_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+
+	})
+
+	mux.Handle("POST", pattern_SignalingService_ReportICECandidateSelected_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		var stream runtime.ServerTransportStream
+		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		var err error
+		var annotatedContext context.Context
+		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/proto.rpc.webrtc.v1.SignalingService/ReportICECandidateSelected", runtime.WithHTTPPathPattern("/rpc/webrtc/v1/report_ice_candidate_selected"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := local_request_SignalingService_ReportICECandidateSelected_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
+		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		if err != nil {
+			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			return
+		}
+
+		forward_SignalingService_ReportICECandidateSelected_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 
 	})
 
@@ -355,6 +416,28 @@ func RegisterSignalingServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 
 	})
 
+	mux.Handle("POST", pattern_SignalingService_ReportICECandidateSelected_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		var err error
+		var annotatedContext context.Context
+		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/proto.rpc.webrtc.v1.SignalingService/ReportICECandidateSelected", runtime.WithHTTPPathPattern("/rpc/webrtc/v1/report_ice_candidate_selected"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := request_SignalingService_ReportICECandidateSelected_0(annotatedContext, inboundMarshaler, client, req, pathParams)
+		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		if err != nil {
+			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			return
+		}
+
+		forward_SignalingService_ReportICECandidateSelected_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+
+	})
+
 	return nil
 }
 
@@ -366,6 +449,8 @@ var (
 	pattern_SignalingService_Answer_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"proto.rpc.webrtc.v1.SignalingService", "Answer"}, ""))
 
 	pattern_SignalingService_OptionalWebRTCConfig_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3}, []string{"rpc", "webrtc", "v1", "optional_webrtc_config"}, ""))
+
+	pattern_SignalingService_ReportICECandidateSelected_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3}, []string{"rpc", "webrtc", "v1", "report_ice_candidate_selected"}, ""))
 )
 
 var (
@@ -376,4 +461,6 @@ var (
 	forward_SignalingService_Answer_0 = runtime.ForwardResponseStream
 
 	forward_SignalingService_OptionalWebRTCConfig_0 = runtime.ForwardResponseMessage
+
+	forward_SignalingService_ReportICECandidateSelected_0 = runtime.ForwardResponseMessage
 )
