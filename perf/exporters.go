@@ -40,10 +40,14 @@ func NewCloudExporter(opts CloudOptions) (Exporter, error) {
 			opts.Logger.Errorw("opencensus stackdriver error", "error", err)
 		},
 		// ReportingInterval sets the frequency of reporting metrics to stackdriver backend.
-		ReportingInterval: 60 * time.Second,
-		MetricPrefix:      opts.MetricPrefix,
-		// TraceSpansBufferMaxBytes sets the maximum buffer size to 50MB before spans are dropped.
-		TraceSpansBufferMaxBytes: 50 << 20,
+		ReportingInterval:    15 * time.Second,
+		BundleDelayThreshold: time.Second,
+		BundleCountThreshold: 25,
+		NumberOfWorkers:      2,
+		MetricPrefix:         opts.MetricPrefix,
+		// TraceSpansBufferMaxBytes sets the maximum buffer size to 100MB before spans are dropped.
+		TraceSpansBufferMaxBytes: 100 << 20,
+		
 	}
 
 	// Allow a custom stackdriver project.
