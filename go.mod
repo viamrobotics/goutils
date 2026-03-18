@@ -59,6 +59,7 @@ require go.viam.com/api v0.1.493
 
 require (
 	contrib.go.opencensus.io/exporter/jaeger v0.2.1
+	github.com/caarlos0/env/v11 v11.4.0
 	go.opentelemetry.io/otel/sdk v1.37.0
 	go.opentelemetry.io/otel/trace v1.37.0
 	go.opentelemetry.io/proto/otlp v1.9.0

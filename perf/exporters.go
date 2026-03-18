@@ -4,11 +4,11 @@ package perf
 import (
 	"context"
 	"os"
-	"strconv"
 	"time"
 
 	"cloud.google.com/go/compute/metadata"
 	"contrib.go.opencensus.io/exporter/stackdriver"
+	"github.com/caarlos0/env/v11"
 	"go.opencensus.io/trace"
 
 	"go.viam.com/utils"
@@ -33,80 +33,31 @@ type CloudOptions struct {
 	MetricPrefix string // Optional metric prefix.
 }
 
-func getBundleCountThreshold() int {
-	str := os.Getenv("OCSD_BUNDLE_COUNT_THRESHOLD")
-	if str == "" {
-		return 0
-	}
-	num, err := strconv.Atoi(str)
-	if err != nil || num < 1 {
-		return 0
-	}
-	return num
-}
-
-func getReportingInterval() time.Duration {
-	str := os.Getenv("OCSD_REPORTING_INTERVAL_SECONDS")
-	if str == "" {
-		return 0
-	}
-	num, err := strconv.Atoi(str)
-	if err != nil || num < 1 {
-		return 0
-	}
-	return time.Second * time.Duration(num)
-}
-
-func getBundleDelayThreshold() time.Duration {
-	str := os.Getenv("OCSD_BUNDLE_DELAY_SECONDS")
-	if str == "" {
-		return 0
-	}
-	num, err := strconv.Atoi(str)
-	if err != nil || num < 1 {
-		return 0
-	}
-	return time.Second * time.Duration(num)
-}
-
-func getNumWorkers() int {
-	str := os.Getenv("OCSD_WORKERS")
-	if str == "" {
-		return 0
-	}
-	num, err := strconv.Atoi(str)
-	if err != nil || num < 1 {
-		return 0
-	}
-	return num
-}
-
-func getSpanBufferMaxBytes() int {
-	str := os.Getenv("OCSD_BUFFER_MAX_BYTES")
-	if str == "" {
-		return 50 << 20
-	}
-	num, err := strconv.Atoi(str)
-	if err != nil || num < 1 {
-		return 50 << 20
-	}
-	return num
-}
-
 // NewCloudExporter creates a new Stackdriver (Cloud Monitoring) OpenCensus exporter with all options setup views registered..
 func NewCloudExporter(opts CloudOptions) (Exporter, error) {
+	envOpts, err := env.ParseAs[struct {
+		ReportingInterval        time.Duration `env:"OCSD_REPORTING_INTERVAL"`
+		BundleDelayThreshold     time.Duration `env:"OCSD_BUNDLE_DELAY"`
+		NumberOfWorkers          int           `env:"OCSD_WORKERS"`
+		TraceSpansBufferMaxBytes int           `env:"OCSD_BUFFER_MAX_BYTES"       envDefault:"52428800"`
+		BundleCountThreshold     int           `env:"OCSD_BUNDLE_COUNT_THRESHOLD"`
+	}]()
+	if err != nil {
+		opts.Logger.Errorf("failed to parse stackdriver exporter options from env, will use defaults: %v", err)
+		envOpts.TraceSpansBufferMaxBytes = 52428800
+	}
 	sdOpts := stackdriver.Options{
 		Context: opts.Context,
 		OnError: func(err error) {
 			opts.Logger.Errorw("opencensus stackdriver error", "error", err)
 		},
 		// ReportingInterval sets the frequency of reporting metrics to stackdriver backend.
-		ReportingInterval:        getReportingInterval(),
-		BundleDelayThreshold:     getBundleDelayThreshold(),
-		BundleCountThreshold:     getBundleCountThreshold(),
-		NumberOfWorkers:          getNumWorkers(),
+		ReportingInterval:        envOpts.ReportingInterval,
+		BundleDelayThreshold:     envOpts.BundleDelayThreshold,
+		BundleCountThreshold:     envOpts.BundleCountThreshold,
+		NumberOfWorkers:          envOpts.NumberOfWorkers,
+		TraceSpansBufferMaxBytes: envOpts.TraceSpansBufferMaxBytes,
 		MetricPrefix:             opts.MetricPrefix,
-		TraceSpansBufferMaxBytes: getSpanBufferMaxBytes(),
 	}
 
 	// Allow a custom stackdriver project.
