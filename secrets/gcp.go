@@ -8,6 +8,7 @@ import (
 
 	secretmanager "cloud.google.com/go/secretmanager/apiv1"
 	"cloud.google.com/go/secretmanager/apiv1/secretmanagerpb"
+	gax "github.com/googleapis/gax-go/v2"
 	grpc_retry "github.com/grpc-ecosystem/go-grpc-middleware/retry"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/option"
@@ -24,9 +25,15 @@ func getProjectID(ctx context.Context) (string, error) {
 	return credentials.ProjectID, nil
 }
 
+// secretManagerClient is the subset of the Secret Manager API used by GCPSource.
+type secretManagerClient interface {
+	AccessSecretVersion(ctx context.Context, req *secretmanagerpb.AccessSecretVersionRequest, opts ...gax.CallOption) (*secretmanagerpb.AccessSecretVersionResponse, error)
+	Close() error
+}
+
 // GCPSource provides secrets via GCP secrets.
 type GCPSource struct {
-	client *secretmanager.Client
+	client secretManagerClient
 	id     string
 }
 
@@ -59,19 +66,62 @@ func (g *GCPSource) Close() error {
 	return g.client.Close()
 }
 
+// nonRetriableError returns true for errors that indicate the request itself is
+// invalid and retrying will not help (e.g. secret not found, permission denied).
+func nonRetriableError(err error) bool {
+	switch status.Code(err) {
+	case codes.NotFound, codes.PermissionDenied, codes.InvalidArgument:
+		return true
+	default:
+		return false
+	}
+}
+
+const (
+	getMaxRetries     = 10
+	getInitialBackoff = 500 * time.Millisecond
+	getMaxBackoff     = 5 * time.Second
+)
+
 // Get looks up the given name as a secret in GCP.
 func (g *GCPSource) Get(ctx context.Context, name string) (string, error) {
 	accessRequest := &secretmanagerpb.AccessSecretVersionRequest{
 		Name: fmt.Sprintf("projects/%s/secrets/%s/versions/latest", g.id, name),
 	}
-	result, err := g.client.AccessSecretVersion(ctx, accessRequest)
-	if err != nil {
-		if status.Convert(errors.Unwrap(err)).Code() == codes.NotFound {
+
+	var lastErr error
+	backoff := getInitialBackoff
+	for attempt := 0; attempt <= getMaxRetries; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return "", fmt.Errorf("failed to access secret version: %w", lastErr)
+			case <-time.After(backoff):
+			}
+			backoff *= 2
+			if backoff > getMaxBackoff {
+				backoff = getMaxBackoff
+			}
+		}
+
+		result, err := g.client.AccessSecretVersion(ctx, accessRequest)
+		if err == nil {
+			return string(result.GetPayload().GetData()), nil
+		}
+
+		code := status.Code(err)
+		if code == codes.OK {
+			code = status.Convert(errors.Unwrap(err)).Code()
+		}
+		if code == codes.NotFound {
 			return "", ErrNotFound
 		}
-		return "", fmt.Errorf("failed to access secret version: %w", err)
+		if nonRetriableError(err) {
+			return "", fmt.Errorf("failed to access secret version: %w", err)
+		}
+		lastErr = err
 	}
-	return string(result.GetPayload().GetData()), nil
+	return "", fmt.Errorf("failed to access secret version: %w", lastErr)
 }
 
 // Type returns the type of this source (gcp).
