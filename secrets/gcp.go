@@ -27,7 +27,11 @@ func getProjectID(ctx context.Context) (string, error) {
 
 // secretManagerClient is the subset of the Secret Manager API used by GCPSource.
 type secretManagerClient interface {
-	AccessSecretVersion(ctx context.Context, req *secretmanagerpb.AccessSecretVersionRequest, opts ...gax.CallOption) (*secretmanagerpb.AccessSecretVersionResponse, error)
+	AccessSecretVersion(
+		ctx context.Context,
+		req *secretmanagerpb.AccessSecretVersionRequest,
+		opts ...gax.CallOption,
+	) (*secretmanagerpb.AccessSecretVersionResponse, error)
 	Close() error
 }
 
@@ -69,12 +73,10 @@ func (g *GCPSource) Close() error {
 // nonRetriableError returns true for errors that indicate the request itself is
 // invalid and retrying will not help (e.g. secret not found, permission denied).
 func nonRetriableError(err error) bool {
-	switch status.Code(err) {
-	case codes.NotFound, codes.PermissionDenied, codes.InvalidArgument:
-		return true
-	default:
-		return false
-	}
+	code := status.Code(err)
+	return code == codes.NotFound ||
+		code == codes.PermissionDenied ||
+		code == codes.InvalidArgument
 }
 
 const (

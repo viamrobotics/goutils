@@ -40,7 +40,10 @@ func TestGCPSourceGet_RetriesTransientUnauthenticated(t *testing.T) {
 	// server is ready.
 	mock := &mockSecretClient{
 		failFor: 3,
-		failErr: status.Error(codes.Unauthenticated, "per-RPC creds failed due to error: credentials: cannot fetch token: context deadline exceeded"),
+		failErr: status.Error(
+			codes.Unauthenticated,
+			"per-RPC creds failed: cannot fetch token",
+		),
 		response: &secretmanagerpb.AccessSecretVersionResponse{
 			Payload: &secretmanagerpb.SecretPayload{
 				Data: []byte("mongodb://localhost:27017"),
