@@ -17,10 +17,57 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+const (
+	maxRetries     = 10
+	initialBackoff = 500 * time.Millisecond
+	maxBackoff     = 5 * time.Second
+)
+
+// withRetry runs fn up to maxRetries times with exponential backoff.
+// fn should return nil error on success, or a non-nil error to retry.
+// To stop retrying early, fn should call the provided stop function
+// with the final error before returning.
+func withRetry(ctx context.Context, fn func(stop func(error)) error) error {
+	var finalErr error
+	stopped := false
+	stop := func(err error) {
+		finalErr = err
+		stopped = true
+	}
+
+	backoff := initialBackoff
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return finalErr
+			case <-time.After(backoff):
+			}
+			backoff *= 2
+			if backoff > maxBackoff {
+				backoff = maxBackoff
+			}
+		}
+
+		err := fn(stop)
+		if err == nil {
+			return nil
+		}
+		if stopped {
+			return finalErr
+		}
+		finalErr = err
+	}
+	return finalErr
+}
+
 func getProjectID(ctx context.Context) (string, error) {
 	credentials, err := google.FindDefaultCredentials(ctx)
 	if err != nil {
 		return "", err
+	}
+	if credentials.ProjectID == "" {
+		return "", errors.New("credentials returned empty project ID")
 	}
 	return credentials.ProjectID, nil
 }
@@ -42,7 +89,8 @@ type GCPSource struct {
 }
 
 // NewGCPSource returns a new GCP secret source that derives its information from
-// the given context.
+// the given context. Initialization is retried with exponential backoff to handle
+// GKE environments where the metadata server may not be ready on freshly scaled nodes.
 func NewGCPSource(ctx context.Context) (*GCPSource, error) {
 	// 5 retries with 1s timeout
 	// exponential backoff with a base of 50ms and a +/- 10% jitter
@@ -52,17 +100,26 @@ func NewGCPSource(ctx context.Context) (*GCPSource, error) {
 		grpc_retry.WithBackoff(grpc_retry.BackoffExponentialWithJitter(50*time.Millisecond, 0.1)),
 	)
 
-	c, err := secretmanager.NewClient(ctx, option.WithGRPCDialOption(grpc.WithChainUnaryInterceptor(retryInterceptor)))
-	if err != nil {
-		return nil, err
-	}
+	var source *GCPSource
+	err := withRetry(ctx, func(_ func(error)) error {
+		c, err := secretmanager.NewClient(ctx, option.WithGRPCDialOption(grpc.WithChainUnaryInterceptor(retryInterceptor)))
+		if err != nil {
+			return err
+		}
 
-	id, err := getProjectID(ctx)
-	if err != nil {
-		return nil, err
-	}
+		id, err := getProjectID(ctx)
+		if err != nil {
+			c.Close()
+			return err
+		}
 
-	return &GCPSource{c, id}, nil
+		source = &GCPSource{c, id}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize GCP secret source: %w", err)
+	}
+	return source, nil
 }
 
 // Close closes the underlying GCP client.
@@ -79,36 +136,18 @@ func nonRetriableError(err error) bool {
 		code == codes.InvalidArgument
 }
 
-const (
-	getMaxRetries     = 10
-	getInitialBackoff = 500 * time.Millisecond
-	getMaxBackoff     = 5 * time.Second
-)
-
 // Get looks up the given name as a secret in GCP.
 func (g *GCPSource) Get(ctx context.Context, name string) (string, error) {
 	accessRequest := &secretmanagerpb.AccessSecretVersionRequest{
 		Name: fmt.Sprintf("projects/%s/secrets/%s/versions/latest", g.id, name),
 	}
 
-	var lastErr error
-	backoff := getInitialBackoff
-	for attempt := 0; attempt <= getMaxRetries; attempt++ {
-		if attempt > 0 {
-			select {
-			case <-ctx.Done():
-				return "", fmt.Errorf("failed to access secret version: %w", lastErr)
-			case <-time.After(backoff):
-			}
-			backoff *= 2
-			if backoff > getMaxBackoff {
-				backoff = getMaxBackoff
-			}
-		}
-
+	var secret string
+	err := withRetry(ctx, func(stop func(error)) error {
 		result, err := g.client.AccessSecretVersion(ctx, accessRequest)
 		if err == nil {
-			return string(result.GetPayload().GetData()), nil
+			secret = string(result.GetPayload().GetData())
+			return nil
 		}
 
 		code := status.Code(err)
@@ -116,14 +155,19 @@ func (g *GCPSource) Get(ctx context.Context, name string) (string, error) {
 			code = status.Convert(errors.Unwrap(err)).Code()
 		}
 		if code == codes.NotFound {
-			return "", ErrNotFound
+			stop(ErrNotFound)
+			return err
 		}
 		if nonRetriableError(err) {
-			return "", fmt.Errorf("failed to access secret version: %w", err)
+			stop(fmt.Errorf("failed to access secret version: %w", err))
+			return err
 		}
-		lastErr = err
+		return err
+	})
+	if err != nil {
+		return "", err
 	}
-	return "", fmt.Errorf("failed to access secret version: %w", lastErr)
+	return secret, nil
 }
 
 // Type returns the type of this source (gcp).

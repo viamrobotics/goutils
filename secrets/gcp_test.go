@@ -34,6 +34,18 @@ func (m *mockSecretClient) Close() error {
 	return nil
 }
 
+func TestGCPSourceGet_StopsOnNotFound(t *testing.T) {
+	mock := &mockSecretClient{
+		failFor: 999,
+		failErr: status.Error(codes.NotFound, "secret not found"),
+	}
+	source := &GCPSource{client: mock, id: "test-project"}
+
+	_, err := source.Get(context.Background(), "missing")
+	test.That(t, err, test.ShouldEqual, ErrNotFound)
+	test.That(t, mock.calls, test.ShouldEqual, 1) // no retries
+}
+
 func TestGCPSourceGet_RetriesTransientUnauthenticated(t *testing.T) {
 	// Simulates the GKE metadata server race: per-RPC creds fail with
 	// Unauthenticated on a fresh node, then succeed once the metadata
