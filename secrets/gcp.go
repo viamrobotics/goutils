@@ -40,7 +40,7 @@ func withRetry(ctx context.Context, fn func(stop func(error)) error) error {
 		if attempt > 0 {
 			select {
 			case <-ctx.Done():
-				return finalErr
+				return ctx.Err()
 			case <-time.After(backoff):
 			}
 			backoff *= 2
@@ -109,8 +109,7 @@ func NewGCPSource(ctx context.Context) (*GCPSource, error) {
 
 		id, err := getProjectID(ctx)
 		if err != nil {
-			c.Close()
-			return err
+			return errors.Join(err, c.Close())
 		}
 
 		source = &GCPSource{c, id}
@@ -150,11 +149,7 @@ func (g *GCPSource) Get(ctx context.Context, name string) (string, error) {
 			return nil
 		}
 
-		code := status.Code(err)
-		if code == codes.OK {
-			code = status.Convert(errors.Unwrap(err)).Code()
-		}
-		if code == codes.NotFound {
+		if status.Code(err) == codes.NotFound {
 			stop(ErrNotFound)
 			return err
 		}
