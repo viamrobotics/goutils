@@ -47,6 +47,15 @@ service SignalingService {
 			get: "/rpc/webrtc/v1/optional_webrtc_config"
 		};
 	}
+
+	// ReportConnectionMetadata reports metadata about an established WebRTC connection,
+	// including the selected ICE candidate type and the SDK used. The host must be in
+	// the rpc-host metadata field.
+	rpc ReportConnectionMetadata(ReportConnectionMetadataRequest) returns (ReportConnectionMetadataResponse) {
+		option (google.api.http) = {
+			post: "/rpc/webrtc/v1/report_connection_metadata"
+		};
+	}
 }
 
 // ICECandidate represents an ICE candidate.
@@ -211,4 +220,33 @@ message OptionalWebRTCConfigResponse {
 	WebRTCConfig config = 1;
 }
 
+// ICECandidateType represents the type of ICE candidate selected for a WebRTC connection.
+enum ICECandidateType {
+	ICE_CANDIDATE_TYPE_UNSPECIFIED = 0;
+	// ICE_CANDIDATE_TYPE_HOST indicates a direct connection was established.
+	ICE_CANDIDATE_TYPE_HOST = 1;
+	// ICE_CANDIDATE_TYPE_STUN indicates a STUN-assisted connection was established.
+	ICE_CANDIDATE_TYPE_STUN = 2;
+	// ICE_CANDIDATE_TYPE_COTURN_RELAY indicates relay via Viam's coturn server.
+	ICE_CANDIDATE_TYPE_COTURN_RELAY = 3;
+	// ICE_CANDIDATE_TYPE_TWILIO_RELAY indicates relay via Twilio TURN.
+	ICE_CANDIDATE_TYPE_TWILIO_RELAY = 4;
+}
 
+// SDKType represents the Viam SDK used to establish the connection.
+enum SDKType {
+	SDK_TYPE_UNSPECIFIED = 0;
+	SDK_TYPE_GO = 1;
+	SDK_TYPE_TYPESCRIPT = 2;
+	SDK_TYPE_PYTHON_CPP = 3;
+}
+
+// ReportConnectionMetadataRequest reports metadata about an established WebRTC connection.
+message ReportConnectionMetadataRequest {
+	ICECandidateType candidate_type = 1;
+	SDKType sdk_type = 2;
+}
+
+// ReportConnectionMetadataResponse is empty.
+message ReportConnectionMetadataResponse {
+}

@@ -3,6 +3,7 @@ package rpc
 import (
 	"context"
 	"io"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -400,6 +401,8 @@ func dialWebRTC(
 		sendDone()
 		successful = true
 
+		reportConnectionMetadata(ctx, host, signalingClient, peerConn, logger)
+
 		// Ensure the exchange goroutine has exited.
 		exchangeCancel(nil)
 		<-exchangeCtx.Done()
@@ -457,4 +460,72 @@ func dialSignalingServer(
 
 	conn, _, err := dialDirectGRPC(ctx, signalingServer, dOpts, logger)
 	return conn, err
+}
+
+// reportConnectionMetadata reports WebRTC connection metadata to the signaling server.
+func reportConnectionMetadata(
+	ctx context.Context,
+	host string,
+	signalingClient webrtcpb.SignalingServiceClient,
+	peerConn *webrtc.PeerConnection,
+	logger utils.ZapCompatibleLogger,
+) {
+	candidateType := selectedICECandidateType(peerConn.GetStats())
+
+	reportCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	reportCtx = metadata.NewOutgoingContext(reportCtx, metadata.New(map[string]string{RPCHostMetadataField: host}))
+
+	if _, err := signalingClient.ReportConnectionMetadata(reportCtx, &webrtcpb.ReportConnectionMetadataRequest{
+		CandidateType: candidateType,
+		SdkType:       webrtcpb.SDKType_SDK_TYPE_GO,
+	}); err != nil {
+		logger.Debugw("failed to report connection metadata", "err", err)
+	}
+}
+
+// selectedICECandidateType inspects a WebRTC stats report to determine which ICE candidate type
+// was selected for the connection. It finds the nominated candidate pair and examines the remote
+// candidate to classify the connection.
+func selectedICECandidateType(stats webrtc.StatsReport) webrtcpb.ICECandidateType {
+	// Find the nominated candidate pair and get its remote candidate ID.
+	remoteCandID := ""
+	for _, stat := range stats {
+		pair, ok := stat.(webrtc.ICECandidatePairStats)
+		if !ok || !pair.Nominated {
+			continue
+		}
+		remoteCandID = pair.RemoteCandidateID
+		break
+	}
+	if remoteCandID == "" {
+		return webrtcpb.ICECandidateType_ICE_CANDIDATE_TYPE_UNSPECIFIED
+	}
+
+	remoteStat, ok := stats[remoteCandID]
+	if !ok {
+		return webrtcpb.ICECandidateType_ICE_CANDIDATE_TYPE_UNSPECIFIED
+	}
+	remoteCand, ok := remoteStat.(webrtc.ICECandidateStats)
+	if !ok {
+		return webrtcpb.ICECandidateType_ICE_CANDIDATE_TYPE_UNSPECIFIED
+	}
+
+	switch remoteCand.CandidateType {
+	case webrtc.ICECandidateTypeHost:
+		return webrtcpb.ICECandidateType_ICE_CANDIDATE_TYPE_HOST
+	case webrtc.ICECandidateTypeSrflx, webrtc.ICECandidateTypePrflx:
+		return webrtcpb.ICECandidateType_ICE_CANDIDATE_TYPE_STUN
+	case webrtc.ICECandidateTypeRelay:
+		// Distinguish Viam's coturn server from Twilio (or other external) TURN servers by URL.
+		if remoteCand.URL == "" {
+			return webrtcpb.ICECandidateType_ICE_CANDIDATE_TYPE_UNSPECIFIED
+		}
+		if strings.Contains(remoteCand.URL, "viam.com") {
+			return webrtcpb.ICECandidateType_ICE_CANDIDATE_TYPE_COTURN_RELAY
+		}
+		return webrtcpb.ICECandidateType_ICE_CANDIDATE_TYPE_TWILIO_RELAY
+	}
+
+	return webrtcpb.ICECandidateType_ICE_CANDIDATE_TYPE_UNSPECIFIED
 }
