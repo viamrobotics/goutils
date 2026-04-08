@@ -114,7 +114,7 @@ func dial(
 
 	var isJustDomain bool
 	switch {
-	case strings.HasPrefix(address, "unix://"):
+	case strings.HasPrefix(address, "unix:"):
 		dOpts.mdnsOptions.Disable = true
 		dOpts.webrtcOpts.Disable = true
 		dOpts.insecure = true
