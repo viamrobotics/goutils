@@ -129,7 +129,7 @@ func NewCloudExporter(opts CloudOptions) (Exporter, error) {
 	}
 
 	e.sampler = trace.AlwaysSample()
-	if envOpts.SamplingProbability > 0 && envOpts.SamplingProbability < 1 {
+	if envOpts.SamplingProbability != 0 {
 		e.sampler = trace.ProbabilitySampler(envOpts.SamplingProbability)
 	}
 
