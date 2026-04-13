@@ -41,7 +41,7 @@ func NewCloudExporter(opts CloudOptions) (Exporter, error) {
 		NumberOfWorkers          int           `env:"OCSD_WORKERS"`
 		TraceSpansBufferMaxBytes int           `env:"OCSD_BUFFER_MAX_BYTES"       envDefault:"52428800"`
 		BundleCountThreshold     int           `env:"OCSD_BUNDLE_COUNT_THRESHOLD"`
-		SamplingProbability      float64       `env:"OC_SAMPLING_PROB" envDefault:"1"`
+		SamplingProbability      float64       `env:"OC_SAMPLING_PROB"            envDefault:"1"`
 	}]()
 	if err != nil {
 		opts.Logger.Errorf("failed to parse stackdriver exporter options from env, will use defaults: %v", err)
