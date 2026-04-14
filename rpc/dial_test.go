@@ -1615,7 +1615,7 @@ func TestDialUnix(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*2)
 	defer cancel()
-	conn, err := Dial(ctx, "unix://"+socketPath, logger)
+	conn, err := Dial(ctx, "unix:"+socketPath, logger)
 	cancel()
 	test.That(t, err, test.ShouldBeNil)
 	test.That(t, conn.Close(), test.ShouldBeNil)
