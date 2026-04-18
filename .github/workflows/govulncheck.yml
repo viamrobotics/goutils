@@ -28,7 +28,10 @@ jobs:
           cache: true
 
       # golang/govulncheck-action@v1.0.4
+      # repo-checkout: false avoids a duplicate-Authorization-header HTTP 400
+      # caused by the action running its own actions/checkout after ours.
       - uses: golang/govulncheck-action@b625fbe08f3bccbe446d94fbf87fcc875a4f50ee
         with:
           go-version-file: go.mod
           go-package: ./...
+          repo-checkout: false
