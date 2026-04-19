@@ -300,7 +300,7 @@ func TestWebRTCServerChannelResetStream(t *testing.T) {
 			defer handlerMu.Unlock()
 			req := &webrtcpb.Response{}
 			test.That(t, proto.Unmarshal(msg.Data, req), test.ShouldBeNil)
-			if req.Stream == nil || req.Stream.Id != streamID {
+			if req.GetStream() == nil || req.GetStream().GetId() != streamID {
 				return
 			}
 			test.That(t, expectedMessages, test.ShouldNotBeEmpty)
