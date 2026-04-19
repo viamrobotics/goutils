@@ -14,8 +14,6 @@ jobs:
   govulncheck:
     name: govulncheck
     runs-on: ubuntu-latest
-    # Non-blocking: surface vulnerabilities without failing required status checks.
-    continue-on-error: true
     timeout-minutes: 15
     steps:
       # actions/checkout@v6.0.2
@@ -28,9 +26,13 @@ jobs:
           cache: true
 
       # golang/govulncheck-action@v1.0.4
-      # repo-checkout: false avoids a duplicate-Authorization-header HTTP 400
-      # caused by the action running its own actions/checkout after ours.
+      # - repo-checkout: false avoids a duplicate-Authorization-header HTTP 400
+      #   caused by the action running its own actions/checkout after ours.
+      # - continue-on-error at the step level keeps the job green when findings
+      #   are reported so the PR check shows as pass. Review the step's log to
+      #   see any vulnerabilities detected.
       - uses: golang/govulncheck-action@b625fbe08f3bccbe446d94fbf87fcc875a4f50ee
+        continue-on-error: true
         with:
           go-version-file: go.mod
           go-package: ./...
