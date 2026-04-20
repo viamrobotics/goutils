@@ -281,9 +281,12 @@ func TestWebRTCServerChannelResetStream(t *testing.T) {
 	<-clientCh.Ready()
 	<-serverCh.Ready()
 
-	setMessageHandler := func(t *testing.T, expectedMessages []*webrtcpb.Response, messagesRead context.CancelFunc) {
-		// Not sure if OnMessage can call the handler in parallel so put execution
-		// behind a mutex just in case.
+	// Each subtest passes its own streamID so late-arriving messages from a
+	// prior subtest are ignored instead of being asserted against the current
+	// subtest's expected messages. The client and server channels are shared
+	// across subtests, so the OnMessage handler can receive straggler frames
+	// after messagesRead fires for the previous subtest.
+	setMessageHandler := func(t *testing.T, streamID uint64, expectedMessages []*webrtcpb.Response, messagesRead context.CancelFunc) {
 		handlerMu := &sync.Mutex{}
 		clientCh.dataChannel.OnMessage(func(msg webrtc.DataChannelMessage) {
 			defer func() {
@@ -297,6 +300,9 @@ func TestWebRTCServerChannelResetStream(t *testing.T) {
 			defer handlerMu.Unlock()
 			req := &webrtcpb.Response{}
 			test.That(t, proto.Unmarshal(msg.Data, req), test.ShouldBeNil)
+			if req.GetStream() == nil || req.GetStream().GetId() != streamID {
+				return
+			}
 			test.That(t, expectedMessages, test.ShouldNotBeEmpty)
 			expected := expectedMessages[0]
 			test.That(t, req, test.ShouldResembleProto, expected)
@@ -324,7 +330,7 @@ func TestWebRTCServerChannelResetStream(t *testing.T) {
 				},
 			},
 		}
-		setMessageHandler(t, expectedMessages, messagesReadCancel)
+		setMessageHandler(t, 1, expectedMessages, messagesReadCancel)
 
 		test.That(t, clientCh.writeHeaders(&webrtcpb.Stream{
 			Id: 1,
@@ -341,13 +347,13 @@ func TestWebRTCServerChannelResetStream(t *testing.T) {
 		messagesReadCtx, messagesReadCancel := context.WithCancel(context.Background())
 		expectedMessages := []*webrtcpb.Response{
 			{
-				Stream: &webrtcpb.Stream{Id: 1},
+				Stream: &webrtcpb.Stream{Id: 2},
 				Type: &webrtcpb.Response_Headers{
 					Headers: &webrtcpb.ResponseHeaders{},
 				},
 			},
 			{
-				Stream: &webrtcpb.Stream{Id: 1},
+				Stream: &webrtcpb.Stream{Id: 2},
 				Type: &webrtcpb.Response_Trailers{
 					Trailers: &webrtcpb.ResponseTrailers{
 						Status: ErrorToStatus(status.Error(codes.Canceled, "request cancelled")).Proto(),
@@ -355,10 +361,10 @@ func TestWebRTCServerChannelResetStream(t *testing.T) {
 				},
 			},
 		}
-		setMessageHandler(t, expectedMessages, messagesReadCancel)
+		setMessageHandler(t, 2, expectedMessages, messagesReadCancel)
 
 		test.That(t, clientCh.writeHeaders(&webrtcpb.Stream{
-			Id: 1,
+			Id: 2,
 		}, &webrtcpb.RequestHeaders{
 			Method: "/proto.rpc.examples.echo.v1.EchoService/Echo",
 			Metadata: metadataToProto(metadata.MD{
@@ -370,7 +376,7 @@ func TestWebRTCServerChannelResetStream(t *testing.T) {
 		test.That(t, err, test.ShouldBeNil)
 
 		test.That(t, clientCh.writeMessage(&webrtcpb.Stream{
-			Id: 1,
+			Id: 2,
 		}, &webrtcpb.RequestMessage{
 			HasMessage: true,
 			PacketMessage: &webrtcpb.PacketMessage{
@@ -379,7 +385,7 @@ func TestWebRTCServerChannelResetStream(t *testing.T) {
 			},
 			Eos: false,
 		}), test.ShouldBeNil)
-		test.That(t, clientCh.writeReset(&webrtcpb.Stream{Id: 1}), test.ShouldBeNil)
+		test.That(t, clientCh.writeReset(&webrtcpb.Stream{Id: 2}), test.ShouldBeNil)
 		<-messagesReadCtx.Done()
 	})
 	t.Run("reset stream after message after server response", func(t *testing.T) {
@@ -389,13 +395,13 @@ func TestWebRTCServerChannelResetStream(t *testing.T) {
 		test.That(t, err, test.ShouldBeNil)
 		expectedMessages := []*webrtcpb.Response{
 			{
-				Stream: &webrtcpb.Stream{Id: 1},
+				Stream: &webrtcpb.Stream{Id: 3},
 				Type: &webrtcpb.Response_Headers{
 					Headers: &webrtcpb.ResponseHeaders{},
 				},
 			},
 			{
-				Stream: &webrtcpb.Stream{Id: 1},
+				Stream: &webrtcpb.Stream{Id: 3},
 				Type: &webrtcpb.Response_Message{
 					Message: &webrtcpb.ResponseMessage{
 						PacketMessage: &webrtcpb.PacketMessage{
@@ -406,7 +412,7 @@ func TestWebRTCServerChannelResetStream(t *testing.T) {
 				},
 			},
 			{
-				Stream: &webrtcpb.Stream{Id: 1},
+				Stream: &webrtcpb.Stream{Id: 3},
 				Type: &webrtcpb.Response_Trailers{
 					Trailers: &webrtcpb.ResponseTrailers{
 						Status: ErrorToStatus(nil).Proto(),
@@ -415,10 +421,10 @@ func TestWebRTCServerChannelResetStream(t *testing.T) {
 			},
 		}
 		messagesReadCtx, messagesReadCancel := context.WithCancel(context.Background())
-		setMessageHandler(t, expectedMessages, messagesReadCancel)
+		setMessageHandler(t, 3, expectedMessages, messagesReadCancel)
 
 		test.That(t, clientCh.writeHeaders(&webrtcpb.Stream{
-			Id: 1,
+			Id: 3,
 		}, &webrtcpb.RequestHeaders{
 			Method: "/proto.rpc.examples.echo.v1.EchoService/Echo",
 			Metadata: metadataToProto(metadata.MD{
@@ -430,7 +436,7 @@ func TestWebRTCServerChannelResetStream(t *testing.T) {
 		test.That(t, err, test.ShouldBeNil)
 
 		test.That(t, clientCh.writeMessage(&webrtcpb.Stream{
-			Id: 1,
+			Id: 3,
 		}, &webrtcpb.RequestMessage{
 			HasMessage: true,
 			PacketMessage: &webrtcpb.PacketMessage{
@@ -441,7 +447,7 @@ func TestWebRTCServerChannelResetStream(t *testing.T) {
 		}), test.ShouldBeNil)
 
 		<-messagesReadCtx.Done()
-		test.That(t, clientCh.writeReset(&webrtcpb.Stream{Id: 1}), test.ShouldBeNil)
+		test.That(t, clientCh.writeReset(&webrtcpb.Stream{Id: 3}), test.ShouldBeNil)
 	})
 
 	t.Run("reset stream after message before server response", func(t *testing.T) {
@@ -456,20 +462,21 @@ func TestWebRTCServerChannelResetStream(t *testing.T) {
 		// goroutines.
 		respWaiting := make(chan struct{})
 		blockResp := make(chan struct{})
-		echoSrv.beforeSend = func() {
+		echoSrv.setBeforeSend(func() {
 			close(respWaiting)
 			<-blockResp
-		}
+		})
+		defer echoSrv.setBeforeSend(nil)
 
 		expectedMessages := []*webrtcpb.Response{
 			{
-				Stream: &webrtcpb.Stream{Id: 1},
+				Stream: &webrtcpb.Stream{Id: 4},
 				Type: &webrtcpb.Response_Headers{
 					Headers: &webrtcpb.ResponseHeaders{},
 				},
 			},
 			{
-				Stream: &webrtcpb.Stream{Id: 1},
+				Stream: &webrtcpb.Stream{Id: 4},
 				Type: &webrtcpb.Response_Message{
 					Message: &webrtcpb.ResponseMessage{
 						PacketMessage: &webrtcpb.PacketMessage{
@@ -480,17 +487,17 @@ func TestWebRTCServerChannelResetStream(t *testing.T) {
 				},
 			},
 			{
-				Stream: &webrtcpb.Stream{Id: 1},
+				Stream: &webrtcpb.Stream{Id: 4},
 				Type: &webrtcpb.Response_Trailers{
 					Trailers: &webrtcpb.ResponseTrailers{},
 				},
 			},
 		}
 		messagesReadCtx, messagesReadCancel := context.WithCancel(context.Background())
-		setMessageHandler(t, expectedMessages, messagesReadCancel)
+		setMessageHandler(t, 4, expectedMessages, messagesReadCancel)
 
 		test.That(t, clientCh.writeHeaders(&webrtcpb.Stream{
-			Id: 1,
+			Id: 4,
 		}, &webrtcpb.RequestHeaders{
 			Method: "/proto.rpc.examples.echo.v1.EchoService/Echo",
 			Metadata: metadataToProto(metadata.MD{
@@ -502,7 +509,7 @@ func TestWebRTCServerChannelResetStream(t *testing.T) {
 		test.That(t, err, test.ShouldBeNil)
 
 		test.That(t, clientCh.writeMessage(&webrtcpb.Stream{
-			Id: 1,
+			Id: 4,
 		}, &webrtcpb.RequestMessage{
 			HasMessage: true,
 			PacketMessage: &webrtcpb.PacketMessage{
@@ -513,7 +520,7 @@ func TestWebRTCServerChannelResetStream(t *testing.T) {
 		}), test.ShouldBeNil)
 
 		<-respWaiting
-		test.That(t, clientCh.writeReset(&webrtcpb.Stream{Id: 1}), test.ShouldBeNil)
+		test.That(t, clientCh.writeReset(&webrtcpb.Stream{Id: 4}), test.ShouldBeNil)
 		close(blockResp)
 		<-messagesReadCtx.Done()
 	})
@@ -521,13 +528,23 @@ func TestWebRTCServerChannelResetStream(t *testing.T) {
 
 type delayingEchoServer struct {
 	echoserver.Server
-	beforeSend func()
+	beforeSendMu sync.Mutex
+	beforeSend   func()
+}
+
+func (srv *delayingEchoServer) setBeforeSend(f func()) {
+	srv.beforeSendMu.Lock()
+	defer srv.beforeSendMu.Unlock()
+	srv.beforeSend = f
 }
 
 func (srv *delayingEchoServer) Echo(ctx context.Context, req *echopb.EchoRequest) (*echopb.EchoResponse, error) {
 	resp, err := srv.Server.Echo(ctx, req)
-	if srv.beforeSend != nil {
-		srv.beforeSend()
+	srv.beforeSendMu.Lock()
+	cb := srv.beforeSend
+	srv.beforeSendMu.Unlock()
+	if cb != nil {
+		cb()
 	}
 	return resp, err
 }
