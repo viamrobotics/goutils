@@ -41,6 +41,7 @@ func NewCloudExporter(opts CloudOptions) (Exporter, error) {
 		NumberOfWorkers          int           `env:"OCSD_WORKERS"`
 		TraceSpansBufferMaxBytes int           `env:"OCSD_BUFFER_MAX_BYTES"       envDefault:"52428800"`
 		BundleCountThreshold     int           `env:"OCSD_BUNDLE_COUNT_THRESHOLD"`
+		SamplingProbability      float64       `env:"OC_SAMPLING_PROB"            envDefault:"1"`
 	}]()
 	if err != nil {
 		opts.Logger.Errorf("failed to parse stackdriver exporter options from env, will use defaults: %v", err)
@@ -127,11 +128,17 @@ func NewCloudExporter(opts CloudOptions) (Exporter, error) {
 		sdExporter: sd,
 	}
 
+	e.sampler = trace.AlwaysSample()
+	if envOpts.SamplingProbability != 0 {
+		e.sampler = trace.ProbabilitySampler(envOpts.SamplingProbability)
+	}
+
 	return &e, nil
 }
 
 type sdExporter struct {
 	sdExporter *stackdriver.Exporter
+	sampler    trace.Sampler
 }
 
 // Starts the applications stats/span monitoring. Registers views and starts trace/metric exporters to opencensus.
@@ -144,7 +151,7 @@ func (e *sdExporter) Start() error {
 		return err
 	}
 	trace.RegisterExporter(e.sdExporter)
-	trace.ApplyConfig(trace.Config{DefaultSampler: trace.AlwaysSample()})
+	trace.ApplyConfig(trace.Config{DefaultSampler: e.sampler})
 	return nil
 }
 
