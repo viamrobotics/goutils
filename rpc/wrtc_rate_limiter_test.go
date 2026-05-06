@@ -180,6 +180,30 @@ func TestMongoDBRateLimiter(t *testing.T) {
 		test.That(t, denied, test.ShouldEqual, config.MaxRequests)
 	})
 
+	t.Run("upsert stores expires_at as a Date", func(t *testing.T) {
+		ctx := context.Background()
+		key := "test"
+
+		// MaxRequests=0 makes the second UpdateOne never match, so expires_at is whatever
+		// the upsert wrote. If $dateAdd/$$NOW weren't evaluated server-side, expires_at
+		// would be a literal sub-document and the DateTime decode below would fail.
+		zeroConfig := RateLimitConfig{MaxRequests: 0, Window: time.Second}
+		test.That(t, client.Database(mongodbWebRTCCallQueueDBName).Drop(ctx), test.ShouldBeNil)
+		limiter, err := NewMongoDBRateLimiter(ctx, client, zeroConfig, logger)
+		test.That(t, err, test.ShouldBeNil)
+
+		err = limiter.Allow(ctx, key)
+		test.That(t, err, test.ShouldNotBeNil)
+		test.That(t, status.Convert(err).Code(), test.ShouldEqual, codes.ResourceExhausted)
+
+		var doc struct {
+			ExpiresAt primitive.DateTime `bson:"expires_at"`
+		}
+		err = limiter.rateLimitColl.FindOne(ctx, bson.M{"_id": key}).Decode(&doc)
+		test.That(t, err, test.ShouldBeNil)
+		test.That(t, doc.ExpiresAt.Time().After(time.Now()), test.ShouldBeTrue)
+	})
+
 	t.Run("handles concurrent requests from different keys", func(t *testing.T) {
 		ctx := context.Background()
 		limiter := setUpLimiter(t, ctx)
