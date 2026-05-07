@@ -94,20 +94,27 @@ func NewMongoDBRateLimiter(
 // The update creates a new array that adds the current timestamp and removes old timestamps outside the window.
 // This prevents race conditions and keeps the requests array bounded.
 func (rl *MongoDBRateLimiter) Allow(ctx context.Context, key string) error {
+	freshExpiresAt := bson.M{
+		"$dateAdd": bson.M{
+			"startDate": "$$NOW",
+			"unit":      "second",
+			"amount":    rl.config.Window.Seconds(),
+		},
+	}
+
 	// Ensure a document for the key exists or create one to handle first request case since a $expr filter
-	// can't check for non-existence and create the document if it doesn't exist
+	// can't check for non-existence and create the document if it doesn't exist. Use a pipeline (rather
+	// than $setOnInsert) so $dateAdd and $$NOW are evaluated server-side instead of stored as literals.
 	_, err := rl.rateLimitColl.UpdateOne(ctx,
 		bson.M{"_id": key},
-		bson.M{"$setOnInsert": bson.M{
-			"requests": bson.A{},
-			"expires_at": bson.M{
-				"$dateAdd": bson.M{
-					"startDate": "$$NOW",
-					"unit":      "second",
-					"amount":    rl.config.Window.Seconds(),
+		bson.A{
+			bson.M{
+				"$set": bson.M{
+					"requests":   bson.M{"$ifNull": bson.A{"$requests", bson.A{}}},
+					"expires_at": bson.M{"$ifNull": bson.A{"$expires_at", freshExpiresAt}},
 				},
 			},
-		}},
+		},
 		options.Update().SetUpsert(true))
 	if err != nil {
 		// to not erroneously rate limit requests, we log the error but do not return the error.
@@ -173,13 +180,7 @@ func (rl *MongoDBRateLimiter) Allow(ctx context.Context, key string) error {
 						bson.A{"$$NOW"},
 					},
 				},
-				"expires_at": bson.M{
-					"$dateAdd": bson.M{
-						"startDate": "$$NOW",
-						"unit":      "second",
-						"amount":    rl.config.Window.Seconds(),
-					},
-				},
+				"expires_at": freshExpiresAt,
 			},
 		},
 	}
