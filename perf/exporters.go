@@ -41,6 +41,7 @@ func NewCloudExporter(opts CloudOptions) (Exporter, error) {
 		NumberOfWorkers          int           `env:"OCSD_WORKERS"`
 		TraceSpansBufferMaxBytes int           `env:"OCSD_BUFFER_MAX_BYTES"       envDefault:"52428800"`
 		BundleCountThreshold     int           `env:"OCSD_BUNDLE_COUNT_THRESHOLD"`
+		SamplingByNamePerSec     float64       `env:"OC_SAMPLING_BY_NAME_PER_SEC" envDefault:"0"`
 		SamplingProbability      float64       `env:"OC_SAMPLING_PROB"            envDefault:"1"`
 	}]()
 	if err != nil {
@@ -129,7 +130,9 @@ func NewCloudExporter(opts CloudOptions) (Exporter, error) {
 	}
 
 	e.sampler = trace.AlwaysSample()
-	if envOpts.SamplingProbability != 0 {
+	if envOpts.SamplingByNamePerSec != 0 {
+		e.sampler = NewRouteRateLimitingSampler(envOpts.SamplingByNamePerSec)
+	} else if envOpts.SamplingProbability != 0 {
 		e.sampler = trace.ProbabilitySampler(envOpts.SamplingProbability)
 	}
 
