@@ -131,7 +131,7 @@ func NewCloudExporter(opts CloudOptions) (Exporter, error) {
 
 	e.sampler = trace.AlwaysSample()
 	if envOpts.SamplingByNamePerSec != 0 {
-		e.sampler = NewRouteRateLimitingSampler(envOpts.SamplingByNamePerSec)
+		e.sampler = NewRootNameRateLimitingSampler(envOpts.SamplingByNamePerSec)
 	} else if envOpts.SamplingProbability != 0 {
 		e.sampler = trace.ProbabilitySampler(envOpts.SamplingProbability)
 	}

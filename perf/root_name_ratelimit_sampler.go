@@ -9,10 +9,10 @@ import (
 	"go.opencensus.io/trace"
 )
 
-// NewRouteRateLimitingSampler creates a [trace.Sampler] that samples x spans
+// NewRootNameRateLimitingSampler creates a [trace.Sampler] that samples x spans
 // per second per root span name. The first encountered root span of each name
 // is always sampled.
-func NewRouteRateLimitingSampler(perSec float64) trace.Sampler {
+func NewRootNameRateLimitingSampler(perSec float64) trace.Sampler {
 	if perSec <= 0 {
 		return trace.NeverSample()
 	}

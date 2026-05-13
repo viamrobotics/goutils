@@ -23,7 +23,7 @@ func TestRouteRateLimitingSampler(t *testing.T) {
 
 	t.Run("never samples when perSec <= 0", func(t *testing.T) {
 		for _, perSec := range []float64{0, -0.0001, -1, -1e9} {
-			sampler := NewRouteRateLimitingSampler(perSec)
+			sampler := NewRootNameRateLimitingSampler(perSec)
 			for i := range 100 {
 				dec := sampler(rootParams("foo", byte(i)))
 				test.That(t, dec.Sample, test.ShouldBeFalse)
@@ -33,7 +33,7 @@ func TestRouteRateLimitingSampler(t *testing.T) {
 
 	t.Run("defers to parent context for non-root spans", func(t *testing.T) {
 		// Use a high perSec so the sampler would otherwise sample root spans.
-		sampler := NewRouteRateLimitingSampler(1e6)
+		sampler := NewRootNameRateLimitingSampler(1e6)
 		nonZeroSpanID := trace.SpanID{1}
 
 		params := trace.SamplingParameters{
@@ -62,7 +62,7 @@ func TestRouteRateLimitingSampler(t *testing.T) {
 			// Use a tiny perSec so any subsequent call within fake-time would have
 			// near-zero sampling probability and trace IDs of all 0xff would
 			// otherwise be rejected.
-			sampler := NewRouteRateLimitingSampler(1e-12)
+			sampler := NewRootNameRateLimitingSampler(1e-12)
 
 			for _, name := range []string{"a", "b", "c", "d", "/foo/bar", ""} {
 				dec := sampler(rootParams(name, 0xff))
