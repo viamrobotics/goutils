@@ -38,6 +38,9 @@ var DefaultICEServers = []webrtc.ICEServer{
 	{
 		URLs: []string{"stun:global.stun.twilio.com:3478"},
 	},
+	{
+		URLs: []string{"stun:turn.viam.com:443"},
+	},
 }
 
 // DefaultWebRTCConfiguration is the standard configuration used for WebRTC peers.
