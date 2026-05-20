@@ -1,29 +1,23 @@
 package perf
 
 import (
-	"encoding/binary"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"go.opencensus.io/trace"
+	"golang.org/x/time/rate"
 )
 
-// NewRootNameRateLimitingSampler creates a [trace.Sampler] that samples x spans
-// per second per root span name. The first encountered root span of each name
-// is always sampled.
+// NewRootNameRateLimitingSampler creates a new [trace.Sampler] that samples
+// perSec traces per second per unique root span name. The first encountered
+// root span of each name is always sampled.
 func NewRootNameRateLimitingSampler(perSec float64) trace.Sampler {
 	if perSec <= 0 {
 		return trace.NeverSample()
 	}
+	period := time.Second * time.Duration(1/perSec)
 
-	// - [sync.Map] is optimized for a write-once-read-many access pattern, so
-	//   just storing timestamps directly in the values would work but likely lead
-	//   to suboptimal performance
-	// - [sync.Pointer] could be used to hold a pointer to a [time.Time] but
-	//   would add GC pressure on some code paths that can otherwise pass by value
-	//   by using an int64
-	lastSampledMicrosByName := &smap[string, *atomic.Int64]{}
+	limitersByName := &smap[string, *rate.Limiter]{}
 	return func(sp trace.SamplingParameters) trace.SamplingDecision {
 		// Only apply to root spans, otherwise defer to the parent's decision.
 		var zeroSpanID trace.SpanID
@@ -31,41 +25,13 @@ func NewRootNameRateLimitingSampler(perSec float64) trace.Sampler {
 			return trace.SamplingDecision{Sample: sp.ParentContext.IsSampled()}
 		}
 
-		// Try to load first and only allocate a new sync.Int64 if we miss to avoid
+		// Try to load first and only allocate a new limiter if we miss to avoid
 		// generating GC pressure on every request.
-		lastSampleAtomic, present := lastSampledMicrosByName.Load(sp.Name)
-		nowNanos := time.Now().UnixNano()
-		var sample bool
-		if present {
-			// Compute the sampling probability based on the seconds since the last
-			// time we sampled as detailed here:
-			// https://github.com/census-instrumentation/opencensus-specs/blob/master/trace/Sampling.md#when-does-opencensus-sample-traces
-			lastSample := lastSampleAtomic.Load()
-			elapsedSec := max(float64(nowNanos-lastSample)/1e9, 0)
-			samplingProb := min(elapsedSec*perSec, 1)
-
-			// Use the trace id as the random seed to check if we should sample
-			// according to our computed probability. This is copied from
-			// [trace.ProbabilitySampler].
-			traceIDUpperBound := uint64(samplingProb * (1 << 63))
-			sample = (binary.BigEndian.Uint64(sp.TraceID[0:8]) >> 1) < traceIDUpperBound
-			if sample {
-				// If we decided to sample there's still a chance we lost the race w/
-				// another goroutine. Discard our positive result if something else has
-				// already overwritten the atomic.
-				sample = lastSampleAtomic.CompareAndSwap(lastSample, nowNanos)
-			}
-		} else {
-			// This is our first time seeing a root span with this particular name.
-			// Assume we should sample.
-			nowPtr := &atomic.Int64{}
-			nowPtr.Store(nowNanos)
-			// If another goroutine beat us to the first sampling, discard our
-			// positive result.
-			_, lostRace := lastSampledMicrosByName.LoadOrStore(sp.Name, nowPtr)
-			sample = !lostRace
+		limiter, present := limitersByName.Load(sp.Name)
+		if !present {
+			limiter, _ = limitersByName.LoadOrStore(sp.Name, rate.NewLimiter(rate.Every(period), 1))
 		}
-		return trace.SamplingDecision{Sample: sample}
+		return trace.SamplingDecision{Sample: limiter.Allow()}
 	}
 }
 

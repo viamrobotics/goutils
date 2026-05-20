@@ -59,10 +59,7 @@ func TestRouteRateLimitingSampler(t *testing.T) {
 
 	t.Run("first root span for each unique name is always sampled", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
-			// Use a tiny perSec so any subsequent call within fake-time would have
-			// near-zero sampling probability and trace IDs of all 0xff would
-			// otherwise be rejected.
-			sampler := NewRootNameRateLimitingSampler(1e-12)
+			sampler := NewRootNameRateLimitingSampler(1)
 
 			for _, name := range []string{"a", "b", "c", "d", "/foo/bar", ""} {
 				dec := sampler(rootParams(name, 0xff))
@@ -73,13 +70,12 @@ func TestRouteRateLimitingSampler(t *testing.T) {
 				// "always sample" only applies to the first occurrence.
 				dec = sampler(rootParams(name, 0xff))
 				test.That(t, dec.Sample, test.ShouldBeFalse)
-			}
 
-			// Advancing fake time past 1/perSec brings sampling probability back
-			// to 1, so the next call samples again.
-			time.Sleep(10 * time.Second)
-			dec := sampler(rootParams("a", 0))
-			test.That(t, dec.Sample, test.ShouldBeTrue)
+				// Advance fake time past 1/perSec so the next call samples again.
+				time.Sleep(2 * time.Second)
+				dec = sampler(rootParams(name, 0))
+				test.That(t, dec.Sample, test.ShouldBeTrue)
+			}
 		})
 	})
 }
