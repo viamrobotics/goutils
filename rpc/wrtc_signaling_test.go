@@ -136,6 +136,7 @@ func testWebRTCSignaling(t *testing.T, signalingCallQueue WebRTCCallQueue, logge
 
 			for _, tc := range []bool{true, false} {
 				t.Run(fmt.Sprintf("with trickle disabled %t", tc), func(t *testing.T) {
+					waitForAnswererOnline(context.Background(), t, []string{host}, signalingCallQueue)
 					ch, dialErr := DialWebRTC(
 						context.Background(),
 						grpcListener.Addr().String(),
@@ -146,7 +147,6 @@ func testWebRTCSignaling(t *testing.T, signalingCallQueue WebRTCCallQueue, logge
 							DisableTrickleICE: tc,
 						}),
 					)
-					waitForAnswererOnline(context.Background(), t, []string{host}, signalingCallQueue)
 					test.That(t, dialErr, test.ShouldBeNil)
 					defer func() {
 						test.That(t, ch.Close(), test.ShouldBeNil)
