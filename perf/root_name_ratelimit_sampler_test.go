@@ -9,18 +9,18 @@ import (
 	"go.viam.com/test"
 )
 
-func TestRouteRateLimitingSampler(t *testing.T) {
-	rootParams := func(name string, traceIDByte byte) trace.SamplingParameters {
-		var traceID trace.TraceID
-		for i := range traceID {
-			traceID[i] = traceIDByte
-		}
-		return trace.SamplingParameters{
-			TraceID: traceID,
-			Name:    name,
-		}
+func rootParams(name string, traceIDByte byte) trace.SamplingParameters {
+	var traceID trace.TraceID
+	for i := range traceID {
+		traceID[i] = traceIDByte
 	}
+	return trace.SamplingParameters{
+		TraceID: traceID,
+		Name:    name,
+	}
+}
 
+func TestRouteRateLimitingSampler(t *testing.T) {
 	t.Run("never samples when perSec <= 0", func(t *testing.T) {
 		for _, perSec := range []float64{0, -0.0001, -1, -1e9} {
 			sampler := NewRootNameRateLimitingSampler(perSec)
