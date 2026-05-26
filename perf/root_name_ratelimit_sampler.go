@@ -1,7 +1,7 @@
 package perf
 
 import (
-	"math/rand"
+	"math/rand/v2"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -55,6 +55,7 @@ func NewRootNameRateLimitingSampler(perSec float64) trace.Sampler {
 			// against situations where most span names are registered at the same
 			// time during startup and we are left with bursts of CPU and network
 			// usage every time the sampling interval hits.
+			//nolint:gosec
 			nextNanos := nowNanos + int64(float64(intervalNanos)*rand.Float64())
 			nowPtr.Store(nextNanos)
 			// If another goroutine beat us to the first sampling, discard our
