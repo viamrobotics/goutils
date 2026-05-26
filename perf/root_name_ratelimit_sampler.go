@@ -53,8 +53,8 @@ func NewRootNameRateLimitingSampler(perSec float64) trace.Sampler {
 			// Only on the first request, randomly distribute the next sample time
 			// anywhere within the configured interval. The intent is to guard
 			// against situations where most span names are registered at the same
-			// time during startup we are left with bursts of CPU and network usage
-			// every time the sampling interval hits.
+			// time during startup and we are left with bursts of CPU and network
+			// usage every time the sampling interval hits.
 			nextNanos := nowNanos + int64(float64(intervalNanos)*rand.Float64())
 			nowPtr.Store(nextNanos)
 			// If another goroutine beat us to the first sampling, discard our
