@@ -140,11 +140,11 @@ func testWebRTCSignaling(t *testing.T, signalingCallQueue WebRTCCallQueue, logge
 						ch      ClientConn
 						dialErr error
 					)
-					// waitForAnswererOnline at this point _sometimes_ gets a stale "the machine is
-					// online" value, and DialWebRTC can still fail, so we add a hacky retry here.
-					// There's no perfect way to fix the race between waitForAnswererOnline,
-					// operatorLivenessLoop, and the answerer reconnect goroutines (which have a
-					// 2-second delay).
+					// After waitForAnswererOnline returns, operatorLivenessLoop can run before the
+					// DialWebRTC and update the DB state to reflect no online answerers causing the
+					// dial to fail. The ideal solution would be to spawn answerer threads as call
+					// requests come in, rather than hardcoding a limit of 2. For the sake of this
+					// test, we just add a couple retries here (hacky).
 					for range 3 {
 						waitForAnswererOnline(context.Background(), t, []string{host}, signalingCallQueue)
 						ch, dialErr = DialWebRTC(
