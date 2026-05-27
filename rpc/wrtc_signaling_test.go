@@ -136,18 +136,33 @@ func testWebRTCSignaling(t *testing.T, signalingCallQueue WebRTCCallQueue, logge
 
 			for _, tc := range []bool{true, false} {
 				t.Run(fmt.Sprintf("with trickle disabled %t", tc), func(t *testing.T) {
-					waitForAnswererOnline(context.Background(), t, []string{host}, signalingCallQueue)
-					ch, dialErr := DialWebRTC(
-						context.Background(),
-						grpcListener.Addr().String(),
-						host,
-						logger,
-						WithWebRTCOptions(DialWebRTCOptions{
-							SignalingInsecure: true,
-							DisableTrickleICE: tc,
-						}),
+					var (
+						ch      ClientConn
+						dialErr error
 					)
+					// After waitForAnswererOnline returns, operatorLivenessLoop can run before the
+					// DialWebRTC and update the DB state to reflect no online answerers causing the
+					// dial to fail. The ideal solution would be to spawn answerer threads as call
+					// requests come in, rather than hardcoding a limit of 2. For the sake of this
+					// test, we just add a couple retries here (hacky).
+					for range 3 {
+						waitForAnswererOnline(context.Background(), t, []string{host}, signalingCallQueue)
+						ch, dialErr = DialWebRTC(
+							context.Background(),
+							grpcListener.Addr().String(),
+							host,
+							logger,
+							WithWebRTCOptions(DialWebRTCOptions{
+								SignalingInsecure: true,
+								DisableTrickleICE: tc,
+							}),
+						)
+						if dialErr == nil {
+							break
+						}
+					}
 					test.That(t, dialErr, test.ShouldBeNil)
+
 					defer func() {
 						test.That(t, ch.Close(), test.ShouldBeNil)
 					}()
