@@ -136,18 +136,33 @@ func testWebRTCSignaling(t *testing.T, signalingCallQueue WebRTCCallQueue, logge
 
 			for _, tc := range []bool{true, false} {
 				t.Run(fmt.Sprintf("with trickle disabled %t", tc), func(t *testing.T) {
-					waitForAnswererOnline(context.Background(), t, []string{host}, signalingCallQueue)
-					ch, dialErr := DialWebRTC(
-						context.Background(),
-						grpcListener.Addr().String(),
-						host,
-						logger,
-						WithWebRTCOptions(DialWebRTCOptions{
-							SignalingInsecure: true,
-							DisableTrickleICE: tc,
-						}),
+					var (
+						ch      ClientConn
+						dialErr error
 					)
+					// waitForAnswererOnline at this point _sometimes_ gets a stale "the machine is
+					// online" value, and DialWebRTC can still fail, so we add a hacky retry here.
+					// There's no perfect way to fix the race between waitForAnswererOnline,
+					// operatorLivenessLoop, and the answerer reconnect goroutines (which have a
+					// 2-second delay).
+					for range 3 {
+						waitForAnswererOnline(context.Background(), t, []string{host}, signalingCallQueue)
+						ch, dialErr = DialWebRTC(
+							context.Background(),
+							grpcListener.Addr().String(),
+							host,
+							logger,
+							WithWebRTCOptions(DialWebRTCOptions{
+								SignalingInsecure: true,
+								DisableTrickleICE: tc,
+							}),
+						)
+						if dialErr == nil {
+							break
+						}
+					}
 					test.That(t, dialErr, test.ShouldBeNil)
+
 					defer func() {
 						test.That(t, ch.Close(), test.ShouldBeNil)
 					}()
