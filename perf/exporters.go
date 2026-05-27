@@ -129,11 +129,17 @@ func NewCloudExporter(opts CloudOptions) (Exporter, error) {
 		sdExporter: sd,
 	}
 
-	e.sampler = trace.AlwaysSample()
-	if envOpts.SamplingByNamePerSec != 0 {
-		e.sampler = NewRootNameRateLimitingSampler(envOpts.SamplingByNamePerSec)
-	} else if envOpts.SamplingProbability != 0 {
-		e.sampler = trace.ProbabilitySampler(envOpts.SamplingProbability)
+	if byNamePerSec := envOpts.SamplingByNamePerSec; byNamePerSec != 0 {
+		opts.Logger.Infow("Using root name rate limiting sampler for tracing",
+			"samplePerSec", byNamePerSec)
+		e.sampler = NewRootNameRateLimitingSampler(byNamePerSec)
+	} else if prob := envOpts.SamplingProbability; prob != 0 {
+		opts.Logger.Infow("Using probability sampler for tracing",
+			"probability", prob)
+		e.sampler = trace.ProbabilitySampler(prob)
+	} else {
+		opts.Logger.Info("No sampling config found; sampling all traces by default")
+		e.sampler = trace.AlwaysSample()
 	}
 
 	return &e, nil
