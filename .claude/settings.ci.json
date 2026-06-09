@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "deny": [
+      "Edit(file_path=.github/**)",
+      "Write(file_path=.github/**)",
+      "Edit(file_path=**/*.pb.go)",
+      "Write(file_path=**/*.pb.go)",
+      "Edit(file_path=Makefile)",
+      "Write(file_path=Makefile)",
+      "Edit(file_path=mise.toml)",
+      "Write(file_path=mise.toml)",
+      "Edit(file_path=go.sum)",
+      "Write(file_path=go.sum)"
+    ]
+  }
+}
