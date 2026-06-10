@@ -135,6 +135,14 @@ func dial(
 		ctxParallel, cancelParallel = context.WithCancelCause(ctx)
 	)
 	defer cancelParallel(nil)
+	// force-relay and force-p2p exist to exercise a specific WebRTC transport
+	// (relay-only TURN candidates, or host/srflx-only). An mDNS connection
+	// short-circuits to a local gRPC connection that bypasses WebRTC/ICE
+	// entirely, silently defeating either flag, so disable mDNS whenever one
+	// is set.
+	if dOpts.webrtcOpts.ForceRelay || dOpts.webrtcOpts.ForceP2P {
+		dOpts.mdnsOptions.Disable = true
+	}
 	if !dOpts.mdnsOptions.Disable && tryLocal && isJustDomain {
 		wg.Add(1)
 		go func(dOpts dialOptions) {
