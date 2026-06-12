@@ -82,6 +82,10 @@ func NewCloudExporter(opts CloudOptions) (Exporter, error) {
 		version = os.Getenv("CRWP_VERSION")
 	}
 	if module != "" {
+		sdOpts.DefaultTraceAttributes = map[string]any{
+			// OTel convention for service name, allows for easy filtering in GCP Cloud Trace.
+			"service.name": module,
+		}
 		// Allow for local testing with GCP_COMPUTE_ZONE
 		var err error
 		zone := os.Getenv("GCP_COMPUTE_ZONE")
