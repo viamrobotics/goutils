@@ -227,7 +227,7 @@ func dialWebRTC(
 		)
 	}
 	extendedConfig := extendWebRTCConfig(logger, &config, optionalConfig, eWrtcOpts)
-	peerConn, dataChannel, err := newPeerConnectionForClient(ctx, extendedConfig, dOpts.webrtcOpts.DisableTrickleICE, logger)
+	peerConn, dataChannel, renegotiate, err := newPeerConnectionForClient(ctx, extendedConfig, dOpts.webrtcOpts.DisableTrickleICE, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -504,6 +504,30 @@ func dialWebRTC(
 		})
 		return nil, exchangeErr
 	}
+
+	// Keep time-limited TURN credentials fresh for the life of the connection. If this
+	// connection is relayed through a TURN server whose credentials expire, the worker
+	// re-fetches fresh ICE servers and applies them via an ICE restart before they lapse;
+	// otherwise it is a no-op. Tied to the channel's context, so it stops when the channel
+	// closes.
+	refetchICEServers := func(ctx context.Context) ([]webrtc.ICEServer, error) {
+		sigConn, err := dialSignalingServer(ctx, signalingServer, host, logger, dOpts)
+		if err != nil {
+			return nil, err
+		}
+		defer func() { utils.UncheckedError(sigConn.Close()) }()
+		md := metadata.New(map[string]string{RPCHostMetadataField: host})
+		resp, err := webrtcpb.NewSignalingServiceClient(sigConn).OptionalWebRTCConfig(
+			metadata.NewOutgoingContext(ctx, md), &webrtcpb.OptionalWebRTCConfigRequest{})
+		if err != nil {
+			return nil, err
+		}
+		return extendWebRTCConfig(logger, &config, resp.GetConfig(), eWrtcOpts).ICEServers, nil
+	}
+	clientCh.activeBackgroundWorkers.Add(1)
+	utils.ManagedGo(func() {
+		maintainTURNCredentials(clientCh.ctx, peerConn, refetchICEServers, renegotiate, logger)
+	}, clientCh.activeBackgroundWorkers.Done)
 
 	return clientCh, nil
 }

@@ -512,14 +512,14 @@ func testWebRTCClientAnswerConcurrent(t *testing.T, signalingCallQueue WebRTCCal
 	md.Append(RPCHostMetadataField, host)
 	callCtx := metadata.NewOutgoingContext(context.Background(), md)
 
-	pc1, _, err := newPeerConnectionForClient(context.Background(), webrtc.Configuration{}, true, logger)
+	pc1, _, _, err := newPeerConnectionForClient(context.Background(), webrtc.Configuration{}, true, logger)
 	test.That(t, err, test.ShouldBeNil)
 	defer pc1.GracefulClose()
 
 	encodedSDP1, err := EncodeSDP(pc1.LocalDescription())
 	test.That(t, err, test.ShouldBeNil)
 
-	pc2, _, err := newPeerConnectionForClient(context.Background(), webrtc.Configuration{}, true, logger)
+	pc2, _, _, err := newPeerConnectionForClient(context.Background(), webrtc.Configuration{}, true, logger)
 	test.That(t, err, test.ShouldBeNil)
 	defer pc2.GracefulClose()
 
