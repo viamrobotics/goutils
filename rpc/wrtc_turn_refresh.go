@@ -25,22 +25,10 @@ const (
 	turnRefreshLeadFactor = 0.5
 	// turnRefreshMinWait avoids busy-looping on already-expired or near-expired credentials.
 	turnRefreshMinWait = time.Minute
-	// turnRefreshMaxWait bounds the pre-expiry refresh schedule.
+	// turnRefreshMaxWait bounds how long we sleep before re-checking, so an implausibly distant
+	// expiry (or a non-relayed connection) doesn't leave us idle indefinitely.
 	turnRefreshMaxWait = 24 * time.Hour
-	// turnRefreshRecheckWait is how often to re-evaluate a connection that is not currently
-	// using the relay (so we notice if ICE later fails over onto it).
-	turnRefreshRecheckWait = time.Hour
 )
-
-// relaySelected reports whether the connection's currently selected ICE candidate pair is
-// using a relay (TURN) local candidate. Credentials only need refreshing when the relay is
-// the active path: a connection that merely has TURN in its config but is running over a
-// host/srflx pair keeps a background TURN allocation alive, but its expiry is harmless noise,
-// not a path to refresh.
-func relaySelected(peerConn *webrtc.PeerConnection) bool {
-	pair, ok := webrtcPeerConnCandPair(peerConn)
-	return ok && pair.Local != nil && pair.Local.Typ == webrtc.ICECandidateTypeRelay
-}
 
 // earliestTURNCredentialExpiry returns the soonest expiry encoded in any of the live
 // PeerConnection's TURN credential usernames. ok is false when there is no time-limited TURN
@@ -69,18 +57,12 @@ func earliestTURNCredentialExpiry(peerConn *webrtc.PeerConnection) (time.Time, b
 	return earliest, found
 }
 
-// nextTURNRefreshWait computes how long to wait before the next refresh. ok is true only when
-// the connection is actively relayed through a TURN server with a time-limited credential — the
-// only case that needs refreshing. Otherwise it returns a recheck interval with ok=false, so the
-// worker periodically re-evaluates (e.g. in case ICE later fails over onto the relay) without
-// doing any work.
+// nextTURNRefreshWait computes how long to wait before the next refresh based on the current
+// credential expiry. ok is false when there is no time-limited TURN credential.
 func nextTURNRefreshWait(peerConn *webrtc.PeerConnection) (time.Duration, bool) {
-	if !relaySelected(peerConn) {
-		return turnRefreshRecheckWait, false
-	}
 	expiry, ok := earliestTURNCredentialExpiry(peerConn)
 	if !ok {
-		return turnRefreshRecheckWait, false
+		return 0, false
 	}
 	remaining := time.Until(expiry)
 	if remaining <= 0 {
@@ -96,12 +78,12 @@ func nextTURNRefreshWait(peerConn *webrtc.PeerConnection) (time.Duration, bool) 
 	return wait, true
 }
 
-// maintainTURNCredentials refreshes time-limited TURN credentials on a long-lived connection
-// whose selected ICE path is a relay, before they expire. It runs until ctx is done.
-// refetchICEServers fetches a fresh set of ICE servers (e.g. by re-querying the signaling
-// server's OptionalWebRTCConfig), and renegotiate applies them via an ICE restart. For
-// connections not actively using a relay it does no work beyond a periodic check of the selected
-// candidate pair, so callers need not know in advance whether they will connect over a relay.
+// maintainTURNCredentials refreshes time-limited TURN credentials on a long-lived relayed
+// connection before they expire. It runs until ctx is done. refetchICEServers fetches a fresh
+// set of ICE servers (e.g. by re-querying the signaling server's OptionalWebRTCConfig), and
+// renegotiate applies them via an ICE restart. It is a no-op for connections that are not
+// relayed through a credential-expiring TURN server, so callers need not know in advance whether
+// they will connect over a relay.
 func maintainTURNCredentials(
 	ctx context.Context,
 	peerConn *webrtc.PeerConnection,
@@ -111,12 +93,15 @@ func maintainTURNCredentials(
 ) {
 	for {
 		wait, ok := nextTURNRefreshWait(peerConn)
+		if !ok {
+			// No time-limited TURN credential right now; re-check later in case a future ICE
+			// restart lands us on a relayed path.
+			wait = turnRefreshMaxWait
+		}
 		if !utils.SelectContextOrWait(ctx, wait) {
 			return
 		}
-		// Re-check after sleeping: ok gated on the relay being the active path, which can change
-		// over a long wait. Only refresh if the relay is (still) selected.
-		if !ok || !relaySelected(peerConn) {
+		if !ok {
 			continue
 		}
 

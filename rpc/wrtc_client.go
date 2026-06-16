@@ -505,11 +505,11 @@ func dialWebRTC(
 		return nil, exchangeErr
 	}
 
-	// Keep time-limited TURN credentials fresh for the life of the connection. Only when the
-	// selected ICE path is actually a relay does the worker re-fetch fresh ICE servers and apply
-	// them via an ICE restart before the credentials lapse; otherwise it just periodically checks
-	// the selected candidate pair and does no work. Tied to the channel's context, so it stops
-	// when the channel closes.
+	// Keep time-limited TURN credentials fresh for the life of the connection. If this
+	// connection is relayed through a TURN server whose credentials expire, the worker
+	// re-fetches fresh ICE servers and applies them via an ICE restart before they lapse;
+	// otherwise it is a no-op. Tied to the channel's context, so it stops when the channel
+	// closes.
 	refetchICEServers := func(ctx context.Context) ([]webrtc.ICEServer, error) {
 		sigConn, err := dialSignalingServer(ctx, signalingServer, host, logger, dOpts)
 		if err != nil {
