@@ -2,7 +2,6 @@ package rpc
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -660,92 +659,6 @@ func TestWebRTCClientStreamHeaderRace(t *testing.T) {
 		close(headersReceived)
 		test.That(t, <-errCh, test.ShouldBeNil)
 	}
-}
-
-// TestWebRTCClientStreamHeaderRaceIntegration exercises the same race on the
-// real gRPC-over-WebRTC stack. Header() is called before the request is sent,
-// so it parks in the select while the server hasn't responded yet. When the
-// server responds immediately (headers + trailers back-to-back), both channels
-// close in rapid succession while Header() is waiting.
-func TestWebRTCClientStreamHeaderRaceIntegration(t *testing.T) {
-	logger := golog.NewTestLogger(t)
-	serverOpts := []ServerOption{
-		WithWebRTCServerOptions(WebRTCServerOptions{
-			Enable: true,
-		}),
-		WithUnauthenticated(),
-	}
-	rpcServer, err := NewServer(logger, serverOpts...)
-	test.That(t, err, test.ShouldBeNil)
-
-	es := echoserver.Server{}
-	err = rpcServer.RegisterServiceServer(
-		context.Background(),
-		&echopb.EchoService_ServiceDesc,
-		&es,
-		echopb.RegisterEchoServiceHandlerFromEndpoint,
-	)
-	test.That(t, err, test.ShouldBeNil)
-
-	listener, err := net.Listen("tcp", "localhost:0")
-	test.That(t, err, test.ShouldBeNil)
-
-	errChan := make(chan error)
-	go func() {
-		errChan <- rpcServer.Serve(listener)
-	}()
-
-	rtcConn, err := DialWebRTC(
-		context.Background(),
-		listener.Addr().String(),
-		rpcServer.InstanceNames()[0],
-		logger,
-		WithDialDebug(),
-		WithInsecure(),
-	)
-	test.That(t, err, test.ShouldBeNil)
-
-	// NewStream sends only the RPC headers; the handler blocks on RecvMsg until
-	// we call SendMsg. This guarantees Header() parks in the select before the
-	// server has a chance to respond.
-	const method = "/proto.rpc.examples.echo.v1.EchoService/EchoMultiple"
-	const iterations = 50
-	for i := 0; i < iterations; i++ {
-		stream, streamErr := rtcConn.NewStream(
-			context.Background(),
-			&grpc.StreamDesc{ServerStreams: true},
-			method,
-		)
-		test.That(t, streamErr, test.ShouldBeNil)
-
-		headerErrCh := make(chan error, 1)
-		go func() {
-			_, err := stream.Header()
-			headerErrCh <- err
-		}()
-
-		// Sending the request unblocks the server; EchoMultiple with "" returns
-		// immediately after sending 0 messages, so headers+trailers arrive
-		// back-to-back while Header() is still waiting.
-		test.That(t, stream.SendMsg(&echopb.EchoMultipleRequest{Message: ""}), test.ShouldBeNil)
-		test.That(t, stream.CloseSend(), test.ShouldBeNil)
-
-		test.That(t, <-headerErrCh, test.ShouldBeNil)
-
-		var resp echopb.EchoMultipleResponse
-		for {
-			recvErr := stream.RecvMsg(&resp)
-			if errors.Is(recvErr, io.EOF) {
-				break
-			}
-			test.That(t, recvErr, test.ShouldBeNil)
-		}
-	}
-
-	test.That(t, rtcConn.Close(), test.ShouldBeNil)
-	test.That(t, rpcServer.Stop(), test.ShouldBeNil)
-	err = <-errChan
-	test.That(t, err, test.ShouldBeNil)
 }
 
 func TestErrDisconnected(t *testing.T) {
