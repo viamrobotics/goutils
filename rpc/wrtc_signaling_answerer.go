@@ -412,7 +412,7 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 		webrtcConfig = extendWebRTCConfig(aa.logger, &webrtcConfig, configResp.GetConfig(), eWrtcOpts)
 	}
 
-	pc, dc, err := newPeerConnectionForServer(
+	pc, dc, renegotiate, err := newPeerConnectionForServer(
 		ctx,
 		aa.offerSDP,
 		webrtcConfig,
@@ -466,6 +466,31 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 	// handlers for transitioning to the open/closed/error states. As well as backpressure when the
 	// amount of data to send gets high.
 	serverChannel := aa.server.NewChannel(pc, dc, aa.hosts)
+
+	// Refresh relayed TURN credentials before they expire. The server is the sole initiator of the
+	// ICE restart (this avoids glare, which our webrtc fork can't recover from). serverRefetch
+	// re-queries the signaling server for fresh credentials; it's only used if this server itself
+	// holds time-limited TURN credentials (e.g. behind a proxy). Tied to the channel's context.
+	serverRefetch := func(ctx context.Context) ([]webrtc.ICEServer, error) {
+		aa.connMu.Lock()
+		conn := aa.conn
+		aa.connMu.Unlock()
+		if conn == nil {
+			return nil, errors.New("no signaling connection for TURN credential refresh")
+		}
+		md := metadata.New(map[string]string{RPCHostMetadataField: aa.hosts[0]})
+		resp, err := webrtcpb.NewSignalingServiceClient(conn).OptionalWebRTCConfig(
+			metadata.NewOutgoingContext(ctx, md), &webrtcpb.OptionalWebRTCConfigRequest{})
+		if err != nil {
+			return nil, err
+		}
+		base := aa.webrtcConfig
+		return extendWebRTCConfig(aa.logger, &base, resp.GetConfig(), eWrtcOpts).ICEServers, nil
+	}
+	serverChannel.activeBackgroundWorkers.Add(1)
+	utils.ManagedGo(func() {
+		initiateTURNRefresh(serverChannel.ctx, pc, serverRefetch, renegotiate, aa.logger)
+	}, serverChannel.activeBackgroundWorkers.Done)
 
 	initSent := make(chan struct{})
 	if aa.trickleEnabled {

@@ -227,7 +227,7 @@ func dialWebRTC(
 		)
 	}
 	extendedConfig := extendWebRTCConfig(logger, &config, optionalConfig, eWrtcOpts)
-	peerConn, dataChannel, err := newPeerConnectionForClient(ctx, extendedConfig, dOpts.webrtcOpts.DisableTrickleICE, logger)
+	peerConn, dataChannel, _, err := newPeerConnectionForClient(ctx, extendedConfig, dOpts.webrtcOpts.DisableTrickleICE, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -504,6 +504,29 @@ func dialWebRTC(
 		})
 		return nil, exchangeErr
 	}
+
+	// Keep our own TURN credentials fresh while the connection is relayed, so that when the server
+	// initiates an ICE restart (the sole initiator, to avoid glare) we re-gather a fresh relay
+	// allocation. This is config-only; the client never initiates a renegotiation. It is a no-op
+	// unless the connection is actually using a relay.
+	refetchICEServers := func(ctx context.Context) ([]webrtc.ICEServer, error) {
+		sigConn, err := dialSignalingServer(ctx, signalingServer, host, logger, dOpts)
+		if err != nil {
+			return nil, err
+		}
+		defer func() { utils.UncheckedError(sigConn.Close()) }()
+		md := metadata.New(map[string]string{RPCHostMetadataField: host})
+		resp, err := webrtcpb.NewSignalingServiceClient(sigConn).OptionalWebRTCConfig(
+			metadata.NewOutgoingContext(ctx, md), &webrtcpb.OptionalWebRTCConfigRequest{})
+		if err != nil {
+			return nil, err
+		}
+		return extendWebRTCConfig(logger, &config, resp.GetConfig(), eWrtcOpts).ICEServers, nil
+	}
+	clientCh.activeBackgroundWorkers.Add(1)
+	utils.ManagedGo(func() {
+		refreshOwnTURNCredentials(clientCh.ctx, peerConn, refetchICEServers, logger)
+	}, clientCh.activeBackgroundWorkers.Done)
 
 	return clientCh, nil
 }

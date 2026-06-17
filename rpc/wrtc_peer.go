@@ -219,15 +219,15 @@ func newPeerConnectionForClient(
 	config webrtc.Configuration,
 	disableTrickle bool,
 	logger utils.ZapCompatibleLogger,
-) (*webrtc.PeerConnection, *webrtc.DataChannel, error) {
+) (*webrtc.PeerConnection, *webrtc.DataChannel, renegotiateFunc, error) {
 	webAPI, err := newWebRTCAPI(logger)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	peerConn, err := webAPI.NewPeerConnection(config)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	var successful bool
 	defer func() {
@@ -238,8 +238,9 @@ func newPeerConnectionForClient(
 
 	// We configure "clients" for renegotiation. This creates the renegotiation DataChannel
 	// and `OnMessage` handlers for communicating offers+answers.
-	if _, _, err = ConfigureForRenegotiation(peerConn, PeerRoleClient, logger); err != nil {
-		return nil, nil, err
+	_, _, renegotiate, err := ConfigureForRenegotiation(peerConn, PeerRoleClient, logger)
+	if err != nil {
+		return nil, nil, nil, err
 	}
 
 	negotiated := true
@@ -251,20 +252,20 @@ func newPeerConnectionForClient(
 		Ordered:    &ordered,
 	})
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	dataChannel.OnError(initialDataChannelOnError(peerConn, logger))
 
 	if disableTrickle {
 		offer, err := peerConn.CreateOffer(nil)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 
 		// Sets the LocalDescription, and starts our UDP listeners
 		err = peerConn.SetLocalDescription(offer)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 
 		// Create channel that is blocked until ICE Gathering is complete
@@ -274,7 +275,7 @@ func newPeerConnectionForClient(
 		// and do not want to wait on trickle ICE.
 		select {
 		case <-ctx.Done():
-			return nil, nil, ctx.Err()
+			return nil, nil, nil, ctx.Err()
 		case <-gatherComplete:
 		}
 	}
@@ -282,7 +283,7 @@ func newPeerConnectionForClient(
 	// Will not wait for connection to establish. If you want this in the future,
 	// add a state check to OnICEConnectionStateChange for webrtc.ICEConnectionStateConnected.
 	successful = true
-	return peerConn, dataChannel, nil
+	return peerConn, dataChannel, renegotiate, nil
 }
 
 func newPeerConnectionForServer(
@@ -291,15 +292,15 @@ func newPeerConnectionForServer(
 	config webrtc.Configuration,
 	disableTrickle bool,
 	logger utils.ZapCompatibleLogger,
-) (*webrtc.PeerConnection, *webrtc.DataChannel, error) {
+) (*webrtc.PeerConnection, *webrtc.DataChannel, renegotiateFunc, error) {
 	webAPI, err := newWebRTCAPI(logger)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	peerConn, err := webAPI.NewPeerConnection(config)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	var successful bool
 	defer func() {
@@ -312,11 +313,15 @@ func newPeerConnectionForServer(
 	// - Creates the DataChannel and `OnMessage` handlers for communicating offers+answers.
 	// - Sets up an `OnNegotiationNeeded` callback to initiate an SDP change.
 	//
+	// The returned renegotiate function lets the server initiate an ICE restart (e.g. to refresh
+	// relayed TURN credentials); the server is the sole initiator, which avoids glare.
+	//
 	// Dan: We ignore the open/close channels for the renegotiation DataChannel. We expect (but are
 	// not sure) that server shutdown happens before PeerConnection shutdown. And we expect that
 	// server shutdown guarantees there are no in-flight DataChannel messages being processed.
-	if _, _, err = ConfigureForRenegotiation(peerConn, PeerRoleServer, logger); err != nil {
-		return nil, nil, err
+	_, _, renegotiate, err := ConfigureForRenegotiation(peerConn, PeerRoleServer, logger)
+	if err != nil {
+		return nil, nil, nil, err
 	}
 
 	negotiated := true
@@ -328,29 +333,29 @@ func newPeerConnectionForServer(
 		Ordered:    &ordered,
 	})
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	dataChannel.OnError(initialDataChannelOnError(peerConn, logger))
 
 	offer := webrtc.SessionDescription{}
 	if err := DecodeSDP(sdp, &offer); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	err = peerConn.SetRemoteDescription(offer)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	if disableTrickle {
 		answer, err := peerConn.CreateAnswer(nil)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 
 		err = peerConn.SetLocalDescription(answer)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 
 		// Create channel that is blocked until ICE Gathering is complete
@@ -360,13 +365,13 @@ func newPeerConnectionForServer(
 		// and do not want to wait on trickle ICE.
 		select {
 		case <-ctx.Done():
-			return nil, nil, ctx.Err()
+			return nil, nil, nil, ctx.Err()
 		case <-gatherComplete:
 		}
 	}
 
 	successful = true
-	return peerConn, dataChannel, nil
+	return peerConn, dataChannel, renegotiate, nil
 }
 
 // PeerRole identifies which role of a Client/Server relationship a peer is assuming.
@@ -379,19 +384,56 @@ const (
 	PeerRoleServer PeerRole = true
 )
 
+// renegotiateFunc triggers an SDP renegotiation over the pre-negotiated negotiation
+// DataChannel. When iceRestart is true it forces ICE to re-gather and re-establish its
+// transports, which creates a fresh TURN allocation and so picks up refreshed credentials
+// previously applied via PeerConnection.SetConfiguration.
+type renegotiateFunc func(ctx context.Context, iceRestart bool) error
+
+// sendRenegotiationSDP waits for any in-progress ICE gathering to finish, then encodes and
+// sends the current local description over the negotiation channel. Waiting matters for an
+// ICE restart: there is no trickle path post-connect, so the single SDP we send must carry
+// all re-gathered candidates. For renegotiations that don't touch ICE, gathering is already
+// complete and GatheringCompletePromise resolves immediately.
+func sendRenegotiationSDP(
+	ctx context.Context,
+	peerConn *webrtc.PeerConnection,
+	negotiationChannel *webrtc.DataChannel,
+	logger utils.ZapCompatibleLogger,
+) error {
+	gatherComplete := webrtc.GatheringCompletePromise(peerConn)
+	select {
+	case <-gatherComplete:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	encodedSDP, err := EncodeSDP(peerConn.LocalDescription())
+	if err != nil {
+		logger.Errorw("renegotiation: error encoding SDP", "error", err)
+		return err
+	}
+	if err := negotiationChannel.SendText(encodedSDP); err != nil {
+		logger.Errorw("renegotiation: error sending SDP", "error", err)
+		return err
+	}
+	return nil
+}
+
 // ConfigureForRenegotiation sets up PeerConnection callbacks for updating local descriptions and
 // sending offers when a negotiation is needed (e.g: adding a video track). As well as listening for
 // offers/answers to update remote descriptions (e.g: when the peer adds a video track).
 //
-// If successful, two Go channels are returned. The first Go channel will close when the negotiation
-// DataChannel is open and available for renegotiation. The second Go channel will close when the
-// negotiation DataChannel is closed. PeerConnection.Close does not wait on DataChannel's to finish
-// their work. Thus waiting on this can be helpful to guarantee background goroutines have exitted.
+// If successful, two Go channels and a renegotiate function are returned. The first Go channel will
+// close when the negotiation DataChannel is open and available for renegotiation. The second Go
+// channel will close when the negotiation DataChannel is closed. PeerConnection.Close does not wait
+// on DataChannel's to finish their work. Thus waiting on this can be helpful to guarantee background
+// goroutines have exitted. The returned renegotiateFunc lets a caller initiate a renegotiation (in
+// particular an ICE restart) regardless of role.
 func ConfigureForRenegotiation(
 	peerConn *webrtc.PeerConnection,
 	role PeerRole,
 	logger utils.ZapCompatibleLogger,
-) (<-chan struct{}, <-chan struct{}, error) {
+) (<-chan struct{}, <-chan struct{}, renegotiateFunc, error) {
 	var negMu sync.Mutex
 
 	// All of Viam's PeerConnections hard code the `data` channel to be ID 0 and the `negotiation`
@@ -453,15 +495,9 @@ func ConfigureForRenegotiation(
 			// Encode and send the new local description to the peer over the `negotiation` channel. The
 			// peer will respond over the negotiation channel with an answer. That answer will be used to
 			// update the remote description.
-			encodedSDP, err := EncodeSDP(peerConn.LocalDescription())
-			if err != nil {
-				logger.Errorw("renegotiation: error encoding SDP", "error", err)
-				return
-			}
-			if err := negotiationChannel.SendText(encodedSDP); err != nil {
-				logger.Errorw("renegotiation: error sending SDP", "error", err)
-				return
-			}
+			sendCtx, cancel := context.WithTimeout(context.Background(), getDefaultOfferDeadline())
+			defer cancel()
+			utils.UncheckedError(sendRenegotiationSDP(sendCtx, peerConn, negotiationChannel, logger))
 		})
 	}
 
@@ -474,7 +510,7 @@ func ConfigureForRenegotiation(
 		Ordered:    &ordered,
 	})
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	negotiationChannel.OnError(initialDataChannelOnError(peerConn, logger))
@@ -528,18 +564,37 @@ func ConfigureForRenegotiation(
 			return
 		}
 
-		encodedSDP, err := EncodeSDP(peerConn.LocalDescription())
-		if err != nil {
-			logger.Errorw("renegotiation: error encoding SDP", "error", err)
-			return
-		}
-		if err := negotiationChannel.SendText(encodedSDP); err != nil {
-			logger.Errorw("renegotiation: error sending SDP", "error", err)
-			return
-		}
+		// Wait for (re-)gathering before sending so an answer to an ICE-restart offer carries
+		// all newly gathered candidates.
+		sendCtx, cancel := context.WithTimeout(context.Background(), getDefaultOfferDeadline())
+		defer cancel()
+		utils.UncheckedError(sendRenegotiationSDP(sendCtx, peerConn, negotiationChannel, logger))
 	})
 
-	return negOpened, negClosed, nil
+	// renegotiate initiates a renegotiation (optionally an ICE restart) from either peer by
+	// creating an offer, applying it locally, and sending it over the negotiation channel. The
+	// peer answers via the OnMessage handler above.
+	renegotiate := func(ctx context.Context, iceRestart bool) error {
+		select {
+		case <-negOpened:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+
+		negMu.Lock()
+		defer negMu.Unlock()
+
+		offer, err := peerConn.CreateOffer(&webrtc.OfferOptions{ICERestart: iceRestart})
+		if err != nil {
+			return err
+		}
+		if err := peerConn.SetLocalDescription(offer); err != nil {
+			return err
+		}
+		return sendRenegotiationSDP(ctx, peerConn, negotiationChannel, logger)
+	}
+
+	return negOpened, negClosed, renegotiate, nil
 }
 
 type webrtcPeerConnectionStats struct {

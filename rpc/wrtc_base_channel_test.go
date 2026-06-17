@@ -18,13 +18,13 @@ func setupWebRTCPeers(t *testing.T) (client, server *webrtc.PeerConnection, clie
 	t.Helper()
 	logger := golog.NewTestLogger(t)
 
-	pc1, dc1, err := newPeerConnectionForClient(context.Background(), webrtc.Configuration{}, true, logger)
+	pc1, dc1, _, err := newPeerConnectionForClient(context.Background(), webrtc.Configuration{}, true, logger)
 	test.That(t, err, test.ShouldBeNil)
 
 	encodedSDP, err := EncodeSDP(pc1.LocalDescription())
 	test.That(t, err, test.ShouldBeNil)
 
-	pc2, dc2, err := newPeerConnectionForServer(context.Background(), encodedSDP, webrtc.Configuration{}, true, logger)
+	pc2, dc2, _, err := newPeerConnectionForServer(context.Background(), encodedSDP, webrtc.Configuration{}, true, logger)
 	test.That(t, err, test.ShouldBeNil)
 
 	test.That(t, pc1.SetRemoteDescription(*pc2.LocalDescription()), test.ShouldBeNil)
