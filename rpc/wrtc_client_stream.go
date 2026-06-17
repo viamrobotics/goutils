@@ -132,10 +132,18 @@ func (s *webrtcClientStream) Header() (metadata.MD, error) {
 	}
 
 	select {
-	case <-s.ctx.Done():
-		return nil, s.ctx.Err()
 	case <-s.headersReceived:
 		return s.headers, nil
+	case <-s.ctx.Done():
+		// Headers may have been received concurrently with context cancellation
+		// (e.g. server responded and closed the stream before the client called
+		// Header). Perform a non-blocking check before returning an error.
+		select {
+		case <-s.headersReceived:
+			return s.headers, nil
+		default:
+		}
+		return nil, s.ctx.Err()
 	}
 }
 

@@ -2,6 +2,7 @@ package rpc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -617,6 +618,85 @@ func TestWebRTCClientSubsequentStreams(t *testing.T) {
 		test.That(t, echoMultiResp.GetMessage(), test.ShouldEqual, msg[i:i+1])
 	}
 	test.That(t, echoClient.RecvMsg(&echoMultiResp), test.ShouldBeError, io.EOF)
+
+	test.That(t, rtcConn.Close(), test.ShouldBeNil)
+	test.That(t, rpcServer.Stop(), test.ShouldBeNil)
+	err = <-errChan
+	test.That(t, err, test.ShouldBeNil)
+}
+
+// TestWebRTCClientStreamHeaderAfterCompletion is a regression test for a race condition in
+// webrtcClientStream.Header(). When a server-streaming RPC completes very quickly (before the
+// client calls Header()), the stream's context is already canceled by the time Header() is
+// invoked. The previous implementation would non-deterministically return "context canceled"
+// when both headersReceived and ctx.Done() were ready at the same time.
+func TestWebRTCClientStreamHeaderAfterCompletion(t *testing.T) {
+	logger := golog.NewTestLogger(t)
+	serverOpts := []ServerOption{
+		WithWebRTCServerOptions(WebRTCServerOptions{
+			Enable: true,
+		}),
+		WithUnauthenticated(),
+	}
+	rpcServer, err := NewServer(logger, serverOpts...)
+	test.That(t, err, test.ShouldBeNil)
+
+	es := echoserver.Server{}
+	err = rpcServer.RegisterServiceServer(
+		context.Background(),
+		&echopb.EchoService_ServiceDesc,
+		&es,
+		echopb.RegisterEchoServiceHandlerFromEndpoint,
+	)
+	test.That(t, err, test.ShouldBeNil)
+
+	listener, err := net.Listen("tcp", "localhost:0")
+	test.That(t, err, test.ShouldBeNil)
+
+	errChan := make(chan error)
+	go func() {
+		errChan <- rpcServer.Serve(listener)
+	}()
+
+	rtcConn, err := DialWebRTC(
+		context.Background(),
+		listener.Addr().String(),
+		rpcServer.InstanceNames()[0],
+		logger,
+		WithDialDebug(),
+		WithInsecure(),
+	)
+	test.That(t, err, test.ShouldBeNil)
+
+	client := echopb.NewEchoServiceClient(rtcConn)
+
+	// Run many iterations to reliably trigger the race where the server completes
+	// the RPC before the client calls Header(), leaving both headersReceived and
+	// ctx.Done() closed simultaneously.
+	const iterations = 50
+	for i := 0; i < iterations; i++ {
+		// EchoMultiple with an empty message: the server handler sends one response
+		// and returns immediately, completing the RPC very quickly.
+		echoStream, streamErr := client.EchoMultiple(context.Background(), &echopb.EchoMultipleRequest{Message: ""})
+		test.That(t, streamErr, test.ShouldBeNil)
+
+		// Drain all server responses so the stream completes (and the context is
+		// canceled) before Header() is called.
+		var echoResp echopb.EchoMultipleResponse
+		for {
+			recvErr := echoStream.RecvMsg(&echoResp)
+			if errors.Is(recvErr, io.EOF) {
+				break
+			}
+			test.That(t, recvErr, test.ShouldBeNil)
+		}
+
+		// At this point the stream is fully done and ctx.Done() is closed.
+		// Header() must succeed (nil error), not return a context error.
+		// The metadata may be nil if the server sent no custom headers.
+		_, hdrErr := echoStream.Header()
+		test.That(t, hdrErr, test.ShouldBeNil)
+	}
 
 	test.That(t, rtcConn.Close(), test.ShouldBeNil)
 	test.That(t, rpcServer.Stop(), test.ShouldBeNil)
