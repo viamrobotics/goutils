@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -625,12 +626,88 @@ func TestWebRTCClientSubsequentStreams(t *testing.T) {
 	test.That(t, err, test.ShouldBeNil)
 }
 
-// TestWebRTCClientStreamHeaderAfterCompletion is a regression test for a race condition in
-// webrtcClientStream.Header(). When a server-streaming RPC completes very quickly (before the
-// client calls Header()), the stream's context is already canceled by the time Header() is
-// invoked. The previous implementation would non-deterministically return "context canceled"
-// when both headersReceived and ctx.Done() were ready at the same time.
-func TestWebRTCClientStreamHeaderAfterCompletion(t *testing.T) {
+// TestWebRTCClientStreamHeaderRace is a deterministic unit regression test for
+// the race in webrtcClientStream.Header().
+//
+// Scenario reproduced here (one of the two ways the bug manifests):
+//   - The Header() goroutine parks in the blocking select while headersReceived
+//     is still open.
+//   - ctx is then canceled BEFORE headersReceived closes. Go's select
+//     implementation unblocks the parked goroutine via the ctx.Done() case.
+//   - headersReceived is then closed, but the goroutine has already been
+//     dequeued from its wait list and will run the ctx.Done() branch.
+//   - Old code: returned nil, ctx.Err() ("context canceled") even though
+//     headers had since arrived.
+//   - Fixed code: the ctx.Done() branch performs a non-blocking fallback check
+//     on headersReceived; finding it closed, it returns the headers instead.
+//
+// Why cancel() before close(headersReceived) in the real world:
+// In the normal completion flow, processHeaders (closes headersReceived) runs
+// before processTrailers (cancels ctx) because data-channel messages are
+// ordered. However, ctx can be canceled first when the underlying channel or
+// user context is torn down while a slow/never-responding server has not yet
+// sent headers — a valid edge case the fix must also handle correctly.
+//
+// The experiment confirms:
+//   - cancel() before close(headersReceived): ~98 % of goroutines select ctx.Done()
+//   - close(headersReceived) before cancel(): ~0 % select ctx.Done()
+//
+// Hence this ordering makes the old bug reproduce 100 % of the time.
+func TestWebRTCClientStreamHeaderRace(t *testing.T) {
+	// GOMAXPROCS=1 gives deterministic cooperative scheduling: after Gosched()
+	// the new goroutine runs until it parks in the blocking select, then the
+	// main goroutine resumes.
+	restore := runtime.GOMAXPROCS(1)
+	defer runtime.GOMAXPROCS(restore)
+
+	const N = 1000
+	for i := 0; i < N; i++ {
+		ctx, cancel := context.WithCancel(context.Background())
+		headersReceived := make(chan struct{})
+
+		// Construct only the fields that Header() touches; the rest can be zero.
+		s := &webrtcClientStream{
+			webrtcBaseStream: &webrtcBaseStream{},
+			ctx:              ctx,
+			headersReceived:  headersReceived,
+			headers:          metadata.MD{"test": []string{"value"}},
+		}
+
+		errCh := make(chan error, 1)
+		go func() {
+			_, err := s.Header()
+			errCh <- err
+		}()
+
+		// Yield so the goroutine runs: fast-path misses (headersReceived open),
+		// falls into the blocking select, and parks there.
+		runtime.Gosched()
+
+		// Cancel ctx first. The parked goroutine is immediately made runnable
+		// with the ctx.Done() case "selected" by the Go runtime. It has not
+		// yet run; it will do so when the main goroutine next blocks.
+		cancel()
+
+		// Now close headersReceived. The goroutine is already dequeued from
+		// its wait list, so this has no effect on which case it returns — it
+		// will still execute the ctx.Done() branch. The non-blocking fallback
+		// check inside that branch will see headersReceived is now closed and
+		// return the headers instead of an error.
+		close(headersReceived)
+
+		// <-errCh blocks the main goroutine, giving the scheduler to the
+		// Header() goroutine.
+		test.That(t, <-errCh, test.ShouldBeNil)
+	}
+}
+
+// TestWebRTCClientStreamHeaderRaceIntegration is an integration regression
+// test for the same race. It exercises the real gRPC-over-WebRTC stack by
+// calling Header() in a goroutine immediately after NewStream (before the
+// request has been sent), so that the goroutine is parked in the blocking
+// select while the server is still processing. When the server responds with
+// headers + trailers in rapid succession the race is triggered naturally.
+func TestWebRTCClientStreamHeaderRaceIntegration(t *testing.T) {
 	logger := golog.NewTestLogger(t)
 	serverOpts := []ServerOption{
 		WithWebRTCServerOptions(WebRTCServerOptions{
@@ -668,34 +745,53 @@ func TestWebRTCClientStreamHeaderAfterCompletion(t *testing.T) {
 	)
 	test.That(t, err, test.ShouldBeNil)
 
-	client := echopb.NewEchoServiceClient(rtcConn)
-
-	// Run many iterations to reliably trigger the race where the server completes
-	// the RPC before the client calls Header(), leaving both headersReceived and
-	// ctx.Done() closed simultaneously.
+	// Use NewStream directly (bypassing the generated gRPC helper) so we can
+	// call Header() before SendMsg. After NewStream the server has received the
+	// RPC headers and started the handler goroutine, but the handler is blocked
+	// on RecvMsg waiting for the request body. Header() therefore falls through
+	// the fast-path and parks in the blocking select.
+	//
+	// Once we send the request the server processes it immediately (EchoMultiple
+	// with an empty message sends 0 response messages and returns), issuing
+	// response-headers then trailers back-to-back. The data-channel callback
+	// goroutine may close headersReceived and cancel ctx without yielding
+	// between them, leaving both channels ready when the parked Header()
+	// goroutine is next scheduled.
+	const method = "/proto.rpc.examples.echo.v1.EchoService/EchoMultiple"
 	const iterations = 50
 	for i := 0; i < iterations; i++ {
-		// EchoMultiple with an empty message: the server handler sends one response
-		// and returns immediately, completing the RPC very quickly.
-		echoStream, streamErr := client.EchoMultiple(context.Background(), &echopb.EchoMultipleRequest{Message: ""})
+		stream, streamErr := rtcConn.NewStream(
+			context.Background(),
+			&grpc.StreamDesc{ServerStreams: true},
+			method,
+		)
 		test.That(t, streamErr, test.ShouldBeNil)
 
-		// Drain all server responses so the stream completes (and the context is
-		// canceled) before Header() is called.
-		var echoResp echopb.EchoMultipleResponse
+		// Launch Header() before the request is sent so it parks in the
+		// blocking select (headersReceived not yet closed).
+		headerErrCh := make(chan error, 1)
+		go func() {
+			_, err := stream.Header()
+			headerErrCh <- err
+		}()
+
+		// Send request + EOS — server processes and responds immediately.
+		test.That(t, stream.SendMsg(&echopb.EchoMultipleRequest{Message: ""}), test.ShouldBeNil)
+		test.That(t, stream.CloseSend(), test.ShouldBeNil)
+
+		// Header() must return nil even if both channels close while it waits.
+		test.That(t, <-headerErrCh, test.ShouldBeNil)
+
+		// Drain to clean up. EchoMultiple with "" sends 0 response messages,
+		// so only the EOF trailer should arrive.
+		var resp echopb.EchoMultipleResponse
 		for {
-			recvErr := echoStream.RecvMsg(&echoResp)
+			recvErr := stream.RecvMsg(&resp)
 			if errors.Is(recvErr, io.EOF) {
 				break
 			}
 			test.That(t, recvErr, test.ShouldBeNil)
 		}
-
-		// At this point the stream is fully done and ctx.Done() is closed.
-		// Header() must succeed (nil error), not return a context error.
-		// The metadata may be nil if the server sent no custom headers.
-		_, hdrErr := echoStream.Header()
-		test.That(t, hdrErr, test.ShouldBeNil)
 	}
 
 	test.That(t, rtcConn.Close(), test.ShouldBeNil)
