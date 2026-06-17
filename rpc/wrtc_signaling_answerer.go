@@ -174,14 +174,6 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 		ans.connMu.Lock()
 		conn := ans.conn
 		ans.connMu.Unlock()
-		// do not attempt to answer if the connection is not in a ready state.
-		// we could exclude the connectivity.Connecting check and move this block closer to the Answer call for lower latency,
-		// but we retry often enough (2x/sec) that it shouldn't make a noticeable difference.
-		if cs, ok := grpchelpers.ConnConnectivityState(conn); ok {
-			if cs == connectivity.TransientFailure || cs == connectivity.Connecting {
-				return nil, grpchelpers.ErrConnNotReady
-			}
-		}
 		client := webrtcpb.NewSignalingServiceClient(conn)
 		md := metadata.New(nil)
 		md.Append(RPCHostMetadataField, ans.hosts...)
@@ -205,25 +197,42 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 				ans.logger.Warnf("closing send side of answering client failed", "error", err)
 			}
 		}()
+		errsSinceLastOnline := make(map[string]struct{})
+		var clearOfflineErrMap bool
 		for {
 			if ctx.Err() != nil {
 				return
+			}
+			if clearOfflineErrMap {
+				clear(errsSinceLastOnline)
+				clearOfflineErrMap = false
 			}
 
 			var err error
 			// `newAnswer` opens a bidi grpc stream to the signaling server. But otherwise sends no requests.
 			client, err = newAnswer()
 			if err != nil {
-				switch {
-				case errors.Is(err, grpchelpers.ErrConnNotReady):
-					ans.logger.Debugw("did not attempt to answer because connection is not in a ready state", "error", err)
-					utils.SelectContextOrWait(ctx, answererReconnectWait)
-				case isNetworkError(err):
+				if isNetworkError(err) {
+					{
+						// Reduce log spam: Check connectivity state. If we may be offline, start collecting errors
+						// and emit newly seen ones at most once. Do this until we're able to successfully create an answer client again
+						ans.connMu.Lock()
+						cs, csOk := grpchelpers.ConnConnectivityState(ans.conn)
+						ans.connMu.Unlock()
+						if csOk && cs == connectivity.TransientFailure || cs == connectivity.Connecting {
+							errKey := err.Error()
+							if _, ok := errsSinceLastOnline[errKey]; ok {
+								continue
+							}
+							errsSinceLastOnline[errKey] = struct{}{}
+						}
+					}
 					ans.logger.Infow("failed to communicate with signaling server", "error", err)
 					utils.SelectContextOrWait(ctx, answererReconnectWait)
 				}
 				continue
 			}
+			clearOfflineErrMap = true
 
 			var incomingCallerReq *webrtcpb.AnswerRequest
 			for {
