@@ -14,10 +14,12 @@ import (
 	"github.com/pkg/errors"
 	"github.com/viamrobotics/webrtc/v3"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
 	"go.viam.com/utils"
+	"go.viam.com/utils/grpchelpers"
 	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
 )
 
@@ -172,6 +174,14 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 		ans.connMu.Lock()
 		conn := ans.conn
 		ans.connMu.Unlock()
+		// do not attempt to answer if the connection is not in a ready state.
+		// we could exclude the connectivity.Connecting check and move this block closer to the Answer call for lower latency,
+		// but we retry often enough (2x/sec) that it shouldn't make a noticeable difference.
+		if cs, ok := grpchelpers.ConnConnectivityState(conn); ok {
+			if cs == connectivity.TransientFailure || cs == connectivity.Connecting {
+				return nil, grpchelpers.ErrConnNotReady
+			}
+		}
 		client := webrtcpb.NewSignalingServiceClient(conn)
 		md := metadata.New(nil)
 		md.Append(RPCHostMetadataField, ans.hosts...)
@@ -204,7 +214,11 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 			// `newAnswer` opens a bidi grpc stream to the signaling server. But otherwise sends no requests.
 			client, err = newAnswer()
 			if err != nil {
-				if isNetworkError(err) {
+				switch {
+				case errors.Is(err, grpchelpers.ErrConnNotReady):
+					ans.logger.Debugw("did not attempt to answer because connection is not in a ready state", "error", err)
+					utils.SelectContextOrWait(ctx, answererReconnectWait)
+				case isNetworkError(err):
 					ans.logger.Infow("failed to communicate with signaling server", "error", err)
 					utils.SelectContextOrWait(ctx, answererReconnectWait)
 				}
