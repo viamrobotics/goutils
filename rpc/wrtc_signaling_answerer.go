@@ -219,7 +219,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 						ans.connMu.Lock()
 						cs, csOk := grpchelpers.ConnConnectivityState(ans.conn)
 						ans.connMu.Unlock()
-						if csOk && cs == connectivity.TransientFailure || cs == connectivity.Connecting {
+						if csOk && (cs == connectivity.TransientFailure || cs == connectivity.Connecting) {
 							errKey := err.Error()
 							if _, ok := errsSinceLastOnline[errKey]; ok {
 								continue
