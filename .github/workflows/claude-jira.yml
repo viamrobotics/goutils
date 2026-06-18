@@ -68,7 +68,10 @@ jobs:
       task_complexity: ${{ github.event.client_payload.task_complexity || inputs.task_complexity || 'small' }}
       assignee: ${{ github.event.client_payload.assignee || inputs.assignee || '' }}
       assignee_email: ${{ github.event.client_payload.assignee_email || inputs.assignee_email || '' }}
-      install_command: make tool-install
+      install_command: |
+        curl -fsSL https://mise.run | MISE_INSTALL_PATH=/usr/local/bin/mise sh
+        mise trust
+        make tool-install
       jira_base_url: ${{ vars.JIRA_BASE_URL }}
       jira_user_email: ${{ vars.JIRA_USER_EMAIL }}
       allowed_tools: 'Edit,Read,Write,Glob,Grep,Bash(make build*),Bash(make build-go*),Bash(make lint*),Bash(make lint-go*),Bash(make test-go*),Bash(make test-go-no-race*),Bash(make tool-install*),Bash(go build*),Bash(go test*),Bash(go vet*),Bash(go list *),Bash(go doc *),Bash(go mod *),Bash(gofmt *),Bash(ls *),Bash(find *),Bash(git config *),Bash(git add *),Bash(git commit *),Bash(git push *),Bash(git status*),Bash(git diff*),Bash(git log*),Bash(git checkout *),Bash(git branch *),Bash(git rev-parse *),Bash(git fetch *),Bash(gh pr create*),Bash(gh pr edit*),Bash(gh pr view*),Bash(gh pr diff*)'
