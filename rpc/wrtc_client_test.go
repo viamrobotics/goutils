@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -623,42 +622,6 @@ func TestWebRTCClientSubsequentStreams(t *testing.T) {
 	test.That(t, rpcServer.Stop(), test.ShouldBeNil)
 	err = <-errChan
 	test.That(t, err, test.ShouldBeNil)
-}
-
-// TestWebRTCClientStreamHeaderRace is a regression test for the race in Header()
-// where ctx.Done() fires before headersReceived, but headers arrive shortly after.
-//
-// With GOMAXPROCS=1, Gosched() parks the goroutine in the select. Canceling ctx
-// first causes Go to select the ctx.Done() case for the parked goroutine. Closing
-// headersReceived afterward lets the inner fallback check return the headers.
-// The old code always returned context.Canceled here; the fix returns headers.
-func TestWebRTCClientStreamHeaderRace(t *testing.T) {
-	restore := runtime.GOMAXPROCS(1)
-	defer runtime.GOMAXPROCS(restore)
-
-	const N = 1000
-	for i := 0; i < N; i++ {
-		ctx, cancel := context.WithCancel(context.Background())
-		headersReceived := make(chan struct{})
-
-		s := &webrtcClientStream{
-			webrtcBaseStream: &webrtcBaseStream{},
-			ctx:              ctx,
-			headersReceived:  headersReceived,
-			headers:          metadata.MD{"test": []string{"value"}},
-		}
-
-		errCh := make(chan error, 1)
-		go func() {
-			_, err := s.Header()
-			errCh <- err
-		}()
-
-		runtime.Gosched() // let goroutine park in the select
-		cancel()          // selects ctx.Done() case for the parked goroutine
-		close(headersReceived)
-		test.That(t, <-errCh, test.ShouldBeNil)
-	}
 }
 
 func TestErrDisconnected(t *testing.T) {

@@ -129,8 +129,19 @@ func (s *webrtcClientStream) Header() (metadata.MD, error) {
 	case <-s.headersReceived:
 		return s.headers, nil
 	case <-s.ctx.Done():
-		// Headers may arrive concurrently with context cancellation; check once
-		// more before returning an error.
+		// In the happy path, a server will respond with:
+		// * Headers
+		// * A message
+		// * Trailers
+		//
+		// Upon receiving trailers, the client's background goroutine will close
+		// itself, canceling the context.
+		//
+		// The application goroutine looking to inspect headers after the trailers
+		// (and consequently context cancellation) have been received will be in a
+		// state where both headersReceived is closed and the context is canceled.
+		// We double check headersReceived here to ensure we're returning the
+		// definitive result.
 		select {
 		case <-s.headersReceived:
 			return s.headers, nil
