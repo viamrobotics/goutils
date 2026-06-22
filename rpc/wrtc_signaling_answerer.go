@@ -14,10 +14,12 @@ import (
 	"github.com/pkg/errors"
 	"github.com/viamrobotics/webrtc/v3"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
 	"go.viam.com/utils"
+	"go.viam.com/utils/grpchelpers"
 	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
 )
 
@@ -195,9 +197,15 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 				ans.logger.Warnf("closing send side of answering client failed", "error", err)
 			}
 		}()
+		errsSinceLastOnline := make(map[string]struct{})
+		var clearOfflineErrMap bool
 		for {
 			if ctx.Err() != nil {
 				return
+			}
+			if clearOfflineErrMap {
+				clear(errsSinceLastOnline)
+				clearOfflineErrMap = false
 			}
 
 			var err error
@@ -205,11 +213,26 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 			client, err = newAnswer()
 			if err != nil {
 				if isNetworkError(err) {
+					{
+						// Reduce log spam: Check connectivity state. If we may be offline, start collecting errors
+						// and emit newly seen ones at most once. Do this until we're able to successfully create an answer client again
+						ans.connMu.Lock()
+						cs, csOk := grpchelpers.ConnConnectivityState(ans.conn)
+						ans.connMu.Unlock()
+						if csOk && (cs == connectivity.TransientFailure || cs == connectivity.Connecting) {
+							errKey := err.Error()
+							if _, ok := errsSinceLastOnline[errKey]; ok {
+								continue
+							}
+							errsSinceLastOnline[errKey] = struct{}{}
+						}
+					}
 					ans.logger.Infow("failed to communicate with signaling server", "error", err)
 					utils.SelectContextOrWait(ctx, answererReconnectWait)
 				}
 				continue
 			}
+			clearOfflineErrMap = true
 
 			var incomingCallerReq *webrtcpb.AnswerRequest
 			for {
