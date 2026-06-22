@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/pion/interceptor"
+	"github.com/pion/logging"
 	"github.com/pion/sctp"
 	"github.com/pion/transport/v2"
 	"github.com/pion/transport/v2/stdnet"
@@ -131,9 +132,14 @@ func newWebRTCAPI(logger utils.ZapCompatibleLogger) (*webrtc.API, error) {
 	}
 
 	options := []func(a *webrtc.API){webrtc.WithMediaEngine(&m), webrtc.WithInterceptorRegistry(&i)}
+	// Use the same logger factory pion would normally use but wrap it to demote a
+	// small set of known-benign, recurring pion log lines (see demotedPionLogSubstrings) to
+	// debug.
+	var baseLoggerFactory logging.LoggerFactory = logging.NewDefaultLoggerFactory()
 	if utils.Debug {
-		settingEngine.LoggerFactory = WebRTCLoggerFactory{logger}
+		baseLoggerFactory = WebRTCLoggerFactory{logger}
 	}
+	settingEngine.LoggerFactory = demotingLoggerFactory{base: baseLoggerFactory}
 	options = append(options, webrtc.WithSettingEngine(settingEngine))
 	return webrtc.NewAPI(options...), nil
 }
