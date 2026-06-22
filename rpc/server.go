@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -361,9 +362,12 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 	unaryInterceptors = append(unaryInterceptors,
 		grpc_recovery.UnaryServerInterceptor(grpc_recovery.WithRecoveryHandler(
 			grpc_recovery.RecoveryHandlerFunc(func(p interface{}) error {
-				err := status.Errorf(codes.Internal, "%v", p)
-				grpcLogger.Errorw("panicked while calling unary server method", "error", errors.WithStack(err))
-				return err
+				grpcLogger.Errorw("panicked while calling unary server method",
+					"panic", fmt.Sprintf("%v", p),
+					"stack", string(debug.Stack()))
+				// Do not include the stack in the error returned to the client; it leaks
+				// server internals. It is logged above for internal diagnosis only.
+				return status.Errorf(codes.Internal, "%v", p)
 			}))),
 		grpcUnaryServerInterceptor(grpcLogger),
 		unaryServerCodeInterceptor(),
@@ -394,9 +398,12 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 	streamInterceptors = append(streamInterceptors,
 		grpc_recovery.StreamServerInterceptor(grpc_recovery.WithRecoveryHandler(
 			grpc_recovery.RecoveryHandlerFunc(func(p interface{}) error {
-				err := status.Errorf(codes.Internal, "%s", p)
-				grpcLogger.Errorw("panicked while calling stream server method", "error", errors.WithStack(err))
-				return err
+				grpcLogger.Errorw("panicked while calling stream server method",
+					"panic", fmt.Sprintf("%v", p),
+					"stack", string(debug.Stack()))
+				// Do not include the stack in the error returned to the client; it leaks
+				// server internals. It is logged above for internal diagnosis only.
+				return status.Errorf(codes.Internal, "%v", p)
 			}))),
 		grpcStreamServerInterceptor(grpcLogger),
 		streamServerCodeInterceptor(),
