@@ -405,21 +405,49 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts dialOptions, logg
 
 		var downgrade bool
 		if dOpts.allowInsecureDowngrade || dOpts.allowInsecureWithCredsDowngrade {
+			// TLS probe: try to make a TLS connection. If the returned error is "tls: first record does not look like a TLS handshake",
+			// downgrade to insecure.
+			// The tls DialContext may error with transient errors, especially when used in quick succession, particularly on Windows, so
+			// retry on the ones we're aware of.
+			// Note: If the probe errors for a reason not covered here, we don't downgrade and will continue with the tlsConfig, but
+			// because of grpc.WithBlock DialOption, if the server does not actually support TLS, the dial will keep failing on the same
+			// tls error and repeatedly retry until its deadline (and will return context deadline exceeded).
 			var dialer tls.Dialer
 			dialer.Config = tlsConfig
-			conn, err := dialer.DialContext(ctx, "tcp", address)
-			if err == nil {
-				// will use TLS
-				utils.UncheckedError(conn.Close())
-			} else if strings.Contains(err.Error(), "tls: first record does not look like a TLS handshake") {
-				// unfortunately there's no explicit error value for this, so we do a string check
-				hasLocalCreds := dOpts.creds.Type != "" && dOpts.externalAuthAddr == ""
-				if dOpts.creds.Type == "" || !hasLocalCreds || dOpts.allowInsecureWithCredsDowngrade {
-					logger.Warnw("downgrading from TLS to plaintext", "address", address, "with_credentials", hasLocalCreds)
-					downgrade = true
-				} else if hasLocalCreds {
-					return nil, false, ErrInsecureWithCredentials
+			maxTries := 2
+			for tries := 0; tries <= maxTries; tries++ {
+				conn, err := dialer.DialContext(ctx, "tcp", address)
+				switch {
+				case err == nil:
+					utils.UncheckedError(conn.Close())
+				case strings.Contains(err.Error(), "tls: first record does not look like a TLS handshake"):
+					hasLocalCreds := dOpts.creds.Type != "" && dOpts.externalAuthAddr == ""
+					if dOpts.creds.Type == "" || !hasLocalCreds || dOpts.allowInsecureWithCredsDowngrade {
+						logger.Warnw("downgrading from TLS to plaintext", "address", address, "with_credentials", hasLocalCreds)
+						downgrade = true
+					} else if hasLocalCreds {
+						return nil, false, ErrInsecureWithCredentials
+					}
+				case strings.Contains(err.Error(), "i/o timeout"):
+					fallthrough
+				case strings.Contains(err.Error(), "forcibly closed by the remote host"):
+					// one example of this is "wsarecv: An existing connection was forcibly closed by the remote host." on Windows, which
+					// we can't easily match on.
+					logger.Debugw("TLS downgrade probe failed. retrying", "address", address, "err", err,
+						"attempt", fmt.Sprintf("%d/%d", tries+1, maxTries))
+					timer := time.NewTimer(time.Millisecond * 300)
+					select {
+					case <-timer.C:
+						timer.Stop()
+					case <-ctx.Done():
+						timer.Stop()
+						return nil, false, err
+					}
+					continue
+				default:
+					logger.Debugw("TLS downgrade probe failed. not retrying. continuing with TLS dial", "address", address, "err", err)
 				}
+				break
 			}
 		}
 		if downgrade {
