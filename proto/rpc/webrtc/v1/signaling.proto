@@ -47,6 +47,15 @@ service SignalingService {
 			get: "/rpc/webrtc/v1/optional_webrtc_config"
 		};
 	}
+
+	// ReportConnectionMetadata reports metadata about an established WebRTC connection,
+	// including the selected ICE candidate type and the SDK used. The host must be in
+	// the rpc-host metadata field.
+	rpc ReportConnectionMetadata(ReportConnectionMetadataRequest) returns (ReportConnectionMetadataResponse) {
+		option (google.api.http) = {
+			post: "/rpc/webrtc/v1/report_connection_metadata"
+		};
+	}
 }
 
 // ICECandidate represents an ICE candidate.
@@ -211,4 +220,43 @@ message OptionalWebRTCConfigResponse {
 	WebRTCConfig config = 1;
 }
 
+// ICECandidateType represents the type of ICE candidate selected for a WebRTC connection.
+// The signaling server further classifies RELAY by relay server specific provider from the address.
+enum ICECandidateType {
+	ICE_CANDIDATE_TYPE_UNSPECIFIED = 0;
+	// ICE_CANDIDATE_TYPE_HOST indicates a direct connection was established.
+	ICE_CANDIDATE_TYPE_HOST = 1;
+	// ICE_CANDIDATE_TYPE_STUN indicates a STUN-assisted connection was established.
+	ICE_CANDIDATE_TYPE_STUN = 2;
+	// ICE_CANDIDATE_TYPE_RELAY indicates a TURN relay candidate was selected.
+	ICE_CANDIDATE_TYPE_RELAY = 3;
+}
 
+// SDKType represents the Viam SDK used to establish the connection.
+enum SDKType {
+	SDK_TYPE_UNSPECIFIED = 0;
+	SDK_TYPE_GO = 1;
+	SDK_TYPE_TYPESCRIPT = 2;
+	SDK_TYPE_PYTHON_CPP = 3;
+}
+
+// ConnectionCandidate describes the selected ICE candidate for one side of a WebRTC connection.
+message ConnectionCandidate {
+	ICECandidateType type = 1;
+	// relay_address is the relay server address of this candidate; set only when type is
+	// RELAY, so the signaling server can classify the provider by matching against known
+	// coturn addresses.
+	string relay_address = 2;
+}
+
+// ReportConnectionMetadataRequest reports metadata about an established WebRTC connection, per
+// side: local is the dialing SDK and server is the robot.
+message ReportConnectionMetadataRequest {
+	ConnectionCandidate local = 1;
+	ConnectionCandidate remote = 2;
+	SDKType sdk_type = 3;
+}
+
+// ReportConnectionMetadataResponse is empty.
+message ReportConnectionMetadataResponse {
+}
