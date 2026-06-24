@@ -414,8 +414,8 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts dialOptions, logg
 			// tls error and repeatedly retry until its deadline (and will return context deadline exceeded).
 			var dialer tls.Dialer
 			dialer.Config = tlsConfig
-			maxTries := 2
-			for tries := 0; tries <= maxTries; tries++ {
+			maxTries := 3
+			for tries := 1; tries <= maxTries; tries++ {
 				conn, err := dialer.DialContext(ctx, "tcp", address)
 				switch {
 				case err == nil:
@@ -433,8 +433,8 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts dialOptions, logg
 				case strings.Contains(err.Error(), "forcibly closed by the remote host"):
 					// one example of this is "wsarecv: An existing connection was forcibly closed by the remote host." on Windows, which
 					// we can't easily match on.
-					logger.Debugw("TLS downgrade probe failed. retrying", "address", address, "err", err,
-						"attempt", fmt.Sprintf("%d/%d", tries+1, maxTries))
+					logger.Debugw("TLS downgrade probe failed", "address", address, "err", err,
+						"attempt", fmt.Sprintf("%d/%d", tries, maxTries))
 					timer := time.NewTimer(time.Millisecond * 300)
 					select {
 					case <-timer.C:
