@@ -12,6 +12,9 @@ func registerApplicationViews() error {
 	utils.UncheckedError(runmetrics.Enable(runmetrics.RunMetricOptions{
 		EnableCPU:    true,
 		EnableMemory: true,
+		// Required to workaround known opencensus bug with memory metrics
+		// https://github.com/census-instrumentation/opencensus-go/issues/1295
+		UseDerivedCumulative: true,
 	}))
 
 	return multierr.Combine(
