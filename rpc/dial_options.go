@@ -199,11 +199,8 @@ func WithWebRTCOptions(webrtcOpts DialWebRTCOptions) DialOption {
 }
 
 // WithForceP2P returns a DialOption which forces ICE connections to use only
-// host and server-reflexive candidates, stripping TURN servers. Unlike
-// WithWebRTCOptions it only sets the ForceP2P field and leaves every other
-// WebRTC option in place, so it composes additively with previously-applied
-// WebRTC options. Apply it after WithWebRTCOptions, since that option replaces
-// the whole WebRTC options struct.
+// non-relay candidates (host, server-reflexive, and peer-reflexive) by
+// stripping TURN servers.
 func WithForceP2P() DialOption {
 	return newFuncDialOption(func(o *dialOptions) {
 		o.webrtcOpts.ForceP2P = true
@@ -211,8 +208,7 @@ func WithForceP2P() DialOption {
 }
 
 // WithForceRelay returns a DialOption which forces ICE connections to use relay
-// (TURN) candidates only. Like WithForceP2P, it only sets its own field and
-// leaves every other WebRTC option in place. Apply it after WithWebRTCOptions.
+// (TURN) candidates only.
 func WithForceRelay() DialOption {
 	return newFuncDialOption(func(o *dialOptions) {
 		o.webrtcOpts.ForceRelay = true
@@ -221,9 +217,8 @@ func WithForceRelay() DialOption {
 
 // WithTurnURI returns a DialOption which filters the signaling server's TURN
 // list down to the server whose parsed URI matches uri (e.g.
-// "turn:turn.viam.com:443"). Like the force options it only sets its own field
-// and leaves every other WebRTC option in place. Has no effect when ForceP2P is
-// set, since TURN servers are stripped in that case.
+// "turn:turn.viam.com:443"). Has no effect when ForceP2P is set, since TURN
+// servers are stripped in that case.
 func WithTurnURI(uri string) DialOption {
 	return newFuncDialOption(func(o *dialOptions) {
 		o.webrtcOpts.TurnURI = uri
@@ -231,7 +226,7 @@ func WithTurnURI(uri string) DialOption {
 }
 
 // WithTurnScheme returns a DialOption which overrides the scheme ("turn" or
-// "turns") of the URI matched by WithTurnURI. Only sets its own field.
+// "turns") of the URI matched by WithTurnURI.
 func WithTurnScheme(scheme string) DialOption {
 	return newFuncDialOption(func(o *dialOptions) {
 		o.webrtcOpts.TurnScheme = scheme
@@ -239,7 +234,7 @@ func WithTurnScheme(scheme string) DialOption {
 }
 
 // WithTurnTransport returns a DialOption which overrides the transport ("tcp" or
-// "udp") of the URI matched by WithTurnURI. Only sets its own field.
+// "udp") of the URI matched by WithTurnURI.
 func WithTurnTransport(transport string) DialOption {
 	return newFuncDialOption(func(o *dialOptions) {
 		o.webrtcOpts.TurnTransport = transport
@@ -247,7 +242,7 @@ func WithTurnTransport(transport string) DialOption {
 }
 
 // WithTurnPort returns a DialOption which overrides the port of the URI matched
-// by WithTurnURI. A port of 0 means no override. Only sets its own field.
+// by WithTurnURI. A port of 0 means no override.
 func WithTurnPort(port int) DialOption {
 	return newFuncDialOption(func(o *dialOptions) {
 		o.webrtcOpts.TurnPort = port
