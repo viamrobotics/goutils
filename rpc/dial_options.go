@@ -192,12 +192,12 @@ func WithTLSConfig(config *tls.Config) DialOption {
 // WithWebRTCOptions returns a DialOption which sets the WebRTC options
 // to use if the dialer tries to establish a WebRTC connection.
 //
-// Note: this replaces the entire DialWebRTCOptions struct in one shot, so it
-// clashes with the granular dial options (WithForceP2P, WithForceRelay,
-// WithTurnURI, etc.). Combining it with any of those is order-dependent —
-// whichever DialOption is applied last wins — which can produce unexpected
-// behavior. For additive tweaks that leave other fields intact, prefer the
-// granular options.
+// Note: this sets the complete DialWebRTCOptions struct, replacing any WebRTC
+// options set before it — including values from the granular options like
+// WithForceP2P and WithTurnURI. Those granular options are meant to layer on
+// top of this base, so apply them after WithWebRTCOptions. The base struct is
+// typically established first (often by the dialer itself), so this ordering is
+// the norm.
 func WithWebRTCOptions(webrtcOpts DialWebRTCOptions) DialOption {
 	return newFuncDialOption(func(o *dialOptions) {
 		o.webrtcOpts = webrtcOpts
@@ -209,8 +209,9 @@ func WithWebRTCOptions(webrtcOpts DialWebRTCOptions) DialOption {
 // non-relay candidates (host, server-reflexive, and peer-reflexive) by
 // stripping TURN servers.
 //
-// Note: clashes with the deprecated WithWebRTCOptions; if both are passed,
-// whichever is applied last wins and may cause unexpected behavior.
+// Note: this sets only its own field, layering on top of any WithWebRTCOptions.
+// Apply it after WithWebRTCOptions, since a later WithWebRTCOptions replaces the
+// entire struct and would overwrite this.
 func WithForceP2P() DialOption {
 	return newFuncDialOption(func(o *dialOptions) {
 		o.webrtcOpts.ForceP2P = true
@@ -220,8 +221,9 @@ func WithForceP2P() DialOption {
 // WithForceRelay returns a DialOption which forces ICE connections to use relay
 // (TURN) candidates only.
 //
-// Note: clashes with the deprecated WithWebRTCOptions; if both are passed,
-// whichever is applied last wins and may cause unexpected behavior.
+// Note: this sets only its own field, layering on top of any WithWebRTCOptions.
+// Apply it after WithWebRTCOptions, since a later WithWebRTCOptions replaces the
+// entire struct and would overwrite this.
 func WithForceRelay() DialOption {
 	return newFuncDialOption(func(o *dialOptions) {
 		o.webrtcOpts.ForceRelay = true
@@ -233,8 +235,9 @@ func WithForceRelay() DialOption {
 // "turn:turn.viam.com:443"). Has no effect when ForceP2P is set, since TURN
 // servers are stripped in that case.
 //
-// Note: clashes with the deprecated WithWebRTCOptions; if both are passed,
-// whichever is applied last wins and may cause unexpected behavior.
+// Note: this sets only its own field, layering on top of any WithWebRTCOptions.
+// Apply it after WithWebRTCOptions, since a later WithWebRTCOptions replaces the
+// entire struct and would overwrite this.
 func WithTurnURI(uri string) DialOption {
 	return newFuncDialOption(func(o *dialOptions) {
 		o.webrtcOpts.TurnURI = uri
@@ -244,8 +247,9 @@ func WithTurnURI(uri string) DialOption {
 // WithTurnScheme returns a DialOption which overrides the scheme ("turn" or
 // "turns") of the URI matched by WithTurnURI.
 //
-// Note: clashes with the deprecated WithWebRTCOptions; if both are passed,
-// whichever is applied last wins and may cause unexpected behavior.
+// Note: this sets only its own field, layering on top of any WithWebRTCOptions.
+// Apply it after WithWebRTCOptions, since a later WithWebRTCOptions replaces the
+// entire struct and would overwrite this.
 func WithTurnScheme(scheme string) DialOption {
 	return newFuncDialOption(func(o *dialOptions) {
 		o.webrtcOpts.TurnScheme = scheme
@@ -255,8 +259,9 @@ func WithTurnScheme(scheme string) DialOption {
 // WithTurnTransport returns a DialOption which overrides the transport ("tcp" or
 // "udp") of the URI matched by WithTurnURI.
 //
-// Note: clashes with the deprecated WithWebRTCOptions; if both are passed,
-// whichever is applied last wins and may cause unexpected behavior.
+// Note: this sets only its own field, layering on top of any WithWebRTCOptions.
+// Apply it after WithWebRTCOptions, since a later WithWebRTCOptions replaces the
+// entire struct and would overwrite this.
 func WithTurnTransport(transport string) DialOption {
 	return newFuncDialOption(func(o *dialOptions) {
 		o.webrtcOpts.TurnTransport = transport
@@ -266,8 +271,9 @@ func WithTurnTransport(transport string) DialOption {
 // WithTurnPort returns a DialOption which overrides the port of the URI matched
 // by WithTurnURI. A port of 0 means no override.
 //
-// Note: clashes with the deprecated WithWebRTCOptions; if both are passed,
-// whichever is applied last wins and may cause unexpected behavior.
+// Note: this sets only its own field, layering on top of any WithWebRTCOptions.
+// Apply it after WithWebRTCOptions, since a later WithWebRTCOptions replaces the
+// entire struct and would overwrite this.
 func WithTurnPort(port int) DialOption {
 	return newFuncDialOption(func(o *dialOptions) {
 		o.webrtcOpts.TurnPort = port
