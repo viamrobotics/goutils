@@ -192,12 +192,11 @@ func WithTLSConfig(config *tls.Config) DialOption {
 // WithWebRTCOptions returns a DialOption which sets the WebRTC options
 // to use if the dialer tries to establish a WebRTC connection.
 //
-// Note: this sets the complete DialWebRTCOptions struct, replacing any WebRTC
-// options set before it — including values from the granular options like
-// WithForceP2P and WithTurnURI. Those granular options are meant to layer on
-// top of this base, so apply them after WithWebRTCOptions. The base struct is
-// typically established first (often by the dialer itself), so this ordering is
-// the norm.
+// Note: this sets the complete DialWebRTCOptions base struct, replacing WebRTC
+// options set before it. The granular ICE/TURN options (WithForceP2P,
+// WithForceRelay, WithTurn*) are meant to layer on top, so pass them after
+// WithWebRTCOptions and they override just their own fields. The base struct is
+// typically set first (often by the dialer), so this ordering is the norm.
 func WithWebRTCOptions(webrtcOpts DialWebRTCOptions) DialOption {
 	return newFuncDialOption(func(o *dialOptions) {
 		o.webrtcOpts = webrtcOpts
