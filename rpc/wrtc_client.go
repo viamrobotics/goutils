@@ -181,9 +181,9 @@ func dialWebRTC(
 		if errors.Is(retErr, ErrNoWebRTCSignaler) {
 			return
 		}
-		failureCode := ""
+		var failureCode int32
 		if retErr != nil {
-			failureCode = status.Code(retErr).String()
+			failureCode = int32(status.Code(retErr))
 		}
 		local, remote := classifyConnection(peerConn)
 		reportConnectionMetadata(ctx, host, signalingClient, &webrtcpb.ReportConnectionMetadataRequest{

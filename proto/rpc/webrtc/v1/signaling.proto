@@ -295,8 +295,8 @@ message ReportConnectionMetadataRequest {
 	uint32 duration_ms = 5;
 	// transport is how the dial was signaled (cloud / local / mDNS); reported regardless of outcome.
 	ConnectionTransport transport = 6;
-	// failure_code is the gRPC status code name of the dial failure.
-	string failure_code = 7;
+	// failure_code is the gRPC status code of a failed dial
+	int32 failure_code = 7;
 	// sdk_version is the version of the dialing SDK (e.g. a semver or git tag).
 	string sdk_version = 8;
 }
