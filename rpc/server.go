@@ -771,8 +771,6 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 
 // connectionMetadataForwarder returns a handler that forwards client-reported connection metadata
 // to an upstream signaling server over the given connection source (nil conn = not connected, drop).
-// Reports are sent under host — an identity this server answers for upstream and so can authorize
-// as — rather than whatever alias (IP, localhost, local FQDN) the dialing client targeted.
 func connectionMetadataForwarder(
 	upstreamConn func() ClientConn,
 	host string,

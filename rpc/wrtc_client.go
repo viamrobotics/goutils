@@ -629,10 +629,22 @@ func dialDurationMS(start time.Time) uint32 {
 	return uint32(time.Since(start).Milliseconds())
 }
 
-// sdkVersion returns the version of the main module consuming this SDK.
+// viamSDKModule is the module path of the Viam RDK, which houses the Go SDK.
+const viamSDKModule = "go.viam.com/rdk"
+
+// sdkVersion returns the version of the Viam SDK module in the running binary.
 func sdkVersion() string {
-	if bi, ok := debug.ReadBuildInfo(); ok && bi.Main.Version != "" {
+	bi, ok := debug.ReadBuildInfo()
+	if !ok {
+		return ""
+	}
+	if bi.Main.Path == viamSDKModule {
 		return bi.Main.Version
+	}
+	for _, dep := range bi.Deps {
+		if dep.Path == viamSDKModule {
+			return dep.Version
+		}
 	}
 	return ""
 }
@@ -644,9 +656,9 @@ type pendingReport struct {
 	conn ClientConn
 }
 
-// dialReportCollector accumulates the per-attempt reports of a single logical dial (which may race
-// mDNS and cloud attempts) and, on flush, sends exactly one — the furthest-progressed attempt
-// — then closes every held signaling connection.
+// dialReportCollector accumulates the per-attempt reports of a single logical dial (which races
+// mDNS and cloud attempts) and, on flush, sends exactly one: the furthest-progressed attempt then
+// closes every held signaling connection.
 type dialReportCollector struct {
 	ctx     context.Context
 	host    string
@@ -683,7 +695,7 @@ func (c *dialReportCollector) flush() {
 }
 
 // reportConnectionMetadata sends the given dial report to the signaling server, best-effort: it sets
-// the SDK type/version and rpc-host, and logs any error rather than returning it.
+// the SDK type/version and rpc-host, and sends the report and logs any errors.
 func reportConnectionMetadata(
 	ctx context.Context,
 	host string,
@@ -703,8 +715,7 @@ func reportConnectionMetadata(
 	}
 }
 
-// viamCloudSignalingHosts are the Viam app signaling server hosts. Dialing Machine FQDNs route to one
-// of through InferSignalingServerAddress.
+// viamCloudSignalingHosts are the Viam app signaling server hosts.
 var viamCloudSignalingHosts = []string{"app.viam.com", "app.viam.dev"}
 
 // classifySignalingPath derives how a connection was signaled from the signaling address. mDNS

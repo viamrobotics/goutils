@@ -48,11 +48,11 @@ type WebRTCSignalingServer struct {
 }
 
 // ConnectionMetadataHandler consumes a client-reported connection-metadata request. The base
-// signaling server has no metrics or org context of its own, so what to do with a report is up
-// to this handler: a machine's own signaling server forwards it to the cloud app (so local/mDNS
-// connections still land in the app's metrics), while other deployments may record it locally.
-// host is the rpc-host the reporting client targeted. Called on a background worker so a slow
-// handler never blocks.
+// signaling server has no metrics or org context of its own, so what to do with a report is
+// decided by this handler: a machine's own signaling server forwards it to the cloud app (so
+// local/mDNS connections still land in the app's metrics), while other deployments may record
+// it locally. host is the rpc-host the reporting client targeted. Called on a background worker
+// so a slow handler never blocks.
 type ConnectionMetadataHandler func(ctx context.Context, host string, req *webrtcpb.ReportConnectionMetadataRequest)
 
 // SetConnectionMetadataHandler sets the optional report consumer.
@@ -587,10 +587,10 @@ func (srv *WebRTCSignalingServer) OptionalWebRTCConfig(
 }
 
 // ReportConnectionMetadata accepts connection metadata reported by a dialing client and dispatches
-// it to the configured ConnectionMetadataHandler (accepted and dropped when none is set). The cloud
-// app wraps this service with its own handler; this base endpoint exists so connections that signal
-// through a machine's own signaling server (direct / mDNS — which never reach the cloud app) can still
-// be shipped somewhere, e.g. forwarded to the app.
+// it to the configured ConnectionMetadataHandler (dropped when none is set). The cloud server wraps
+// this service with its own handler; this base endpoint exists so connections that signal through
+// a machine's own signaling server (direct / mDNS, which never reach the cloud app) can still be
+// shipped somewhere, e.g. forwarded to the app.
 func (srv *WebRTCSignalingServer) ReportConnectionMetadata(
 	ctx context.Context,
 	req *webrtcpb.ReportConnectionMetadataRequest,
