@@ -15,7 +15,20 @@ const (
 	ctxKeyPeerConnection
 	ctxKeyAuthEntity
 	ctxKeyAuthClaims // all jwt claims
+	ctxKeyReportCollector
 )
+
+// contextWithReportCollector attaches a dialReportCollector so that all WebRTC dial attempts of one
+// logical dial share a single sink and report exactly once.
+func contextWithReportCollector(ctx context.Context, c *dialReportCollector) context.Context {
+	return context.WithValue(ctx, ctxKeyReportCollector, c)
+}
+
+// contextReportCollector returns the dialReportCollector for the current dial, or nil if none is set.
+func contextReportCollector(ctx context.Context) *dialReportCollector {
+	c, _ := ctx.Value(ctxKeyReportCollector).(*dialReportCollector)
+	return c
+}
 
 // contextWithHost attaches a host name to the given context.
 func contextWithHost(ctx context.Context, host string) context.Context {

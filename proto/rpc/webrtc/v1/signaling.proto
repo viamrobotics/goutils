@@ -48,9 +48,8 @@ service SignalingService {
 		};
 	}
 
-	// ReportConnectionMetadata reports metadata about an established WebRTC connection,
-	// including the selected ICE candidate type and the SDK used. The host must be in
-	// the rpc-host metadata field.
+	// ReportConnectionMetadata reports metadata about an WebRTC connection attempt.
+	// The host must be in the rpc-host metadata field.
 	rpc ReportConnectionMetadata(ReportConnectionMetadataRequest) returns (ReportConnectionMetadataResponse) {
 		option (google.api.http) = {
 			post: "/rpc/webrtc/v1/report_connection_metadata"
@@ -270,16 +269,16 @@ enum DialStage {
 	DIAL_STAGE_READY = 7;
 }
 
-// ConnectionTransport is how a WebRTC dial was signaled derived from the signaling address.
-enum ConnectionTransport {
-	CONNECTION_TRANSPORT_UNSPECIFIED = 0;
-	// CONNECTION_TRANSPORT_CLOUD_SIGNALED: signaled through app's signaling server.
-	CONNECTION_TRANSPORT_CLOUD_SIGNALED = 1;
-	// CONNECTION_TRANSPORT_MDNS_LOCAL: signaled over an mDNS-discovered local-network path.
-	CONNECTION_TRANSPORT_MDNS_LOCAL = 2;
-	// CONNECTION_TRANSPORT_LOCAL: signaled through a loopback/private-address signaling server
+// ConnectionSignalingPath is how a WebRTC dial was signaled, derived from the signaling address.
+enum ConnectionSignalingPath {
+	CONNECTION_SIGNALING_PATH_UNSPECIFIED = 0;
+	// CONNECTION_SIGNALING_PATH_CLOUD_SIGNALED: signaled through app's signaling server.
+	CONNECTION_SIGNALING_PATH_CLOUD_SIGNALED = 1;
+	// CONNECTION_SIGNALING_PATH_MDNS_LOCAL: signaled over an mDNS-discovered local-network path.
+	CONNECTION_SIGNALING_PATH_MDNS_LOCAL = 2;
+	// CONNECTION_SIGNALING_PATH_LOCAL: signaled through a loopback/private-address signaling server
 	// (e.g. a machine's own signaling server) without mDNS discovery.
-	CONNECTION_TRANSPORT_LOCAL = 3;
+	CONNECTION_SIGNALING_PATH_LOCAL = 3;
 }
 
 // ReportConnectionMetadataRequest reports metadata about a WebRTC dial, per side: local is the
@@ -293,8 +292,8 @@ message ReportConnectionMetadataRequest {
 	DialStage reached_stage = 4;
 	// duration_ms is the wall-clock time from dial start to connection ready or to the failure.
 	uint32 duration_ms = 5;
-	// transport is how the dial was signaled (cloud / local / mDNS); reported regardless of outcome.
-	ConnectionTransport transport = 6;
+	// signaling_path is how the dial was signaled (cloud / local / mDNS); reported regardless of outcome.
+	ConnectionSignalingPath signaling_path = 6;
 	// failure_code is the gRPC status code of a failed dial
 	int32 failure_code = 7;
 	// sdk_version is the version of the dialing SDK (e.g. a semver or git tag).

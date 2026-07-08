@@ -44,6 +44,14 @@ func dialInner(
 		return nil, errors.New("address empty")
 	}
 
+	// One logical dial can fan out into several WebRTC attempts through different signaling paths
+	// (mDNS to local signaling	, direct to local signaling, and through cloud signaling). A collector
+	// shared via the context lets them report exactly once: on completion we emit a single report
+	// for the furthest-progressed attempt and close the held signaling connections.
+	collector := &dialReportCollector{ctx: ctx, host: address, logger: logger}
+	defer collector.flush()
+	ctx = contextWithReportCollector(ctx, collector)
+
 	conn, cached, err := dialFunc(
 		ctx,
 		"multi",
