@@ -718,6 +718,7 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 			server.signalingCallQueue = signalingCallQueue
 			server.signalingServer = NewWebRTCSignalingServer(signalingCallQueue, nil, logger,
 				defaultHeartbeatInterval, internalSignalingHosts...)
+			server.signalingServer.SetConnectionMetadataHandler(sOpts.webrtcOpts.ConnectionMetadataHandler)
 			if err := server.RegisterServiceServer(
 				context.Background(),
 				&webrtcpb.SignalingService_ServiceDesc,

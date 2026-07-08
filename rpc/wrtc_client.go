@@ -3,8 +3,12 @@ package rpc
 import (
 	"context"
 	"io"
+	"net"
+	"runtime/debug"
 	"slices"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -124,8 +128,21 @@ func dialWebRTC(
 	host string,
 	dOpts dialOptions,
 	logger utils.ZapCompatibleLogger,
-) (*webrtcClientChannel, error) {
+) (retCh *webrtcClientChannel, retErr error) {
 	dialStart := time.Now()
+
+	// reachedStage tracks the furthest dial checkpoint reached, so a failed dial can report where it
+	// stopped. It is advanced from both this goroutine and the candidate-exchange / ICE callbacks, so
+	// it is an atomic; advance only ever moves it forward.
+	var reachedStage atomic.Int32
+	advance := func(s webrtcpb.DialStage) {
+		for {
+			cur := reachedStage.Load()
+			if int32(s) <= cur || reachedStage.CompareAndSwap(cur, int32(s)) {
+				return
+			}
+		}
+	}
 
 	dialCtx, timeoutCancel := context.WithTimeout(ctx, getDefaultOfferDeadline())
 	defer timeoutCancel()
@@ -147,11 +164,38 @@ func dialWebRTC(
 	}()
 
 	logger.Debugw("connected to signaling server", "signaling_server", signalingServer)
+	advance(webrtcpb.DialStage_DIAL_STAGE_SIGNALING_CONNECTED)
 
 	md := metadata.New(map[string]string{RPCHostMetadataField: host})
 	signalCtx := metadata.NewOutgoingContext(dialCtx, md)
 
 	signalingClient := webrtcpb.NewSignalingServiceClient(conn)
+
+	// Assigned once created; declared early so the report defer can read it (nil on failures before
+	// the peer connection exists).
+	var peerConn *webrtc.PeerConnection
+
+	// Report the dial outcome once the signaling channel exists. Failures before this point have no channel
+	// to report over; ErrNoWebRTCSignaler is a fallback control error, not a WebRTC failure, so it is skipped.
+	defer func() {
+		if errors.Is(retErr, ErrNoWebRTCSignaler) {
+			return
+		}
+		failureCode := ""
+		if retErr != nil {
+			failureCode = status.Code(retErr).String()
+		}
+		local, remote := classifyConnection(peerConn)
+		reportConnectionMetadata(ctx, host, signalingClient, &webrtcpb.ReportConnectionMetadataRequest{
+			Local:        local,
+			Remote:       remote,
+			ReachedStage: webrtcpb.DialStage(reachedStage.Load()),
+			DurationMs:   dialDurationMS(dialStart),
+			Transport:    classifyTransport(signalingServer, dOpts.usingMDNS),
+			FailureCode:  failureCode,
+		}, logger)
+	}()
+
 	configResp, err := signalingClient.OptionalWebRTCConfig(signalCtx, &webrtcpb.OptionalWebRTCConfigRequest{})
 	if err != nil {
 		// this would be where we would hit an unimplemented signaler error first.
@@ -161,6 +205,8 @@ func dialWebRTC(
 		}
 		return nil, err
 	}
+
+	advance(webrtcpb.DialStage_DIAL_STAGE_CONFIG_FETCHED)
 
 	config := DefaultWebRTCConfiguration
 	if dOpts.webrtcOpts.Config != nil {
@@ -227,10 +273,19 @@ func dialWebRTC(
 		)
 	}
 	extendedConfig := extendWebRTCConfig(logger, &config, optionalConfig, eWrtcOpts)
-	peerConn, dataChannel, err := newPeerConnectionForClient(ctx, extendedConfig, dOpts.webrtcOpts.DisableTrickleICE, logger)
+	var dataChannel *webrtc.DataChannel
+	peerConn, dataChannel, err = newPeerConnectionForClient(ctx, extendedConfig, dOpts.webrtcOpts.DisableTrickleICE, logger)
 	if err != nil {
 		return nil, err
 	}
+
+	// Advance to DTLS_CONNECTED when the peer connection reaches Connected (ICE + DTLS complete), so a
+	// failure between ICE connectivity and data-channel-open can be attributed to DTLS vs the data channel.
+	peerConn.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
+		if state == webrtc.PeerConnectionStateConnected {
+			advance(webrtcpb.DialStage_DIAL_STAGE_DTLS_CONNECTED)
+		}
+	})
 
 	var (
 		statsMu                                        sync.Mutex
@@ -238,6 +293,7 @@ func dialWebRTC(
 		maxCallUpdateDuration, totalCallUpdateDuration time.Duration
 	)
 	onICEConnected := func() {
+		advance(webrtcpb.DialStage_DIAL_STAGE_ICE_CONNECTED)
 		// Delay by up to 5s to allow more caller updates/better stats.
 		waitTime := 5 * time.Second
 		if testing.Testing() {
@@ -405,6 +461,7 @@ func dialWebRTC(
 		logger.Errorw("Error calling with initial SDP", "err", err)
 		return nil, err
 	}
+	advance(webrtcpb.DialStage_DIAL_STAGE_OFFER_SENT)
 
 	// TODO(RSDK-245): do separate auth here
 	if dOpts.externalAuthAddr != "" { //nolint:revive
@@ -448,6 +505,7 @@ func dialWebRTC(
 				if err != nil {
 					return err
 				}
+				advance(webrtcpb.DialStage_DIAL_STAGE_ANSWER_RECEIVED)
 				close(remoteDescSet)
 
 				if dOpts.webrtcOpts.DisableTrickleICE {
@@ -485,6 +543,7 @@ func dialWebRTC(
 	case <-clientCh.Ready():
 		// Happy path
 		sendDone()
+		advance(webrtcpb.DialStage_DIAL_STAGE_READY)
 		successful = true
 
 		// Ensure the exchange goroutine has exited.
@@ -555,4 +614,102 @@ func iceServerHasTURN(s webrtc.ICEServer) bool {
 		}
 	}
 	return false
+}
+
+// dialDurationMS returns milliseconds elapsed since start.
+func dialDurationMS(start time.Time) uint32 {
+	return uint32(time.Since(start).Milliseconds())
+}
+
+// sdkVersion returns the version of the main module consuming this SDK.
+func sdkVersion() string {
+	if bi, ok := debug.ReadBuildInfo(); ok && bi.Main.Version != "" {
+		return bi.Main.Version
+	}
+	return ""
+}
+
+// reportConnectionMetadata sends the given dial report to the signaling server, best-effort: it sets
+// the SDK type/version and rpc-host, and logs any error rather than returning it.
+func reportConnectionMetadata(
+	ctx context.Context,
+	host string,
+	signalingClient webrtcpb.SignalingServiceClient,
+	req *webrtcpb.ReportConnectionMetadataRequest,
+	logger utils.ZapCompatibleLogger,
+) {
+	req.SdkType = webrtcpb.SDKType_SDK_TYPE_GO
+	req.SdkVersion = sdkVersion()
+
+	reportCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	reportCtx = metadata.NewOutgoingContext(reportCtx, metadata.New(map[string]string{RPCHostMetadataField: host}))
+
+	if _, err := signalingClient.ReportConnectionMetadata(reportCtx, req); err != nil {
+		logger.Debugw("failed to report connection metadata", "reached_stage", req.GetReachedStage(), "err", err)
+	}
+}
+
+// viamCloudSignalingHosts are the Viam app signaling server hosts. Dialing Machine FQDNs route to one
+// of through InferSignalingServerAddress.
+var viamCloudSignalingHosts = []string{"app.viam.com", "app.viam.dev"}
+
+// classifyTransport derives how a connection was signaled from the signaling address. mDNS discovery
+// -> MDNS_LOCAL; a Viam app signaling host -> CLOUD_SIGNALED; everything else (localhost, private/LAN
+// addresses, etc.) -> LOCAL.
+func classifyTransport(signalingAddress string, usingMDNS bool) webrtcpb.ConnectionTransport {
+	if usingMDNS {
+		return webrtcpb.ConnectionTransport_CONNECTION_TRANSPORT_MDNS_LOCAL
+	}
+	host := signalingAddress
+	if i := strings.Index(host, "://"); i >= 0 {
+		host = host[i+3:]
+	}
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	if slices.Contains(viamCloudSignalingHosts, strings.ToLower(host)) {
+		return webrtcpb.ConnectionTransport_CONNECTION_TRANSPORT_CLOUD_SIGNALED
+	}
+	return webrtcpb.ConnectionTransport_CONNECTION_TRANSPORT_LOCAL
+}
+
+// classifyConnection inspects the nominated ICE candidate pair and classifies each side into a
+// ConnectionCandidate. Both are UNSPECIFIED when peerConn is nil (a failed dial) or no succeeded,
+// nominated pair exists.
+func classifyConnection(peerConn *webrtc.PeerConnection) (local, remote *webrtcpb.ConnectionCandidate) {
+	if peerConn == nil {
+		return &webrtcpb.ConnectionCandidate{}, &webrtcpb.ConnectionCandidate{}
+	}
+	stats := peerConn.GetStats()
+	var localCandID, remoteCandID string
+	for _, stat := range stats {
+		pair, ok := stat.(webrtc.ICECandidatePairStats)
+		if !ok || !pair.Nominated || pair.State != webrtc.StatsICECandidatePairStateSucceeded {
+			continue
+		}
+		localCandID, remoteCandID = pair.LocalCandidateID, pair.RemoteCandidateID
+		break
+	}
+
+	return classifyCandidate(stats, localCandID), classifyCandidate(stats, remoteCandID)
+}
+
+// classifyCandidate maps a single ICE candidate stat to a ConnectionCandidate; a missing or
+// unrecognized candidate yields type UNSPECIFIED. Relay candidates carry the relay server
+// address so the signaling server can classify the relay provider.
+func classifyCandidate(stats webrtc.StatsReport, candID string) *webrtcpb.ConnectionCandidate {
+	cand, ok := stats[candID].(webrtc.ICECandidateStats)
+	if !ok {
+		return &webrtcpb.ConnectionCandidate{}
+	}
+	switch cand.CandidateType {
+	case webrtc.ICECandidateTypeHost:
+		return &webrtcpb.ConnectionCandidate{Type: webrtcpb.ICECandidateType_ICE_CANDIDATE_TYPE_HOST}
+	case webrtc.ICECandidateTypeSrflx, webrtc.ICECandidateTypePrflx:
+		return &webrtcpb.ConnectionCandidate{Type: webrtcpb.ICECandidateType_ICE_CANDIDATE_TYPE_STUN}
+	case webrtc.ICECandidateTypeRelay:
+		return &webrtcpb.ConnectionCandidate{Type: webrtcpb.ICECandidateType_ICE_CANDIDATE_TYPE_RELAY, RelayAddress: cand.IP}
+	}
+	return &webrtcpb.ConnectionCandidate{}
 }

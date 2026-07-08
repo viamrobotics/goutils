@@ -129,6 +129,10 @@ type WebRTCServerOptions struct {
 
 	// Config is the WebRTC specific configuration (i.e. ICE settings)
 	Config *webrtc.Configuration
+
+	// ConnectionMetadataHandler, if set, is installed on the internally-constructed signaling
+	// server (see ConnectionMetadataHandler).
+	ConnectionMetadataHandler ConnectionMetadataHandler
 }
 
 // A ServerOption changes the runtime behavior of the server.

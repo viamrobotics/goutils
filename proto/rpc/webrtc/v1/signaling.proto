@@ -47,6 +47,15 @@ service SignalingService {
 			get: "/rpc/webrtc/v1/optional_webrtc_config"
 		};
 	}
+
+	// ReportConnectionMetadata reports metadata about an established WebRTC connection,
+	// including the selected ICE candidate type and the SDK used. The host must be in
+	// the rpc-host metadata field.
+	rpc ReportConnectionMetadata(ReportConnectionMetadataRequest) returns (ReportConnectionMetadataResponse) {
+		option (google.api.http) = {
+			post: "/rpc/webrtc/v1/report_connection_metadata"
+		};
+	}
 }
 
 // ICECandidate represents an ICE candidate.
@@ -211,4 +220,87 @@ message OptionalWebRTCConfigResponse {
 	WebRTCConfig config = 1;
 }
 
+// ICECandidateType represents the type of ICE candidate selected for a WebRTC connection.
+// The signaling server further classifies RELAY by relay server specific provider from the address.
+enum ICECandidateType {
+	ICE_CANDIDATE_TYPE_UNSPECIFIED = 0;
+	// ICE_CANDIDATE_TYPE_HOST indicates a direct connection was established.
+	ICE_CANDIDATE_TYPE_HOST = 1;
+	// ICE_CANDIDATE_TYPE_STUN indicates a STUN-assisted connection was established.
+	ICE_CANDIDATE_TYPE_STUN = 2;
+	// ICE_CANDIDATE_TYPE_RELAY indicates a TURN relay candidate was selected.
+	ICE_CANDIDATE_TYPE_RELAY = 3;
+}
 
+// SDKType represents the Viam SDK used to establish the connection.
+enum SDKType {
+	SDK_TYPE_UNSPECIFIED = 0;
+	SDK_TYPE_GO = 1;
+	SDK_TYPE_TYPESCRIPT = 2;
+	SDK_TYPE_PYTHON_CPP = 3;
+}
+
+// ConnectionCandidate describes the selected ICE candidate for one side of a WebRTC connection.
+message ConnectionCandidate {
+	ICECandidateType type = 1;
+	// relay_address is the relay server address of this candidate; set only when type is
+	// RELAY, so the signaling server can classify the provider by matching against known
+	// coturn addresses.
+	string relay_address = 2;
+}
+
+// DialStage is the furthest checkpoint a WebRTC dial reached. READY means the dial succeeded; any
+// earlier value is the stage at which a failed dial stopped.
+enum DialStage {
+	DIAL_STAGE_UNSPECIFIED = 0;
+	// DIAL_STAGE_SIGNALING_CONNECTED: the signaling channel was established.
+	DIAL_STAGE_SIGNALING_CONNECTED = 1;
+	// DIAL_STAGE_CONFIG_FETCHED: ICE/TURN configuration was fetched from the signaling server.
+	DIAL_STAGE_CONFIG_FETCHED = 2;
+	// DIAL_STAGE_OFFER_SENT: the SDP offer was sent to the signaling server (the Call was accepted).
+	DIAL_STAGE_OFFER_SENT = 3;
+	// DIAL_STAGE_ANSWER_RECEIVED: the answerer's SDP answer was received and applied.
+	DIAL_STAGE_ANSWER_RECEIVED = 4;
+	// DIAL_STAGE_ICE_CONNECTED: ICE connectivity was established (a candidate pair connected).
+	DIAL_STAGE_ICE_CONNECTED = 5;
+	// DIAL_STAGE_DTLS_CONNECTED: the DTLS handshake completed (peer connection connected) but the
+	// data channel is not yet open.
+	DIAL_STAGE_DTLS_CONNECTED = 6;
+	// DIAL_STAGE_READY: the connection is fully ready (data channel open). This is success.
+	DIAL_STAGE_READY = 7;
+}
+
+// ConnectionTransport is how a WebRTC dial was signaled derived from the signaling address.
+enum ConnectionTransport {
+	CONNECTION_TRANSPORT_UNSPECIFIED = 0;
+	// CONNECTION_TRANSPORT_CLOUD_SIGNALED: signaled through app's signaling server.
+	CONNECTION_TRANSPORT_CLOUD_SIGNALED = 1;
+	// CONNECTION_TRANSPORT_MDNS_LOCAL: signaled over an mDNS-discovered local-network path.
+	CONNECTION_TRANSPORT_MDNS_LOCAL = 2;
+	// CONNECTION_TRANSPORT_LOCAL: signaled through a loopback/private-address signaling server
+	// (e.g. a machine's own signaling server) without mDNS discovery.
+	CONNECTION_TRANSPORT_LOCAL = 3;
+}
+
+// ReportConnectionMetadataRequest reports metadata about a WebRTC dial, per side: local is the
+// dialing SDK and remote is the robot.
+message ReportConnectionMetadataRequest {
+	ConnectionCandidate local = 1;
+	ConnectionCandidate remote = 2;
+	SDKType sdk_type = 3;
+	// reached_stage is the furthest dial checkpoint reached. READY indicates success; any earlier
+	// value is where a failed dial stopped. local and remote are set only when reached_stage == READY.
+	DialStage reached_stage = 4;
+	// duration_ms is the wall-clock time from dial start to connection ready or to the failure.
+	uint32 duration_ms = 5;
+	// transport is how the dial was signaled (cloud / local / mDNS); reported regardless of outcome.
+	ConnectionTransport transport = 6;
+	// failure_code is the gRPC status code name of the dial failure.
+	string failure_code = 7;
+	// sdk_version is the version of the dialing SDK (e.g. a semver or git tag).
+	string sdk_version = 8;
+}
+
+// ReportConnectionMetadataResponse is empty.
+message ReportConnectionMetadataResponse {
+}
