@@ -91,6 +91,13 @@ func newWebRTCSignalingAnswerer(
 	return ans
 }
 
+// currentConn returns the answerer's connection to its signaling server, or nil when not connected.
+func (ans *webrtcSignalingAnswerer) currentConn() ClientConn {
+	ans.connMu.Lock()
+	defer ans.connMu.Unlock()
+	return ans.conn
+}
+
 const (
 	defaultMaxAnswerers               = 2
 	answererConnectTimeout            = 10 * time.Second

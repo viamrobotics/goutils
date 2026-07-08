@@ -32,6 +32,7 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
@@ -695,20 +696,22 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 			internalSignalingHosts = instanceNames
 		}
 
+		var externalAnswerer *webrtcSignalingAnswerer
 		if sOpts.webrtcOpts.ExternalSignalingAddress != "" {
 			logger.Infow(
 				"Running external signaling",
 				"signaling_address", sOpts.webrtcOpts.ExternalSignalingAddress,
 				"for_hosts", externalSignalingHosts,
 			)
-			server.webrtcAnswerers = append(server.webrtcAnswerers, newWebRTCSignalingAnswerer(
+			externalAnswerer = newWebRTCSignalingAnswerer(
 				sOpts.webrtcOpts.ExternalSignalingAddress,
 				externalSignalingHosts,
 				server.webrtcServer,
 				sOpts.webrtcOpts.ExternalSignalingDialOpts,
 				config,
 				utils.Sublogger(logger, "signaler.external"),
-			))
+			)
+			server.webrtcAnswerers = append(server.webrtcAnswerers, externalAnswerer)
 		} else {
 			sOpts.webrtcOpts.EnableInternalSignaling = true
 		}
@@ -718,7 +721,12 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 			server.signalingCallQueue = signalingCallQueue
 			server.signalingServer = NewWebRTCSignalingServer(signalingCallQueue, nil, logger,
 				defaultHeartbeatInterval, internalSignalingHosts...)
-			server.signalingServer.SetConnectionMetadataHandler(sOpts.webrtcOpts.ConnectionMetadataHandler)
+			if externalAnswerer != nil && len(externalSignalingHosts) > 0 {
+				// The external answerer connects to the cloud signaling server, so re-use its connection to forward
+				// metadata about connections through the internal signaling server to the cloud signaling server.
+				server.signalingServer.SetConnectionMetadataHandler(
+					connectionMetadataForwarder(externalAnswerer.currentConn, externalSignalingHosts[0], logger))
+			}
 			if err := server.RegisterServiceServer(
 				context.Background(),
 				&webrtcpb.SignalingService_ServiceDesc,
@@ -759,6 +767,29 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 	}
 
 	return server, nil
+}
+
+// connectionMetadataForwarder returns a handler that forwards client-reported connection metadata
+// to an upstream signaling server over the given connection source (nil conn = not connected, drop).
+// Reports are sent under host — an identity this server answers for upstream and so can authorize
+// as — rather than whatever alias (IP, localhost, local FQDN) the dialing client targeted.
+func connectionMetadataForwarder(
+	upstreamConn func() ClientConn,
+	host string,
+	logger utils.ZapCompatibleLogger,
+) ConnectionMetadataHandler {
+	return func(ctx context.Context, _ string, req *webrtcpb.ReportConnectionMetadataRequest) {
+		conn := upstreamConn()
+		if conn == nil {
+			return
+		}
+		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		ctx = metadata.NewOutgoingContext(ctx, metadata.New(map[string]string{RPCHostMetadataField: host}))
+		if _, err := webrtcpb.NewSignalingServiceClient(conn).ReportConnectionMetadata(ctx, req); err != nil {
+			logger.Debugw("failed to forward connection metadata to upstream signaling server", "error", err)
+		}
+	}
 }
 
 func (ss *simpleServer) InstanceNames() []string {
