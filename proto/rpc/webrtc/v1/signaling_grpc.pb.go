@@ -55,9 +55,8 @@ type SignalingServiceClient interface {
 	// OptionalWebRTCConfig returns any WebRTC configuration the caller may want to use.
 	// The host to get a config for must be in the rpc-host metadata field.
 	OptionalWebRTCConfig(ctx context.Context, in *OptionalWebRTCConfigRequest, opts ...grpc.CallOption) (*OptionalWebRTCConfigResponse, error)
-	// ReportConnectionMetadata reports metadata about an established WebRTC connection,
-	// including the selected ICE candidate type and the SDK used. The host must be in
-	// the rpc-host metadata field.
+	// ReportConnectionMetadata reports metadata about an WebRTC connection attempt.
+	// The host must be in the rpc-host metadata field.
 	ReportConnectionMetadata(ctx context.Context, in *ReportConnectionMetadataRequest, opts ...grpc.CallOption) (*ReportConnectionMetadataResponse, error)
 }
 
@@ -160,9 +159,8 @@ type SignalingServiceServer interface {
 	// OptionalWebRTCConfig returns any WebRTC configuration the caller may want to use.
 	// The host to get a config for must be in the rpc-host metadata field.
 	OptionalWebRTCConfig(context.Context, *OptionalWebRTCConfigRequest) (*OptionalWebRTCConfigResponse, error)
-	// ReportConnectionMetadata reports metadata about an established WebRTC connection,
-	// including the selected ICE candidate type and the SDK used. The host must be in
-	// the rpc-host metadata field.
+	// ReportConnectionMetadata reports metadata about an WebRTC connection attempt.
+	// The host must be in the rpc-host metadata field.
 	ReportConnectionMetadata(context.Context, *ReportConnectionMetadataRequest) (*ReportConnectionMetadataResponse, error)
 	mustEmbedUnimplementedSignalingServiceServer()
 }
