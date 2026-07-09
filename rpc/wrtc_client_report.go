@@ -145,7 +145,21 @@ func classifySignalingPath(signalingAddress string, usingMDNS bool) webrtcpb.Con
 	return webrtcpb.ConnectionSignalingPath_CONNECTION_SIGNALING_PATH_LOCAL
 }
 
-// classifyConnection inspects the nominated ICE candidate pair and classifies each side into a
+// SelectedCandidatePair returns the ICE candidate pair a WebRTC connection settled on — the
+// nominated pair in the succeeded state — from its stats report, and whether such a pair exists.
+// Obtain the report from (*webrtc.PeerConnection).GetStats().
+func SelectedCandidatePair(stats webrtc.StatsReport) (webrtc.ICECandidatePairStats, bool) {
+	for _, stat := range stats {
+		pair, ok := stat.(webrtc.ICECandidatePairStats)
+		if !ok || !pair.Nominated || pair.State != webrtc.StatsICECandidatePairStateSucceeded {
+			continue
+		}
+		return pair, true
+	}
+	return webrtc.ICECandidatePairStats{}, false
+}
+
+// classifyConnection inspects the selected ICE candidate pair and classifies each side into a
 // ConnectionCandidate. Both are UNSPECIFIED when peerConn is nil (a failed dial) or no succeeded,
 // nominated pair exists.
 func classifyConnection(peerConn *webrtc.PeerConnection) (local, remote *webrtcpb.ConnectionCandidate) {
@@ -153,17 +167,11 @@ func classifyConnection(peerConn *webrtc.PeerConnection) (local, remote *webrtcp
 		return &webrtcpb.ConnectionCandidate{}, &webrtcpb.ConnectionCandidate{}
 	}
 	stats := peerConn.GetStats()
-	var localCandID, remoteCandID string
-	for _, stat := range stats {
-		pair, ok := stat.(webrtc.ICECandidatePairStats)
-		if !ok || !pair.Nominated || pair.State != webrtc.StatsICECandidatePairStateSucceeded {
-			continue
-		}
-		localCandID, remoteCandID = pair.LocalCandidateID, pair.RemoteCandidateID
-		break
+	pair, ok := SelectedCandidatePair(stats)
+	if !ok {
+		return &webrtcpb.ConnectionCandidate{}, &webrtcpb.ConnectionCandidate{}
 	}
-
-	return classifyCandidate(stats, localCandID), classifyCandidate(stats, remoteCandID)
+	return classifyCandidate(stats, pair.LocalCandidateID), classifyCandidate(stats, pair.RemoteCandidateID)
 }
 
 // classifyCandidate maps a single ICE candidate stat to a ConnectionCandidate; a missing or
