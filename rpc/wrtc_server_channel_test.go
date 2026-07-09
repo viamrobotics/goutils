@@ -451,11 +451,6 @@ func TestWebRTCServerChannelResetStream(t *testing.T) {
 	})
 
 	t.Run("reset stream after message before server response", func(t *testing.T) {
-		respMd, err := proto.Marshal(&echopb.EchoResponse{
-			Message: "hello",
-		})
-		test.That(t, err, test.ShouldBeNil)
-
 		// We need to reset after the service has received the request but before
 		// its response has been written to the wire. To do this we inject a
 		// callback into the echoserver and use channels to coordinate the
@@ -466,6 +461,7 @@ func TestWebRTCServerChannelResetStream(t *testing.T) {
 			close(respWaiting)
 			<-blockResp
 		})
+		defer close(blockResp)
 		defer echoSrv.setBeforeSend(nil)
 
 		expectedMessages := []*webrtcpb.Response{
@@ -477,19 +473,10 @@ func TestWebRTCServerChannelResetStream(t *testing.T) {
 			},
 			{
 				Stream: &webrtcpb.Stream{Id: 4},
-				Type: &webrtcpb.Response_Message{
-					Message: &webrtcpb.ResponseMessage{
-						PacketMessage: &webrtcpb.PacketMessage{
-							Data: respMd,
-							Eom:  true,
-						},
-					},
-				},
-			},
-			{
-				Stream: &webrtcpb.Stream{Id: 4},
 				Type: &webrtcpb.Response_Trailers{
-					Trailers: &webrtcpb.ResponseTrailers{},
+					Trailers: &webrtcpb.ResponseTrailers{
+						Status: ErrorToStatus(status.Error(codes.Canceled, "request cancelled")).Proto(),
+					},
 				},
 			},
 		}
@@ -519,10 +506,23 @@ func TestWebRTCServerChannelResetStream(t *testing.T) {
 			Eos: true,
 		}), test.ShouldBeNil)
 
+		// here we wait until the server is ready to respond to the request we just made,
+		// to simulate an RPC that takes a long time to respond
 		<-respWaiting
+		// then, we write the reset request to the server
 		test.That(t, clientCh.writeReset(&webrtcpb.Stream{Id: 4}), test.ShouldBeNil)
-		close(blockResp)
+		// whenever the server handles the reset request, it will send the response headers to the client,
+		// then send the trailers, then tear down its stream and cancel its context
+
+		// we want the server to handle the reset before the server tries to respond to the initial request,
+		// so we sit here and wait until we get all the expected messages
 		<-messagesReadCtx.Done()
+		// after we receive the expected messages, the deferred close(blockResp) will run.
+		// also, if the above assertion fails, the deferred close will still run, so that
+		// we don't leak a goroutine if this test fails
+
+		// when the server tries to respond, it will get a closed pipe error, but we can't observe
+		// this error since the server itself throws it out
 	})
 }
 
