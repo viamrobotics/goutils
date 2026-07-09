@@ -673,46 +673,61 @@ func (c *dialReportCollector) add(r pendingReport) {
 	c.mu.Unlock()
 }
 
-func (c *dialReportCollector) flush() {
+// flush sends a single connection report for a logical dial and closes every held signaling connection.
+// dialErr is the logical dial's outcome: when the dial succeeded, only a READY report is truthful — a
+// non-READY "best" means the successful attempt produced no report of its own (e.g. a cached connection
+// was reused, so no dial actually happened), so it is suppressed rather than counting a failure against
+// a dial that succeeded.
+func (c *dialReportCollector) flush(dialErr error) {
 	c.mu.Lock()
 	reports := c.reports
 	c.reports = nil
 	c.mu.Unlock()
+
+	// Release the held signaling connections regardless of what, if anything, we report.
+	defer func() {
+		for _, r := range reports {
+			utils.UncheckedError(r.conn.Close())
+		}
+	}()
+
 	if len(reports) == 0 {
 		return
 	}
+	best := furthestPendingReport(reports)
+	if dialErr == nil && best.req.GetReachedStage() != webrtcpb.DialStage_DIAL_STAGE_READY {
+		return
+	}
+	c.send(best)
+}
+
+// send delivers one report to the signaling server over its own connection, best-effort: it stamps
+// the SDK type/version and rpc-host, logs (never returns) any error, and detaches from the dial
+// context so a cancelled/timed-out dial still reports, with a 5s bound.
+func (c *dialReportCollector) send(report pendingReport) {
+	report.req.SdkType = webrtcpb.SDKType_SDK_TYPE_GO
+	report.req.SdkVersion = sdkVersion()
+
+	reportCtx, cancel := context.WithTimeout(context.WithoutCancel(c.ctx), 5*time.Second)
+	defer cancel()
+	reportCtx = metadata.NewOutgoingContext(reportCtx, metadata.New(map[string]string{RPCHostMetadataField: c.host}))
+
+	client := webrtcpb.NewSignalingServiceClient(report.conn)
+	if _, err := client.ReportConnectionMetadata(reportCtx, report.req); err != nil {
+		c.logger.Debugw("failed to report connection metadata", "reached_stage", report.req.GetReachedStage(), "err", err)
+	}
+}
+
+// furthestPendingReport returns the attempt that progressed the furthest: READY has the highest stage
+// and always wins; among failures the one that reached the latest stage. reports must be non-empty.
+func furthestPendingReport(reports []pendingReport) pendingReport {
 	best := 0
 	for i := 1; i < len(reports); i++ {
 		if reports[i].req.GetReachedStage() > reports[best].req.GetReachedStage() {
 			best = i
 		}
 	}
-	b := reports[best]
-	reportConnectionMetadata(c.ctx, c.host, webrtcpb.NewSignalingServiceClient(b.conn), b.req, c.logger)
-	for _, r := range reports {
-		utils.UncheckedError(r.conn.Close())
-	}
-}
-
-// reportConnectionMetadata sends the given dial report to the signaling server, best-effort: it sets
-// the SDK type/version and rpc-host, and sends the report and logs any errors.
-func reportConnectionMetadata(
-	ctx context.Context,
-	host string,
-	signalingClient webrtcpb.SignalingServiceClient,
-	req *webrtcpb.ReportConnectionMetadataRequest,
-	logger utils.ZapCompatibleLogger,
-) {
-	req.SdkType = webrtcpb.SDKType_SDK_TYPE_GO
-	req.SdkVersion = sdkVersion()
-
-	reportCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-	defer cancel()
-	reportCtx = metadata.NewOutgoingContext(reportCtx, metadata.New(map[string]string{RPCHostMetadataField: host}))
-
-	if _, err := signalingClient.ReportConnectionMetadata(reportCtx, req); err != nil {
-		logger.Debugw("failed to report connection metadata", "reached_stage", req.GetReachedStage(), "err", err)
-	}
+	return reports[best]
 }
 
 // viamCloudSignalingHosts are the Viam app signaling server hosts.

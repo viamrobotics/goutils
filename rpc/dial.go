@@ -39,16 +39,17 @@ func dialInner(
 	address string,
 	logger utils.ZapCompatibleLogger,
 	dOpts dialOptions,
-) (ClientConn, error) {
+) (conn ClientConn, err error) {
 	if address == "" {
 		return nil, errors.New("address empty")
 	}
 
-	// One logical dial can fan out into several WebRTC attempts through different signaling paths.
-	// A collector shared via the context lets them report exactly once: on completion we emit a single
-	// report for the furthest-progressed attempt and close the held signaling connections.
+	// One logical dial can fan out into several WebRTC attempts through different signaling paths, or
+	// re-use a cached connection. A collector shared via the context lets them report exactly once: on
+	// completion we emit a single report for the furthest-progressed attempt (informed by the dial's
+	// outcome) and close the held signaling connections.
 	collector := &dialReportCollector{ctx: ctx, host: address, logger: logger}
-	defer collector.flush()
+	defer func() { collector.flush(err) }()
 	ctx = contextWithReportCollector(ctx, collector)
 
 	conn, cached, err := dialFunc(

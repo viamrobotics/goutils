@@ -1643,7 +1643,7 @@ type ReportConnectionMetadataRequest struct {
 	Remote  *ConnectionCandidate `protobuf:"bytes,2,opt,name=remote,proto3" json:"remote,omitempty"`
 	SdkType SDKType              `protobuf:"varint,3,opt,name=sdk_type,json=sdkType,proto3,enum=proto.rpc.webrtc.v1.SDKType" json:"sdk_type,omitempty"`
 	// reached_stage is the furthest dial checkpoint reached. READY indicates success; any earlier
-	// value is where a failed dial stopped. local and remote are set only when reached_stage == READY.
+	// value is where a failed dial stopped.
 	ReachedStage DialStage `protobuf:"varint,4,opt,name=reached_stage,json=reachedStage,proto3,enum=proto.rpc.webrtc.v1.DialStage" json:"reached_stage,omitempty"`
 	// duration_ms is the wall-clock time from dial start to connection ready or to the failure.
 	DurationMs uint32 `protobuf:"varint,5,opt,name=duration_ms,json=durationMs,proto3" json:"duration_ms,omitempty"`

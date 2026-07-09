@@ -55,7 +55,8 @@ type WebRTCSignalingServer struct {
 // so a slow handler never blocks.
 type ConnectionMetadataHandler func(ctx context.Context, host string, req *webrtcpb.ReportConnectionMetadataRequest)
 
-// SetConnectionMetadataHandler sets the optional report consumer.
+// SetConnectionMetadataHandler sets the optional report consumer. It must be called before the
+// server begins serving.
 func (srv *WebRTCSignalingServer) SetConnectionMetadataHandler(h ConnectionMetadataHandler) {
 	srv.connMetadataHandler = h
 }
@@ -598,12 +599,16 @@ func (srv *WebRTCSignalingServer) ReportConnectionMetadata(
 	_, span := trace.StartSpan(ctx, "SignalingServer::ReportConnectionMetadata")
 	defer span.End()
 
+	hosts, err := HostsFromCtx(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := srv.validateHosts(hosts...); err != nil {
+		return nil, err
+	}
+
 	if handler := srv.connMetadataHandler; handler != nil {
-		host := ""
-		if hosts, err := HostsFromCtx(ctx); err == nil && len(hosts) > 0 {
-			host = hosts[0]
-		}
-		srv.bgWorkers.Add(func(bgCtx context.Context) { handler(bgCtx, host, req) })
+		srv.bgWorkers.Add(func(bgCtx context.Context) { handler(bgCtx, hosts[0], req) })
 	}
 	return &webrtcpb.ReportConnectionMetadataResponse{}, nil
 }

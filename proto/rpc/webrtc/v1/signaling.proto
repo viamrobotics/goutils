@@ -48,7 +48,7 @@ service SignalingService {
 		};
 	}
 
-	// ReportConnectionMetadata reports metadata about an WebRTC connection attempt.
+	// ReportConnectionMetadata reports metadata about a WebRTC connection attempt.
 	// The host must be in the rpc-host metadata field.
 	rpc ReportConnectionMetadata(ReportConnectionMetadataRequest) returns (ReportConnectionMetadataResponse) {
 		option (google.api.http) = {
@@ -288,7 +288,7 @@ message ReportConnectionMetadataRequest {
 	ConnectionCandidate remote = 2;
 	SDKType sdk_type = 3;
 	// reached_stage is the furthest dial checkpoint reached. READY indicates success; any earlier
-	// value is where a failed dial stopped. local and remote are set only when reached_stage == READY.
+	// value is where a failed dial stopped.
 	DialStage reached_stage = 4;
 	// duration_ms is the wall-clock time from dial start to connection ready or to the failure.
 	uint32 duration_ms = 5;
