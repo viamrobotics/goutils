@@ -118,7 +118,7 @@ func (c *fakeClientConn) Invoke(context.Context, string, any, any, ...grpc.CallO
 }
 
 func (c *fakeClientConn) NewStream(context.Context, *grpc.StreamDesc, string, ...grpc.CallOption) (grpc.ClientStream, error) {
-	return nil, nil
+	return nil, nil //nolint:nilnil // test fake
 }
 func (c *fakeClientConn) PeerConn() *webrtc.PeerConnection { return nil }
 func (c *fakeClientConn) Close() error                     { c.closed = true; return nil }
