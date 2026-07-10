@@ -46,10 +46,10 @@ func dialInner(
 
 	// One logical dial can fan out into several WebRTC attempts through different signaling paths, or
 	// re-use a cached connection. A collector shared via the context lets them report exactly once: on
-	// completion we emit a single report for the furthest-progressed attempt (informed by the dial's
-	// outcome) and close the held signaling connections.
+	// completion we emit a single report for the furthest-progressed attempt and close the held signaling
+	// connections. Flushed in the background so reporting never adds latency to the dial's return.
 	collector := &dialReportCollector{ctx: ctx, host: address, logger: logger}
-	defer func() { collector.flush(err) }()
+	defer func() { go collector.flush(err) }()
 	ctx = contextWithReportCollector(ctx, collector)
 
 	conn, cached, err := dialFunc(
