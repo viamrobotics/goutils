@@ -2,6 +2,7 @@
 package grpchelpers
 
 import (
+	"context"
 	"errors"
 
 	"google.golang.org/grpc"
@@ -9,10 +10,13 @@ import (
 )
 
 // ConnectivityState allows callers to check the connectivity state of
-// the connection
+// the connection and to be notified of state transition events
 // see https://github.com/grpc/grpc-go/blob/master/clientconn.go#L648
 type ConnectivityState interface {
 	GetState() connectivity.State
+	// WaitForStateChange blocks until the connectivity state of the connection changes from
+	// sourceState or ctx expires, returning true in the former case and false in the latter.
+	WaitForStateChange(ctx context.Context, sourceState connectivity.State) bool
 }
 
 // ConnConnectivityState returns the connectivity.State of the current connection, if available.
