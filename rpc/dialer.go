@@ -685,13 +685,11 @@ func (cc clientConnRPCAuthenticator) GetState() connectivity.State {
 	return checker.GetState()
 }
 
-// WaitForStateChange blocks until the connectivity state of the underlying connection changes from
-// sourceState or ctx expires, returning true in the former case and false in the latter. It is
-// exposed if it is available on the underlying type; otherwise it blocks until ctx expires and
-// returns false.
+// WaitForStateChange blocks until the connectivity state of the underlying connection
+// changes from sourceState or ctx expires, returning true in the former case and false in
+// the latter. It returns false and an error in the case that the client connection does
+// not allow waiting for state change.
 func (cc clientConnRPCAuthenticator) WaitForStateChange(ctx context.Context, sourceState connectivity.State) (bool, error) {
-	// WaitForStateChange is only expected to be called on connections to app,
-	// which we assume will always be GrpcOverHTTPClientConn.
 	subscriber, ok := cc.ClientConn.(GrpcOverHTTPClientConn)
 	if !ok {
 		return false, errors.New("underlying connection does not allow waiting for state change")
