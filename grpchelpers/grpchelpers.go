@@ -16,7 +16,7 @@ type ConnectivityState interface {
 	GetState() connectivity.State
 	// WaitForStateChange blocks until the connectivity state of the connection changes from
 	// sourceState or ctx expires, returning true in the former case and false in the latter.
-	WaitForStateChange(ctx context.Context, sourceState connectivity.State) bool
+	WaitForStateChange(ctx context.Context, sourceState connectivity.State) (bool, error)
 }
 
 // ConnConnectivityState returns the connectivity.State of the current connection, if available.

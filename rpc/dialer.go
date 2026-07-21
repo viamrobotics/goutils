@@ -689,15 +689,14 @@ func (cc clientConnRPCAuthenticator) GetState() connectivity.State {
 // sourceState or ctx expires, returning true in the former case and false in the latter. It is
 // exposed if it is available on the underlying type; otherwise it blocks until ctx expires and
 // returns false.
-func (cc clientConnRPCAuthenticator) WaitForStateChange(ctx context.Context, sourceState connectivity.State) bool {
+func (cc clientConnRPCAuthenticator) WaitForStateChange(ctx context.Context, sourceState connectivity.State) (bool, error) {
 	// WaitForStateChange is only expected to be called on connections to app,
 	// which we assume will always be GrpcOverHTTPClientConn.
 	subscriber, ok := cc.ClientConn.(GrpcOverHTTPClientConn)
 	if !ok {
-		<-ctx.Done()
-		return false
+		return false, errors.New("underlying connection does not allow waiting for state change")
 	}
-	return subscriber.WaitForStateChange(ctx, sourceState)
+	return subscriber.WaitForStateChange(ctx, sourceState), nil
 }
 
 type staticPerRPCJWTCredentials struct {
