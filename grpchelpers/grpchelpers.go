@@ -11,7 +11,7 @@ import (
 
 // ConnectivityState allows callers to check the connectivity state of
 // the connection and to be notified of state transition events
-// see https://github.com/grpc/grpc-go/blob/master/clientconn.go#L648
+// see https://github.com/grpc/grpc-go/blob/v1.79.3/clientconn.go#L724
 type ConnectivityState interface {
 	GetState() connectivity.State
 	// WaitForStateChange blocks until the connectivity state of the connection changes from
