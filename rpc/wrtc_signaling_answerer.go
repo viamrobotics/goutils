@@ -228,8 +228,8 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 						}
 					}
 					ans.logger.Infow("failed to communicate with signaling server", "error", err)
-					utils.SelectContextOrWait(ctx, answererReconnectWait)
 				}
+				utils.SelectContextOrWait(ctx, answererReconnectWait)
 				continue
 			}
 			clearOfflineErrMap = true

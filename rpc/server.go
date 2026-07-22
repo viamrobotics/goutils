@@ -696,19 +696,19 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 		}
 
 		if sOpts.webrtcOpts.ExternalSignalingAddress != "" {
-			// logger.Infow(
-			// 	"Running external signaling",
-			// 	"signaling_address", sOpts.webrtcOpts.ExternalSignalingAddress,
-			// 	"for_hosts", externalSignalingHosts,
-			// )
-			// server.webrtcAnswerers = append(server.webrtcAnswerers, newWebRTCSignalingAnswerer(
-			// 	sOpts.webrtcOpts.ExternalSignalingAddress,
-			// 	externalSignalingHosts,
-			// 	server.webrtcServer,
-			// 	sOpts.webrtcOpts.ExternalSignalingDialOpts,
-			// 	config,
-			// 	utils.Sublogger(logger, "signaler.external"),
-			// ))
+			logger.Infow(
+				"Running external signaling",
+				"signaling_address", sOpts.webrtcOpts.ExternalSignalingAddress,
+				"for_hosts", externalSignalingHosts,
+			)
+			server.webrtcAnswerers = append(server.webrtcAnswerers, newWebRTCSignalingAnswerer(
+				sOpts.webrtcOpts.ExternalSignalingAddress,
+				externalSignalingHosts,
+				server.webrtcServer,
+				sOpts.webrtcOpts.ExternalSignalingDialOpts,
+				config,
+				utils.Sublogger(logger, "signaler.external"),
+			))
 		} else {
 			sOpts.webrtcOpts.EnableInternalSignaling = true
 		}
