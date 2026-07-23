@@ -39,11 +39,8 @@ func mainWithArgs(ctx context.Context, args []string, logger utils.ZapCompatible
 
 	connectCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	client, err := mongo.NewClient(options.Client().ApplyURI(mongoURI))
+	client, err := mongo.Connect(connectCtx, options.Client().ApplyURI(mongoURI))
 	if err != nil {
-		return err
-	}
-	if err := client.Connect(connectCtx); err != nil {
 		return err
 	}
 	if err := client.Ping(connectCtx, readpref.Primary()); err != nil {
