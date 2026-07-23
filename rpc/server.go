@@ -735,8 +735,15 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 			)
 			var answererDialOpts []DialOption
 			if sOpts.tlsConfig != nil {
+				// This TLS config exists only to match the shared TLS-serving listener; its
+				// identity/verification content is intentionally unused on this dial. The answerer
+				// dials the machine's own signaling server over loopback, so trust is guaranteed by
+				// the loopback hop, not the certificate. The machine cert has no system-trusted chain,
+				// so verifying it here always fails and (under WithBlock) stalls until the dial
+				// deadline; skip verification. ServerName is retained only for SNI.
 				tlsConfig := sOpts.tlsConfig.Clone()
 				tlsConfig.ServerName = server.firstSeenTLSCertLeaf.Subject.CommonName
+				tlsConfig.InsecureSkipVerify = true
 				answererDialOpts = append(answererDialOpts, WithTLSConfig(tlsConfig))
 			} else {
 				answererDialOpts = append(answererDialOpts, WithInsecure())
