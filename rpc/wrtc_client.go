@@ -166,16 +166,15 @@ func dialWebRTC(
 	// the peer connection exists).
 	var peerConn *webrtc.PeerConnection
 
-	// Report the dial outcome and release the signaling connection once this attempt finishes.
-	// ErrNoWebRTCSignaler is a fallback control error, not a WebRTC failure, so it is never reported.
-	// Otherwise the report and its still-open signaling connection are handed to the collector, which
-	// after the parallel dials resolve, sends exactly one report for the furthest-progressed attempt
-	// and closes the held connection.
+	// Report the dial outcome and close this attempt's signaling connection once it finishes. The
+	// connection report is delivered separately, over a dedicated connection to the app signaling
+	// server (see dialReportCollector). ErrNoWebRTCSignaler is a fallback control error, not a WebRTC
+	// failure, so it isn't reported. The collector, after the parallel dials resolve, delivers exactly
+	// one report, for the furthest-progressed attempt.
 	defer func() {
-		if errors.Is(retErr, ErrNoWebRTCSignaler) {
-			// Ignore any errors closing the signaling server connection. That step has no bearing on
-			// whether the PeerConnection was successfully made.
-			utils.UncheckedError(conn.Close())
+		utils.UncheckedError(conn.Close())
+		collector := contextReportCollector(ctx)
+		if collector == nil || errors.Is(retErr, ErrNoWebRTCSignaler) {
 			return
 		}
 		var failureCode int32
@@ -183,22 +182,14 @@ func dialWebRTC(
 			failureCode = int32(status.Code(retErr))
 		}
 		local, remote := classifyConnection(peerConn)
-		req := &webrtcpb.ReportConnectionMetadataRequest{
+		collector.add(&webrtcpb.ReportConnectionMetadataRequest{
 			Local:         local,
 			Remote:        remote,
 			ReachedStage:  webrtcpb.DialStage(reachedStage.Load()),
 			DurationMs:    dialDurationMS(dialStart),
 			SignalingPath: classifySignalingPath(signalingServer, dOpts.usingMDNS),
 			FailureCode:   failureCode,
-		}
-		collector := contextReportCollector(ctx)
-		if collector == nil {
-			// Should not happen: dialWebRTC only runs under dial()/dialInner, which set the collector.
-			// Close the signaling connection so it doesn't leak rather than dropping it silently.
-			utils.UncheckedError(conn.Close())
-			return
-		}
-		collector.add(pendingReport{req: req, conn: conn})
+		})
 	}()
 
 	configResp, err := signalingClient.OptionalWebRTCConfig(signalCtx, &webrtcpb.OptionalWebRTCConfigRequest{})

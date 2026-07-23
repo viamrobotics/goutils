@@ -231,14 +231,6 @@ enum ICECandidateType {
 	ICE_CANDIDATE_TYPE_RELAY = 3;
 }
 
-// SDKType represents the Viam SDK used to establish the connection.
-enum SDKType {
-	SDK_TYPE_UNSPECIFIED = 0;
-	SDK_TYPE_GO = 1;
-	SDK_TYPE_TYPESCRIPT = 2;
-	SDK_TYPE_PYTHON_CPP = 3;
-}
-
 // ConnectionCandidate describes the selected ICE candidate for one side of a WebRTC connection.
 message ConnectionCandidate {
 	ICECandidateType type = 1;
@@ -286,18 +278,15 @@ enum ConnectionSignalingPath {
 message ReportConnectionMetadataRequest {
 	ConnectionCandidate local = 1;
 	ConnectionCandidate remote = 2;
-	SDKType sdk_type = 3;
 	// reached_stage is the furthest dial checkpoint reached. READY indicates success; any earlier
 	// value is where a failed dial stopped.
-	DialStage reached_stage = 4;
+	DialStage reached_stage = 3;
 	// duration_ms is the wall-clock time from dial start to connection ready or to the failure.
-	uint32 duration_ms = 5;
+	uint32 duration_ms = 4;
 	// signaling_path is how the dial was signaled (cloud / local / mDNS); reported regardless of outcome.
-	ConnectionSignalingPath signaling_path = 6;
+	ConnectionSignalingPath signaling_path = 5;
 	// failure_code is the gRPC status code of a failed dial
-	int32 failure_code = 7;
-	// sdk_version is the version of the dialing SDK (e.g. a semver or git tag).
-	string sdk_version = 8;
+	int32 failure_code = 6;
 }
 
 // ReportConnectionMetadataResponse is empty.

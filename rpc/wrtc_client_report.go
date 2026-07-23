@@ -3,7 +3,6 @@ package rpc
 import (
 	"context"
 	"net"
-	"runtime/debug"
 	"slices"
 	"strings"
 	"sync"
@@ -15,135 +14,6 @@ import (
 	"go.viam.com/utils"
 	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
 )
-
-// dialDurationMS returns milliseconds elapsed since start.
-func dialDurationMS(start time.Time) uint32 {
-	return uint32(time.Since(start).Milliseconds())
-}
-
-// viamSDKModule is the module path of the Viam RDK, which houses the Go SDK.
-const viamSDKModule = "go.viam.com/rdk"
-
-// sdkVersion returns the version of the Viam SDK module in the running binary.
-func sdkVersion() string {
-	bi, ok := debug.ReadBuildInfo()
-	if !ok {
-		return ""
-	}
-	if bi.Main.Path == viamSDKModule {
-		return bi.Main.Version
-	}
-	for _, dep := range bi.Deps {
-		if dep.Path == viamSDKModule {
-			return dep.Version
-		}
-	}
-	return ""
-}
-
-// pendingReport is one WebRTC dial attempt's would-be connection-metadata report, held together
-// with the signaling connection it must be sent over until the parallel dial resolves.
-type pendingReport struct {
-	req  *webrtcpb.ReportConnectionMetadataRequest
-	conn ClientConn
-}
-
-// dialReportCollector accumulates the per-attempt reports of a single logical dial (which races
-// mDNS and cloud attempts) and, on flush, sends exactly one: the furthest-progressed attempt then
-// closes every held signaling connection.
-type dialReportCollector struct {
-	ctx     context.Context
-	host    string
-	logger  utils.ZapCompatibleLogger
-	mu      sync.Mutex
-	reports []pendingReport
-}
-
-func (c *dialReportCollector) add(r pendingReport) {
-	c.mu.Lock()
-	c.reports = append(c.reports, r)
-	c.mu.Unlock()
-}
-
-// flush sends a single connection report for a logical dial and closes every held signaling connection.
-// dialErr is the logical dial's outcome: when the dial succeeded, only a READY report is truthful — a
-// non-READY "best" means the successful attempt produced no report of its own (e.g. a cached connection
-// was reused, so no dial actually happened), so it is suppressed rather than counting a failure against
-// a dial that succeeded.
-func (c *dialReportCollector) flush(dialErr error) {
-	c.mu.Lock()
-	reports := c.reports
-	c.reports = nil
-	c.mu.Unlock()
-
-	// Release the held signaling connections regardless of what, if anything, we report.
-	defer func() {
-		for _, r := range reports {
-			utils.UncheckedError(r.conn.Close())
-		}
-	}()
-
-	if len(reports) == 0 {
-		return
-	}
-	best := furthestPendingReport(reports)
-	if dialErr == nil && best.req.GetReachedStage() != webrtcpb.DialStage_DIAL_STAGE_READY {
-		return
-	}
-	c.send(best)
-}
-
-// send delivers one report to the signaling server over its own connection, best-effort: it stamps
-// the SDK type/version and rpc-host, logs (never returns) any error, and detaches from the dial
-// context so a cancelled/timed-out dial still reports, with a 5s bound.
-func (c *dialReportCollector) send(report pendingReport) {
-	report.req.SdkType = webrtcpb.SDKType_SDK_TYPE_GO
-	report.req.SdkVersion = sdkVersion()
-
-	reportCtx, cancel := context.WithTimeout(context.WithoutCancel(c.ctx), 5*time.Second)
-	defer cancel()
-	reportCtx = metadata.NewOutgoingContext(reportCtx, metadata.New(map[string]string{RPCHostMetadataField: c.host}))
-
-	client := webrtcpb.NewSignalingServiceClient(report.conn)
-	if _, err := client.ReportConnectionMetadata(reportCtx, report.req); err != nil {
-		c.logger.Debugw("failed to report connection metadata", "reached_stage", report.req.GetReachedStage(), "err", err)
-	}
-}
-
-// furthestPendingReport returns the attempt that progressed the furthest: READY has the highest stage
-// and always wins; among failures the one that reached the latest stage.
-func furthestPendingReport(reports []pendingReport) pendingReport {
-	var best pendingReport
-	for i, r := range reports {
-		if i == 0 || r.req.GetReachedStage() > best.req.GetReachedStage() {
-			best = r
-		}
-	}
-	return best
-}
-
-// viamCloudSignalingHosts are the Viam app signaling server hosts.
-var viamCloudSignalingHosts = []string{"app.viam.com", "app.viam.dev"}
-
-// classifySignalingPath derives how a connection was signaled from the signaling address. mDNS
-// discovery -> MDNS_LOCAL; a Viam app signaling host -> CLOUD_SIGNALED; everything else (localhost,
-// private/LAN addresses, etc.) -> LOCAL.
-func classifySignalingPath(signalingAddress string, usingMDNS bool) webrtcpb.ConnectionSignalingPath {
-	if usingMDNS {
-		return webrtcpb.ConnectionSignalingPath_CONNECTION_SIGNALING_PATH_MDNS_LOCAL
-	}
-	host := signalingAddress
-	if i := strings.Index(host, "://"); i >= 0 {
-		host = host[i+3:]
-	}
-	if h, _, err := net.SplitHostPort(host); err == nil {
-		host = h
-	}
-	if slices.Contains(viamCloudSignalingHosts, strings.ToLower(host)) {
-		return webrtcpb.ConnectionSignalingPath_CONNECTION_SIGNALING_PATH_CLOUD_SIGNALED
-	}
-	return webrtcpb.ConnectionSignalingPath_CONNECTION_SIGNALING_PATH_LOCAL
-}
 
 // SelectedCandidatePair returns the ICE candidate pair a WebRTC connection settled on — the
 // nominated pair in the succeeded state — from its stats report, and whether such a pair exists.
@@ -157,6 +27,126 @@ func SelectedCandidatePair(stats webrtc.StatsReport) (webrtc.ICECandidatePairSta
 		return pair, true
 	}
 	return webrtc.ICECandidatePairStats{}, false
+}
+
+// dialReportCollector gathers the per-attempt connection-metadata reports of one logical dial (which
+// races mDNS and cloud attempts) and on flush delivers the data of the furthest-progressed attempt.
+//
+// The report is delivered over a connection the collector opens itself to the app signaling server
+// after the dial completes.
+type dialReportCollector struct {
+	ctx    context.Context
+	host   string
+	logger utils.ZapCompatibleLogger
+
+	mu          sync.Mutex
+	reqs        []*webrtcpb.ReportConnectionMetadataRequest
+	appDialOpts *dialOptions
+}
+
+// add records one attempt's would-be report.
+func (c *dialReportCollector) add(req *webrtcpb.ReportConnectionMetadataRequest) {
+	c.mu.Lock()
+	c.reqs = append(c.reqs, req)
+	c.mu.Unlock()
+}
+
+// setAppDialOpts sets dial options on the collector for how to reach the app signaling server to deliver
+// the report, derived from the primary (non-mDNS) dial attempt's own options to the signaling server. A
+// dial already signaling through app has its options unchanged; a raw IP or .local dial is redirected to
+// prod app, reusing the credentials this attempt authed with. A robot not registered against prod app has
+// its report dropped.
+func (c *dialReportCollector) setAppDialOpts(dOpts dialOptions) {
+	if classifySignalingPath(dOpts.webrtcOpts.SignalingServerAddress, dOpts.usingMDNS) !=
+		webrtcpb.ConnectionSignalingPath_CONNECTION_SIGNALING_PATH_CLOUD_SIGNALED {
+		if dOpts.webrtcOpts.SignalingCreds.Type == "" {
+			return
+		}
+		dOpts.webrtcOpts.SignalingServerAddress = "app.viam.com:443"
+		dOpts.webrtcOpts.SignalingInsecure = false // app is always TLS
+	}
+	c.mu.Lock()
+	c.appDialOpts = &dOpts
+	c.mu.Unlock()
+}
+
+// flush delivers a single connection report for a logical dial, if there is one to send and an app to
+// send it to. It detaches from the dial context (so a cancelled or timed-out dial still reports) with a
+// 5s timeout, opens its own connection to the app signaling server, stamps the RPC host, and logs any errors
+// to report.
+func (c *dialReportCollector) flush(dialErr error) {
+	c.mu.Lock()
+	reqs := c.reqs
+	c.reqs = nil
+	appDialOpts := c.appDialOpts
+	c.mu.Unlock()
+
+	req := selectReport(reqs, dialErr)
+	if req == nil || appDialOpts == nil {
+		return
+	}
+
+	reportCtx, cancel := context.WithTimeout(context.WithoutCancel(c.ctx), 5*time.Second)
+	defer cancel()
+
+	conn, err := dialSignalingServer(reportCtx, appDialOpts.webrtcOpts.SignalingServerAddress, c.host, c.logger, *appDialOpts)
+	if err != nil {
+		c.logger.Debugw("failed to connect to app signaling server to report connection metadata", "err", err)
+		return
+	}
+	defer func() { utils.UncheckedError(conn.Close()) }()
+
+	reportCtx = metadata.NewOutgoingContext(reportCtx, metadata.New(map[string]string{RPCHostMetadataField: c.host}))
+	client := webrtcpb.NewSignalingServiceClient(conn)
+	if _, err := client.ReportConnectionMetadata(reportCtx, req); err != nil {
+		c.logger.Debugw("failed to report connection metadata", "reached_stage", req.GetReachedStage(), "err", err)
+	}
+}
+
+// selectReport picks the single report to deliver for a dial, or nil if none should be sent. It takes
+// the furthest-progressed attempt — READY has the highest stage and indicates success, otherwise take
+// the latest failure stage. dialErr is the logical dial's outcome: when it is nil, only a READY report
+// is truthful, so a non-READY furthest (e.g. the winning attempt reused a cached connection and made
+// no report of its own) is suppressed rather than counting a failure against a dial that succeeded.
+func selectReport(
+	reqs []*webrtcpb.ReportConnectionMetadataRequest,
+	dialErr error,
+) *webrtcpb.ReportConnectionMetadataRequest {
+	var best *webrtcpb.ReportConnectionMetadataRequest
+	for _, r := range reqs {
+		if best == nil || r.GetReachedStage() > best.GetReachedStage() {
+			best = r
+		}
+	}
+	if best == nil || (dialErr == nil && best.GetReachedStage() != webrtcpb.DialStage_DIAL_STAGE_READY) {
+		return nil
+	}
+	return best
+}
+
+// dialDurationMS returns milliseconds elapsed since start.
+func dialDurationMS(start time.Time) uint32 {
+	return uint32(time.Since(start).Milliseconds())
+}
+
+// viamCloudSignalingHosts are the Viam app signaling server hosts.
+var viamCloudSignalingHosts = []string{"app.viam.com", "app.viam.dev"}
+
+// classifySignalingPath derives how a connection was signaled from the signaling address. mDNS
+// discovery -> MDNS_LOCAL; a Viam app signaling host -> CLOUD_SIGNALED; everything else (localhost,
+// private/LAN addresses, etc.) -> LOCAL.
+func classifySignalingPath(signalingAddress string, usingMDNS bool) webrtcpb.ConnectionSignalingPath {
+	if usingMDNS {
+		return webrtcpb.ConnectionSignalingPath_CONNECTION_SIGNALING_PATH_MDNS_LOCAL
+	}
+	host := signalingAddress
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	if slices.Contains(viamCloudSignalingHosts, strings.ToLower(host)) {
+		return webrtcpb.ConnectionSignalingPath_CONNECTION_SIGNALING_PATH_CLOUD_SIGNALED
+	}
+	return webrtcpb.ConnectionSignalingPath_CONNECTION_SIGNALING_PATH_LOCAL
 }
 
 // classifyConnection inspects the selected ICE candidate pair and classifies each side into a

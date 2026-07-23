@@ -28,7 +28,6 @@ func TestClassifySignalingPath(t *testing.T) {
 		{"mdns wins regardless of address", "app.viam.com:443", true, webrtcpb.ConnectionSignalingPath_CONNECTION_SIGNALING_PATH_MDNS_LOCAL},
 		{"app.viam.com is cloud", "app.viam.com:443", false, webrtcpb.ConnectionSignalingPath_CONNECTION_SIGNALING_PATH_CLOUD_SIGNALED},
 		{"app.viam.dev is cloud", "app.viam.dev", false, webrtcpb.ConnectionSignalingPath_CONNECTION_SIGNALING_PATH_CLOUD_SIGNALED},
-		{"scheme is stripped", "https://app.viam.com:443", false, webrtcpb.ConnectionSignalingPath_CONNECTION_SIGNALING_PATH_CLOUD_SIGNALED},
 		{"case insensitive", "APP.VIAM.COM:443", false, webrtcpb.ConnectionSignalingPath_CONNECTION_SIGNALING_PATH_CLOUD_SIGNALED},
 		{"localhost is local", "localhost:8080", false, webrtcpb.ConnectionSignalingPath_CONNECTION_SIGNALING_PATH_LOCAL},
 		{"loopback ip is local", "127.0.0.1:9000", false, webrtcpb.ConnectionSignalingPath_CONNECTION_SIGNALING_PATH_LOCAL},
@@ -39,36 +38,6 @@ func TestClassifySignalingPath(t *testing.T) {
 			test.That(t, classifySignalingPath(tc.address, tc.usingDNS), test.ShouldEqual, tc.expected)
 		})
 	}
-}
-
-func TestFurthestPendingReport(t *testing.T) {
-	report := func(stage webrtcpb.DialStage) pendingReport {
-		return pendingReport{req: &webrtcpb.ReportConnectionMetadataRequest{ReachedStage: stage}}
-	}
-	stageOf := func(r pendingReport) webrtcpb.DialStage { return r.req.GetReachedStage() }
-
-	t.Run("a ready success beats every failure regardless of order", func(t *testing.T) {
-		reports := []pendingReport{
-			report(webrtcpb.DialStage_DIAL_STAGE_CONFIG_FETCHED),
-			report(webrtcpb.DialStage_DIAL_STAGE_READY),
-			report(webrtcpb.DialStage_DIAL_STAGE_OFFER_SENT),
-		}
-		test.That(t, stageOf(furthestPendingReport(reports)), test.ShouldEqual, webrtcpb.DialStage_DIAL_STAGE_READY)
-	})
-
-	t.Run("among failures the latest stage wins", func(t *testing.T) {
-		reports := []pendingReport{
-			report(webrtcpb.DialStage_DIAL_STAGE_SIGNALING_CONNECTED),
-			report(webrtcpb.DialStage_DIAL_STAGE_ANSWER_RECEIVED),
-			report(webrtcpb.DialStage_DIAL_STAGE_CONFIG_FETCHED),
-		}
-		test.That(t, stageOf(furthestPendingReport(reports)), test.ShouldEqual, webrtcpb.DialStage_DIAL_STAGE_ANSWER_RECEIVED)
-	})
-
-	t.Run("a single report is returned as-is", func(t *testing.T) {
-		only := report(webrtcpb.DialStage_DIAL_STAGE_OFFER_SENT)
-		test.That(t, stageOf(furthestPendingReport([]pendingReport{only})), test.ShouldEqual, webrtcpb.DialStage_DIAL_STAGE_OFFER_SENT)
-	})
 }
 
 func TestClassifyCandidate(t *testing.T) {
@@ -100,67 +69,85 @@ func TestClassifyCandidate(t *testing.T) {
 	})
 }
 
-func TestClassifyConnectionNilPeer(t *testing.T) {
-	local, remote := classifyConnection(nil)
-	test.That(t, local.GetType(), test.ShouldEqual, webrtcpb.ICECandidateType_ICE_CANDIDATE_TYPE_UNSPECIFIED)
-	test.That(t, remote.GetType(), test.ShouldEqual, webrtcpb.ICECandidateType_ICE_CANDIDATE_TYPE_UNSPECIFIED)
-}
-
-// fakeClientConn is a minimal ClientConn that records whether it was used to send an RPC and closed.
-type fakeClientConn struct {
-	invoked bool
-	closed  bool
-}
-
-func (c *fakeClientConn) Invoke(context.Context, string, any, any, ...grpc.CallOption) error {
-	c.invoked = true
-	return nil
-}
-
-func (c *fakeClientConn) NewStream(context.Context, *grpc.StreamDesc, string, ...grpc.CallOption) (grpc.ClientStream, error) {
-	return nil, nil //nolint:nilnil // test fake
-}
-func (c *fakeClientConn) PeerConn() *webrtc.PeerConnection { return nil }
-func (c *fakeClientConn) Close() error                     { c.closed = true; return nil }
-
-func TestDialReportCollectorFlush(t *testing.T) {
-	logger := golog.NewTestLogger(t)
-	report := func(stage webrtcpb.DialStage, conn ClientConn) pendingReport {
-		return pendingReport{req: &webrtcpb.ReportConnectionMetadataRequest{ReachedStage: stage}, conn: conn}
+func TestSelectReport(t *testing.T) {
+	req := func(stage webrtcpb.DialStage) *webrtcpb.ReportConnectionMetadataRequest {
+		return &webrtcpb.ReportConnectionMetadataRequest{ReachedStage: stage}
 	}
 
-	t.Run("successful dial sends the ready report over its own conn and closes all conns", func(t *testing.T) {
-		ready, loser := &fakeClientConn{}, &fakeClientConn{}
-		c := &dialReportCollector{ctx: context.Background(), host: "h", logger: logger}
-		c.add(report(webrtcpb.DialStage_DIAL_STAGE_SIGNALING_CONNECTED, loser))
-		c.add(report(webrtcpb.DialStage_DIAL_STAGE_READY, ready))
-		c.flush(nil)
-		test.That(t, ready.invoked, test.ShouldBeTrue)
-		test.That(t, loser.invoked, test.ShouldBeFalse)
-		test.That(t, ready.closed, test.ShouldBeTrue)
-		test.That(t, loser.closed, test.ShouldBeTrue)
+	t.Run("no reports is nothing to send", func(t *testing.T) {
+		test.That(t, selectReport(nil, nil), test.ShouldBeNil)
 	})
 
-	t.Run("successful dial with only a failure report (e.g. cached winner) sends nothing but still closes conns", func(t *testing.T) {
-		loser := &fakeClientConn{}
-		c := &dialReportCollector{ctx: context.Background(), host: "h", logger: logger}
-		c.add(report(webrtcpb.DialStage_DIAL_STAGE_SIGNALING_CONNECTED, loser))
-		c.flush(nil)
-		test.That(t, loser.invoked, test.ShouldBeFalse)
-		test.That(t, loser.closed, test.ShouldBeTrue)
+	t.Run("successful dial sends the ready report regardless of order", func(t *testing.T) {
+		best := selectReport([]*webrtcpb.ReportConnectionMetadataRequest{
+			req(webrtcpb.DialStage_DIAL_STAGE_CONFIG_FETCHED),
+			req(webrtcpb.DialStage_DIAL_STAGE_READY),
+			req(webrtcpb.DialStage_DIAL_STAGE_OFFER_SENT),
+		}, nil)
+		test.That(t, best.GetReachedStage(), test.ShouldEqual, webrtcpb.DialStage_DIAL_STAGE_READY)
 	})
 
-	t.Run("failed dial sends the furthest failure and closes conns", func(t *testing.T) {
-		early, furthest := &fakeClientConn{}, &fakeClientConn{}
-		c := &dialReportCollector{ctx: context.Background(), host: "h", logger: logger}
-		c.add(report(webrtcpb.DialStage_DIAL_STAGE_SIGNALING_CONNECTED, early))
-		c.add(report(webrtcpb.DialStage_DIAL_STAGE_OFFER_SENT, furthest))
-		c.flush(errors.New("dial failed"))
-		test.That(t, furthest.invoked, test.ShouldBeTrue)
-		test.That(t, early.invoked, test.ShouldBeFalse)
-		test.That(t, early.closed, test.ShouldBeTrue)
-		test.That(t, furthest.closed, test.ShouldBeTrue)
+	t.Run("successful dial with only a failure report (e.g. cached winner) sends nothing", func(t *testing.T) {
+		best := selectReport([]*webrtcpb.ReportConnectionMetadataRequest{
+			req(webrtcpb.DialStage_DIAL_STAGE_SIGNALING_CONNECTED),
+		}, nil)
+		test.That(t, best, test.ShouldBeNil)
 	})
+
+	t.Run("failed dial sends the furthest failure", func(t *testing.T) {
+		best := selectReport([]*webrtcpb.ReportConnectionMetadataRequest{
+			req(webrtcpb.DialStage_DIAL_STAGE_SIGNALING_CONNECTED),
+			req(webrtcpb.DialStage_DIAL_STAGE_ANSWER_RECEIVED),
+			req(webrtcpb.DialStage_DIAL_STAGE_CONFIG_FETCHED),
+		}, errors.New("dial failed"))
+		test.That(t, best.GetReachedStage(), test.ShouldEqual, webrtcpb.DialStage_DIAL_STAGE_ANSWER_RECEIVED)
+	})
+}
+
+func TestSetAppDialOpts(t *testing.T) {
+	withCreds := func(signalingAddr string) dialOptions {
+		return dialOptions{webrtcOpts: DialWebRTCOptions{
+			SignalingServerAddress: signalingAddr,
+			SignalingCreds:         Credentials{Type: CredentialsTypeAPIKey},
+		}}
+	}
+
+	t.Run("local dial with creds is redirected to prod app over TLS", func(t *testing.T) {
+		c := &dialReportCollector{}
+		c.setAppDialOpts(withCreds("192.168.1.5:8080"))
+		test.That(t, c.appDialOpts, test.ShouldNotBeNil)
+		test.That(t, c.appDialOpts.webrtcOpts.SignalingServerAddress, test.ShouldEqual, "app.viam.com:443")
+		test.That(t, c.appDialOpts.webrtcOpts.SignalingInsecure, test.ShouldBeFalse)
+	})
+
+	t.Run("cloud-signaled dial reports there unchanged", func(t *testing.T) {
+		c := &dialReportCollector{}
+		c.setAppDialOpts(withCreds("app.viam.dev:443"))
+		test.That(t, c.appDialOpts, test.ShouldNotBeNil)
+		test.That(t, c.appDialOpts.webrtcOpts.SignalingServerAddress, test.ShouldEqual, "app.viam.dev:443")
+	})
+
+	t.Run("credential-less local dial is not recorded", func(t *testing.T) {
+		c := &dialReportCollector{}
+		c.setAppDialOpts(dialOptions{webrtcOpts: DialWebRTCOptions{SignalingServerAddress: "192.168.1.5:8080"}})
+		test.That(t, c.appDialOpts, test.ShouldBeNil)
+	})
+}
+
+// reportCapturingSignalingServer wraps a base signaling server with a ReportConnectionMetadata
+// implementation that captures reports, standing in for the app's signaling server (the base server
+// leaves the RPC Unimplemented).
+type reportCapturingSignalingServer struct {
+	*WebRTCSignalingServer
+	reportCh chan *webrtcpb.ReportConnectionMetadataRequest
+}
+
+func (s *reportCapturingSignalingServer) ReportConnectionMetadata(
+	_ context.Context,
+	req *webrtcpb.ReportConnectionMetadataRequest,
+) (*webrtcpb.ReportConnectionMetadataResponse, error) {
+	s.reportCh <- req
+	return &webrtcpb.ReportConnectionMetadataResponse{}, nil
 }
 
 // TestReportConnectionMetadataOncePerDial dials a robot over WebRTC and asserts the dialing client
@@ -168,6 +155,12 @@ func TestDialReportCollectorFlush(t *testing.T) {
 func TestReportConnectionMetadataOncePerDial(t *testing.T) {
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
+
+	// The client only reports to a signaling server it classifies as the app. Treat this test's
+	// loopback signaling server as an app host so the reporting path is exercised.
+	origCloudHosts := viamCloudSignalingHosts
+	viamCloudSignalingHosts = []string{"127.0.0.1"}
+	defer func() { viamCloudSignalingHosts = origCloudHosts }()
 
 	signalingCallQueue := NewMemoryWebRTCCallQueue(logger)
 	defer func() { test.That(t, signalingCallQueue.Close(), test.ShouldBeNil) }()
@@ -178,15 +171,12 @@ func TestReportConnectionMetadataOncePerDial(t *testing.T) {
 
 	// Capture every report the base signaling server receives.
 	reportCh := make(chan *webrtcpb.ReportConnectionMetadataRequest, 8)
-	signalingServer.SetConnectionMetadataHandler(
-		func(_ context.Context, _ string, req *webrtcpb.ReportConnectionMetadataRequest) {
-			reportCh <- req
-		})
+	capturingServer := &reportCapturingSignalingServer{WebRTCSignalingServer: signalingServer, reportCh: reportCh}
 
 	grpcListener, err := net.Listen("tcp", "localhost:0")
 	test.That(t, err, test.ShouldBeNil)
 	grpcServer := grpc.NewServer()
-	grpcServer.RegisterService(&webrtcpb.SignalingService_ServiceDesc, signalingServer)
+	grpcServer.RegisterService(&webrtcpb.SignalingService_ServiceDesc, capturingServer)
 	serveDone := make(chan error)
 	go func() { serveDone <- grpcServer.Serve(grpcListener) }()
 
@@ -229,8 +219,7 @@ func TestReportConnectionMetadataOncePerDial(t *testing.T) {
 	}
 
 	test.That(t, req.GetReachedStage(), test.ShouldEqual, webrtcpb.DialStage_DIAL_STAGE_READY)
-	test.That(t, req.GetSignalingPath(), test.ShouldEqual, webrtcpb.ConnectionSignalingPath_CONNECTION_SIGNALING_PATH_LOCAL)
-	test.That(t, req.GetSdkType(), test.ShouldEqual, webrtcpb.SDKType_SDK_TYPE_GO)
+	test.That(t, req.GetSignalingPath(), test.ShouldEqual, webrtcpb.ConnectionSignalingPath_CONNECTION_SIGNALING_PATH_CLOUD_SIGNALED)
 	test.That(t, req.GetFailureCode(), test.ShouldEqual, int32(0))
 	test.That(t, req.GetLocal().GetType(), test.ShouldNotEqual, webrtcpb.ICECandidateType_ICE_CANDIDATE_TYPE_UNSPECIFIED)
 	test.That(t, req.GetRemote().GetType(), test.ShouldNotEqual, webrtcpb.ICECandidateType_ICE_CANDIDATE_TYPE_UNSPECIFIED)

@@ -38,27 +38,10 @@ type WebRTCSignalingServer struct {
 
 	bgWorkers *utils.StoppableWorkers
 
-	// connMetadataHandler, if set, receives client-reported connection metadata. nil = accept and drop.
-	connMetadataHandler ConnectionMetadataHandler
-
 	logger utils.ZapCompatibleLogger
 
 	// Interval at which to send heartbeats.
 	heartbeatInterval time.Duration
-}
-
-// ConnectionMetadataHandler consumes a client-reported connection-metadata request. The base
-// signaling server has no metrics or org context of its own, so what to do with a report is
-// decided by this handler: a machine's own signaling server forwards it to the cloud app (so
-// local/mDNS connections still land in the app's metrics), while other deployments may record
-// it locally. host is the rpc-host the reporting client targeted. Called on a background worker
-// so a slow handler never blocks.
-type ConnectionMetadataHandler func(ctx context.Context, host string, req *webrtcpb.ReportConnectionMetadataRequest)
-
-// SetConnectionMetadataHandler sets the optional report consumer. It must be called before the
-// server begins serving.
-func (srv *WebRTCSignalingServer) SetConnectionMetadataHandler(h ConnectionMetadataHandler) {
-	srv.connMetadataHandler = h
 }
 
 // NewWebRTCSignalingServer makes a new signaling server that uses the given
@@ -585,32 +568,6 @@ func (srv *WebRTCSignalingServer) OptionalWebRTCConfig(
 	return &webrtcpb.OptionalWebRTCConfigResponse{Config: &webrtcpb.WebRTCConfig{
 		AdditionalIceServers: iceServers,
 	}}, nil
-}
-
-// ReportConnectionMetadata accepts connection metadata reported by a dialing client and dispatches
-// it to the configured ConnectionMetadataHandler (dropped when none is set). The cloud server wraps
-// this service with its own handler; this base endpoint exists so connections that signal through
-// a machine's own signaling server (direct / mDNS, which never reach the cloud app) can still be
-// shipped somewhere, e.g. forwarded to the app.
-func (srv *WebRTCSignalingServer) ReportConnectionMetadata(
-	ctx context.Context,
-	req *webrtcpb.ReportConnectionMetadataRequest,
-) (*webrtcpb.ReportConnectionMetadataResponse, error) {
-	_, span := trace.StartSpan(ctx, "SignalingServer::ReportConnectionMetadata")
-	defer span.End()
-
-	hosts, err := HostsFromCtx(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if err := srv.validateHosts(hosts...); err != nil {
-		return nil, err
-	}
-
-	if handler := srv.connMetadataHandler; handler != nil {
-		srv.bgWorkers.Add(func(bgCtx context.Context) { handler(bgCtx, hosts[0], req) })
-	}
-	return &webrtcpb.ReportConnectionMetadataResponse{}, nil
 }
 
 // Close cancels all active workers and waits to cleanly close all background workers.

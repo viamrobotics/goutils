@@ -44,10 +44,11 @@ func dialInner(
 		return nil, errors.New("address empty")
 	}
 
-	// One logical dial can fan out into several WebRTC attempts through different signaling paths, or
-	// re-use a cached connection. A collector shared via the context lets them report exactly once: on
-	// completion we emit a single report for the furthest-progressed attempt and close the held signaling
-	// connections. Flushed in the background so reporting never adds latency to the dial's return.
+	// One logical dial can fan out into several WebRTC attempts (racing mDNS and cloud paths) or re-use a
+	// cached connection. A collector shared via the context gathers their reports and, on completion, opens
+	// its own connection to app (only app implements the report RPC) to deliver exactly one — the
+	// furthest-progressed attempt. Flushed in the background so reporting never adds latency to the dial's
+	// return.
 	collector := &dialReportCollector{ctx: ctx, host: address, logger: logger}
 	defer func() { go collector.flush(err) }()
 	ctx = contextWithReportCollector(ctx, collector)
@@ -198,6 +199,14 @@ func dial(
 				"signaling_server", dOpts.webrtcOpts.SignalingServerAddress,
 				"host", originalAddress,
 			)
+
+			// The primary (non-mDNS) dial to the signaling server records where to reach app and with which
+			// credentials to send the dial report. Captured here post-fixup so credentials are resolved.
+			if !dOpts.usingMDNS {
+				if collector := contextReportCollector(ctxParallel); collector != nil {
+					collector.setAppDialOpts(dOpts)
+				}
+			}
 
 			conn, cached, err := dialFunc(
 				ctxParallel,
