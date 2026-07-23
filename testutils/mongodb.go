@@ -122,12 +122,8 @@ func backingMongoDBClientWithOptions(baseOptions *options.ClientOptions) (*mongo
 		clientOptions = baseOptions.ApplyURI(mongoURI)
 	}
 
-	client, err := mongo.NewClient(clientOptions)
+	client, err := mongo.Connect(ctx, clientOptions)
 	if err != nil {
-		errCachedBackingMongoDBClient = err
-		return nil, errCachedBackingMongoDBClient
-	}
-	if err := client.Connect(ctx); err != nil {
 		errCachedBackingMongoDBClient = err
 		return nil, errCachedBackingMongoDBClient
 	}
