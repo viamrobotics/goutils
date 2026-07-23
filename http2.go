@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
 )
 
 // HTTPServerOptions define options to use when calling NewPossiblySecureHTTPServer.
@@ -59,20 +58,19 @@ func NewPossiblySecureHTTPServer(handler http.Handler, opts HTTPServerOptions) (
 }
 
 // NewPlainTextHTTP2Server returns an http.Server capable of handling HTTP/2
-// over plaintext via h2c for the given handler.
+// over plaintext (h2c) for the given handler. It relies on the standard
+// library's native unencrypted HTTP/2 support rather than the deprecated
+// golang.org/x/net/http2/h2c handler wrapper.
 func NewPlainTextHTTP2Server(handler http.Handler) (*http.Server, error) {
-	http2Server, err := NewHTTP2Server()
-	if err != nil {
-		return nil, err
-	}
+	protocols := new(http.Protocols)
+	protocols.SetHTTP1(true)
+	protocols.SetUnencryptedHTTP2(true)
 	httpServer := &http.Server{
 		ReadHeaderTimeout: 10 * time.Second,
 		MaxHeaderBytes:    1 << 20,
-		Handler:           h2c.NewHandler(handler, http2Server.HTTP2),
+		Handler:           handler,
+		Protocols:         protocols,
 	}
-	httpServer.RegisterOnShutdown(func() {
-		UncheckedErrorFunc(http2Server.Close)
-	})
 	return httpServer, nil
 }
 

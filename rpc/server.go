@@ -26,7 +26,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/viamrobotics/zeroconf"
 	"go.uber.org/multierr"
-	"golang.org/x/net/http2/h2c"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -895,14 +894,12 @@ func (ss *simpleServer) serveTLS(listener net.Listener, certFile, keyFile string
 	secure := true
 	if certFile == "" && keyFile == "" {
 		secure = false
-		http2Server, err := utils.NewHTTP2Server()
-		if err != nil {
-			return err
-		}
-		ss.httpServer.RegisterOnShutdown(func() {
-			utils.UncheckedErrorFunc(http2Server.Close)
-		})
-		ss.httpServer.Handler = h2c.NewHandler(ss.httpServer.Handler, http2Server.HTTP2)
+		// Serve unencrypted HTTP/2 (h2c) via the standard library instead of the
+		// deprecated golang.org/x/net/http2/h2c handler wrapper.
+		protocols := new(http.Protocols)
+		protocols.SetHTTP1(true)
+		protocols.SetUnencryptedHTTP2(true)
+		ss.httpServer.Protocols = protocols
 	}
 
 	var err error
