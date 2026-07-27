@@ -59,6 +59,7 @@ require go.viam.com/api v0.1.493
 
 require (
 	contrib.go.opencensus.io/exporter/jaeger v0.2.1
+	contrib.go.opencensus.io/exporter/ocagent v0.7.0
 	github.com/caarlos0/env/v11 v11.4.0
 	github.com/googleapis/gax-go/v2 v2.13.0
 	go.opentelemetry.io/otel/sdk v1.43.0
