@@ -5,7 +5,6 @@ import (
 	"net"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/viamrobotics/webrtc/v3"
@@ -29,77 +28,56 @@ func SelectedCandidatePair(stats webrtc.StatsReport) (webrtc.ICECandidatePairSta
 	return webrtc.ICECandidatePairStats{}, false
 }
 
-// dialReportCollector gathers the per-attempt connection-metadata reports of one logical dial (which
-// races mDNS and cloud attempts) and on flush delivers the data of the furthest-progressed attempt.
-//
-// The report is delivered over a connection the collector opens itself to the app signaling server
-// after the dial completes.
-type dialReportCollector struct {
-	ctx    context.Context
-	host   string
-	logger utils.ZapCompatibleLogger
-
-	mu          sync.Mutex
-	reqs        []*webrtcpb.ReportConnectionMetadataRequest
-	appDialOpts *dialOptions
-}
-
-// add records one attempt's would-be report.
-func (c *dialReportCollector) add(req *webrtcpb.ReportConnectionMetadataRequest) {
-	c.mu.Lock()
-	c.reqs = append(c.reqs, req)
-	c.mu.Unlock()
-}
-
-// setAppDialOpts sets dial options on the collector for how to reach the app signaling server to deliver
-// the report, derived from the primary (non-mDNS) dial attempt's own options to the signaling server. A
-// dial already signaling through app has its options unchanged; a raw IP or .local dial is redirected to
-// prod app, reusing the credentials this attempt authed with. A robot not registered against prod app has
-// its report dropped.
-func (c *dialReportCollector) setAppDialOpts(dOpts dialOptions) {
+// fixUpReportDialOpts derives dial options for how to reach the app signaling server to deliver the report,
+// from the primary (non-mDNS) dial attempt's own options to the signaling server. A dial already signaling
+// through app has its options unchanged; a raw IP or .local dial is redirected to prod app, reusing the
+// credentials this attempt authed with. A robot not registered against prod app has its report dropped.
+func fixUpReportDialOpts(dOpts dialOptions) *dialOptions {
 	if classifySignalingPath(dOpts.webrtcOpts.SignalingServerAddress, dOpts.usingMDNS) !=
 		webrtcpb.ConnectionSignalingPath_CONNECTION_SIGNALING_PATH_CLOUD_SIGNALED {
 		if dOpts.webrtcOpts.SignalingCreds.Type == "" {
-			return
+			return nil
 		}
 		dOpts.webrtcOpts.SignalingServerAddress = "app.viam.com:443"
 		dOpts.webrtcOpts.SignalingInsecure = false // app is always TLS
 	}
-	c.mu.Lock()
-	c.appDialOpts = &dOpts
-	c.mu.Unlock()
+	return &dOpts
 }
 
-// flush delivers a single connection report for a logical dial, if there is one to send and an app to
-// send it to. It detaches from the dial context (so a cancelled or timed-out dial still reports) with a
-// 5s timeout, opens its own connection to the app signaling server, stamps the RPC host, and logs any errors
-// to report.
-func (c *dialReportCollector) flush(dialErr error) {
-	c.mu.Lock()
-	reqs := c.reqs
-	c.reqs = nil
-	appDialOpts := c.appDialOpts
-	c.mu.Unlock()
-
-	req := selectReport(reqs, dialErr)
-	if req == nil || appDialOpts == nil {
+// sendDialReport delivers a single connection report for a logical dial, if there is one to send and an
+// app to send it to. It detaches from the dial context (so a cancelled or timed-out dial still reports)
+// with a 5s timeout, opens its own connection to the app signaling server, stamps the RPC host, and logs
+// any errors to report. report may be nil (a dial that produced no attempts, e.g. a cache hit).
+func sendDialReport(
+	ctx context.Context,
+	host string,
+	logger utils.ZapCompatibleLogger,
+	report *dialReport,
+	dialErr error,
+) {
+	if report == nil {
 		return
 	}
+	req := selectReport(report.reqs, dialErr)
+	if req == nil || report.appDialOpts == nil {
+		return
+	}
+	appDialOpts := report.appDialOpts
 
-	reportCtx, cancel := context.WithTimeout(context.WithoutCancel(c.ctx), 5*time.Second)
+	reportCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 
-	conn, err := dialSignalingServer(reportCtx, appDialOpts.webrtcOpts.SignalingServerAddress, c.host, c.logger, *appDialOpts)
+	conn, err := dialSignalingServer(reportCtx, appDialOpts.webrtcOpts.SignalingServerAddress, host, logger, *appDialOpts)
 	if err != nil {
-		c.logger.Debugw("failed to connect to app signaling server to report connection metadata", "err", err)
+		logger.Debugw("failed to connect to app signaling server to report connection metadata", "err", err)
 		return
 	}
 	defer func() { utils.UncheckedError(conn.Close()) }()
 
-	reportCtx = metadata.NewOutgoingContext(reportCtx, metadata.New(map[string]string{RPCHostMetadataField: c.host}))
+	reportCtx = metadata.NewOutgoingContext(reportCtx, metadata.New(map[string]string{RPCHostMetadataField: host}))
 	client := webrtcpb.NewSignalingServiceClient(conn)
 	if _, err := client.ReportConnectionMetadata(reportCtx, req); err != nil {
-		c.logger.Debugw("failed to report connection metadata", "reached_stage", req.GetReachedStage(), "err", err)
+		logger.Debugw("failed to report connection metadata", "reached_stage", req.GetReachedStage(), "err", err)
 	}
 }
 

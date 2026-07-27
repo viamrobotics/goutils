@@ -125,7 +125,7 @@ func dialWebRTC(
 	host string,
 	dOpts dialOptions,
 	logger utils.ZapCompatibleLogger,
-) (retCh *webrtcClientChannel, retErr error) {
+) (retCh *webrtcClientChannel, report *webrtcpb.ReportConnectionMetadataRequest, retErr error) {
 	dialStart := time.Now()
 
 	// reachedStage tracks the furthest dial checkpoint reached, so a failed dial can report where it
@@ -144,6 +144,38 @@ func dialWebRTC(
 	dialCtx, timeoutCancel := context.WithTimeout(ctx, getDefaultOfferDeadline())
 	defer timeoutCancel()
 
+	// Assigned as the attempt progresses; declared before the report defer so it can read them. conn is nil
+	// if we never reached the signaling server; peerConn is nil on failures before the peer connection exists.
+	var (
+		conn     ClientConn
+		peerConn *webrtc.PeerConnection
+	)
+
+	// Return this attempt's report and close its signaling connection once it finishes. The report is delivered
+	// separately (see sendDialReport), over a dedicated connection to the app signaling server. ErrNoWebRTCSignaler
+	// is a fallback control error, not a WebRTC failure, so it isn't reported. Only the furthest-progressed one is sent.
+	defer func() {
+		if conn != nil {
+			utils.UncheckedError(conn.Close())
+		}
+		if errors.Is(retErr, ErrNoWebRTCSignaler) {
+			return
+		}
+		var failureCode int32
+		if retErr != nil {
+			failureCode = int32(status.Code(retErr))
+		}
+		local, remote := classifyConnection(peerConn)
+		report = &webrtcpb.ReportConnectionMetadataRequest{
+			Local:         local,
+			Remote:        remote,
+			ReachedStage:  webrtcpb.DialStage(reachedStage.Load()),
+			DurationMs:    dialDurationMS(dialStart),
+			SignalingPath: classifySignalingPath(signalingServer, dOpts.usingMDNS),
+			FailureCode:   failureCode,
+		}
+	}()
+
 	logger.Debugw(
 		"connecting to signaling server",
 		"signaling_server", signalingServer,
@@ -152,7 +184,7 @@ func dialWebRTC(
 
 	conn, err := dialSignalingServer(dialCtx, signalingServer, host, logger, dOpts)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	logger.Debugw("connected to signaling server", "signaling_server", signalingServer)
 	advance(webrtcpb.DialStage_DIAL_STAGE_SIGNALING_CONNECTED)
@@ -162,44 +194,14 @@ func dialWebRTC(
 
 	signalingClient := webrtcpb.NewSignalingServiceClient(conn)
 
-	// Assigned once created; declared early so the report defer can read it (nil on failures before
-	// the peer connection exists).
-	var peerConn *webrtc.PeerConnection
-
-	// Report the dial outcome and close this attempt's signaling connection once it finishes. The
-	// connection report is delivered separately, over a dedicated connection to the app signaling
-	// server (see dialReportCollector). ErrNoWebRTCSignaler is a fallback control error, not a WebRTC
-	// failure, so it isn't reported. The collector, after the parallel dials resolve, delivers exactly
-	// one report, for the furthest-progressed attempt.
-	defer func() {
-		utils.UncheckedError(conn.Close())
-		collector := contextReportCollector(ctx)
-		if collector == nil || errors.Is(retErr, ErrNoWebRTCSignaler) {
-			return
-		}
-		var failureCode int32
-		if retErr != nil {
-			failureCode = int32(status.Code(retErr))
-		}
-		local, remote := classifyConnection(peerConn)
-		collector.add(&webrtcpb.ReportConnectionMetadataRequest{
-			Local:         local,
-			Remote:        remote,
-			ReachedStage:  webrtcpb.DialStage(reachedStage.Load()),
-			DurationMs:    dialDurationMS(dialStart),
-			SignalingPath: classifySignalingPath(signalingServer, dOpts.usingMDNS),
-			FailureCode:   failureCode,
-		})
-	}()
-
 	configResp, err := signalingClient.OptionalWebRTCConfig(signalCtx, &webrtcpb.OptionalWebRTCConfigRequest{})
 	if err != nil {
 		// this would be where we would hit an unimplemented signaler error first.
 		if s, ok := status.FromError(err); ok && (s.Code() == codes.Unimplemented ||
 			(s.Code() == codes.InvalidArgument && s.Message() == hostNotAllowedMsg)) {
-			return nil, ErrNoWebRTCSignaler
+			return nil, nil, ErrNoWebRTCSignaler
 		}
-		return nil, err
+		return nil, nil, err
 	}
 
 	advance(webrtcpb.DialStage_DIAL_STAGE_CONFIG_FETCHED)
@@ -272,7 +274,7 @@ func dialWebRTC(
 	var dataChannel *webrtc.DataChannel
 	peerConn, dataChannel, err = newPeerConnectionForClient(ctx, extendedConfig, dOpts.webrtcOpts.DisableTrickleICE, logger)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Advance to DTLS_CONNECTED when the peer connection reaches Connected (ICE + DTLS complete), so a
@@ -358,7 +360,7 @@ func dialWebRTC(
 	if !dOpts.webrtcOpts.DisableTrickleICE {
 		offer, err := peerConn.CreateOffer(nil)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		var pendingCandidates sync.WaitGroup
@@ -435,13 +437,13 @@ func dialWebRTC(
 		err = peerConn.SetLocalDescription(offer)
 		if err != nil {
 			logger.Errorw("Error setting local description with offer", "err", err)
-			return nil, err
+			return nil, nil, err
 		}
 
 		select {
 		case <-exchangeCtx.Done():
 			logger.Errorw("Failed while waiting for first host to be generated", "err", err)
-			return nil, exchangeCtx.Err()
+			return nil, nil, exchangeCtx.Err()
 		case <-waitFirstUsableCandidate:
 		}
 	}
@@ -449,13 +451,13 @@ func dialWebRTC(
 	encodedSDP, err := EncodeSDP(peerConn.LocalDescription())
 	if err != nil {
 		logger.Errorw("Error encoding local description", "err", err)
-		return nil, err
+		return nil, nil, err
 	}
 
 	callClient, err := signalingClient.Call(signalCtx, &webrtcpb.CallRequest{Sdp: encodedSDP})
 	if err != nil {
 		logger.Errorw("Error calling with initial SDP", "err", err)
-		return nil, err
+		return nil, nil, err
 	}
 	advance(webrtcpb.DialStage_DIAL_STAGE_OFFER_SENT)
 
@@ -557,10 +559,10 @@ func dialWebRTC(
 				logger.Debugw("Problem sending error to signaling server", "err", err)
 			}
 		})
-		return nil, exchangeErr
+		return nil, nil, exchangeErr
 	}
 
-	return clientCh, nil
+	return clientCh, nil, nil
 }
 
 func dialSignalingServer(

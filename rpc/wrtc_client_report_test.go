@@ -113,24 +113,21 @@ func TestSetAppDialOpts(t *testing.T) {
 	}
 
 	t.Run("local dial with creds is redirected to prod app over TLS", func(t *testing.T) {
-		c := &dialReportCollector{}
-		c.setAppDialOpts(withCreds("192.168.1.5:8080"))
-		test.That(t, c.appDialOpts, test.ShouldNotBeNil)
-		test.That(t, c.appDialOpts.webrtcOpts.SignalingServerAddress, test.ShouldEqual, "app.viam.com:443")
-		test.That(t, c.appDialOpts.webrtcOpts.SignalingInsecure, test.ShouldBeFalse)
+		got := fixUpReportDialOpts(withCreds("192.168.1.5:8080"))
+		test.That(t, got, test.ShouldNotBeNil)
+		test.That(t, got.webrtcOpts.SignalingServerAddress, test.ShouldEqual, "app.viam.com:443")
+		test.That(t, got.webrtcOpts.SignalingInsecure, test.ShouldBeFalse)
 	})
 
 	t.Run("cloud-signaled dial reports there unchanged", func(t *testing.T) {
-		c := &dialReportCollector{}
-		c.setAppDialOpts(withCreds("app.viam.dev:443"))
-		test.That(t, c.appDialOpts, test.ShouldNotBeNil)
-		test.That(t, c.appDialOpts.webrtcOpts.SignalingServerAddress, test.ShouldEqual, "app.viam.dev:443")
+		got := fixUpReportDialOpts(withCreds("app.viam.dev:443"))
+		test.That(t, got, test.ShouldNotBeNil)
+		test.That(t, got.webrtcOpts.SignalingServerAddress, test.ShouldEqual, "app.viam.dev:443")
 	})
 
 	t.Run("credential-less local dial is not recorded", func(t *testing.T) {
-		c := &dialReportCollector{}
-		c.setAppDialOpts(dialOptions{webrtcOpts: DialWebRTCOptions{SignalingServerAddress: "192.168.1.5:8080"}})
-		test.That(t, c.appDialOpts, test.ShouldBeNil)
+		got := fixUpReportDialOpts(dialOptions{webrtcOpts: DialWebRTCOptions{SignalingServerAddress: "192.168.1.5:8080"}})
+		test.That(t, got, test.ShouldBeNil)
 	})
 }
 

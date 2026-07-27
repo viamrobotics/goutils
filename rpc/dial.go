@@ -16,6 +16,7 @@ import (
 	"go.uber.org/zap"
 
 	"go.viam.com/utils"
+	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
 )
 
 // Dial attempts to make the most convenient connection to the given address. It attempts to connect
@@ -45,14 +46,10 @@ func dialInner(
 	}
 
 	// One logical dial can fan out into several WebRTC attempts (racing mDNS and cloud paths) or re-use a
-	// cached connection. A collector shared via the context gathers their reports and, on completion, opens
-	// its own connection to app (only app implements the report RPC) to deliver exactly one — the
-	// furthest-progressed attempt. Flushed in the background so reporting never adds latency to the dial's
-	// return.
-	collector := &dialReportCollector{ctx: ctx, host: address, logger: logger}
-	defer func() { go collector.flush(err) }()
-	ctx = contextWithReportCollector(ctx, collector)
-
+	// cached connection. Each attempt reports its outcome which is threaded back up the call stack and, on
+	// completion, delivers over a separate connection to app (only app implements the report RPC) the
+	// furthest-progressed attempt. Flushed in the background so reporting never adds latency to the dial.
+	var report *dialReport
 	conn, cached, err := dialFunc(
 		ctx,
 		"multi",
@@ -79,9 +76,13 @@ func dialInner(
 				}
 			}
 
-			conn, _, err := dial(ctx, address, address, logger, dOpts, true)
+			conn, _, r, err := dial(ctx, address, address, logger, dOpts, true)
+			report = r
 			return conn, err
 		})
+
+	defer func() { go sendDialReport(ctx, address, logger, report, err) }()
+
 	if err != nil {
 		return nil, err
 	}
@@ -97,6 +98,13 @@ func dialInner(
 // no way to connect on any of them.
 var ErrConnectionOptionsExhausted = errors.New("exhausted all connection options with no way to connect")
 
+// dialReport is the aggregated reporting output of one logical dial. Every attempt's would-be report plus
+// how to reach app to deliver the chosen one.
+type dialReport struct {
+	reqs        []*webrtcpb.ReportConnectionMetadataRequest
+	appDialOpts *dialOptions
+}
+
 // dialResult contains information about a concurrent dial attempt.
 type dialResult struct {
 	// a successfully established connection
@@ -107,6 +115,7 @@ type dialResult struct {
 	err error
 	// whether we should skip dialing gRPC directly as a fallback
 	skipDirect bool
+	report     *dialReport // this attempt's reporting output, if any
 }
 
 func dial(
@@ -116,9 +125,9 @@ func dial(
 	logger utils.ZapCompatibleLogger,
 	dOpts dialOptions,
 	tryLocal bool,
-) (ClientConn, bool, error) {
+) (ClientConn, bool, *dialReport, error) {
 	if ctx.Err() != nil {
-		return nil, false, ctx.Err()
+		return nil, false, nil, ctx.Err()
 	}
 
 	var isJustDomain bool
@@ -151,11 +160,11 @@ func dial(
 			defer wg.Done()
 
 			mdnsLogger.Debugw("trying mDNS", "address", address)
-			conn, cached, err := dialMulticastDNS(ctxParallel, address, mdnsLogger, dOpts)
+			conn, cached, report, err := dialMulticastDNS(ctxParallel, address, mdnsLogger, dOpts)
 			if err != nil {
-				dialCh <- dialResult{err: err}
+				dialCh <- dialResult{err: err, report: report}
 			} else {
-				dialCh <- dialResult{conn: conn, cached: cached}
+				dialCh <- dialResult{conn: conn, cached: cached, report: report}
 			}
 		}(dOpts)
 	}
@@ -202,27 +211,33 @@ func dial(
 
 			// The primary (non-mDNS) dial to the signaling server records where to reach app and with which
 			// credentials to send the dial report. Captured here post-fixup so credentials are resolved.
+			var appDialOpts *dialOptions
 			if !dOpts.usingMDNS {
-				if collector := contextReportCollector(ctxParallel); collector != nil {
-					collector.setAppDialOpts(dOpts)
-				}
+				appDialOpts = fixUpReportDialOpts(dOpts)
 			}
 
+			var wrtcReport *webrtcpb.ReportConnectionMetadataRequest
 			conn, cached, err := dialFunc(
 				ctxParallel,
 				"webrtc",
 				fmt.Sprintf("%s->%s", dOpts.webrtcOpts.SignalingServerAddress, originalAddress),
 				dOpts.cacheKey(),
 				func() (ClientConn, error) {
-					// returns a webrtcClientChannel
-					return dialWebRTC(
+					ch, r, err := dialWebRTC(
 						ctxParallel,
 						dOpts.webrtcOpts.SignalingServerAddress,
 						originalAddress,
 						dOpts,
 						webrtcLogger,
 					)
+					wrtcReport = r
+					return ch, err
 				})
+
+			attemptReport := &dialReport{appDialOpts: appDialOpts}
+			if wrtcReport != nil {
+				attemptReport.reqs = []*webrtcpb.ReportConnectionMetadataRequest{wrtcReport}
+			}
 
 			switch {
 			case err == nil:
@@ -233,19 +248,19 @@ func dial(
 						"using mDNS", dOpts.usingMDNS,
 					)
 				}
-				dialCh <- dialResult{conn: conn, cached: cached}
+				dialCh <- dialResult{conn: conn, cached: cached, report: attemptReport}
 			case !errors.Is(err, ErrNoWebRTCSignaler):
 				// Not detecting a signaling server is the only WebRTC dialing failure
 				// scenario where we know falling back to dialing directly is desirable
 				// and safe. However, There may be other kinds of WebRTC dialing failures
 				// where we also want to make fallback dial attempt, but for now we are
 				// choosing to abort dialing those scenarios.
-				dialCh <- dialResult{err: err, skipDirect: true}
+				dialCh <- dialResult{err: err, skipDirect: true, report: attemptReport}
 			case ctxParallel.Err() != nil:
 				// Always abort dialing if there is an error and the context is finished.
-				dialCh <- dialResult{err: ctxParallel.Err(), skipDirect: true}
+				dialCh <- dialResult{err: ctxParallel.Err(), skipDirect: true, report: attemptReport}
 			default:
-				dialCh <- dialResult{err: err}
+				dialCh <- dialResult{err: err, report: attemptReport}
 			}
 		}(dOpts)
 	}
@@ -262,8 +277,17 @@ func dial(
 		cached      bool
 		fatalErr    error
 		nonFatalErr error
+		report      = &dialReport{}
 	)
 	for result := range dialCh {
+		if r := result.report; r != nil {
+			report.reqs = append(report.reqs, r.reqs...)
+			// Only the primary (non-mDNS) WebRTC attempt resolves a route to app, so this
+			// captures that one value rather than choosing among competing writers.
+			if report.appDialOpts == nil {
+				report.appDialOpts = r.appDialOpts
+			}
+		}
 		switch {
 		case result.err == nil && result.conn != nil:
 			if conn != nil {
@@ -287,14 +311,14 @@ func dial(
 	}
 
 	if conn != nil {
-		return conn, cached, nil
+		return conn, cached, report, nil
 	}
 	if fatalErr != nil {
-		return nil, false, fatalErr
+		return nil, false, report, fatalErr
 	}
 
 	if dOpts.disableDirect {
-		return nil, false, ErrConnectionOptionsExhausted
+		return nil, false, report, ErrConnectionOptionsExhausted
 	}
 	if dOpts.debug {
 		logger.Debugw("trying direct", "address", address)
@@ -303,7 +327,7 @@ func dial(
 	var directErr error
 	conn, cached, directErr = dialDirectGRPC(ctx, address, dOpts, logger)
 	if directErr != nil {
-		return nil, false, multierr.Combine(directErr, nonFatalErr)
+		return nil, false, report, multierr.Combine(directErr, nonFatalErr)
 	}
 	if dOpts.debug {
 		logger.Debugw("connected via gRPC",
@@ -312,7 +336,7 @@ func dial(
 			"using mDNS", dOpts.usingMDNS,
 		)
 	}
-	return conn, cached, nil
+	return conn, cached, report, nil
 }
 
 func listMulticastInterfaces() []net.Interface {
@@ -384,7 +408,7 @@ func dialMulticastDNS(
 	address string,
 	logger utils.ZapCompatibleLogger,
 	dOpts dialOptions,
-) (ClientConn, bool, error) {
+) (ClientConn, bool, *dialReport, error) {
 	entry, err := lookupMDNSCandidate(ctx, address, logger)
 	if err != nil {
 		if dOpts.debug {
@@ -393,7 +417,7 @@ func dialMulticastDNS(
 				"err", err.Error(),
 			)
 		}
-		return nil, false, err
+		return nil, false, nil, err
 	}
 	var hasGRPC, hasWebRTC bool
 	for _, field := range entry.Text {
@@ -409,7 +433,7 @@ func dialMulticastDNS(
 	// IPv6 with scope does not work with grpc-go which we would want here.
 	if !(hasGRPC || hasWebRTC) || len(entry.AddrIPv4) == 0 {
 		errMsg := `mDNS query found a service without an IPv4 address that does not support grpc or webrtc: %q`
-		return nil, false, fmt.Errorf(errMsg, entry.ServiceName())
+		return nil, false, nil, fmt.Errorf(errMsg, entry.ServiceName())
 	}
 
 	localAddress := fmt.Sprintf("%s:%d", entry.AddrIPv4[0], entry.Port)
@@ -449,11 +473,11 @@ func dialMulticastDNS(
 	tlsConfig.ServerName = address
 	dOpts.tlsConfig = tlsConfig
 
-	conn, cached, err := dial(ctx, localAddress, address, logger, dOpts, false)
+	conn, cached, report, err := dial(ctx, localAddress, address, logger, dOpts, false)
 	if err == nil {
-		return conn, cached, nil
+		return conn, cached, report, nil
 	}
-	return nil, false, err
+	return nil, false, report, err
 }
 
 // fixupWebRTCOptions sets sensible and secure settings for WebRTC dial options based on
