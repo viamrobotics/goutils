@@ -5,6 +5,7 @@ import (
 	"net"
 	"slices"
 	"strings"
+	"testing"
 	"time"
 
 	"github.com/viamrobotics/webrtc/v3"
@@ -43,6 +44,10 @@ func fixUpReportDialOpts(dOpts dialOptions) *dialOptions {
 	}
 	return &dOpts
 }
+
+// dialReportingEnabled reports whether a dial should deliver its connection report. Disabled in tests
+// so the report goroutine can't outlive its test and trip goroutine-leak checks or log after the test ends.
+var dialReportingEnabled = func() bool { return !testing.Testing() }
 
 // sendDialReport delivers a single connection report for a logical dial, if there is one to send and an
 // app to send it to. It detaches from the dial context (so a cancelled or timed-out dial still reports)
