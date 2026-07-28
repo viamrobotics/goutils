@@ -81,7 +81,11 @@ func dialInner(
 			return conn, err
 		})
 
-	defer func() { go sendDialReport(ctx, address, logger, report, err) }()
+	defer func() {
+		if dialReportingEnabled() {
+			go sendDialReport(ctx, address, logger, report, err)
+		}
+	}()
 
 	if err != nil {
 		return nil, err

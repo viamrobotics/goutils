@@ -153,6 +153,12 @@ func TestReportConnectionMetadataOncePerDial(t *testing.T) {
 	testutils.SkipUnlessInternet(t)
 	logger := golog.NewTestLogger(t)
 
+	// Reporting is disabled in tests by default (see dialReportingEnabled). This test
+	// exercises the reporting path, so re-enable it for the test's duration.
+	origReportingEnabled := dialReportingEnabled
+	dialReportingEnabled = func() bool { return true }
+	defer func() { dialReportingEnabled = origReportingEnabled }()
+
 	// The client only reports to a signaling server it classifies as the app. Treat this test's
 	// loopback signaling server as an app host so the reporting path is exercised.
 	origCloudHosts := viamCloudSignalingHosts
