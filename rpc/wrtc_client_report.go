@@ -44,10 +44,12 @@ func fixUpReportDialOpts(dOpts dialOptions) *dialOptions {
 	return &dOpts
 }
 
-// sendDialReport delivers a single connection report for a logical dial, if there is one to send and an
-// app to send it to. It detaches from the dial context (so a cancelled or timed-out dial still reports)
-// with a 5s timeout, opens its own connection to the app signaling server, stamps the RPC host, and logs
-// any errors to report. report may be nil (a dial that produced no attempts, e.g. a cache hit).
+const dialReportTimeout = 2 * time.Second
+
+// sendDialReport delivers a single connection report for a logical dial. It is called synchronously
+// at the end of a dial but detaches from the dial context (so a cancelled or timed-out dial still reports),
+// bounded by dialReportTimeout. It opens its own connection to the app signaling server, stamps the RPC
+// host, and logs any errors. report may be nil (a dial that produced no attempts, e.g. a cache hit).
 func sendDialReport(
 	ctx context.Context,
 	host string,
@@ -64,7 +66,7 @@ func sendDialReport(
 	}
 	appDialOpts := report.appDialOpts
 
-	reportCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	reportCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), dialReportTimeout)
 	defer cancel()
 
 	conn, err := dialSignalingServer(reportCtx, appDialOpts.webrtcOpts.SignalingServerAddress, host, logger, *appDialOpts)

@@ -47,8 +47,8 @@ func dialInner(
 
 	// One logical dial can fan out into several WebRTC attempts (racing mDNS and cloud paths) or re-use a
 	// cached connection. Each attempt reports its outcome which is threaded back up the call stack and, on
-	// completion, delivers over a separate connection to app (only app implements the report RPC) the
-	// furthest-progressed attempt. Flushed in the background so reporting never adds latency to the dial.
+	// completion, delivered over a separate connection to app (only app implements the report RPC) as the
+	// furthest-progressed attempt.
 	var report *dialReport
 	conn, cached, err := dialFunc(
 		ctx,
@@ -81,7 +81,7 @@ func dialInner(
 			return conn, err
 		})
 
-	defer func() { go sendDialReport(ctx, address, logger, report, err) }()
+	defer sendDialReport(ctx, address, logger, report, err)
 
 	if err != nil {
 		return nil, err
