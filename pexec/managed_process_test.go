@@ -196,12 +196,21 @@ func TestManagedProcessStart(t *testing.T) {
 			cancel()
 
 			test.That(t, proc.Start(ctx), test.ShouldBeNil)
+			// A managed (non-oneshot) process ignores the context passed to Start,
+			// so the short-lived "echo hello" process starts despite the canceled
+			// context. By the time Stop runs, that process may or may not have
+			// already exited, so Stop's result is timing dependent.
+			stopErr := proc.Stop()
 			if runtime.GOOS == "windows" {
-				// on windows, we return a process not found error here
-				var processNotExistsErr *ProcessNotExistsError
-				test.That(t, errors.As(proc.Stop(), &processNotExistsErr), test.ShouldBeTrue)
+				// On windows, if the process already exited we return a process not
+				// found error; if it was still running we terminate it and return
+				// nil. Both outcomes are valid, but any other error is unexpected.
+				if stopErr != nil {
+					var processNotExistsErr *ProcessNotExistsError
+					test.That(t, errors.As(stopErr, &processNotExistsErr), test.ShouldBeTrue)
+				}
 			} else {
-				test.That(t, proc.Stop(), test.ShouldBeNil)
+				test.That(t, stopErr, test.ShouldBeNil)
 			}
 		})
 		t.Run("starting with a normal context should run until stop", func(t *testing.T) {
