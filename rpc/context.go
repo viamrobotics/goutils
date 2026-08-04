@@ -15,6 +15,7 @@ const (
 	ctxKeyPeerConnection
 	ctxKeyAuthEntity
 	ctxKeyAuthClaims // all jwt claims
+	ctxKeyRequestTransport
 )
 
 // contextWithHost attaches a host name to the given context.
@@ -85,4 +86,28 @@ func MustContextAuthEntity(ctx context.Context) EntityInfo {
 		panic(errors.New("no auth entity present"))
 	}
 	return authEntity
+}
+
+// RequestTransport identifies the transport an inbound RPC used to reach the server.
+type RequestTransport string
+
+const (
+	// RequestTransportGRPC is a native (HTTP/2) gRPC request.
+	RequestTransportGRPC RequestTransport = "grpc"
+	// RequestTransportGRPCWeb is a gRPC-Web request (the only transport browsers can use).
+	RequestTransportGRPCWeb RequestTransport = "grpc_web"
+)
+
+// ContextWithRequestTransport attaches the transport an inbound request used to the given
+// context. The server sets it while routing a request to its gRPC or gRPC-Web handler (and via
+// an interceptor for requests on the raw gRPC listener).
+func ContextWithRequestTransport(ctx context.Context, rt RequestTransport) context.Context {
+	return context.WithValue(ctx, ctxKeyRequestTransport, rt)
+}
+
+// ContextRequestTransport reports the transport an inbound RPC used (native gRPC vs
+// gRPC-Web), when the server recorded it. A browser can only issue gRPC-Web.
+func ContextRequestTransport(ctx context.Context) (RequestTransport, bool) {
+	rt, ok := ctx.Value(ctxKeyRequestTransport).(RequestTransport)
+	return rt, ok
 }
