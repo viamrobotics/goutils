@@ -169,3 +169,27 @@ func serverCallFields(ctx context.Context, fullMethodString string) []any {
 		"grpc.method", method,
 	}...)
 }
+
+// requestTransportGRPCUnaryInterceptor stamps a request as native gRPC when it isn't stamped yet.
+// The HTTP server stamps each request as gRPC or gRPC-Web as it routes it to the gRPC server or
+// the gRPC-Web server, so a request that arrives here unstamped instead came in directly over the
+// raw gRPC listener, which only carries native gRPC.
+func requestTransportGRPCUnaryInterceptor(
+	ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler,
+) (interface{}, error) {
+	if _, ok := ContextRequestTransport(ctx); !ok {
+		ctx = ContextWithRequestTransport(ctx, RequestTransportGRPC)
+	}
+	return handler(ctx, req)
+}
+
+// requestTransportGRPCStreamInterceptor is the streaming counterpart of
+// requestTransportGRPCUnaryInterceptor.
+func requestTransportGRPCStreamInterceptor(
+	srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler,
+) error {
+	if _, ok := ContextRequestTransport(ss.Context()); !ok {
+		ss = wrapServerStream(ContextWithRequestTransport(ss.Context(), RequestTransportGRPC), ss)
+	}
+	return handler(srv, ss)
+}

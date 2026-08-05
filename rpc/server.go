@@ -368,6 +368,7 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 				// server internals. It is logged above for internal diagnosis only.
 				return status.Errorf(codes.Internal, "%v", p)
 			}))),
+		requestTransportGRPCUnaryInterceptor,
 		grpcUnaryServerInterceptor(grpcLogger),
 		unaryServerCodeInterceptor(),
 	)
@@ -404,6 +405,7 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 				// server internals. It is logged above for internal diagnosis only.
 				return status.Errorf(codes.Internal, "%v", p)
 			}))),
+		requestTransportGRPCStreamInterceptor,
 		grpcStreamServerInterceptor(grpcLogger),
 		streamServerCodeInterceptor(),
 	)
@@ -787,6 +789,12 @@ func (ss *simpleServer) getRequestType(r *http.Request) requestType {
 	return requestTypeNone
 }
 
+// withRequestTransport annotates the request's context with the transport it arrived on,
+// so downstream RPC handlers can read it via ContextRequestTransport.
+func withRequestTransport(r *http.Request, rt RequestTransport) *http.Request {
+	return r.WithContext(ContextWithRequestTransport(r.Context(), rt))
+}
+
 func requestWithHost(r *http.Request) *http.Request {
 	if r.Host == "" {
 		return r
@@ -806,9 +814,9 @@ func (ss *simpleServer) GRPCHandler() http.Handler {
 		r = requestWithHost(r)
 		switch ss.getRequestType(r) {
 		case requestTypeGRPC:
-			ss.grpcServer.ServeHTTP(w, r)
+			ss.grpcServer.ServeHTTP(w, withRequestTransport(r, RequestTransportGRPC))
 		case requestTypeGRPCWeb:
-			ss.grpcWebServer.ServeHTTP(w, r)
+			ss.grpcWebServer.ServeHTTP(w, withRequestTransport(r, RequestTransportGRPCWeb))
 		case requestTypeNone:
 			fallthrough
 		default:
@@ -829,11 +837,11 @@ func (ss *simpleServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch ss.getRequestType(r) {
 	case requestTypeGRPC:
 		ss.counters.TCPGrpcRequestsStarted.Add(1)
-		ss.grpcServer.ServeHTTP(w, r)
+		ss.grpcServer.ServeHTTP(w, withRequestTransport(r, RequestTransportGRPC))
 		ss.counters.TCPGrpcRequestsCompleted.Add(1)
 	case requestTypeGRPCWeb:
 		ss.counters.TCPGrpcWebRequestsStarted.Add(1)
-		ss.grpcWebServer.ServeHTTP(w, r)
+		ss.grpcWebServer.ServeHTTP(w, withRequestTransport(r, RequestTransportGRPCWeb))
 		ss.counters.TCPGrpcWebRequestsCompleted.Add(1)
 	case requestTypeNone:
 		fallthrough
