@@ -99,6 +99,12 @@ func backingMongoDBClient() (*mongo.Client, error) {
 	return backingMongoDBClientWithOptions(options.Client())
 }
 
+const (
+	backingMongoDBConnectAttempts       = 3
+	backingMongoDBConnectAttemptTimeout = 10 * time.Second
+	backingMongoDBConnectRetryBackoff   = time.Second
+)
+
 func backingMongoDBClientWithOptions(baseOptions *options.ClientOptions) (*mongo.Client, error) {
 	cacheMu.Lock()
 	defer cacheMu.Unlock()
@@ -112,8 +118,6 @@ func backingMongoDBClientWithOptions(baseOptions *options.ClientOptions) (*mongo
 	if err != nil {
 		return nil, err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
 
 	var clientOptions *options.ClientOptions
 	if baseOptions == nil {
@@ -122,22 +126,40 @@ func backingMongoDBClientWithOptions(baseOptions *options.ClientOptions) (*mongo
 		clientOptions = baseOptions.ApplyURI(mongoURI)
 	}
 
+	// Retries ride out transient unavailability (e.g. an overloaded CI runner); the error is
+	// cached only after all attempts fail, so later tests in the process still fail fast.
+	var connectErr error
+	for attempt := 0; attempt < backingMongoDBConnectAttempts; attempt++ {
+		if attempt > 0 {
+			time.Sleep(backingMongoDBConnectRetryBackoff)
+		}
+		client, err := connectBackingMongoDB(clientOptions)
+		if err == nil {
+			cachedBackingMongoDBClient = client
+			cachedBackingMongoDBClientConnected = true
+			errCachedBackingMongoDBClient = nil
+			return client, nil
+		}
+		connectErr = err
+	}
+	errCachedBackingMongoDBClient = connectErr
+	return nil, errCachedBackingMongoDBClient
+}
+
+func connectBackingMongoDB(clientOptions *options.ClientOptions) (*mongo.Client, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), backingMongoDBConnectAttemptTimeout)
+	defer cancel()
+
 	client, err := mongo.Connect(ctx, clientOptions)
 	if err != nil {
-		errCachedBackingMongoDBClient = err
-		return nil, errCachedBackingMongoDBClient
+		return nil, err
 	}
 	if err := client.Ping(ctx, readpref.Primary()); err != nil {
-		errCachedBackingMongoDBClient = multierr.Combine(err, client.Disconnect(ctx))
-		return nil, errCachedBackingMongoDBClient
+		return nil, multierr.Combine(err, client.Disconnect(ctx))
 	}
 	if result := client.Database("admin").RunCommand(ctx, bson.D{{"replSetGetStatus", 1}}); result.Err() != nil {
-		errCachedBackingMongoDBClient = multierr.Combine(result.Err(), client.Disconnect(ctx))
-		return nil, errCachedBackingMongoDBClient
+		return nil, multierr.Combine(result.Err(), client.Disconnect(ctx))
 	}
-	cachedBackingMongoDBClient = client
-	cachedBackingMongoDBClientConnected = true
-	errCachedBackingMongoDBClient = nil
 	return client, nil
 }
 
