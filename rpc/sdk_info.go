@@ -84,12 +84,16 @@ func SDKInfoFromCtx(ctx context.Context) SDKInfo {
 		}
 	}
 
+	// A version reported alongside an unrecognized SDK belongs to that SDK, not to the one the
+	// fallback infers, so it is dropped. Raw still carries it.
 	if vals := md.Get(XGRPCWebMetadataField); len(vals) > 0 && vals[0] == "1" {
 		info.Type = SDKTypeTypeScript
+		info.Version = ""
 		return info
 	}
 	if vals := md.Get(UserAgentMetadataField); len(vals) > 0 && strings.Contains(vals[0], "tonic/") {
 		info.Type = SDKTypePythonOrCPP
+		info.Version = ""
 	}
 	return info
 }

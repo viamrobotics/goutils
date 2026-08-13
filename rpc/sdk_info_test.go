@@ -75,14 +75,24 @@ func TestSDKInfoFromCtx(t *testing.T) {
 		},
 		{
 			// The fallback classifies the client, but the unrecognized value is still surfaced:
-			// a new TypeScript-based SDK would otherwise be labeled and never noticed.
+			// a new TypeScript-based SDK would otherwise be labeled and never noticed. The
+			// version went with the SDK the client claimed, so only Raw keeps it.
 			name: "falls back to x-grpc-web when viam_client is unrecognized",
 			md: map[string]string{
 				ViamClientMetadataField: "rust;v1.2.3;v0.1.0",
 				XGRPCWebMetadataField:   "1",
 			},
-			expected: SDKInfo{Type: SDKTypeTypeScript, Version: "v1.2.3", Raw: "rust;v1.2.3;v0.1.0"},
+			expected: SDKInfo{Type: SDKTypeTypeScript, Raw: "rust;v1.2.3;v0.1.0"},
 			label:    "typescript",
+		},
+		{
+			name: "falls back to tonic when viam_client is unrecognized",
+			md: map[string]string{
+				ViamClientMetadataField: "rust;v1.2.3;v0.1.0",
+				UserAgentMetadataField:  "tonic/0.12.3",
+			},
+			expected: SDKInfo{Type: SDKTypePythonOrCPP, Raw: "rust;v1.2.3;v0.1.0"},
+			label:    "python/c++",
 		},
 		{
 			// The source belongs to the SDK the client claimed, not to the one the fallback
@@ -92,7 +102,7 @@ func TestSDKInfoFromCtx(t *testing.T) {
 				ViamClientMetadataField: "rust(viam-app);v1.2.3;v0.1.0",
 				XGRPCWebMetadataField:   "1",
 			},
-			expected: SDKInfo{Type: SDKTypeTypeScript, Version: "v1.2.3", Raw: "rust(viam-app);v1.2.3;v0.1.0"},
+			expected: SDKInfo{Type: SDKTypeTypeScript, Raw: "rust(viam-app);v1.2.3;v0.1.0"},
 			label:    "typescript",
 		},
 		{
