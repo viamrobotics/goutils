@@ -133,20 +133,26 @@ func NewCloudExporter(opts CloudOptions) (Exporter, error) {
 		sdExporter: sd,
 	}
 
-	if byNamePerSec := envOpts.SamplingByNamePerSec; byNamePerSec != 0 {
-		opts.Logger.Infow("Using root name rate limiting sampler for tracing",
-			"samplePerSec", byNamePerSec)
-		e.sampler = NewRootNameRateLimitingSampler(byNamePerSec)
-	} else if prob := envOpts.SamplingProbability; prob != 0 {
-		opts.Logger.Infow("Using probability sampler for tracing",
-			"probability", prob)
-		e.sampler = trace.ProbabilitySampler(prob)
-	} else {
-		opts.Logger.Info("No sampling config found; sampling all traces by default")
-		e.sampler = trace.AlwaysSample()
-	}
+	e.sampler = samplerFromEnvOpts(envOpts.SamplingByNamePerSec, envOpts.SamplingProbability, opts.Logger)
 
 	return &e, nil
+}
+
+// samplerFromEnvOpts picks the trace sampler from the OC_SAMPLING_BY_NAME_PER_SEC and
+// OC_SAMPLING_PROB env values shared by the cloud and opencensus agent exporters.
+func samplerFromEnvOpts(byNamePerSec, prob float64, logger utils.ZapCompatibleLogger) trace.Sampler {
+	if byNamePerSec != 0 {
+		logger.Infow("Using root name rate limiting sampler for tracing",
+			"samplePerSec", byNamePerSec)
+		return NewRootNameRateLimitingSampler(byNamePerSec)
+	}
+	if prob != 0 {
+		logger.Infow("Using probability sampler for tracing",
+			"probability", prob)
+		return trace.ProbabilitySampler(prob)
+	}
+	logger.Info("No sampling config found; sampling all traces by default")
+	return trace.AlwaysSample()
 }
 
 type sdExporter struct {
