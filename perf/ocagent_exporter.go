@@ -46,6 +46,8 @@ func NewOCAgentExporter(opts OCAgentOptions) (*OCAgentExporter, error) {
 		ReconnectionPeriod   time.Duration `env:"OC_AGENT_RECONNECTION_PERIOD"`
 		SamplingByNamePerSec float64       `env:"OC_SAMPLING_BY_NAME_PER_SEC"  envDefault:"0"`
 		SamplingProbability  float64       `env:"OC_SAMPLING_PROB"             envDefault:"1"`
+		KService             string        `env:"K_SERVICE"`
+		GAEService           string        `env:"GAE_SERVICE"`
 		ServiceName          string        `env:"SERVICE_NAME"`
 	}]()
 	if err != nil {
@@ -69,8 +71,11 @@ func NewOCAgentExporter(opts OCAgentOptions) (*OCAgentExporter, error) {
 	if envOpts.ReconnectionPeriod > 0 {
 		ocOpts = append(ocOpts, ocagent.WithReconnectionPeriod(envOpts.ReconnectionPeriod))
 	}
-	if envOpts.ServiceName != "" {
-		ocOpts = append(ocOpts, ocagent.WithServiceName(envOpts.ServiceName))
+	for _, serviceName := range []string{envOpts.KService, envOpts.GAEService, envOpts.ServiceName} {
+		if serviceName != "" {
+			ocOpts = append(ocOpts, ocagent.WithServiceName(serviceName))
+			break
+		}
 	}
 
 	exp, err := ocagent.NewUnstartedExporter(ocOpts...)
