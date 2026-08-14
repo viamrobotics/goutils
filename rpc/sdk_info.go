@@ -109,9 +109,9 @@ func parseViamClient(raw string) SDKInfo {
 	if knownSDKTypes[base] {
 		info.Type = base
 
-		// Only meaningful against a recognized SDK. Keeping it otherwise would let a fallback
-		// stamp its own Type onto someone else's source, e.g. "rust(viam-app)" over gRPC-Web
-		// labeling as "typescript(viam-app)".
+		// Gated on a recognized SDK: otherwise Type stays empty, SDKInfoFromCtx falls back to
+		// inferring it, and the label would pair that inferred type with a source the client
+		// attached to a different one.
 		if hasSource {
 			if source = strings.TrimSuffix(source, ")"); knownSDKSources[source] {
 				info.Source = source
