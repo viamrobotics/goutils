@@ -1186,30 +1186,12 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 	defer span.End()
 
 	sdkType, organizationID := "unknown", "unknown"
-	if md, exists := metadata.FromIncomingContext(ctx); exists {
-		// TODO(RSDK-11864): Use actual structured metadata provided by the SDK to determine
-		// SDK type for the TypeScript, Python, and C++ SDKs.
-		//
-		// Hackily guess the SDK type based on a combination of the "viam_client",
-		// "x-grpc-web", and "user-agent" metadata fields. The first only exists for Golang,
-		// the second only exists for TypeScrpt, and the third is "tonic" for both Python and
-		// C++.
-		if viamClientMD, exists := md[ViamClientMetadataField]; exists && len(viamClientMD) > 0 {
-			if strings.Contains(viamClientMD[0], "go;") {
-				sdkType = "go"
-			}
-		} else if xGRPCWebMD, exists := md[XGRPCWebMetadataField]; exists &&
-			len(xGRPCWebMD) > 0 {
-			if xGRPCWebMD[0] == "1" {
-				sdkType = "typescript"
-			}
-		} else if userAgentMD, exists := md[UserAgentMetadataField]; exists &&
-			len(userAgentMD) > 0 {
-			if strings.Contains(userAgentMD[0], "tonic/") {
-				sdkType = "python/c++"
-			}
-		}
+	sdkInfo := SDKInfoFromCtx(ctx)
+	if label := sdkInfo.Label(); label != "" {
+		sdkType = label
+	}
 
+	if md, exists := metadata.FromIncomingContext(ctx); exists {
 		// TODO(RSDK-11875): Use an actual database (or, likely, cache) lookup to determine
 		// the organization ID for this host based on its DNS name.
 		//
@@ -1232,6 +1214,12 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 		trace.StringAttribute("sdk_type", sdkType),
 		trace.StringAttribute("organization_id", organizationID),
 	)
+	// Only set when the client reported something we could not fully classify, which is how a
+	// new SDK or embedder gets noticed. Never used as a metric label.
+	if sdkInfo.Raw != "" {
+		span.AddAttributes(trace.StringAttribute("sdk_type_raw", sdkInfo.Raw))
+		queue.logger.Infow("unclassified client SDK", "host", host, "sdk_type_raw", sdkInfo.Raw)
+	}
 
 	// An offer initialization (after verifying the host queue size), indicates an attempted
 	// connection establishment attempt.
