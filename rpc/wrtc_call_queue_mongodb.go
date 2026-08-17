@@ -101,6 +101,23 @@ var (
 		},
 	)
 
+	// Filtering the other metrics on sdk_type does not cover this: a client whose viam_client
+	// was unrecognized may still be classified by a fallback, and would then be indistinguishable
+	// from a client that reported that SDK properly.
+	unclassifiedSDKAttempts = statz.NewCounter1[string](
+		"signaling/unclassified_sdk_attempts",
+		statz.MetricConfig{
+			Description: "The total number of connection establishment attempts whose reported viam_client could not be fully classified.",
+			Unit:        units.Dimensionless,
+			Labels: []statz.Label{
+				{
+					Name:        "sdk_type",
+					Description: "The SDK type settled on, which may have come from a fallback rather than from what the client reported.",
+				},
+			},
+		},
+	)
+
 	connectionEstablishmentFailures = statz.NewCounter3[string, string, string](
 		"signaling/connection_establishment_failures",
 		statz.MetricConfig{
@@ -1218,6 +1235,7 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 	// new SDK or embedder gets noticed. Never used as a metric label.
 	if sdkInfo.Raw != "" {
 		span.AddAttributes(trace.StringAttribute("sdk_type_raw", sdkInfo.Raw))
+		unclassifiedSDKAttempts.Inc(sdkType)
 		queue.logger.Infow("unclassified client SDK", "host", host, "sdk_type_raw", sdkInfo.Raw)
 	}
 
