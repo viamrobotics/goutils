@@ -5,6 +5,7 @@ import (
 	"strings"
 	"sync"
 
+	jwt "github.com/golang-jwt/jwt/v4"
 	"github.com/viamrobotics/webrtc/v3"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/stats"
@@ -24,8 +25,12 @@ type webrtcServerChannel struct {
 	// the entity. There is no reason to extend the protocol right now since we intend
 	// to support some for of authentication in the presence of untrusted signalers.
 	authAudience string
-	server       *webrtcServer
-	streams      map[uint64]*webrtcServerStream
+	// callerAccessToken is the caller's bearer token, forwarded by the (trusted) signaler.
+	// When present it is used to identify the caller for authorization instead of the
+	// coarse authAudience approximation.
+	callerAccessToken string
+	server            *webrtcServer
+	streams           map[uint64]*webrtcServerStream
 }
 
 // newWebRTCServerChannel wraps the given WebRTC data channel to be used as the server end
@@ -35,6 +40,7 @@ func newWebRTCServerChannel(
 	peerConn *webrtc.PeerConnection,
 	dataChannel *webrtc.DataChannel,
 	authAudience []string,
+	callerAccessToken string,
 	logger utils.ZapCompatibleLogger,
 ) *webrtcServerChannel {
 	base := newBaseChannel(
@@ -47,6 +53,7 @@ func newWebRTCServerChannel(
 	)
 	ch := &webrtcServerChannel{
 		authAudience:      strings.Join(authAudience, ":"),
+		callerAccessToken: callerAccessToken,
 		webrtcBaseChannel: base,
 		server:            server,
 		streams:           make(map[uint64]*webrtcServerStream),
@@ -114,7 +121,14 @@ func (ch *webrtcServerChannel) onChannelMessage(msg webrtc.DataChannelMessage) {
 			return
 		}
 
-		handlerCtx := metadata.NewIncomingContext(ch.ctx, metadataFromProto(headers.Headers.GetMetadata()))
+		reqMD := metadataFromProto(headers.Headers.GetMetadata())
+		// If the signaler forwarded the caller's bearer token, make it available to
+		// downstream authorization as the request's authorization header. We trust the
+		// signaler's authentication of the caller, so we do not re-verify the token here.
+		if ch.callerAccessToken != "" {
+			reqMD.Set(MetadataFieldAuthorization, AuthorizationValuePrefixBearer+ch.callerAccessToken)
+		}
+		handlerCtx := metadata.NewIncomingContext(ch.ctx, reqMD)
 		timeout := headers.Headers.GetTimeout().AsDuration()
 		var cancelCtx func()
 		if timeout == 0 {
@@ -126,8 +140,14 @@ func (ch *webrtcServerChannel) onChannelMessage(msg webrtc.DataChannelMessage) {
 
 		// TODO(GOUT-11): Handle auth; right now we assume successful auth to the signaler
 		// implies that auth should be allowed here, which is not 100% true.
-		// TODO(RSDK-890): use the correct entity (sub), not the audience (hosts)
-		handlerCtx = ContextWithAuthEntity(handlerCtx, EntityInfo{Entity: ch.authAudience})
+		// Prefer the caller's own identity (JWT subject) forwarded by the signaler; fall
+		// back to the coarse audience approximation when no token was forwarded (e.g. an
+		// unauthenticated caller).
+		authEntity := ch.authAudience
+		if entity := entityFromAccessToken(ch.callerAccessToken); entity != "" {
+			authEntity = entity
+		}
+		handlerCtx = ContextWithAuthEntity(handlerCtx, EntityInfo{Entity: authEntity})
 
 		if sh := ch.server.statsHandler; sh != nil {
 			handlerCtx = sh.TagRPC(handlerCtx, &stats.RPCTagInfo{FullMethodName: headers.Headers.GetMethod()})
@@ -141,4 +161,18 @@ func (ch *webrtcServerChannel) onChannelMessage(msg webrtc.DataChannelMessage) {
 	ch.mu.Unlock()
 
 	serverStream.onRequest(req)
+}
+
+// entityFromAccessToken parses the (already signaler-verified) bearer token and returns
+// its subject (the caller's entity). Parsing is unverified because we trust the signaler
+// that forwarded the token; it returns "" if the token is empty or unparseable.
+func entityFromAccessToken(token string) string {
+	if token == "" {
+		return ""
+	}
+	var claims JWTClaims
+	if _, _, err := jwt.NewParser().ParseUnverified(token, &claims); err != nil {
+		return ""
+	}
+	return claims.Entity()
 }

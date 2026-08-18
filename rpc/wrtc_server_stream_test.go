@@ -29,7 +29,7 @@ func TestWebRTCServerStreamHeaderRace(t *testing.T) {
 	server := newWebRTCServer(logger)
 	defer server.Stop()
 
-	serverCh := newWebRTCServerChannel(server, pc2, dc2, []string{"one", "two"}, logger)
+	serverCh := newWebRTCServerChannel(server, pc2, dc2, []string{"one", "two"}, "", logger)
 	defer serverCh.Close()
 
 	<-clientCh.Ready()

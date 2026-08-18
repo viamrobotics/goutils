@@ -98,7 +98,7 @@ func TestMongoDBWebRTCCallQueueMulti(t *testing.T) {
 		addFakeAnswererForHost(t, client, host)
 		t.Logf("start up %d callers (the max)", maxCallerQueueSize)
 		for i := 0; i < maxCallerQueueSize; i++ {
-			callID, _, respDone, cancel, err := callerQueue.SendOfferInit(ctx, host, "somesdp", false)
+			callID, _, respDone, cancel, err := callerQueue.SendOfferInit(ctx, host, "somesdp", false, "")
 			test.That(t, err, test.ShouldBeNil)
 			t.Logf("sent offer %d=%s", i, callID)
 			offers = append(offers, offerState{CallID: callID, Done: respDone, Cancel: cancel})
@@ -106,9 +106,9 @@ func TestMongoDBWebRTCCallQueueMulti(t *testing.T) {
 		}
 
 		t.Log("the next caller should fail from either queue")
-		_, _, _, _, err := callerQueue.SendOfferInit(ctx, host, "somesdp", false)
+		_, _, _, _, err := callerQueue.SendOfferInit(ctx, host, "somesdp", false, "")
 		test.That(t, err, test.ShouldResemble, errTooManyConns)
-		_, _, _, _, err = answererQueue.SendOfferInit(ctx, host, "somesdp", false)
+		_, _, _, _, err = answererQueue.SendOfferInit(ctx, host, "somesdp", false, "")
 		test.That(t, err, test.ShouldResemble, errTooManyConns)
 
 		t.Logf("but canceling one (%s) should allow the next", offers[0].CallID)
@@ -118,7 +118,7 @@ func TestMongoDBWebRTCCallQueueMulti(t *testing.T) {
 
 		time.Sleep(2 * time.Second)
 
-		callID, _, respDone, cancel, err := callerQueue.SendOfferInit(ctx, host, "somesdp", false)
+		callID, _, respDone, cancel, err := callerQueue.SendOfferInit(ctx, host, "somesdp", false, "")
 		test.That(t, err, test.ShouldBeNil)
 		t.Logf("sent offer %d=%s", maxCallerQueueSize, callID)
 		offers[0] = offerState{CallID: callID, Done: respDone, Cancel: cancel}
@@ -156,7 +156,7 @@ func TestMongoDBWebRTCCallQueueMulti(t *testing.T) {
 
 		time.Sleep(2 * time.Second)
 
-		callID, _, respDone, cancel, err = callerQueue.SendOfferInit(ctx, host, "somesdp", false)
+		callID, _, respDone, cancel, err = callerQueue.SendOfferInit(ctx, host, "somesdp", false, "")
 		test.That(t, err, test.ShouldBeNil)
 		t.Logf("sent offer %d=%s", maxCallerQueueSize+1, callID)
 		offers[capOfferIdx] = offerState{CallID: callID, Done: respDone, Cancel: cancel}

@@ -42,9 +42,11 @@ func setDefaultOfferDeadline(deafultOfferDeadline time.Duration) func() {
 // offer and subsequently respond to it.
 type WebRTCCallQueue interface {
 	// SendOfferInit initializes an offer associated with the given SDP to the given host.
+	// callerAccessToken is the signed bearer token the caller authenticated with, forwarded
+	// to the answerer so it can identify the caller; it may be empty.
 	// It returns a UUID to track/authenticate the offer over time, a channel receive offer updates
 	// on over time, and a cancel func to inform the sender to stop.
-	SendOfferInit(ctx context.Context, host, sdp string, disableTrickle bool) (
+	SendOfferInit(ctx context.Context, host, sdp string, disableTrickle bool, callerAccessToken string) (
 		uuid string, respCh <-chan WebRTCCallAnswer, respDone <-chan struct{}, cancel func(), err error)
 
 	// SendOfferUpdate updates the offer associated with the given UUID with a newly discovered
@@ -83,6 +85,11 @@ type WebRTCCallOffer interface {
 
 	// Deadline returns how long this offer has to live.
 	Deadline() time.Time
+
+	// AuthToken returns the signed bearer token the caller authenticated to the signaling
+	// server with, or "" if the caller was unauthenticated. Forwarded to the answerer so it
+	// can identify the caller for authorization.
+	AuthToken() string
 }
 
 // A WebRTCCallOfferExchange is used by an answerer to respond to a call offer with an

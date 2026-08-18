@@ -131,6 +131,10 @@ message AnswerRequestInitStage {
 	string sdp = 1;
 	WebRTCConfig optional_config = 2;
 	optional google.protobuf.Timestamp deadline = 3;
+	// caller_access_token is the signed bearer token the caller authenticated to the
+	// signaling server with, forwarded from the (trusted) signaler so the answerer can
+	// identify the caller for authorization. Empty when the caller was unauthenticated.
+	optional string caller_access_token = 4;
 }
 
 // AnswerRequestUpdateStage is multiply used to trickle in ICE candidates to
