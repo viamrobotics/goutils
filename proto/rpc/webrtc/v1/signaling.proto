@@ -131,10 +131,10 @@ message AnswerRequestInitStage {
 	string sdp = 1;
 	WebRTCConfig optional_config = 2;
 	optional google.protobuf.Timestamp deadline = 3;
-  // caller_auth_token is the signed bearer token the caller authenticated to the
-  // signaling server with, forwarded from the signaler so the answerer can identify the
-  // caller for authorization. Empty when the caller was unauthenticated (can only happen
-  // with local signaling).
+	// caller_auth_token is the signed bearer token the caller authenticated to the
+	// signaling server with, forwarded from the signaler so the answerer can identify the
+	// caller for authorization. Empty when the caller was unauthenticated (can only happen
+	// with local signaling).
 	optional string caller_auth_token = 4;
 }
 

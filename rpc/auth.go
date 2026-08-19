@@ -41,6 +41,10 @@ type EntityDataLoader interface {
 type EntityInfo struct {
 	Entity string
 	Data   interface{}
+	// AuthMetadata is the authenticated entity's auth metadata claim (rpc_auth_md),
+	// forwarded verbatim from the JWT. It lets downstream consumers read claim values
+	// (e.g. an e-mail) without re-parsing the token.
+	AuthMetadata map[string]string
 }
 
 // An AuthenticateToHandler determines if the given entity should be allowed to be

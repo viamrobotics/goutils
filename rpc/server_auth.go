@@ -429,5 +429,9 @@ func (ss *simpleServer) ensureAuthed(ctx context.Context) (context.Context, erro
 		entityData = data
 	}
 
-	return ContextWithAuthEntity(ctx, EntityInfo{claimsEntity, entityData}), nil
+	return ContextWithAuthEntity(ctx, EntityInfo{
+		Entity:       claimsEntity,
+		Data:         entityData,
+		AuthMetadata: claims.Metadata(),
+	}), nil
 }

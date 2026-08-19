@@ -121,17 +121,7 @@ func (ch *webrtcServerChannel) onChannelMessage(msg webrtc.DataChannelMessage) {
 			return
 		}
 
-		reqMD := metadataFromProto(headers.Headers.GetMetadata())
-		// The callerAuthToken is injected into the context in two different ways:
-		//   1. as the "authorization" header (below), which is how the email is read
-		//   2. as the auth entity in the context (further below), which is how the the API
-		//      Key ID or FusionAuth UUID is read
-		// TODO: Can we change the server_auth.go interceptors to just throw the data in a
-		// single metadata field rather than two? Then, this WebRTC mimicking can do that too?
-		if ch.callerAuthToken != "" {
-			reqMD.Set(MetadataFieldAuthorization, AuthorizationValuePrefixBearer+ch.callerAuthToken)
-		}
-		handlerCtx := metadata.NewIncomingContext(ch.ctx, reqMD)
+		handlerCtx := metadata.NewIncomingContext(ch.ctx, metadataFromProto(headers.Headers.GetMetadata()))
 		timeout := headers.Headers.GetTimeout().AsDuration()
 		var cancelCtx func()
 		if timeout == 0 {
@@ -143,14 +133,19 @@ func (ch *webrtcServerChannel) onChannelMessage(msg webrtc.DataChannelMessage) {
 
 		// TODO(GOUT-11): Handle auth; right now we assume successful auth to the signaler
 		// implies that auth should be allowed here, which is not 100% true.
-		// Prefer the caller's own identity (JWT subject) forwarded by the signaler; fall
-		// back to the coarse audience approximation when no token was forwarded (e.g. an
-		// unauthenticated caller).
-		authEntity := ch.authAudience
-		if entity := entityFromAuthToken(ch.callerAuthToken); entity != "" {
-			authEntity = entity
+		// Reconstruct the auth entity the auth interceptor would have set (that interceptor
+		// is not in the WebRTC chain). The signaler-forwarded token gives us both the
+		// caller's identity (JWT subject) and its auth metadata claim; fall back to the
+		// coarse audience approximation when no token was forwarded (e.g. an unauthenticated
+		// caller). We trust the signaler's authentication, so we do not re-verify the token.
+		entityInfo := EntityInfo{Entity: ch.authAudience}
+		if claims := claimsFromAuthToken(ch.callerAuthToken); claims != nil {
+			if entity := claims.Entity(); entity != "" {
+				entityInfo.Entity = entity
+			}
+			entityInfo.AuthMetadata = claims.Metadata()
 		}
-		handlerCtx = ContextWithAuthEntity(handlerCtx, EntityInfo{Entity: authEntity})
+		handlerCtx = ContextWithAuthEntity(handlerCtx, entityInfo)
 
 		if sh := ch.server.statsHandler; sh != nil {
 			handlerCtx = sh.TagRPC(handlerCtx, &stats.RPCTagInfo{FullMethodName: headers.Headers.GetMethod()})
@@ -166,16 +161,16 @@ func (ch *webrtcServerChannel) onChannelMessage(msg webrtc.DataChannelMessage) {
 	serverStream.onRequest(req)
 }
 
-// entityFromAuthToken parses the (already signaler-verified) bearer token and returns
-// its subject (the caller's entity). Parsing is unverified because we trust the signaler
-// that forwarded the token; it returns "" if the token is empty or unparseable.
-func entityFromAuthToken(token string) string {
+// claimsFromAuthToken parses the (already signaler-verified) bearer token into its
+// claims. Parsing is unverified because we trust the signaler that forwarded the token;
+// it returns nil if the token is empty or unparseable.
+func claimsFromAuthToken(token string) *JWTClaims {
 	if token == "" {
-		return ""
+		return nil
 	}
 	var claims JWTClaims
 	if _, _, err := jwt.NewParser().ParseUnverified(token, &claims); err != nil {
-		return ""
+		return nil
 	}
-	return claims.Entity()
+	return &claims
 }
