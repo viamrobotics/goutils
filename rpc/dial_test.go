@@ -268,9 +268,10 @@ func testDial(t *testing.T, signalingCallQueue WebRTCCallQueue, logger utils.Zap
 				test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
 				test.That(t, conn.Close(), test.ShouldBeNil)
 
-				// TODO(GOUT-11): Once auth is handled, we can expect the same host for both gRPC and
-				// WebRTC based connections.
-				echoServer.SetExpectedAuthEntity(strings.Join(internalSignalingHosts, ":"))
+				// Over WebRTC the answerer identifies the caller by the subject of the token it
+				// authenticated to the signaler with (forwarded via the offer), which here is the
+				// dialed host.
+				echoServer.SetExpectedAuthEntity(host)
 				conn, err = Dial(context.Background(), host, logger,
 					WithDialDebug(),
 					WithInsecure(),
