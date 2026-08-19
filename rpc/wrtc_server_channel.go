@@ -25,12 +25,12 @@ type webrtcServerChannel struct {
 	// the entity. There is no reason to extend the protocol right now since we intend
 	// to support some for of authentication in the presence of untrusted signalers.
 	authAudience string
-	// callerAccessToken is the caller's bearer token, forwarded by the (trusted) signaler.
+	// callerAuthToken is the caller's bearer token, forwarded by the (trusted) signaler.
 	// When present it is used to identify the caller for authorization instead of the
 	// coarse authAudience approximation.
-	callerAccessToken string
-	server            *webrtcServer
-	streams           map[uint64]*webrtcServerStream
+	callerAuthToken string
+	server          *webrtcServer
+	streams         map[uint64]*webrtcServerStream
 }
 
 // newWebRTCServerChannel wraps the given WebRTC data channel to be used as the server end
@@ -40,7 +40,7 @@ func newWebRTCServerChannel(
 	peerConn *webrtc.PeerConnection,
 	dataChannel *webrtc.DataChannel,
 	authAudience []string,
-	callerAccessToken string,
+	callerAuthToken string,
 	logger utils.ZapCompatibleLogger,
 ) *webrtcServerChannel {
 	base := newBaseChannel(
@@ -53,7 +53,7 @@ func newWebRTCServerChannel(
 	)
 	ch := &webrtcServerChannel{
 		authAudience:      strings.Join(authAudience, ":"),
-		callerAccessToken: callerAccessToken,
+		callerAuthToken:   callerAuthToken,
 		webrtcBaseChannel: base,
 		server:            server,
 		streams:           make(map[uint64]*webrtcServerStream),
@@ -122,11 +122,14 @@ func (ch *webrtcServerChannel) onChannelMessage(msg webrtc.DataChannelMessage) {
 		}
 
 		reqMD := metadataFromProto(headers.Headers.GetMetadata())
-		// If the signaler forwarded the caller's bearer token, make it available to
-		// downstream authorization as the request's authorization header. We trust the
-		// signaler's authentication of the caller, so we do not re-verify the token here.
-		if ch.callerAccessToken != "" {
-			reqMD.Set(MetadataFieldAuthorization, AuthorizationValuePrefixBearer+ch.callerAccessToken)
+		// The callerAuthToken is injected into the context in two different ways:
+		//   1. as the "authorization" header (below), which is how the email is read
+		//   2. as the auth entity in the context (further below), which is how the the API
+		//      Key ID or FusionAuth UUID is read
+		// TODO: Can we change the server_auth.go interceptors to just throw the data in a
+		// single metadata field rather than two? Then, this WebRTC mimicking can do that too?
+		if ch.callerAuthToken != "" {
+			reqMD.Set(MetadataFieldAuthorization, AuthorizationValuePrefixBearer+ch.callerAuthToken)
 		}
 		handlerCtx := metadata.NewIncomingContext(ch.ctx, reqMD)
 		timeout := headers.Headers.GetTimeout().AsDuration()
@@ -144,7 +147,7 @@ func (ch *webrtcServerChannel) onChannelMessage(msg webrtc.DataChannelMessage) {
 		// back to the coarse audience approximation when no token was forwarded (e.g. an
 		// unauthenticated caller).
 		authEntity := ch.authAudience
-		if entity := entityFromAccessToken(ch.callerAccessToken); entity != "" {
+		if entity := entityFromAuthToken(ch.callerAuthToken); entity != "" {
 			authEntity = entity
 		}
 		handlerCtx = ContextWithAuthEntity(handlerCtx, EntityInfo{Entity: authEntity})
@@ -163,10 +166,10 @@ func (ch *webrtcServerChannel) onChannelMessage(msg webrtc.DataChannelMessage) {
 	serverStream.onRequest(req)
 }
 
-// entityFromAccessToken parses the (already signaler-verified) bearer token and returns
+// entityFromAuthToken parses the (already signaler-verified) bearer token and returns
 // its subject (the caller's entity). Parsing is unverified because we trust the signaler
 // that forwarded the token; it returns "" if the token is empty or unparseable.
-func entityFromAccessToken(token string) string {
+func entityFromAuthToken(token string) string {
 	if token == "" {
 		return ""
 	}

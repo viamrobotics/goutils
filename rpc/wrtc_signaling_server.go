@@ -180,7 +180,7 @@ func (srv *WebRTCSignalingServer) asyncSendOfferError(host, uuid string, offerEr
 }
 
 // offerAuthTokenPtr returns a pointer to token, or nil when empty, so the optional
-// caller_access_token field is left unset for unauthenticated callers.
+// caller_auth_token field is left unset for unauthenticated callers.
 func offerAuthTokenPtr(token string) *string {
 	if token == "" {
 		return nil
@@ -206,8 +206,8 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 	// The caller authenticated to us (the signaler) before reaching this handler; forward
 	// its bearer token so the answerer can identify the caller. Best-effort: an
 	// unauthenticated caller simply has no token.
-	callerAccessToken, _ := TokenFromContext(ctx) //nolint:errcheck
-	uuid, respCh, respDone, sendCancel, err := srv.callQueue.SendOfferInit(ctx, host, req.GetSdp(), req.GetDisableTrickle(), callerAccessToken)
+	callerAuthToken, _ := TokenFromContext(ctx) //nolint:errcheck
+	uuid, respCh, respDone, sendCancel, err := srv.callQueue.SendOfferInit(ctx, host, req.GetSdp(), req.GetDisableTrickle(), callerAuthToken)
 	if err != nil {
 		return err
 	}
@@ -414,8 +414,8 @@ func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 					AdditionalIceServers: iceServers,
 					DisableTrickle:       offer.DisableTrickleICE(),
 				},
-				Deadline:          timestamppb.New(offer.Deadline()),
-				CallerAccessToken: offerAuthTokenPtr(offer.AuthToken()),
+				Deadline:        timestamppb.New(offer.Deadline()),
+				CallerAuthToken: offerAuthTokenPtr(offer.CallerAuthToken()),
 			},
 		},
 	}); err != nil {

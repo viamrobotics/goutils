@@ -396,7 +396,7 @@ type mongodbWebRTCCall struct {
 	Host               string                `bson:"host"`
 	StartedAt          time.Time             `bson:"started_at"`
 	CallerSDP          string                `bson:"caller_sdp"`
-	CallerAccessToken  string                `bson:"caller_access_token,omitempty"`
+	CallerAuthToken    string                `bson:"caller_auth_token,omitempty"`
 	CallerCandidates   []mongodbICECandidate `bson:"caller_candidates,omitempty"`
 	CallerDone         bool                  `bson:"caller_done"`
 	CallerError        string                `bson:"caller_error,omitempty"`
@@ -1182,7 +1182,7 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 	ctx context.Context,
 	host, sdp string,
 	disableTrickle bool,
-	callerAccessToken string,
+	callerAuthToken string,
 ) (string, <-chan WebRTCCallAnswer, <-chan struct{}, func(), error) {
 	ctx, span := trace.StartSpan(ctx, "CallQueue::SendOfferInit")
 	defer span.End()
@@ -1251,13 +1251,13 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 
 	newUUID := uuid.NewString()
 	call := mongodbWebRTCCall{
-		ID:                newUUID,
-		CallerOperatorID:  queue.operatorID,
-		Host:              host,
-		CallerSDP:         sdp,
-		CallerAccessToken: callerAccessToken,
-		SDKType:           sdkType,
-		OrganizationID:    organizationID,
+		ID:               newUUID,
+		CallerOperatorID: queue.operatorID,
+		Host:             host,
+		CallerSDP:        sdp,
+		CallerAuthToken:  callerAuthToken,
+		SDKType:          sdkType,
+		OrganizationID:   organizationID,
 	}
 	events, unsubscribe := queue.subscribeToCall(host, call.ID, "caller")
 
@@ -1858,8 +1858,8 @@ func (resp *mongoDBWebRTCCallOfferExchange) SDP() string {
 	return resp.call.CallerSDP
 }
 
-func (resp *mongoDBWebRTCCallOfferExchange) AuthToken() string {
-	return resp.call.CallerAccessToken
+func (resp *mongoDBWebRTCCallOfferExchange) CallerAuthToken() string {
+	return resp.call.CallerAuthToken
 }
 
 func (resp *mongoDBWebRTCCallOfferExchange) DisableTrickleICE() bool {

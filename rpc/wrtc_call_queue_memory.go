@@ -65,7 +65,7 @@ func newMemoryWebRTCCallQueue(uuidDeterministic bool, logger utils.ZapCompatible
 type memoryWebRTCCallOfferInit struct {
 	uuid               string
 	sdp                string
-	callerAccessToken  string
+	callerAuthToken    string
 	disableTrickle     bool
 	deadline           time.Time
 	callerCandidates   chan webrtc.ICECandidateInit
@@ -82,7 +82,7 @@ func (queue *memoryWebRTCCallQueue) SendOfferInit(
 	ctx context.Context,
 	host, sdp string,
 	disableTrickle bool,
-	callerAccessToken string,
+	callerAuthToken string,
 ) (string, <-chan WebRTCCallAnswer, <-chan struct{}, func(), error) {
 	hostQueueForSend := queue.getOrMakeHostsQueue([]string{host})
 
@@ -98,7 +98,7 @@ func (queue *memoryWebRTCCallQueue) SendOfferInit(
 	offer := memoryWebRTCCallOfferInit{
 		uuid:               newUUID,
 		sdp:                sdp,
-		callerAccessToken:  callerAccessToken,
+		callerAuthToken:    callerAuthToken,
 		disableTrickle:     disableTrickle,
 		deadline:           offerDeadline,
 		callerCandidates:   make(chan webrtc.ICECandidateInit),
@@ -236,8 +236,8 @@ func (resp *memoryWebRTCCallOfferExchange) Deadline() time.Time {
 	return resp.offer.deadline
 }
 
-func (resp *memoryWebRTCCallOfferExchange) AuthToken() string {
-	return resp.offer.callerAccessToken
+func (resp *memoryWebRTCCallOfferExchange) CallerAuthToken() string {
+	return resp.offer.callerAuthToken
 }
 
 func (resp *memoryWebRTCCallOfferExchange) CallerCandidates() <-chan webrtc.ICECandidateInit {
