@@ -206,7 +206,7 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 	// The caller authenticated to us (the signaler) before reaching this handler; forward
 	// its bearer token so the answerer can identify the caller. Best-effort: an
 	// unauthenticated caller simply has no token.
-	callerAccessToken, _ := TokenFromContext(ctx)
+	callerAccessToken, _ := TokenFromContext(ctx) //nolint:errcheck
 	uuid, respCh, respDone, sendCancel, err := srv.callQueue.SendOfferInit(ctx, host, req.GetSdp(), req.GetDisableTrickle(), callerAccessToken)
 	if err != nil {
 		return err
