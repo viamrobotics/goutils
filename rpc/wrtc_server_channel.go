@@ -20,17 +20,13 @@ import (
 type webrtcServerChannel struct {
 	*webrtcBaseChannel
 	mu sync.Mutex
-	// TODO(GOUT-11): Handle auth; authAudience is an approximation of the authenticated
-	// entity due to the lack of the signaling protocol indicating to the answerer who
-	// the entity. There is no reason to extend the protocol right now since we intend
-	// to support some for of authentication in the presence of untrusted signalers.
-	authAudience string
-	// callerAuthToken is the caller's bearer token, forwarded by the (trusted) signaler.
-	// When present it is used to identify the caller for authorization instead of the
-	// coarse authAudience approximation.
-	callerAuthToken string
-	server          *webrtcServer
-	streams         map[uint64]*webrtcServerStream
+	// entityInfo is the authenticated entity applied to every request context on this
+	// channel. It is derived once at construction from the signaler-forwarded caller
+	// token (or the coarse audience approximation when none was forwarded), since both
+	// inputs are fixed for the channel's lifetime.
+	entityInfo EntityInfo
+	server     *webrtcServer
+	streams    map[uint64]*webrtcServerStream
 }
 
 // newWebRTCServerChannel wraps the given WebRTC data channel to be used as the server end
@@ -51,9 +47,21 @@ func newWebRTCServerChannel(
 		nil,
 		logger,
 	)
+	// Reconstruct the auth entity the auth interceptor would have set (that interceptor is
+	// not in the WebRTC chain). The signaler-forwarded token gives us both the caller's
+	// identity (JWT subject) and its auth metadata claim; fall back to the coarse audience
+	// approximation when no token was forwarded (e.g. an unauthenticated caller). We trust
+	// the signaler's authentication, so we do not re-verify the token.
+	entityInfo := EntityInfo{Entity: strings.Join(authAudience, ":")}
+	if claims := claimsFromAuthToken(callerAuthToken); claims != nil {
+		if entity := claims.Entity(); entity != "" {
+			entityInfo.Entity = entity
+		}
+		entityInfo.AuthMetadata = claims.Metadata()
+	}
+
 	ch := &webrtcServerChannel{
-		authAudience:      strings.Join(authAudience, ":"),
-		callerAuthToken:   callerAuthToken,
+		entityInfo:        entityInfo,
 		webrtcBaseChannel: base,
 		server:            server,
 		streams:           make(map[uint64]*webrtcServerStream),
@@ -132,20 +140,9 @@ func (ch *webrtcServerChannel) onChannelMessage(msg webrtc.DataChannelMessage) {
 		handlerCtx = ContextWithPeerConnection(handlerCtx, ch.peerConn)
 
 		// TODO(GOUT-11): Handle auth; right now we assume successful auth to the signaler
-		// implies that auth should be allowed here, which is not 100% true.
-		// Reconstruct the auth entity the auth interceptor would have set (that interceptor
-		// is not in the WebRTC chain). The signaler-forwarded token gives us both the
-		// caller's identity (JWT subject) and its auth metadata claim; fall back to the
-		// coarse audience approximation when no token was forwarded (e.g. an unauthenticated
-		// caller). We trust the signaler's authentication, so we do not re-verify the token.
-		entityInfo := EntityInfo{Entity: ch.authAudience}
-		if claims := claimsFromAuthToken(ch.callerAuthToken); claims != nil {
-			if entity := claims.Entity(); entity != "" {
-				entityInfo.Entity = entity
-			}
-			entityInfo.AuthMetadata = claims.Metadata()
-		}
-		handlerCtx = ContextWithAuthEntity(handlerCtx, entityInfo)
+		// implies that auth should be allowed here, which is not 100% true. Apply the auth
+		// entity derived once at channel construction from the signaler-forwarded token.
+		handlerCtx = ContextWithAuthEntity(handlerCtx, ch.entityInfo)
 
 		if sh := ch.server.statsHandler; sh != nil {
 			handlerCtx = sh.TagRPC(handlerCtx, &stats.RPCTagInfo{FullMethodName: headers.Headers.GetMethod()})
