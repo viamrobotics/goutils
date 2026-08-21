@@ -259,6 +259,33 @@ func TestMongoDBWebRTCCallQueueOperatorDocDeleted(t *testing.T) {
 	wg.Wait()
 }
 
+func TestMongoDBWebRTCCallQueueOperatorReRegistration(t *testing.T) {
+	logger := golog.NewTestLogger(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	client := testutils.BackingMongoDBClient(t)
+	test.That(t, client.Database(mongodbWebRTCCallQueueDBName).Drop(ctx), test.ShouldBeNil)
+
+	// A process that dies without cleanup leaves an unexpired operator document behind
+	// (Close does not delete it). A successor with the same identity (e.g. a restarted
+	// container) must be able to register over it rather than fail on a duplicate key.
+	opID := uuid.NewString()
+	firstQueue, err := NewMongoDBWebRTCCallQueue(ctx, opID, 50, client, logger, nil, nil)
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, firstQueue.Close(), test.ShouldBeNil)
+
+	secondQueue, err := NewMongoDBWebRTCCallQueue(ctx, opID, 50, client, logger, nil, nil)
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, secondQueue.Close(), test.ShouldBeNil)
+
+	count, err := client.Database(mongodbWebRTCCallQueueDBName).
+		Collection(mongodbWebRTCCallQueueOperatorsCollName).
+		CountDocuments(ctx, bson.M{"_id": opID})
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, count, test.ShouldEqual, 1)
+}
+
 func addFakeAnswererForHost(t *testing.T, client *mongo.Client, host string) {
 	t.Helper()
 	_, err := client.Database(mongodbWebRTCCallQueueDBName).Collection(mongodbWebRTCCallQueueOperatorsCollName).InsertOne(context.Background(),

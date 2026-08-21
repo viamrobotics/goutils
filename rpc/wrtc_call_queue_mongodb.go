@@ -308,17 +308,44 @@ func NewMongoDBWebRTCCallQueue(
 		return nil, err
 	}
 
-	result, err := operatorsColl.InsertOne(ctx, bson.D{
-		{webrtcOperatorIDField, operatorID},
-		{webrtcOperatorExpireAtField, time.Now().Add(operatorHeartbeatWindow)},
-	})
-	if err != nil {
-		return nil, err
-	}
-	logger.Infow(
-		"successfully added operator document to operators collection",
-		"operator_id", operatorID, "document_id", result.InsertedID,
+	// A document with our ID may remain from a previous process with the same identity
+	// (e.g. a restarted container) whose TTL has not yet fired; replace it rather than
+	// failing startup. Replacing also clears the predecessor's stale host counts.
+	priorOperator := operatorsColl.FindOneAndReplace(
+		ctx,
+		bson.D{{webrtcOperatorIDField, operatorID}},
+		bson.D{
+			{webrtcOperatorIDField, operatorID},
+			{webrtcOperatorExpireAtField, time.Now().Add(operatorHeartbeatWindow)},
+		},
+		options.FindOneAndReplace().SetUpsert(true).SetReturnDocument(options.Before),
 	)
+	var prior struct {
+		ExpireAt time.Time `bson:"expire_at"`
+	}
+	switch err := priorOperator.Decode(&prior); {
+	case errors.Is(err, mongo.ErrNoDocuments):
+		logger.Infow(
+			"successfully added operator document to operators collection",
+			"operator_id", operatorID,
+		)
+	case err != nil:
+		return nil, err
+	case time.Now().Before(prior.ExpireAt):
+		// An unexpired document should only be our own recently-dead predecessor. If
+		// operator IDs are not unique as required, another live operator now silently
+		// shares this document; treat this log as a tripwire for that misconfiguration.
+		logger.Warnw(
+			"replaced an unexpired operator document; a previous process with this identity "+
+				"terminated recently, or operator IDs are not unique",
+			"operator_id", operatorID, "prior_expire_at", prior.ExpireAt,
+		)
+	default:
+		logger.Infow(
+			"replaced expired operator document from previous process",
+			"operator_id", operatorID,
+		)
+	}
 
 	cancelCtx, cancelFunc := context.WithCancel(context.Background())
 	queue := &mongoDBWebRTCCallQueue{
