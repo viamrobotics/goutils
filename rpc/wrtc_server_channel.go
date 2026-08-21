@@ -53,7 +53,13 @@ func newWebRTCServerChannel(
 	// approximation when no token was forwarded (e.g. an unauthenticated caller). We trust
 	// the signaler's authentication, so we do not re-verify the token.
 	entityInfo := EntityInfo{Entity: strings.Join(authAudience, ":")}
-	if claims := claimsFromAuthToken(callerAuthToken); claims != nil {
+	claims, err := claimsFromAuthToken(callerAuthToken)
+	if err != nil {
+		// The signaler handed us a non-empty token we can't parse. Fall back to the
+		// audience entity, but warn: this shouldn't happen and likely means something
+		// upstream is forwarding malformed tokens.
+		logger.Warnw("failed to parse signaler-forwarded caller auth token; using audience as entity", "error", err)
+	} else if claims != nil {
 		if entity := claims.Entity(); entity != "" {
 			entityInfo.Entity = entity
 		}
@@ -159,15 +165,17 @@ func (ch *webrtcServerChannel) onChannelMessage(msg webrtc.DataChannelMessage) {
 }
 
 // claimsFromAuthToken parses the (already signaler-verified) bearer token into its
-// claims. Parsing is unverified because we trust the signaler that forwarded the token;
-// it returns nil if the token is empty or unparseable.
-func claimsFromAuthToken(token string) *JWTClaims {
+// claims. Parsing is unverified because we trust the signaler that forwarded the token.
+// It returns (nil, nil) for an empty token (an unauthenticated caller) and (nil, err)
+// for a non-empty but unparseable token, so the caller can surface that we were handed
+// garbage.
+func claimsFromAuthToken(token string) (*JWTClaims, error) {
 	if token == "" {
-		return nil
+		return nil, nil
 	}
 	var claims JWTClaims
 	if _, _, err := jwt.NewParser().ParseUnverified(token, &claims); err != nil {
-		return nil
+		return nil, err
 	}
-	return &claims
+	return &claims, nil
 }
