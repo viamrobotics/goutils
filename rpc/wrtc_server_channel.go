@@ -171,7 +171,7 @@ func (ch *webrtcServerChannel) onChannelMessage(msg webrtc.DataChannelMessage) {
 // garbage.
 func claimsFromAuthToken(token string) (*JWTClaims, error) {
 	if token == "" {
-		return nil, nil
+		return nil, nil //nolint:nilnil
 	}
 	var claims JWTClaims
 	if _, _, err := jwt.NewParser().ParseUnverified(token, &claims); err != nil {
