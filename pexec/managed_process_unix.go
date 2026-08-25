@@ -110,15 +110,8 @@ func (p *managedProcess) kill() (bool, error) {
 	select {
 	case <-timer.C:
 		p.logger.Infof("stopping entire process group %d with signal %s", p.cmd.Process.Pid, p.stopSig)
-		if err := syscall.Kill(-p.cmd.Process.Pid, p.stopSig); err != nil {
-			var errno syscall.Errno
-			if errors.As(err, &errno) && errno == syscall.ESRCH {
-				return false, &ProcessNotExistsError{err}
-			} else if errors.Is(err, os.ErrProcessDone) {
-				return false, &ProcessNotExistsError{err}
-			}
-			return false, errors.Wrapf(err, "error signaling process group %d with signal %s",
-				p.cmd.Process.Pid, p.stopSig)
+		if err := p.killGroup(p.stopSig); err != nil {
+			return false, err
 		}
 	case <-p.managingCh:
 		timer.Stop()
@@ -131,15 +124,8 @@ func (p *managedProcess) kill() (bool, error) {
 	select {
 	case <-timer2.C:
 		p.logger.Infof("killing entire process group %d", p.cmd.Process.Pid)
-		if err := syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL); err != nil {
-			var errno syscall.Errno
-			if errors.As(err, &errno) && errno == syscall.ESRCH {
-				return false, &ProcessNotExistsError{err}
-			} else if errors.Is(err, os.ErrProcessDone) {
-				return false, &ProcessNotExistsError{err}
-			}
-			return false, errors.Wrapf(err, "error signaling process group %d with signal %s",
-				p.cmd.Process.Pid, p.stopSig)
+		if err := p.killGroup(syscall.SIGKILL); err != nil {
+			return false, err
 		}
 		forceKilled = true
 	case <-p.managingCh:
@@ -147,6 +133,36 @@ func (p *managedProcess) kill() (bool, error) {
 	}
 
 	return forceKilled, nil
+}
+
+// killGroup signals every process in the managed process's group. Landing on nothing is
+// reported as a ProcessNotExistsError rather than as a failure to stop: kill has already
+// signaled the process itself by this point, so this sweep exists only to catch orphaned
+// children, and an empty group means it has none to catch.
+func (p *managedProcess) killGroup(sig syscall.Signal) error {
+	if err := syscall.Kill(-p.cmd.Process.Pid, sig); err != nil {
+		if processGroupGone(err) {
+			return &ProcessNotExistsError{err}
+		}
+		return errors.Wrapf(err, "error signaling process group %d with signal %s", p.cmd.Process.Pid, sig)
+	}
+	return nil
+}
+
+// processGroupGone reports whether err from signaling a process group means there was nothing
+// left in it to signal.
+//
+// The two ways that happens are not reported alike. Once the process has been reaped its group
+// is gone and kill(2) answers ESRCH, but in the window where it has exited and not yet been
+// reaped the group still holds a zombie: Linux signals that group without complaint, while
+// Darwin finds a member it cannot signal and answers EPERM. Reading EPERM as a permission
+// failure would therefore turn a clean shutdown into an error on macOS alone.
+func processGroupGone(err error) bool {
+	var errno syscall.Errno
+	if errors.As(err, &errno) {
+		return errno == syscall.ESRCH || errno == syscall.EPERM
+	}
+	return errors.Is(err, os.ErrProcessDone)
 }
 
 // forceKillGroup kills everything in the process group. This will not wait for completion and may result the
