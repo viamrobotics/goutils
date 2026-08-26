@@ -12,6 +12,7 @@ import (
 	"github.com/edaniels/golog"
 	"go.opencensus.io/metric/metricexport"
 	"go.opencensus.io/trace"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"go.viam.com/test"
 	"goji.io"
 	"goji.io/pat"
@@ -184,4 +185,26 @@ func TestTimingReport(t *testing.T) {
 
 	test.That(t, wd.paths[3].spanChain, test.ShouldResemble, []string{"A", "C"})
 	test.That(t, wd.paths[3].count, test.ShouldEqual, 1)
+}
+
+func TestMetricTypeFormatter(t *testing.T) {
+	metric := func(name string) metricdata.Metrics { return metricdata.Metrics{Name: name} }
+
+	// Without a prefix, names land in the same OpenCensus custom metric domain
+	// the Stackdriver exporter used.
+	noPrefix := metricTypeFormatter("")
+	test.That(t, noPrefix(metric("mongodb/connections")),
+		test.ShouldEqual, "custom.googleapis.com/opencensus/mongodb/connections")
+	test.That(t, noPrefix(metric("/leading/slash")),
+		test.ShouldEqual, "custom.googleapis.com/opencensus/leading/slash")
+
+	// A name that already carries a Cloud Monitoring domain is left alone.
+	test.That(t, noPrefix(metric("appengine.googleapis.com/foo")),
+		test.ShouldEqual, "appengine.googleapis.com/foo")
+
+	// An explicit prefix replaces the default domain.
+	test.That(t, metricTypeFormatter("appengine.googleapis.com/")(metric("foo")),
+		test.ShouldEqual, "appengine.googleapis.com/foo")
+	test.That(t, metricTypeFormatter("prefix")(metric("foo")),
+		test.ShouldEqual, "custom.googleapis.com/opencensus/prefix/foo")
 }

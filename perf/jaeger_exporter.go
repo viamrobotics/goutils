@@ -3,56 +3,60 @@ package perf
 import (
 	"errors"
 	"os"
+	"strings"
 
-	"contrib.go.opencensus.io/exporter/jaeger"
-	"go.opencensus.io/trace"
+	"github.com/edaniels/golog"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+
+	"go.viam.com/utils"
 )
 
-// JaegerExporter exports trace spans directly to a Jaeger collector. It is
+// JaegerExporter exports trace spans over OTLP to a Jaeger collector. It is
 // currently only intended for use in local environments.
 type JaegerExporter struct {
-	e *jaeger.Exporter
-}
-
-// Start implements [Exporter].
-func (j JaegerExporter) Start() error {
-	if err := registerApplicationViews(); err != nil {
-		return err
-	}
-	trace.RegisterExporter(j.e)
-	trace.ApplyConfig(trace.Config{DefaultSampler: trace.AlwaysSample()})
-	return nil
-}
-
-// Stop implements [Exporter].
-func (j JaegerExporter) Stop() {
-	trace.UnregisterExporter(j.e)
-	j.e.Flush()
-}
-
-// JaegerOptions is used to configure [JaegerExporter].
-type JaegerOptions struct {
-	CollectorEndpoint string
+	otelExporter
 }
 
 var _ Exporter = &JaegerExporter{}
 
-// NewJaegerExporter creates a new Jaeger [Exporter].
+// JaegerOptions is used to configure [JaegerExporter].
+type JaegerOptions struct {
+	// CollectorEndpoint is Jaeger's OTLP/HTTP endpoint, e.g.
+	// "http://localhost:4318". A bare "host:port" is also accepted and is
+	// dialed without TLS.
+	CollectorEndpoint string
+	// Logger is optional and defaults to the global golog logger.
+	Logger utils.ZapCompatibleLogger
+}
+
+// NewJaegerExporter creates a new Jaeger [Exporter]. Jaeger has accepted OTLP
+// natively since v1.35, so spans are sent over OTLP rather than Jaeger's own
+// (since removed) collector protocol.
 func NewJaegerExporter(opts JaegerOptions) (*JaegerExporter, error) {
 	if opts.CollectorEndpoint == "" {
 		return nil, errors.New("must specify collector endpoint")
 	}
 
-	jOpts := jaeger.Options{
-		CollectorEndpoint: opts.CollectorEndpoint,
+	var otlpOpts []otlptracehttp.Option
+	if strings.Contains(opts.CollectorEndpoint, "://") {
+		otlpOpts = append(otlpOpts, otlptracehttp.WithEndpointURL(opts.CollectorEndpoint))
+	} else {
+		otlpOpts = append(otlpOpts,
+			otlptracehttp.WithEndpoint(opts.CollectorEndpoint),
+			otlptracehttp.WithInsecure(),
+		)
 	}
 
-	if serviceName := os.Getenv("SERVICE_NAME"); serviceName != "" {
-		jOpts.Process.ServiceName = serviceName
+	logger := opts.Logger
+	if logger == nil {
+		logger = golog.Global()
 	}
-	exp, err := jaeger.NewExporter(jOpts)
-	if err != nil {
-		return nil, err
-	}
-	return &JaegerExporter{exp}, nil
+
+	return &JaegerExporter{otelExporter{
+		logger:       logger,
+		resource:     serviceResource(os.Getenv("SERVICE_NAME")),
+		sampler:      sdktrace.AlwaysSample(),
+		spanExporter: otlptracehttp.NewUnstarted(otlpOpts...),
+	}}, nil
 }

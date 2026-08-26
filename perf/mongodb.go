@@ -8,25 +8,30 @@ import (
 	"sync/atomic"
 
 	"go.mongodb.org/mongo-driver/event"
-	"go.opencensus.io/trace"
+	"go.opentelemetry.io/otel/attribute"
+	oteltrace "go.opentelemetry.io/otel/trace"
 
 	"go.viam.com/utils/perf/statz"
 	"go.viam.com/utils/perf/statz/units"
+	viamtrace "go.viam.com/utils/trace"
 )
 
 // from https://github.com/entropyx/mongo-opencensus
 
 type config struct {
-	sampler trace.Sampler
+	tracer oteltrace.Tracer
 }
 
 // MongoDBMonitorOption represents an option that can be passed to NewMongoDBMonitor.
 type MongoDBMonitorOption func(*config)
 
-// WithMongoDBMonitorSampler set a sampler for all started spans.
-func WithMongoDBMonitorSampler(sampler trace.Sampler) MongoDBMonitorOption {
+// WithMongoDBMonitorTracer sets the tracer used to start spans. It defaults to
+// the tracer of the provider configured in go.viam.com/utils/trace. Pass a
+// tracer from a provider with its own sampler to sample these spans
+// differently from the rest of the application.
+func WithMongoDBMonitorTracer(tracer oteltrace.Tracer) MongoDBMonitorOption {
 	return func(cfg *config) {
-		cfg.sampler = sampler
+		cfg.tracer = tracer
 	}
 }
 
@@ -37,23 +42,34 @@ type spanKey struct {
 
 type monitor struct {
 	sync.Mutex
-	spans map[spanKey]*trace.Span
+	spans map[spanKey]oteltrace.Span
 	cfg   *config
+}
+
+// startSpan starts a span on the configured tracer, or on the global
+// go.viam.com/utils/trace tracer when none was configured.
+func (m *monitor) startSpan(ctx context.Context, name string) oteltrace.Span {
+	if m.cfg.tracer != nil {
+		_, span := m.cfg.tracer.Start(ctx, name)
+		return span
+	}
+	_, span := viamtrace.StartSpan(ctx, name)
+	return span
 }
 
 func (m *monitor) Started(ctx context.Context, evt *event.CommandStartedEvent) {
 	connString := connectionString(evt)
-	attrs := []trace.Attribute{
-		trace.StringAttribute("db.system", "mongodb"),
-		trace.StringAttribute("db.name", evt.DatabaseName),
-		trace.StringAttribute("db.operation", evt.CommandName),
-		trace.StringAttribute("db.connection_string", connString),
+	attrs := []attribute.KeyValue{
+		attribute.String("db.system", "mongodb"),
+		attribute.String("db.name", evt.DatabaseName),
+		attribute.String("db.operation", evt.CommandName),
+		attribute.String("db.connection_string", connString),
 	}
 	var collStr string
 	if cmdVal, err := evt.Command.LookupErr(evt.CommandName); err == nil {
 		if str, ok := cmdVal.StringValueOK(); ok {
 			collStr = str
-			attrs = append(attrs, trace.StringAttribute("db.mongodb.collection", collStr))
+			attrs = append(attrs, attribute.String("db.mongodb.collection", collStr))
 		}
 	}
 	var spanName string
@@ -62,8 +78,8 @@ func (m *monitor) Started(ctx context.Context, evt *event.CommandStartedEvent) {
 	} else {
 		spanName = fmt.Sprintf("%s::%s::%s", evt.DatabaseName, collStr, evt.CommandName)
 	}
-	_, span := trace.StartSpan(ctx, spanName, trace.WithSampler(m.cfg.sampler))
-	span.AddAttributes(attrs...)
+	span := m.startSpan(ctx, spanName)
+	span.SetAttributes(attrs...)
 	key := spanKey{
 		ConnectionID: evt.ConnectionID,
 		RequestID:    evt.RequestID,
@@ -96,7 +112,7 @@ func (m *monitor) Finished(evt *event.CommandFinishedEvent, err error) {
 		return
 	}
 	if err != nil {
-		span.AddAttributes(trace.StringAttribute("error.msg", err.Error()))
+		span.SetAttributes(attribute.String("error.msg", err.Error()))
 	}
 	span.End()
 }
@@ -108,7 +124,7 @@ func NewMongoDBMonitor(opts ...MongoDBMonitorOption) *event.CommandMonitor {
 		opt(cfg)
 	}
 	m := &monitor{
-		spans: make(map[spanKey]*trace.Span),
+		spans: make(map[spanKey]oteltrace.Span),
 		cfg:   cfg,
 	}
 	return &event.CommandMonitor{

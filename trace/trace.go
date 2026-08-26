@@ -189,7 +189,7 @@ func Shutdown(ctx context.Context) error {
 
 // StartSpan is a wrapper around [trace.Tracer.Start].
 func StartSpan(ctx context.Context, name string, o ...trace.SpanStartOption) (context.Context, Span) {
-	return globalTraceStateData.Load().tracer.Start(ctx, name)
+	return globalTraceStateData.Load().tracer.Start(ctx, name, o...)
 }
 
 // FromContext is a wrapper around [trace.FromContext].
