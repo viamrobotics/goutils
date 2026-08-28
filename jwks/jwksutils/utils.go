@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -25,6 +26,18 @@ import (
 
 // ServeFakeOIDCEndpoint is a test helper for serving a OIDC endpoint from a static keyset.
 func ServeFakeOIDCEndpoint(t *testing.T, keyset jwks.KeySet) (string, func()) {
+	t.Helper()
+	return serveFakeOIDCEndpoint(t, keyset, 0)
+}
+
+// ServeFakeOIDCEndpointWithFailures behaves like ServeFakeOIDCEndpoint after answering
+// the first failures requests with a 500.
+func ServeFakeOIDCEndpointWithFailures(t *testing.T, keyset jwks.KeySet, failures int) (string, func()) {
+	t.Helper()
+	return serveFakeOIDCEndpoint(t, keyset, failures)
+}
+
+func serveFakeOIDCEndpoint(t *testing.T, keyset jwks.KeySet, failures int) (string, func()) {
 	t.Helper()
 
 	var lc net.ListenConfig
@@ -67,9 +80,21 @@ func ServeFakeOIDCEndpoint(t *testing.T, keyset jwks.KeySet) (string, func()) {
 
 	logger := golog.NewTestLogger(t)
 
+	remaining := int64(failures)
+	handler := http.Handler(mux)
+	if failures > 0 {
+		handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if atomic.AddInt64(&remaining, -1) >= 0 {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			mux.ServeHTTP(w, r)
+		})
+	}
+
 	server := &http.Server{
 		Addr:              listener.Addr().String(),
-		Handler:           mux,
+		Handler:           handler,
 		ReadHeaderTimeout: time.Second * 5,
 	}
 
