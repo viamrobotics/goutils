@@ -93,8 +93,7 @@ type WebRTCCallOffer interface {
 
 // AuthenticatedCaller is a WebRTC caller's identity, extracted from its auth token by the
 // (trusted) signaler and forwarded to the answerer. Only this extracted identity crosses
-// to the answerer — never the caller's bearer token, which a malicious answerer could
-// replay to impersonate the caller elsewhere.
+// to the answerer, not the caller's bearer token.
 type AuthenticatedCaller struct {
 	// Entity is the caller's authenticated entity (its JWT subject).
 	Entity string

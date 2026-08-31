@@ -396,8 +396,8 @@ type mongodbWebRTCCall struct {
 	Host               string                `bson:"host"`
 	StartedAt          time.Time             `bson:"started_at"`
 	CallerSDP          string                `bson:"caller_sdp"`
-	CallerEntity       string                `bson:"caller_entity,omitempty"`
-	CallerMetadata     map[string]string     `bson:"caller_metadata,omitempty"`
+	CallerAuthEntity   string                `bson:"caller_auth_entity,omitempty"`
+	CallerAuthMetadata map[string]string     `bson:"caller_auth_metadata,omitempty"`
 	CallerCandidates   []mongodbICECandidate `bson:"caller_candidates,omitempty"`
 	CallerDone         bool                  `bson:"caller_done"`
 	CallerError        string                `bson:"caller_error,omitempty"`
@@ -1252,14 +1252,14 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 
 	newUUID := uuid.NewString()
 	call := mongodbWebRTCCall{
-		ID:               newUUID,
-		CallerOperatorID: queue.operatorID,
-		Host:             host,
-		CallerSDP:        sdp,
-		CallerEntity:     caller.Entity,
-		CallerMetadata:   caller.Metadata,
-		SDKType:          sdkType,
-		OrganizationID:   organizationID,
+		ID:                 newUUID,
+		CallerOperatorID:   queue.operatorID,
+		Host:               host,
+		CallerSDP:          sdp,
+		CallerAuthEntity:   caller.Entity,
+		CallerAuthMetadata: caller.Metadata,
+		SDKType:            sdkType,
+		OrganizationID:     organizationID,
 	}
 	events, unsubscribe := queue.subscribeToCall(host, call.ID, "caller")
 
@@ -1861,7 +1861,7 @@ func (resp *mongoDBWebRTCCallOfferExchange) SDP() string {
 }
 
 func (resp *mongoDBWebRTCCallOfferExchange) Caller() AuthenticatedCaller {
-	return AuthenticatedCaller{Entity: resp.call.CallerEntity, Metadata: resp.call.CallerMetadata}
+	return AuthenticatedCaller{Entity: resp.call.CallerAuthEntity, Metadata: resp.call.CallerAuthMetadata}
 }
 
 func (resp *mongoDBWebRTCCallOfferExchange) DisableTrickleICE() bool {

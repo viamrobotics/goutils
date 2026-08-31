@@ -286,8 +286,8 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 			}
 			aa.offerSDP = initStage.Init.GetSdp()
 			aa.caller = AuthenticatedCaller{
-				Entity:   initStage.Init.GetCallerMetadata().GetEntity(),
-				Metadata: initStage.Init.GetCallerMetadata().GetMetadata(),
+				Entity:   initStage.Init.GetCallerAuthEntity(),
+				Metadata: initStage.Init.GetCallerAuthMetadata(),
 			}
 
 			answerCtx, answerCtxCancel := getDeadline(ctx, ans.logger, initStage)

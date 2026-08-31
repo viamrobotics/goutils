@@ -131,22 +131,14 @@ message AnswerRequestInitStage {
 	string sdp = 1;
 	WebRTCConfig optional_config = 2;
 	optional google.protobuf.Timestamp deadline = 3;
-	// caller_metadata is the caller's authenticated identity, extracted from its auth token
-	// by the (trusted) signaling server: the entity (JWT subject) and its auth metadata
-	// (rpc_auth_md) claim. Only this identity is forwarded to the answerer — never the
-	// caller's bearer token, which a malicious answerer could replay to impersonate the
-	// caller elsewhere. Unset when the caller was unauthenticated.
-	optional AuthenticatedCaller caller_metadata = 4;
-}
-
-// AuthenticatedCaller is a WebRTC caller's authenticated identity, extracted by the
-// signaling server and forwarded to the answerer so it can identify the caller for
-// authorization without receiving the caller's (replayable) bearer token.
-message AuthenticatedCaller {
-	// entity is the caller's authenticated entity (its JWT subject).
-	string entity = 1;
-	// metadata is the caller's auth metadata (its rpc_auth_md claim).
-	map<string, string> metadata = 2;
+	// caller_auth_entity is the caller's authenticated entity (its JWT subject), extracted
+	// from the caller's auth token by the signaling server. Only the caller's identity is
+	// forwarded to the answerer, not its bearer token. Empty when the caller was
+	// unauthenticated.
+	string caller_auth_entity = 4;
+	// caller_auth_metadata is the caller's auth metadata (its rpc_auth_md claim), extracted
+	// from the caller's auth token by the signaling server.
+	map<string, string> caller_auth_metadata = 5;
 }
 
 // AnswerRequestUpdateStage is multiply used to trickle in ICE candidates to

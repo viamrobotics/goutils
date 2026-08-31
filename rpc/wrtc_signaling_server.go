@@ -180,15 +180,6 @@ func (srv *WebRTCSignalingServer) asyncSendOfferError(host, uuid string, offerEr
 	})
 }
 
-// callerMetadataProto converts a caller identity to its proto form, returning nil for an
-// unauthenticated caller so the optional caller_metadata field is left unset.
-func callerMetadataProto(caller AuthenticatedCaller) *webrtcpb.AuthenticatedCaller {
-	if caller.Entity == "" && len(caller.Metadata) == 0 {
-		return nil
-	}
-	return &webrtcpb.AuthenticatedCaller{Entity: caller.Entity, Metadata: caller.Metadata}
-}
-
 // Call is a request/offer to start a caller with the connected answerer.
 func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcpb.SignalingService_CallServer) error {
 	ctx, span := trace.StartSpan(server.Context(), "SignalingServer::Call")
@@ -206,8 +197,7 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 	}
 	// The caller authenticated to us (the signaler) before reaching this handler. Extract
 	// its identity (entity + auth metadata) from its token and forward only that to the
-	// answerer — never the raw bearer token, which a malicious answerer could replay to
-	// impersonate the caller elsewhere. Best-effort: an unauthenticated caller has no token.
+	// answerer, not the raw bearer token. Best-effort: an unauthenticated caller has no token.
 	callerToken, _ := TokenFromContext(ctx) //nolint:errcheck
 	var caller AuthenticatedCaller
 	if claims, parseErr := claimsFromAuthToken(callerToken); parseErr != nil {
@@ -422,8 +412,9 @@ func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 					AdditionalIceServers: iceServers,
 					DisableTrickle:       offer.DisableTrickleICE(),
 				},
-				Deadline:       timestamppb.New(offer.Deadline()),
-				CallerMetadata: callerMetadataProto(offer.Caller()),
+				Deadline:           timestamppb.New(offer.Deadline()),
+				CallerAuthEntity:   offer.Caller().Entity,
+				CallerAuthMetadata: offer.Caller().Metadata,
 			},
 		},
 	}); err != nil {
