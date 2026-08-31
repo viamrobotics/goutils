@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	jwt "github.com/golang-jwt/jwt/v4"
 	"github.com/pkg/errors"
 	"go.opencensus.io/trace"
 	"go.uber.org/multierr"
@@ -179,13 +180,13 @@ func (srv *WebRTCSignalingServer) asyncSendOfferError(host, uuid string, offerEr
 	})
 }
 
-// offerAuthTokenPtr returns a pointer to token, or nil when empty, so the optional
-// caller_auth_token field is left unset for unauthenticated callers.
-func offerAuthTokenPtr(token string) *string {
-	if token == "" {
+// callerMetadataProto converts a caller identity to its proto form, returning nil for an
+// unauthenticated caller so the optional caller_metadata field is left unset.
+func callerMetadataProto(caller AuthenticatedCaller) *webrtcpb.AuthenticatedCaller {
+	if caller.Entity == "" && len(caller.Metadata) == 0 {
 		return nil
 	}
-	return &token
+	return &webrtcpb.AuthenticatedCaller{Entity: caller.Entity, Metadata: caller.Metadata}
 }
 
 // Call is a request/offer to start a caller with the connected answerer.
@@ -203,11 +204,18 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 	if err := srv.validateHosts(host); err != nil {
 		return err
 	}
-	// The caller authenticated to us (the signaler) before reaching this handler; forward
-	// its bearer token so the answerer can identify the caller. Best-effort: an
-	// unauthenticated caller simply has no token.
-	callerAuthToken, _ := TokenFromContext(ctx) //nolint:errcheck
-	uuid, respCh, respDone, sendCancel, err := srv.callQueue.SendOfferInit(ctx, host, req.GetSdp(), req.GetDisableTrickle(), callerAuthToken)
+	// The caller authenticated to us (the signaler) before reaching this handler. Extract
+	// its identity (entity + auth metadata) from its token and forward only that to the
+	// answerer — never the raw bearer token, which a malicious answerer could replay to
+	// impersonate the caller elsewhere. Best-effort: an unauthenticated caller has no token.
+	callerToken, _ := TokenFromContext(ctx) //nolint:errcheck
+	var caller AuthenticatedCaller
+	if claims, parseErr := claimsFromAuthToken(callerToken); parseErr != nil {
+		srv.logger.Warnw("failed to parse caller auth token; forwarding no caller identity", "error", parseErr)
+	} else if claims != nil {
+		caller = AuthenticatedCaller{Entity: claims.Entity(), Metadata: claims.Metadata()}
+	}
+	uuid, respCh, respDone, sendCancel, err := srv.callQueue.SendOfferInit(ctx, host, req.GetSdp(), req.GetDisableTrickle(), caller)
 	if err != nil {
 		return err
 	}
@@ -414,8 +422,8 @@ func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 					AdditionalIceServers: iceServers,
 					DisableTrickle:       offer.DisableTrickleICE(),
 				},
-				Deadline:        timestamppb.New(offer.Deadline()),
-				CallerAuthToken: offerAuthTokenPtr(offer.CallerAuthToken()),
+				Deadline:       timestamppb.New(offer.Deadline()),
+				CallerMetadata: callerMetadataProto(offer.Caller()),
 			},
 		},
 	}); err != nil {
@@ -587,4 +595,20 @@ func (srv *WebRTCSignalingServer) OptionalWebRTCConfig(
 // Close cancels all active workers and waits to cleanly close all background workers.
 func (srv *WebRTCSignalingServer) Close() {
 	srv.bgWorkers.Stop()
+}
+
+// claimsFromAuthToken parses the (already signaler-verified) bearer token into its
+// claims. Parsing is unverified because we trust the signaler that forwarded the token.
+// It returns (nil, nil) for an empty token (an unauthenticated caller) and (nil, err)
+// for a non-empty but unparseable token, so the caller can surface that we were handed
+// garbage.
+func claimsFromAuthToken(token string) (*JWTClaims, error) {
+	if token == "" {
+		return nil, nil //nolint:nilnil
+	}
+	var claims JWTClaims
+	if _, _, err := jwt.NewParser().ParseUnverified(token, &claims); err != nil {
+		return nil, err
+	}
+	return &claims, nil
 }

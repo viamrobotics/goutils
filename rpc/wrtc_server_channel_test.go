@@ -46,7 +46,7 @@ func TestWebRTCServerChannel(t *testing.T) {
 		signalServer,
 	)
 
-	serverCh := newWebRTCServerChannel(server, pc2, dc2, []string{"one", "two"}, "", logger)
+	serverCh := newWebRTCServerChannel(server, pc2, dc2, []string{"one", "two"}, AuthenticatedCaller{}, logger)
 	defer serverCh.Close()
 
 	<-clientCh.Ready()
@@ -275,7 +275,7 @@ func TestWebRTCServerChannelResetStream(t *testing.T) {
 	echoSrv := &delayingEchoServer{}
 	server.RegisterService(&echopb.EchoService_ServiceDesc, echoSrv)
 
-	serverCh := newWebRTCServerChannel(server, pc2, dc2, []string{"one", "two"}, "", logger)
+	serverCh := newWebRTCServerChannel(server, pc2, dc2, []string{"one", "two"}, AuthenticatedCaller{}, logger)
 	defer serverCh.Close()
 
 	<-clientCh.Ready()

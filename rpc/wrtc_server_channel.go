@@ -5,7 +5,6 @@ import (
 	"strings"
 	"sync"
 
-	jwt "github.com/golang-jwt/jwt/v4"
 	"github.com/viamrobotics/webrtc/v3"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/stats"
@@ -22,7 +21,7 @@ type webrtcServerChannel struct {
 	mu sync.Mutex
 	// entityInfo is the authenticated entity applied to every request context on this
 	// channel. It is derived once at construction from the signaler-forwarded caller
-	// token (or the coarse audience approximation when none was forwarded), since both
+	// identity (or the coarse audience approximation when none was forwarded), since both
 	// inputs are fixed for the channel's lifetime.
 	entityInfo EntityInfo
 	server     *webrtcServer
@@ -36,7 +35,7 @@ func newWebRTCServerChannel(
 	peerConn *webrtc.PeerConnection,
 	dataChannel *webrtc.DataChannel,
 	authAudience []string,
-	callerAuthToken string,
+	caller AuthenticatedCaller,
 	logger utils.ZapCompatibleLogger,
 ) *webrtcServerChannel {
 	base := newBaseChannel(
@@ -47,23 +46,16 @@ func newWebRTCServerChannel(
 		nil,
 		logger,
 	)
-	// Reconstruct the auth entity the auth interceptor would have set (that interceptor is
-	// not in the WebRTC chain). The signaler-forwarded token gives us both the caller's
-	// identity (JWT subject) and its auth metadata claim; fall back to the coarse audience
-	// approximation when no token was forwarded (e.g. an unauthenticated caller). We trust
-	// the signaler's authentication, so we do not re-verify the token.
+	// Build the auth entity the auth interceptor would have set (that interceptor is not in
+	// the WebRTC chain) from the caller identity the (trusted) signaler extracted and
+	// forwarded. Fall back to the coarse audience approximation when the caller was
+	// unauthenticated (no identity forwarded).
 	entityInfo := EntityInfo{Entity: strings.Join(authAudience, ":")}
-	claims, err := claimsFromAuthToken(callerAuthToken)
-	if err != nil {
-		// The signaler handed us a non-empty token we can't parse. Fall back to the
-		// audience entity, but warn: this shouldn't happen and likely means something
-		// upstream is forwarding malformed tokens.
-		logger.Warnw("failed to parse signaler-forwarded caller auth token; using audience as entity", "error", err)
-	} else if claims != nil {
-		if entity := claims.Entity(); entity != "" {
-			entityInfo.Entity = entity
-		}
-		entityInfo.AuthMetadata = claims.Metadata()
+	if caller.Entity != "" {
+		entityInfo.Entity = caller.Entity
+	}
+	if caller.Metadata != nil {
+		entityInfo.AuthMetadata = caller.Metadata
 	}
 
 	ch := &webrtcServerChannel{
@@ -162,20 +154,4 @@ func (ch *webrtcServerChannel) onChannelMessage(msg webrtc.DataChannelMessage) {
 	ch.mu.Unlock()
 
 	serverStream.onRequest(req)
-}
-
-// claimsFromAuthToken parses the (already signaler-verified) bearer token into its
-// claims. Parsing is unverified because we trust the signaler that forwarded the token.
-// It returns (nil, nil) for an empty token (an unauthenticated caller) and (nil, err)
-// for a non-empty but unparseable token, so the caller can surface that we were handed
-// garbage.
-func claimsFromAuthToken(token string) (*JWTClaims, error) {
-	if token == "" {
-		return nil, nil //nolint:nilnil
-	}
-	var claims JWTClaims
-	if _, _, err := jwt.NewParser().ParseUnverified(token, &claims); err != nil {
-		return nil, err
-	}
-	return &claims, nil
 }

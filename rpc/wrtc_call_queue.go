@@ -42,11 +42,11 @@ func setDefaultOfferDeadline(deafultOfferDeadline time.Duration) func() {
 // offer and subsequently respond to it.
 type WebRTCCallQueue interface {
 	// SendOfferInit initializes an offer associated with the given SDP to the given host.
-	// callerAuthToken is the signed bearer token the caller authenticated with, forwarded
-	// to the answerer so it can identify the caller. SendOfferInit returns a UUID to
-	// track/authenticate the offer over time, a channel receive offer updates on over time,
-	// and a cancel func to inform the sender to stop.
-	SendOfferInit(ctx context.Context, host, sdp string, disableTrickle bool, callerAuthToken string) (
+	// caller is the caller's identity, extracted from its auth token by the (trusted)
+	// signaler and forwarded to the answerer so it can identify the caller. SendOfferInit
+	// returns a UUID to track/authenticate the offer over time, a channel receive offer
+	// updates on over time, and a cancel func to inform the sender to stop.
+	SendOfferInit(ctx context.Context, host, sdp string, disableTrickle bool, caller AuthenticatedCaller) (
 		uuid string, respCh <-chan WebRTCCallAnswer, respDone <-chan struct{}, cancel func(), err error)
 
 	// SendOfferUpdate updates the offer associated with the given UUID with a newly discovered
@@ -86,10 +86,20 @@ type WebRTCCallOffer interface {
 	// Deadline returns how long this offer has to live.
 	Deadline() time.Time
 
-	// CallerAuthToken returns the signed bearer token the caller authenticated to the
-	// signaling server with, or "" if the caller was unauthenticated. Forwarded to the
-	// answerer so it can identify the caller for authorization.
-	CallerAuthToken() string
+	// Caller returns the caller's identity (entity and auth metadata) as extracted by the
+	// signaler from the caller's token, or the zero value if the caller was unauthenticated.
+	Caller() AuthenticatedCaller
+}
+
+// AuthenticatedCaller is a WebRTC caller's identity, extracted from its auth token by the
+// (trusted) signaler and forwarded to the answerer. Only this extracted identity crosses
+// to the answerer — never the caller's bearer token, which a malicious answerer could
+// replay to impersonate the caller elsewhere.
+type AuthenticatedCaller struct {
+	// Entity is the caller's authenticated entity (its JWT subject).
+	Entity string
+	// Metadata is the caller's auth metadata (its rpc_auth_md claim).
+	Metadata map[string]string
 }
 
 // A WebRTCCallOfferExchange is used by an answerer to respond to a call offer with an
