@@ -1183,7 +1183,8 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 	ctx context.Context,
 	host, sdp string,
 	disableTrickle bool,
-	caller AuthenticatedCaller,
+	callerAuthEntity string,
+	callerAuthMetadata map[string]string,
 ) (string, <-chan WebRTCCallAnswer, <-chan struct{}, func(), error) {
 	ctx, span := trace.StartSpan(ctx, "CallQueue::SendOfferInit")
 	defer span.End()
@@ -1256,8 +1257,8 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 		CallerOperatorID:   queue.operatorID,
 		Host:               host,
 		CallerSDP:          sdp,
-		CallerAuthEntity:   caller.Entity,
-		CallerAuthMetadata: caller.Metadata,
+		CallerAuthEntity:   callerAuthEntity,
+		CallerAuthMetadata: callerAuthMetadata,
 		SDKType:            sdkType,
 		OrganizationID:     organizationID,
 	}
@@ -1860,8 +1861,12 @@ func (resp *mongoDBWebRTCCallOfferExchange) SDP() string {
 	return resp.call.CallerSDP
 }
 
-func (resp *mongoDBWebRTCCallOfferExchange) Caller() AuthenticatedCaller {
-	return AuthenticatedCaller{Entity: resp.call.CallerAuthEntity, Metadata: resp.call.CallerAuthMetadata}
+func (resp *mongoDBWebRTCCallOfferExchange) CallerAuthEntity() string {
+	return resp.call.CallerAuthEntity
+}
+
+func (resp *mongoDBWebRTCCallOfferExchange) CallerAuthMetadata() map[string]string {
+	return resp.call.CallerAuthMetadata
 }
 
 func (resp *mongoDBWebRTCCallOfferExchange) DisableTrickleICE() bool {

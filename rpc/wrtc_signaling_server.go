@@ -199,13 +199,15 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 	// its identity (entity + auth metadata) from its token and forward only that to the
 	// answerer, not the raw bearer token. Best-effort: an unauthenticated caller has no token.
 	callerToken, _ := TokenFromContext(ctx) //nolint:errcheck
-	var caller AuthenticatedCaller
+	var callerAuthEntity string
+	var callerAuthMetadata map[string]string
 	if claims, parseErr := claimsFromAuthToken(callerToken); parseErr != nil {
 		srv.logger.Warnw("failed to parse caller auth token; forwarding no caller identity", "error", parseErr)
 	} else if claims != nil {
-		caller = AuthenticatedCaller{Entity: claims.Entity(), Metadata: claims.Metadata()}
+		callerAuthEntity, callerAuthMetadata = claims.Entity(), claims.Metadata()
 	}
-	uuid, respCh, respDone, sendCancel, err := srv.callQueue.SendOfferInit(ctx, host, req.GetSdp(), req.GetDisableTrickle(), caller)
+	uuid, respCh, respDone, sendCancel, err := srv.callQueue.SendOfferInit(
+		ctx, host, req.GetSdp(), req.GetDisableTrickle(), callerAuthEntity, callerAuthMetadata)
 	if err != nil {
 		return err
 	}
@@ -413,8 +415,8 @@ func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 					DisableTrickle:       offer.DisableTrickleICE(),
 				},
 				Deadline:           timestamppb.New(offer.Deadline()),
-				CallerAuthEntity:   offer.Caller().Entity,
-				CallerAuthMetadata: offer.Caller().Metadata,
+				CallerAuthEntity:   offer.CallerAuthEntity(),
+				CallerAuthMetadata: offer.CallerAuthMetadata(),
 			},
 		},
 	}); err != nil {

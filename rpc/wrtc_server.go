@@ -216,9 +216,10 @@ func (srv *webrtcServer) NewChannel(
 	peerConn *webrtc.PeerConnection,
 	dataChannel *webrtc.DataChannel,
 	authAudience []string,
-	caller AuthenticatedCaller,
+	callerAuthEntity string,
+	callerAuthMetadata map[string]string,
 ) *webrtcServerChannel {
-	serverCh := newWebRTCServerChannel(srv, peerConn, dataChannel, authAudience, caller, srv.logger)
+	serverCh := newWebRTCServerChannel(srv, peerConn, dataChannel, authAudience, callerAuthEntity, callerAuthMetadata, srv.logger)
 	srv.peerConnsMu.Lock()
 	srv.peerConns[peerConn] = struct{}{}
 	srv.counters.PeersActive.Add(1)

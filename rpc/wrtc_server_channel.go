@@ -35,7 +35,8 @@ func newWebRTCServerChannel(
 	peerConn *webrtc.PeerConnection,
 	dataChannel *webrtc.DataChannel,
 	authAudience []string,
-	caller AuthenticatedCaller,
+	callerAuthEntity string,
+	callerAuthMetadata map[string]string,
 	logger utils.ZapCompatibleLogger,
 ) *webrtcServerChannel {
 	base := newBaseChannel(
@@ -51,11 +52,11 @@ func newWebRTCServerChannel(
 	// forwarded. Fall back to the coarse audience approximation when the caller was
 	// unauthenticated (no identity forwarded).
 	entityInfo := EntityInfo{Entity: strings.Join(authAudience, ":")}
-	if caller.Entity != "" {
-		entityInfo.Entity = caller.Entity
+	if callerAuthEntity != "" {
+		entityInfo.Entity = callerAuthEntity
 	}
-	if caller.Metadata != nil {
-		entityInfo.AuthMetadata = caller.Metadata
+	if callerAuthMetadata != nil {
+		entityInfo.AuthMetadata = callerAuthMetadata
 	}
 
 	ch := &webrtcServerChannel{
