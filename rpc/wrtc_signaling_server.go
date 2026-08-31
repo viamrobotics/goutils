@@ -9,7 +9,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	jwt "github.com/golang-jwt/jwt/v4"
 	"github.com/pkg/errors"
 	"go.opencensus.io/trace"
 	"go.uber.org/multierr"
@@ -195,16 +194,13 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 	if err := srv.validateHosts(host); err != nil {
 		return err
 	}
-	// The caller authenticated to us (the signaler) before reaching this handler. Extract
-	// its identity (entity + auth metadata) from its token and forward only that to the
-	// answerer, not the raw bearer token. Best-effort: an unauthenticated caller has no token.
-	callerToken, _ := TokenFromContext(ctx) //nolint:errcheck
+	// The caller authenticated to us (the signaler) before reaching this handler, so the
+	// auth interceptor already placed its identity on the context. Forward only that identity
+	// (entity + auth metadata) to the answerer, never the caller's bearer token.
 	var callerAuthEntity string
 	var callerAuthMetadata map[string]string
-	if claims, parseErr := claimsFromAuthToken(callerToken); parseErr != nil {
-		srv.logger.Warnw("failed to parse caller auth token; forwarding no caller identity", "error", parseErr)
-	} else if claims != nil {
-		callerAuthEntity, callerAuthMetadata = claims.Entity(), claims.Metadata()
+	if entity, ok := ContextAuthEntity(ctx); ok {
+		callerAuthEntity, callerAuthMetadata = entity.Entity, entity.AuthMetadata
 	}
 	uuid, respCh, respDone, sendCancel, err := srv.callQueue.SendOfferInit(
 		ctx, host, req.GetSdp(), req.GetDisableTrickle(), callerAuthEntity, callerAuthMetadata)
@@ -588,20 +584,4 @@ func (srv *WebRTCSignalingServer) OptionalWebRTCConfig(
 // Close cancels all active workers and waits to cleanly close all background workers.
 func (srv *WebRTCSignalingServer) Close() {
 	srv.bgWorkers.Stop()
-}
-
-// claimsFromAuthToken parses the (already signaler-verified) bearer token into its
-// claims. Parsing is unverified because we trust the signaler that forwarded the token.
-// It returns (nil, nil) for an empty token (an unauthenticated caller) and (nil, err)
-// for a non-empty but unparseable token, so the caller can surface that we were handed
-// garbage.
-func claimsFromAuthToken(token string) (*JWTClaims, error) {
-	if token == "" {
-		return nil, nil //nolint:nilnil
-	}
-	var claims JWTClaims
-	if _, _, err := jwt.NewParser().ParseUnverified(token, &claims); err != nil {
-		return nil, err
-	}
-	return &claims, nil
 }
