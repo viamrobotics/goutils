@@ -131,6 +131,14 @@ message AnswerRequestInitStage {
 	string sdp = 1;
 	WebRTCConfig optional_config = 2;
 	optional google.protobuf.Timestamp deadline = 3;
+	// caller_auth_entity is the caller's authenticated entity (its JWT subject), extracted
+	// from the caller's auth token by the signaling server. Only the caller's identity is
+	// forwarded to the answerer, not its bearer token. Empty when the caller was
+	// unauthenticated.
+	string caller_auth_entity = 4;
+	// caller_auth_metadata is the caller's auth metadata (its rpc_auth_md claim), extracted
+	// from the caller's auth token by the signaling server.
+	map<string, string> caller_auth_metadata = 5;
 }
 
 // AnswerRequestUpdateStage is multiply used to trickle in ICE candidates to

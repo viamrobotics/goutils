@@ -665,7 +665,7 @@ func TestClientStreamCancel(t *testing.T) {
 		},
 	}, nil)
 
-	serverCh := newWebRTCServerChannel(server, pc2, dc2, nil, logger)
+	serverCh := newWebRTCServerChannel(server, pc2, dc2, nil, "", nil, logger)
 	defer serverCh.Close()
 
 	<-clientCh.Ready()

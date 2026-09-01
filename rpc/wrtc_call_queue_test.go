@@ -21,7 +21,7 @@ func testWebRTCCallQueue(t *testing.T, setupQueues func(t *testing.T) (WebRTCCal
 		defer undo()
 
 		host := primitive.NewObjectID().Hex()
-		_, _, ansCtx, _, err := callerQueue.SendOfferInit(context.Background(), host, "somesdp", false)
+		_, _, ansCtx, _, err := callerQueue.SendOfferInit(context.Background(), host, "somesdp", false, "", nil)
 
 		// NOTE(danielbotros): This is a little bit ugly but in memory queues are only used for internal signaling to localhosts,
 		// so there isn't a concept of attempting to connect to an offline host.
@@ -82,7 +82,7 @@ func testWebRTCCallQueue(t *testing.T, setupQueues func(t *testing.T) (WebRTCCal
 		}()
 		waitForAnswererOnline(context.Background(), t, []string{host}, answererQueue)
 
-		newUUID, answers, answersDone, cancel, err := callerQueue.SendOfferInit(context.Background(), host, "hello", false)
+		newUUID, answers, answersDone, cancel, err := callerQueue.SendOfferInit(context.Background(), host, "hello", false, "", nil)
 		defer cancel()
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, newUUID, test.ShouldNotBeEmpty)
@@ -152,7 +152,7 @@ func testWebRTCCallQueue(t *testing.T, setupQueues func(t *testing.T) (WebRTCCal
 		}()
 		waitForAnswererOnline(context.Background(), t, []string{host}, answererQueue)
 
-		newUUID, answers, answersDone, cancel, err := callerQueue.SendOfferInit(context.Background(), host, "hello", false)
+		newUUID, answers, answersDone, cancel, err := callerQueue.SendOfferInit(context.Background(), host, "hello", false, "", nil)
 		defer cancel()
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, newUUID, test.ShouldNotBeEmpty)
@@ -201,7 +201,7 @@ func testWebRTCCallQueue(t *testing.T, setupQueues func(t *testing.T) (WebRTCCal
 		}()
 		waitForAnswererOnline(context.Background(), t, []string{host}, answererQueue)
 
-		newUUID, _, answersDone, cancel, err := callerQueue.SendOfferInit(context.Background(), host, "hello", false)
+		newUUID, _, answersDone, cancel, err := callerQueue.SendOfferInit(context.Background(), host, "hello", false, "", nil)
 		cancel()
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, newUUID, test.ShouldNotBeEmpty)
@@ -242,7 +242,7 @@ func testWebRTCCallQueue(t *testing.T, setupQueues func(t *testing.T) (WebRTCCal
 				}()
 				waitForAnswererOnline(context.Background(), t, []string{host}, answererQueue)
 
-				newUUID, answers, answersDone, cancel, err := callerQueue.SendOfferInit(context.Background(), host, "hello", false)
+				newUUID, answers, answersDone, cancel, err := callerQueue.SendOfferInit(context.Background(), host, "hello", false, "", nil)
 				defer cancel()
 				test.That(t, err, test.ShouldBeNil)
 				test.That(t, newUUID, test.ShouldNotBeEmpty)
@@ -280,7 +280,7 @@ func testWebRTCCallQueue(t *testing.T, setupQueues func(t *testing.T) (WebRTCCal
 		}()
 		waitForAnswererOnline(context.Background(), t, []string{host}, answererQueue)
 
-		newUUID, answers, answersDone, cancel, err := callerQueue.SendOfferInit(context.Background(), host, "hello", false)
+		newUUID, answers, answersDone, cancel, err := callerQueue.SendOfferInit(context.Background(), host, "hello", false, "", nil)
 		defer cancel()
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, newUUID, test.ShouldNotBeEmpty)
@@ -323,7 +323,7 @@ func testWebRTCCallQueue(t *testing.T, setupQueues func(t *testing.T) (WebRTCCal
 
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		_, _, ansCtx, _, err := callerQueue.SendOfferInit(ctx, host, "hello", false)
+		_, _, ansCtx, _, err := callerQueue.SendOfferInit(ctx, host, "hello", false, "", nil)
 		test.That(t, err, test.ShouldBeNil)
 		<-ansCtx
 		recvErr := <-recvErrCh

@@ -194,7 +194,16 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 	if err := srv.validateHosts(host); err != nil {
 		return err
 	}
-	uuid, respCh, respDone, sendCancel, err := srv.callQueue.SendOfferInit(ctx, host, req.GetSdp(), req.GetDisableTrickle())
+	// The caller authenticated to us (the signaler) before reaching this handler, so the
+	// auth interceptor already placed its identity on the context. Forward only that identity
+	// (entity + auth metadata) to the answerer, never the caller's bearer token.
+	var callerAuthEntity string
+	var callerAuthMetadata map[string]string
+	if entity, ok := ContextAuthEntity(ctx); ok {
+		callerAuthEntity, callerAuthMetadata = entity.Entity, entity.AuthMetadata
+	}
+	uuid, respCh, respDone, sendCancel, err := srv.callQueue.SendOfferInit(
+		ctx, host, req.GetSdp(), req.GetDisableTrickle(), callerAuthEntity, callerAuthMetadata)
 	if err != nil {
 		return err
 	}
@@ -401,7 +410,9 @@ func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 					AdditionalIceServers: iceServers,
 					DisableTrickle:       offer.DisableTrickleICE(),
 				},
-				Deadline: timestamppb.New(offer.Deadline()),
+				Deadline:           timestamppb.New(offer.Deadline()),
+				CallerAuthEntity:   offer.CallerAuthEntity(),
+				CallerAuthMetadata: offer.CallerAuthMetadata(),
 			},
 		},
 	}); err != nil {

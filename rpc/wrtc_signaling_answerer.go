@@ -285,6 +285,8 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 				aa.trickleEnabled = false
 			}
 			aa.offerSDP = initStage.Init.GetSdp()
+			aa.callerAuthEntity = initStage.Init.GetCallerAuthEntity()
+			aa.callerAuthMetadata = initStage.Init.GetCallerAuthMetadata()
 
 			answerCtx, answerCtxCancel := getDeadline(ctx, ans.logger, initStage)
 			if err = aa.connect(answerCtx); err != nil {
@@ -325,8 +327,10 @@ type answerAttempt struct {
 	uuid   string
 	client webrtcpb.SignalingService_AnswerClient
 
-	trickleEnabled bool
-	offerSDP       string
+	trickleEnabled     bool
+	offerSDP           string
+	callerAuthEntity   string
+	callerAuthMetadata map[string]string
 
 	// When a connection attempt concludes, either with success or failure, we will fire a single
 	// message to the signaling server. This allows the signaling server to release resources
@@ -488,7 +492,7 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 	// `NewChannel` instantiates our webrtc wrapper around DataChannels. This includes callback
 	// handlers for transitioning to the open/closed/error states. As well as backpressure when the
 	// amount of data to send gets high.
-	serverChannel := aa.server.NewChannel(pc, dc, aa.hosts)
+	serverChannel := aa.server.NewChannel(pc, dc, aa.hosts, aa.callerAuthEntity, aa.callerAuthMetadata)
 
 	initSent := make(chan struct{})
 	if aa.trickleEnabled {

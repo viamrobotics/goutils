@@ -396,6 +396,8 @@ type mongodbWebRTCCall struct {
 	Host               string                `bson:"host"`
 	StartedAt          time.Time             `bson:"started_at"`
 	CallerSDP          string                `bson:"caller_sdp"`
+	CallerAuthEntity   string                `bson:"caller_auth_entity,omitempty"`
+	CallerAuthMetadata map[string]string     `bson:"caller_auth_metadata,omitempty"`
 	CallerCandidates   []mongodbICECandidate `bson:"caller_candidates,omitempty"`
 	CallerDone         bool                  `bson:"caller_done"`
 	CallerError        string                `bson:"caller_error,omitempty"`
@@ -1181,6 +1183,8 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 	ctx context.Context,
 	host, sdp string,
 	disableTrickle bool,
+	callerAuthEntity string,
+	callerAuthMetadata map[string]string,
 ) (string, <-chan WebRTCCallAnswer, <-chan struct{}, func(), error) {
 	ctx, span := trace.StartSpan(ctx, "CallQueue::SendOfferInit")
 	defer span.End()
@@ -1249,12 +1253,14 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 
 	newUUID := uuid.NewString()
 	call := mongodbWebRTCCall{
-		ID:               newUUID,
-		CallerOperatorID: queue.operatorID,
-		Host:             host,
-		CallerSDP:        sdp,
-		SDKType:          sdkType,
-		OrganizationID:   organizationID,
+		ID:                 newUUID,
+		CallerOperatorID:   queue.operatorID,
+		Host:               host,
+		CallerSDP:          sdp,
+		CallerAuthEntity:   callerAuthEntity,
+		CallerAuthMetadata: callerAuthMetadata,
+		SDKType:            sdkType,
+		OrganizationID:     organizationID,
 	}
 	events, unsubscribe := queue.subscribeToCall(host, call.ID, "caller")
 
@@ -1853,6 +1859,14 @@ func (resp *mongoDBWebRTCCallOfferExchange) UUID() string {
 
 func (resp *mongoDBWebRTCCallOfferExchange) SDP() string {
 	return resp.call.CallerSDP
+}
+
+func (resp *mongoDBWebRTCCallOfferExchange) CallerAuthEntity() string {
+	return resp.call.CallerAuthEntity
+}
+
+func (resp *mongoDBWebRTCCallOfferExchange) CallerAuthMetadata() map[string]string {
+	return resp.call.CallerAuthMetadata
 }
 
 func (resp *mongoDBWebRTCCallOfferExchange) DisableTrickleICE() bool {
