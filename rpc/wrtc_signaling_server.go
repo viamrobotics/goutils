@@ -203,7 +203,7 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 		callerAuthEntity, callerAuthMetadata = entity.Entity, entity.AuthMetadata
 
 		// Auth metadata (app user ID, email) should be in the JWT token, but the
-		// internalForeverJWT used by the machine page has no metadata. Hackily pull it off
+		// internalForeverJWT used by the machine page has no metadata. Pull it off
 		// `entity.Data`.
 		if callerAuthMetadata == nil {
 			if provider, ok := entity.Data.(interface{ CreateMetadata() map[string]string }); ok {
