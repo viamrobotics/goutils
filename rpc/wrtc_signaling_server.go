@@ -201,6 +201,15 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 	var callerAuthMetadata map[string]string
 	if entity, ok := ContextAuthEntity(ctx); ok {
 		callerAuthEntity, callerAuthMetadata = entity.Entity, entity.AuthMetadata
+
+		// Auth metadata (app user ID, email) should be in the JWT token, but the
+		// internalForeverJWT used by the machine page has no metadata. Hackily pull it off
+		// `entity.Data`.
+		if callerAuthMetadata == nil {
+			if provider, ok := entity.Data.(interface{ CreateMetadata() map[string]string }); ok {
+				callerAuthMetadata = provider.CreateMetadata()
+			}
+		}
 	}
 	uuid, respCh, respDone, sendCancel, err := srv.callQueue.SendOfferInit(
 		ctx, host, req.GetSdp(), req.GetDisableTrickle(), callerAuthEntity, callerAuthMetadata)
