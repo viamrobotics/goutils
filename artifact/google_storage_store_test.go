@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"cloud.google.com/go/auth/credentials"
 	"cloud.google.com/go/iam"
 	iampb "cloud.google.com/go/iam/apiv1/iampb"
 	"cloud.google.com/go/storage"
@@ -51,9 +52,20 @@ func TestNewGoogleStorageStore(t *testing.T) {
 	test.That(t, ok, test.ShouldBeTrue)
 
 	httpTransport := &http.Transport{}
+	authCreds, err := credentials.NewCredentialsFromFile(
+		credentials.ServiceAccount,
+		credsPath,
+		&credentials.DetectOptions{
+			Scopes: []string{storage.ScopeFullControl},
+			Client: &http.Client{Transport: httpTransport},
+		})
+	test.That(t, err, test.ShouldBeNil)
+
 	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: httpTransport})
 	gcpTransport, err := gcphttp.NewTransport(
-		ctx, httpTransport, option.WithCredentialsFile(credsPath), option.WithScopes(storage.ScopeFullControl))
+		ctx, httpTransport,
+		option.WithAuthCredentials(authCreds),
+		option.WithScopes(storage.ScopeFullControl))
 	test.That(t, err, test.ShouldBeNil)
 
 	client, err := storage.NewClient(context.Background(), option.WithHTTPClient(&http.Client{Transport: gcpTransport}))

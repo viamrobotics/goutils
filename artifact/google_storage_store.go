@@ -7,6 +7,7 @@ import (
 	"os"
 	"sync"
 
+	"cloud.google.com/go/auth/credentials"
 	"cloud.google.com/go/storage"
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
@@ -48,15 +49,30 @@ func newGoogleStorageStore(config *GoogleStorageStoreConfig) (*googleStorageStor
 		return nil, errors.New("bucket required")
 	}
 
+	var httpTransport http.Transport
+
 	var opts []option.ClientOption
 	credsPath := getGoogleCredsPath()
 	if credsPath == "" {
 		opts = append(opts, option.WithoutAuthentication())
 	} else {
-		opts = append(opts, option.WithCredentialsFile(credsPath), option.WithScopes(storage.ScopeFullControl))
+		// Artifact credentials are always service account JSON keys, so load them as that
+		// type rather than through a type-agnostic loader that would accept any credential
+		// configuration found at this path. Client must be our own transport: the auth
+		// library otherwise fetches tokens over a connection Close cannot reach, leaking it.
+		creds, err := credentials.NewCredentialsFromFile(
+			credentials.ServiceAccount,
+			credsPath,
+			&credentials.DetectOptions{
+				Scopes: []string{storage.ScopeFullControl},
+				Client: &http.Client{Transport: &httpTransport},
+			})
+		if err != nil {
+			return nil, err
+		}
+		opts = append(opts, option.WithAuthCredentials(creds), option.WithScopes(storage.ScopeFullControl))
 	}
-	var httpTransport http.Transport
-	var err error
+
 	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: &httpTransport})
 	gcpTransport, err := gcphttp.NewTransport(ctx, &httpTransport, opts...)
 	if err != nil {
