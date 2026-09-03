@@ -429,9 +429,22 @@ func (ss *simpleServer) ensureAuthed(ctx context.Context) (context.Context, erro
 		entityData = data
 	}
 
+	// Auth metadata (e.g. app user id, email) normally rides in the JWT's rpc_auth_md
+	// claim, but some tokens (such as the machine page's metadata-less internal token)
+	// carry none even though the server-verified entity data still knows the caller's
+	// identity. Fall back to metadata the entity data can supply so every downstream
+	// consumer (e.g. WebRTC signaling forwarding a caller's identity to an answerer)
+	// reads it off EntityInfo.AuthMetadata like any other.
+	authMetadata := claims.Metadata()
+	if len(authMetadata) == 0 {
+		if provider, ok := entityData.(interface{ CreateMetadata() map[string]string }); ok {
+			authMetadata = provider.CreateMetadata()
+		}
+	}
+
 	return ContextWithAuthEntity(ctx, EntityInfo{
 		Entity:       claimsEntity,
 		Data:         entityData,
-		AuthMetadata: claims.Metadata(),
+		AuthMetadata: authMetadata,
 	}), nil
 }
