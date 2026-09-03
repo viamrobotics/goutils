@@ -53,7 +53,11 @@ func newGoogleStorageStore(config *GoogleStorageStoreConfig) (*googleStorageStor
 	if credsPath == "" {
 		opts = append(opts, option.WithoutAuthentication())
 	} else {
-		opts = append(opts, option.WithCredentialsFile(credsPath), option.WithScopes(storage.ScopeFullControl))
+		// Artifact credentials are always service account JSON keys; naming the type lets the
+		// auth library reject any other credential configuration found at this path.
+		opts = append(opts,
+			option.WithAuthCredentialsFile(option.ServiceAccount, credsPath),
+			option.WithScopes(storage.ScopeFullControl))
 	}
 	var httpTransport http.Transport
 	var err error

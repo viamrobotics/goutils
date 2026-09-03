@@ -53,7 +53,9 @@ func TestNewGoogleStorageStore(t *testing.T) {
 	httpTransport := &http.Transport{}
 	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: httpTransport})
 	gcpTransport, err := gcphttp.NewTransport(
-		ctx, httpTransport, option.WithCredentialsFile(credsPath), option.WithScopes(storage.ScopeFullControl))
+		ctx, httpTransport,
+		option.WithAuthCredentialsFile(option.ServiceAccount, credsPath),
+		option.WithScopes(storage.ScopeFullControl))
 	test.That(t, err, test.ShouldBeNil)
 
 	client, err := storage.NewClient(context.Background(), option.WithHTTPClient(&http.Client{Transport: gcpTransport}))
