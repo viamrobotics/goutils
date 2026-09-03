@@ -58,6 +58,7 @@ require (
 require go.viam.com/api v0.1.493
 
 require (
+	cloud.google.com/go/auth v0.18.2
 	contrib.go.opencensus.io/exporter/jaeger v0.2.1
 	contrib.go.opencensus.io/exporter/ocagent v0.7.0
 	github.com/caarlos0/env/v11 v11.4.0
@@ -70,7 +71,6 @@ require (
 require (
 	cel.dev/expr v0.25.2 // indirect
 	cloud.google.com/go v0.121.6 // indirect
-	cloud.google.com/go/auth v0.18.2 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
 	cloud.google.com/go/container v1.45.0 // indirect
 	cloud.google.com/go/monitoring v1.24.3 // indirect
