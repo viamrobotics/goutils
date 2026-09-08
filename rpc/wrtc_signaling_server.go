@@ -197,15 +197,14 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 	// If the caller authenticated to us (the signaler) before reaching this handler, then the
 	// auth interceptor already placed its identity on the context. Forward only that identity
 	// (entity + auth metadata) to the answerer, never the caller's bearer token.
-	// TODO: we have to handle the case where caller auth failed, in which
-	// case there will be no identity to forward
+
 	var callerAuthEntity string
 	var callerAuthMetadata map[string]string
 	entity, callerAuthed := ContextAuthEntity(ctx)
 	if callerAuthed {
 		callerAuthEntity, callerAuthMetadata = entity.Entity, entity.AuthMetadata
 	}
-	// if caller auth fails, we can continue with the answerer-authentication path
+	// APP-9061 if caller auth fails, we can continue with the answerer-authentication path
 	// but we need to warn the answerer
 	mustAuthCaller := !callerAuthed
 	uuid, respCh, respDone, sendCancel, err := srv.callQueue.SendOfferInit(
