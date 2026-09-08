@@ -194,16 +194,22 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 	if err := srv.validateHosts(host); err != nil {
 		return err
 	}
-	// The caller authenticated to us (the signaler) before reaching this handler, so the
+	// If the caller authenticated to us (the signaler) before reaching this handler, then the
 	// auth interceptor already placed its identity on the context. Forward only that identity
 	// (entity + auth metadata) to the answerer, never the caller's bearer token.
+	// TODO: we have to handle the case where caller auth failed, in which
+	// case there will be no identity to forward
 	var callerAuthEntity string
 	var callerAuthMetadata map[string]string
-	if entity, ok := ContextAuthEntity(ctx); ok {
+	entity, callerAuthed := ContextAuthEntity(ctx)
+	if callerAuthed {
 		callerAuthEntity, callerAuthMetadata = entity.Entity, entity.AuthMetadata
 	}
+	// if caller auth fails, we can continue with the answerer-authentication path
+	// but we need to warn the answerer
+	mustAuthCaller := !callerAuthed
 	uuid, respCh, respDone, sendCancel, err := srv.callQueue.SendOfferInit(
-		ctx, host, req.GetSdp(), req.GetDisableTrickle(), callerAuthEntity, callerAuthMetadata)
+		ctx, host, req.GetSdp(), req.GetDisableTrickle(), callerAuthEntity, callerAuthMetadata, mustAuthCaller)
 	if err != nil {
 		return err
 	}
@@ -413,6 +419,7 @@ func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 				Deadline:           timestamppb.New(offer.Deadline()),
 				CallerAuthEntity:   offer.CallerAuthEntity(),
 				CallerAuthMetadata: offer.CallerAuthMetadata(),
+				MustAuthCaller:     offer.MustAuthCaller(),
 			},
 		},
 	}); err != nil {
