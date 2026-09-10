@@ -172,8 +172,8 @@ func (ch *webrtcServerChannel) onChannelMessage(msg webrtc.DataChannelMessage) {
 		}
 		ch.mu.Lock()
 		ch.entityInfo = callerEntity
-		ch.mu.Unlock()
 		ch.callerAuthed = true
+		ch.mu.Unlock()
 		return
 	}
 	if _, isToken := req.GetType().(*webrtcpb.Request_ApiToken); isToken {
