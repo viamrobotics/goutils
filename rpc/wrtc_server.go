@@ -32,6 +32,10 @@ type webrtcServer struct {
 	unaryInt          grpc.UnaryServerInterceptor
 	streamInt         grpc.StreamServerInterceptor
 	unknownStreamDesc *grpc.StreamDesc
+
+	// apiKeyAuthHandler verifies a caller's api_token when the signaler could not authenticate
+	// the caller. Nil when the server has no API key auth handler.
+	apiKeyAuthHandler AuthHandler
 	statsHandler      stats.Handler
 
 	counters struct {
