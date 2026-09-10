@@ -139,6 +139,10 @@ message AnswerRequestInitStage {
 	// caller_auth_metadata is the caller's auth metadata (its rpc_auth_md claim), extracted
 	// from the caller's auth token by the signaling server.
 	map<string, string> caller_auth_metadata = 5;
+	// a warning from the signaling server that the signaling server
+	// could not auth the caller. if this flag is true, the answerer
+	// must auth the caller itself
+	bool must_auth_caller = 6;
 }
 
 // AnswerRequestUpdateStage is multiply used to trickle in ICE candidates to
