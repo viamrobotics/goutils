@@ -16,6 +16,7 @@ const (
 	ctxKeyAuthEntity
 	ctxKeyAuthClaims // all jwt claims
 	ctxKeyRequestTransport
+	ctxKeyUnauthenticatedCaller
 )
 
 // contextWithHost attaches a host name to the given context.
@@ -63,6 +64,19 @@ func ContextPeerConnection(ctx context.Context) (*webrtc.PeerConnection, bool) {
 // ContextWithAuthEntity attaches an entity (e.g. a user) for an authenticated context to the given context.
 func ContextWithAuthEntity(ctx context.Context, authEntity EntityInfo) context.Context {
 	return context.WithValue(ctx, ctxKeyAuthEntity, authEntity)
+}
+
+// contextWithUnauthenticatedCaller marks a context whose caller reached a public method
+// without credentials the server could verify.
+func contextWithUnauthenticatedCaller(ctx context.Context) context.Context {
+	return context.WithValue(ctx, ctxKeyUnauthenticatedCaller, true)
+}
+
+// unauthenticatedCallerFromCtx reports whether the auth interceptor let this caller through a
+// public method without authenticating it. False on a server that does no authentication.
+func unauthenticatedCallerFromCtx(ctx context.Context) bool {
+	v, ok := ctx.Value(ctxKeyUnauthenticatedCaller).(bool)
+	return ok && v
 }
 
 // ContextAuthEntity returns the entity (e.g. a user) associated with this authentication context.
