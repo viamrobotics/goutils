@@ -289,7 +289,7 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 			aa.callerAuthMetadata = initStage.Init.GetCallerAuthMetadata()
 			aa.mustAuthCaller = initStage.Init.GetMustAuthCaller()
 			if aa.mustAuthCaller {
-				ans.logger.Debugw("signaling server could not authenticate caller; answerer must authenticate it", "uuid", aa.uuid)
+				ans.logger.Debugw("caller is unauthenticated. robot must auth caller", "uuid", aa.uuid)
 			}
 
 			answerCtx, answerCtxCancel := getDeadline(ctx, ans.logger, initStage)
