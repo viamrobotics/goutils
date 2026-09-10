@@ -591,6 +591,8 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 		Stage: &webrtcpb.AnswerResponse_Init{
 			Init: &webrtcpb.AnswerResponseInitStage{
 				Sdp: encodedSDP,
+				// Advertise only when a token can be verified; see webrtcServerChannel.verifyAPIToken.
+				CanAuthCallers: aa.server.apiKeyAuthHandler != nil,
 			},
 		},
 	}); err != nil {
