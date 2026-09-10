@@ -29,6 +29,9 @@ message Request {
 		RequestHeaders headers = 2;
 		RequestMessage message = 3;
 		bool rst_stream = 4;
+		// api_token lets a client authenticate with the answerer over the PeerConnection when
+		// the signaling server could not authenticate it. In the form `<api-key-id>:<api-key>`.
+		string api_token = 5;
 	}
 }
 
