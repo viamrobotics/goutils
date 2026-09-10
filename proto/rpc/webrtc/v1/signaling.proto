@@ -79,6 +79,9 @@ message CallRequest {
 // the initial response to starting a call.
 message CallResponseInitStage {
 	string sdp = 1;
+	// must_auth_against_answerer tells the caller that the signaling server could not
+	// authenticate it, so it must authenticate with the answerer over the PeerConnection.
+	bool must_auth_against_answerer = 2;
 }
 
 // CallResponseUpdateStage is multiply used to trickle in ICE candidates from
@@ -187,6 +190,9 @@ message AnswerRequest {
 // answerers initial SDP response to the controlling side.
 message AnswerResponseInitStage {
 	string sdp = 1;
+	// can_auth_callers tells the signaling server that this answerer can authenticate
+	// callers itself, so it may receive callers the signaling server could not authenticate.
+	bool can_auth_callers = 2;
 }
 
 // AnswerResponseUpdateStage is multiply used to trickle in ICE candidates to
