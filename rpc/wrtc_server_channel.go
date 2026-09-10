@@ -24,8 +24,10 @@ type webrtcServerChannel struct {
 	// identity (or the coarse audience approximation when none was forwarded), since both
 	// inputs are fixed for the channel's lifetime.
 	entityInfo EntityInfo
-	server     *webrtcServer
-	streams    map[uint64]*webrtcServerStream
+	// mustAuthCaller is set when the signaler did not authenticate the caller.
+	mustAuthCaller bool
+	server         *webrtcServer
+	streams        map[uint64]*webrtcServerStream
 }
 
 // newWebRTCServerChannel wraps the given WebRTC data channel to be used as the server end
@@ -37,6 +39,7 @@ func newWebRTCServerChannel(
 	authAudience []string,
 	callerAuthEntity string,
 	callerAuthMetadata map[string]string,
+	mustAuthCaller bool,
 	logger utils.ZapCompatibleLogger,
 ) *webrtcServerChannel {
 	base := newBaseChannel(
@@ -61,6 +64,7 @@ func newWebRTCServerChannel(
 
 	ch := &webrtcServerChannel{
 		entityInfo:        entityInfo,
+		mustAuthCaller:    mustAuthCaller,
 		webrtcBaseChannel: base,
 		server:            server,
 		streams:           make(map[uint64]*webrtcServerStream),
