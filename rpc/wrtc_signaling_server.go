@@ -242,7 +242,8 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 				Uuid: uuid,
 				Stage: &webrtcpb.CallResponse_Init{
 					Init: &webrtcpb.CallResponseInitStage{
-						Sdp: *resp.InitialSDP,
+						Sdp:                     *resp.InitialSDP,
+						MustAuthAgainstAnswerer: mustAuthCaller,
 					},
 				},
 			}); err != nil {
