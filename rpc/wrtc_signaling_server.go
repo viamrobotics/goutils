@@ -202,8 +202,12 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 	if entity, ok := ContextAuthEntity(ctx); ok {
 		callerAuthEntity, callerAuthMetadata = entity.Entity, entity.AuthMetadata
 	}
+	// APP-9061: if the auth interceptor let this caller through a public Call without
+	// authenticating it, continue and warn the answerer that it must authenticate the
+	// caller. A server that does no authentication at all never sets this.
+	mustAuthCaller := unauthenticatedCallerFromCtx(ctx)
 	uuid, respCh, respDone, sendCancel, err := srv.callQueue.SendOfferInit(
-		ctx, host, req.GetSdp(), req.GetDisableTrickle(), callerAuthEntity, callerAuthMetadata,
+		ctx, host, req.GetSdp(), req.GetDisableTrickle(), callerAuthEntity, callerAuthMetadata, mustAuthCaller,
 	)
 	if err != nil {
 		return err
@@ -415,6 +419,7 @@ func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 				Deadline:           timestamppb.New(offer.Deadline()),
 				CallerAuthEntity:   offer.CallerAuthEntity(),
 				CallerAuthMetadata: offer.CallerAuthMetadata(),
+				MustAuthCaller:     offer.MustAuthCaller(),
 			},
 		},
 	}); err != nil {
