@@ -92,7 +92,9 @@ func toInterface(data interface{}, ignoreOmitEmpty bool) (interface{}, error) {
 
 	t := reflect.TypeOf(data)
 	v := reflect.ValueOf(data)
+	var isNilPtr bool
 	if t.Kind() == reflect.Ptr {
+		isNilPtr = v.IsNil()
 		t = t.Elem()
 		v = reflect.Indirect(v)
 	}
@@ -115,14 +117,33 @@ func toInterface(data interface{}, ignoreOmitEmpty bool) (interface{}, error) {
 		if err != nil {
 			return nil, err
 		}
-	case reflect.String:
-		newData = v.String()
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		newData = v.Uint()
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		newData = v.Int()
-	case reflect.Array, reflect.Bool, reflect.Chan, reflect.Complex128, reflect.Complex64, reflect.Float32,
-		reflect.Float64, reflect.Func, reflect.Interface, reflect.Invalid, reflect.Pointer,
+	case reflect.String,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Float64, reflect.Float32,
+		reflect.Bool:
+		if isNilPtr {
+			// Need to bail early if we have a nil pointer, otherwise the value
+			// getters will panic.
+			newData = nil
+			break
+		}
+		// We have a non-nil pointer to one of a handful of types that structpb
+		// supports in non-pointer form. Dereference it.
+		switch t.Kind() {
+		case reflect.String:
+			newData = v.String()
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			newData = v.Uint()
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			newData = v.Int()
+		case reflect.Float64, reflect.Float32:
+			newData = v.Float()
+		case reflect.Bool:
+			newData = v.Bool()
+		}
+	case reflect.Array, reflect.Chan, reflect.Func, reflect.Interface,
+		reflect.Complex64, reflect.Complex128, reflect.Invalid, reflect.Pointer,
 		reflect.Uintptr, reflect.UnsafePointer:
 		fallthrough
 	default:

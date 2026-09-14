@@ -137,6 +137,50 @@ var (
 			map[string]interface{}{"Errno": float64(errnoVal)}, // cast float64 because pb to map conversion supports double for nums
 			ErrnoStructReturn{},
 		},
+		{
+			"primitive pointers",
+			PrimitivePointersStruct{
+				String:  new("foo"),
+				Bool:    new(true),
+				Uint:    new(uint(1)),
+				Uint8:   new(uint8(2)),
+				Uint16:  new(uint16(3)),
+				Uint32:  new(uint32(4)),
+				Uint64:  new(uint64(5)),
+				Int:     new(int(6)),
+				Int8:    new(int8(7)),
+				Int16:   new(int16(8)),
+				Int32:   new(int32(9)),
+				Int64:   new(int64(10)),
+				Float64: new(float64(11)),
+				Float32: new(float32(12)),
+			},
+			map[string]any{
+				"String": "foo",
+				"Bool":   true,
+				// structpb represents a json object marshalled into a pb message so
+				// all numeric types get converted to float64
+				"Uint":    float64(1),
+				"Uint8":   float64(2),
+				"Uint16":  float64(3),
+				"Uint32":  float64(4),
+				"Uint64":  float64(5),
+				"Int":     float64(6),
+				"Int8":    float64(7),
+				"Int16":   float64(8),
+				"Int32":   float64(9),
+				"Int64":   float64(10),
+				"Float64": float64(11),
+				"Float32": float64(12),
+			},
+			PrimitivePointersStruct{},
+		},
+		{
+			"empty primitive pointers",
+			PrimitivePointersStruct{},
+			map[string]any{},
+			PrimitivePointersStruct{},
+		},
 	}
 )
 
@@ -167,6 +211,11 @@ func TestInterfaceToMap(t *testing.T) {
 			test.That(t, map1["UintValue"], test.ShouldEqual, 1)
 		case "struct with errno":
 			test.That(t, map1["Errno"], test.ShouldEqual, errnoVal)
+		case "primitive pointers":
+			for k, v := range map1 {
+				test.That(t, tc.Expected, test.ShouldContainKey, k)
+				test.That(t, v, test.ShouldResemble, v)
+			}
 		default:
 			test.That(t, map1, test.ShouldResemble, tc.Expected)
 		}
@@ -246,6 +295,11 @@ func TestStructToMap(t *testing.T) {
 			test.That(t, map1["UintValue"], test.ShouldEqual, 1)
 		case "struct with errno":
 			test.That(t, map1["Errno"], test.ShouldEqual, errnoVal)
+		case "primitive pointers":
+			for k, v := range map1 {
+				test.That(t, tc.Expected, test.ShouldContainKey, k)
+				test.That(t, v, test.ShouldResemble, v)
+			}
 		default:
 			test.That(t, map1, test.ShouldResemble, tc.Expected)
 		}
@@ -457,4 +511,21 @@ type ErrnoStruct struct {
 
 type ErrnoStructReturn struct {
 	Errno int
+}
+
+type PrimitivePointersStruct struct {
+	String  *string  `json:"String,omitempty"`
+	Uint    *uint    `json:"Uint,omitempty"`
+	Uint8   *uint8   `json:"Uint8,omitempty"`
+	Uint16  *uint16  `json:"Uint16,omitempty"`
+	Uint32  *uint32  `json:"Uint32,omitempty"`
+	Uint64  *uint64  `json:"Uint64,omitempty"`
+	Int     *int     `json:"Int,omitempty"`
+	Int8    *int8    `json:"Int8,omitempty"`
+	Int16   *int16   `json:"Int16,omitempty"`
+	Int32   *int32   `json:"Int32,omitempty"`
+	Int64   *int64   `json:"Int64,omitempty"`
+	Float64 *float64 `json:"Float64,omitempty"`
+	Float32 *float32 `json:"Float32,omitempty"`
+	Bool    *bool    `json:"Bool,omitempty"`
 }
