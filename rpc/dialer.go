@@ -487,10 +487,12 @@ func dialDirectGRPC(ctx context.Context, address string, dOpts dialOptions, logg
 		dialOpts = append(dialOpts, grpc.WithPerRPCCredentials(&staticPerRPCJWTCredentials{dOpts.authMaterial}))
 	} else if dOpts.creds.Type != "" || dOpts.externalAuthMaterial != "" {
 		rpcCreds = &perRPCJWTCredentials{
-			entity: dOpts.authEntity,
-			creds:  dOpts.creds,
-			debug:  dOpts.debug,
-			logger: logger,
+			entity:             dOpts.authEntity,
+			creds:              dOpts.creds,
+			debug:              dOpts.debug,
+			logger:             logger,
+			accessToken:        dOpts.initialAccessToken,
+			accessTokenHandler: dOpts.accessTokenHandler,
 			// Note: don't set dialOptsCopy.authMaterial below as perRPCJWTCredentials will know to use
 			// its externalAccessToken to authenticateTo. This will result in both a connection level authorization
 			// added as well as an authorization header added from perRPCJWTCredentials, resulting in a failure.
@@ -725,6 +727,8 @@ type perRPCJWTCredentials struct {
 	accessToken          string
 	// The static external auth material used against the AuthenticateTo request to obtain final accessToken
 	externalAuthMaterial string
+	// called with each access token obtained from the server
+	accessTokenHandler func(accessToken string)
 
 	debug  bool
 	logger utils.ZapCompatibleLogger
@@ -808,6 +812,9 @@ func (creds *perRPCJWTCredentials) authenticate(ctx context.Context) (string, er
 
 				accessToken = externalResp.GetAccessToken()
 				creds.accessToken = externalResp.GetAccessToken()
+			}
+			if creds.accessTokenHandler != nil {
+				creds.accessTokenHandler(accessToken)
 			}
 		}
 	}
