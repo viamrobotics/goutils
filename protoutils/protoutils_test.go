@@ -55,6 +55,10 @@ type structTest struct {
 	Return   interface{}
 }
 
+func mkptr[T any](val T) *T {
+	return &val
+}
+
 var (
 	errnoVal = syscall.ENOENT
 
@@ -140,20 +144,20 @@ var (
 		{
 			"primitive pointers",
 			PrimitivePointersStruct{
-				String:  new("foo"),
-				Bool:    new(true),
-				Uint:    new(uint(1)),
-				Uint8:   new(uint8(2)),
-				Uint16:  new(uint16(3)),
-				Uint32:  new(uint32(4)),
-				Uint64:  new(uint64(5)),
-				Int:     new(int(6)),
-				Int8:    new(int8(7)),
-				Int16:   new(int16(8)),
-				Int32:   new(int32(9)),
-				Int64:   new(int64(10)),
-				Float64: new(float64(11)),
-				Float32: new(float32(12)),
+				String:  mkptr("foo"),
+				Bool:    mkptr(true),
+				Uint:    mkptr(uint(1)),
+				Uint8:   mkptr(uint8(2)),
+				Uint16:  mkptr(uint16(3)),
+				Uint32:  mkptr(uint32(4)),
+				Uint64:  mkptr(uint64(5)),
+				Int:     mkptr(int(6)),
+				Int8:    mkptr(int8(7)),
+				Int16:   mkptr(int16(8)),
+				Int32:   mkptr(int32(9)),
+				Int64:   mkptr(int64(10)),
+				Float64: mkptr(float64(11)),
+				Float32: mkptr(float32(12)),
 			},
 			map[string]any{
 				"String": "foo",
