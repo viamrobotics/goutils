@@ -622,3 +622,80 @@ func TestInvalidAuth(t *testing.T) {
 	test.That(t, timesAuthed, test.ShouldEqual, 2)
 	test.That(t, timesAuthEnsured, test.ShouldEqual, 2)
 }
+
+func TestInitialAccessToken(t *testing.T) {
+	logger := golog.NewTestLogger(t)
+	rpcServer, err := NewServer(
+		logger,
+		WithAuthHandler(CredentialsTypeAPIKey, MakeSimpleAuthHandler([]string{"foo"}, "bar")),
+	)
+	test.That(t, err, test.ShouldBeNil)
+
+	err = rpcServer.RegisterServiceServer(
+		context.Background(),
+		&pb.EchoService_ServiceDesc,
+		&echoserver.Server{},
+		pb.RegisterEchoServiceHandlerFromEndpoint,
+	)
+	test.That(t, err, test.ShouldBeNil)
+
+	httpListener, err := net.Listen("tcp", "localhost:0")
+	test.That(t, err, test.ShouldBeNil)
+
+	errChan := make(chan error)
+	go func() {
+		errChan <- rpcServer.Serve(httpListener)
+	}()
+
+	var seen []string
+	dial := func(extra ...DialOption) ClientConn {
+		seen = nil
+		opts := []DialOption{
+			WithInsecure(),
+			WithDialDebug(),
+			WithEntityCredentials("foo", Credentials{Type: CredentialsTypeAPIKey, Payload: "bar"}),
+			WithAccessTokenHandler(func(accessToken string) { seen = append(seen, accessToken) }),
+		}
+		conn, err := DialDirectGRPC(context.Background(), httpListener.Addr().String(), logger, append(opts, extra...)...)
+		test.That(t, err, test.ShouldBeNil)
+		return conn
+	}
+
+	// no seed: the first RPC authenticates and the handler reports the token
+	conn := dial()
+	_, err = pb.NewEchoServiceClient(conn).Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, len(seen), test.ShouldEqual, 1)
+	accessToken := seen[0]
+	test.That(t, accessToken, test.ShouldNotBeEmpty)
+	test.That(t, conn.Close(), test.ShouldBeNil)
+
+	// valid seed: RPCs use it, no Authenticate call happens, and the conn stays re-authenticable
+	conn = dial(WithInitialAccessToken(accessToken))
+	_, ok := conn.(ClientConnAuthenticator)
+	test.That(t, ok, test.ShouldBeTrue)
+	_, err = pb.NewEchoServiceClient(conn).Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, seen, test.ShouldBeEmpty)
+	test.That(t, conn.Close(), test.ShouldBeNil)
+
+	// rejected seed: the first RPC fails, then the next RPC re-authenticates with the credentials
+	conn = dial(WithInitialAccessToken(accessToken + "ah"))
+	_, err = pb.NewEchoServiceClient(conn).Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
+	gStatus, ok := status.FromError(err)
+	test.That(t, ok, test.ShouldBeTrue)
+	test.That(t, gStatus.Code(), test.ShouldEqual, codes.Unauthenticated)
+	test.That(t, seen, test.ShouldBeEmpty)
+
+	echoResp, err := pb.NewEchoServiceClient(conn).Echo(context.Background(), &pb.EchoRequest{Message: "hello"})
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, echoResp.GetMessage(), test.ShouldEqual, "hello")
+	test.That(t, len(seen), test.ShouldEqual, 1)
+	test.That(t, seen[0], test.ShouldNotBeEmpty)
+	test.That(t, seen[0], test.ShouldNotEqual, accessToken+"ah")
+	test.That(t, conn.Close(), test.ShouldBeNil)
+
+	test.That(t, rpcServer.Stop(), test.ShouldBeNil)
+	err = <-errChan
+	test.That(t, err, test.ShouldBeNil)
+}
