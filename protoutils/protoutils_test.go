@@ -372,6 +372,36 @@ func TestToInterfaceWeirdBugUint(t *testing.T) {
 	test.That(t, x, test.ShouldEqual, a)
 }
 
+// Regression: pointer-to-float and pointer-to-bool used to be handed through
+// to structpb.NewStruct raw, which rejected them with
+// "proto: invalid type: *float64". Match the existing int/uint/string cases.
+func TestToInterfacePointerScalars(t *testing.T) {
+	f := 3.14
+	x, err := toInterface(&f, ignoreOmitEmpty)
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, x, test.ShouldEqual, f)
+
+	b := true
+	x, err = toInterface(&b, ignoreOmitEmpty)
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, x, test.ShouldEqual, b)
+}
+
+type pointerScalarStruct struct {
+	V *float64 `json:"v"`
+	B *bool    `json:"b"`
+}
+
+func TestStructToStructPbWithPointerFloatAndBool(t *testing.T) {
+	v := 3.14
+	b := true
+	pb, err := StructToStructPb(pointerScalarStruct{V: &v, B: &b})
+	test.That(t, err, test.ShouldBeNil)
+	m := pb.AsMap()
+	test.That(t, m["v"], test.ShouldEqual, 3.14)
+	test.That(t, m["b"], test.ShouldEqual, true)
+}
+
 func TestToInterfaceWeirdBugUint8(t *testing.T) {
 	a := uint8(5)
 	x, err := toInterface(a, ignoreOmitEmpty)

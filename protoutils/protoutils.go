@@ -121,8 +121,12 @@ func toInterface(data interface{}, ignoreOmitEmpty bool) (interface{}, error) {
 		newData = v.Uint()
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		newData = v.Int()
-	case reflect.Array, reflect.Bool, reflect.Chan, reflect.Complex128, reflect.Complex64, reflect.Float32,
-		reflect.Float64, reflect.Func, reflect.Interface, reflect.Invalid, reflect.Pointer,
+	case reflect.Float32, reflect.Float64:
+		newData = v.Float()
+	case reflect.Bool:
+		newData = v.Bool()
+	case reflect.Array, reflect.Chan, reflect.Complex128, reflect.Complex64,
+		reflect.Func, reflect.Interface, reflect.Invalid, reflect.Pointer,
 		reflect.Uintptr, reflect.UnsafePointer:
 		fallthrough
 	default:
