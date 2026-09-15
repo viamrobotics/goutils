@@ -473,7 +473,11 @@ type mongodbCallEvent struct {
 
 const (
 	operatorStateUpdateInterval = time.Second
-	operatorHeartbeatWindow     = time.Second * 15
+	// The operator document is refreshed every tick because callers read it to route calls. The
+	// liveness callback is far more expensive, so it runs at a lower rate; whoever implements it
+	// must tolerate this much staleness.
+	operatorLivenessCallbackInterval = time.Second * 2
+	operatorHeartbeatWindow          = time.Second * 15
 )
 
 // The operatorLivenessLoop keeps the distributed queue aware of this operator's existence, in
@@ -482,6 +486,7 @@ const (
 func (queue *mongoDBWebRTCCallQueue) operatorLivenessLoop() {
 	ticker := time.NewTicker(operatorStateUpdateInterval)
 	defer ticker.Stop()
+	var lastLivenessCallback time.Time
 	for {
 		if !utils.SelectContextOrWaitChan(queue.cancelCtx, ticker.C) {
 			return
@@ -585,8 +590,21 @@ func (queue *mongoDBWebRTCCallQueue) operatorLivenessLoop() {
 			)
 		}
 
-		if queue.onAnswererLiveness != nil {
-			queue.onAnswererLiveness(hostsWithAnswerers, time.Now())
+		// Start-to-start, so a callback slower than its interval runs again on the next tick
+		// rather than accumulating debt. The half-tick slack absorbs variance in the update
+		// above, which lands in the elapsed time: an exact comparison would slip the callback
+		// a full tick whenever this tick's update ran faster than the one that set the timestamp.
+		now := time.Now()
+		if queue.onAnswererLiveness != nil &&
+			now.Sub(lastLivenessCallback) >= operatorLivenessCallbackInterval-operatorStateUpdateInterval/2 {
+			lastLivenessCallback = now
+			queue.onAnswererLiveness(hostsWithAnswerers, now)
+			if time.Since(now) > 3*time.Second {
+				queue.logger.Infow(
+					"onAnswererLiveness callback took a long time",
+					"time_elapsed", time.Since(now).String(),
+				)
+			}
 		}
 	}
 }
