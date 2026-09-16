@@ -48,6 +48,11 @@ type dialOptions struct {
 	// static auth material used when directly connecting to the endpoint. If set all externalAuth options are ignored.
 	authMaterial string
 
+	// initialAccessToken seeds the per-RPC credentials so the first RPC can skip Authenticate.
+	initialAccessToken string
+	// accessTokenHandler is called with each access token obtained by the per-RPC credentials.
+	accessTokenHandler func(accessToken string)
+
 	// debug is helpful to turn on when the library isn't working quite right.
 	// It will output much more logs.
 	debug bool
@@ -168,6 +173,25 @@ func WithStaticAuthenticationMaterial(authMaterial string) DialOption {
 		o.authEntity = ""
 		o.creds = Credentials{}
 		o.authMaterial = authMaterial
+	})
+}
+
+// WithInitialAccessToken returns a DialOption which seeds the per-RPC credentials with a previously
+// obtained access token. Unlike WithStaticAuthenticationMaterial, credentials are still required and
+// the connection re-authenticates with them if the server rejects the token. Ignored without credentials.
+func WithInitialAccessToken(accessToken string) DialOption {
+	return newFuncDialOption(func(o *dialOptions) {
+		o.initialAccessToken = accessToken
+	})
+}
+
+// WithAccessTokenHandler returns a DialOption which sets a handler that is called each time new per-RPC
+// credentials are obtained from the server. The token is already stored when the handler runs, so the
+// handler cannot affect authentication and must report its own errors. It runs while the credentials are
+// locked, so it must return promptly and must not make RPCs on the connection. Ignored without credentials.
+func WithAccessTokenHandler(handler func(accessToken string)) DialOption {
+	return newFuncDialOption(func(o *dialOptions) {
+		o.accessTokenHandler = handler
 	})
 }
 
