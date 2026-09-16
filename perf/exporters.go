@@ -18,6 +18,23 @@ const (
 	envVarStackDriverProjectID = "STACKDRIVER_PROJECT_ID"
 )
 
+// cloudInstanceID returns the value for the monitored resource's instance_id label.
+// GCP_INSTANCE_ID takes precedence, which allows for local testing. On Kubernetes the
+// metadata server reports the node VM's ID, which every pod on that node shares, so the
+// pod name is used instead. Everywhere else the metadata server identifies the instance
+// on its own.
+func cloudInstanceID(ctx context.Context) (string, error) {
+	if instanceID := os.Getenv("GCP_INSTANCE_ID"); instanceID != "" {
+		return instanceID, nil
+	}
+
+	if os.Getenv("KUBERNETES_SERVICE_HOST") != "" {
+		return os.Hostname()
+	}
+
+	return metadata.InstanceIDWithContext(ctx)
+}
+
 // Exporter wrapper around Trace and Metric exporter for OpenCensus.
 type Exporter interface {
 	// Start will start the exporting of metrics and return any errors if failed to start.
@@ -96,13 +113,9 @@ func NewCloudExporter(opts CloudOptions) (Exporter, error) {
 			}
 		}
 
-		// Allow for local testing with GCP_INSTANCE_ID
-		instanceID := os.Getenv("GCP_INSTANCE_ID")
-		if instanceID == "" {
-			// Get from GCP Metadata
-			if instanceID, err = metadata.InstanceIDWithContext(sdOpts.Context); err != nil {
-				return nil, err
-			}
+		instanceID, err := cloudInstanceID(sdOpts.Context)
+		if err != nil {
+			return nil, err
 		}
 
 		// We're using GAE resource even though we're running on Cloud Run. GCP only allows

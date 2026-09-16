@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"sync"
 	"testing"
 
@@ -184,4 +185,29 @@ func TestTimingReport(t *testing.T) {
 
 	test.That(t, wd.paths[3].spanChain, test.ShouldResemble, []string{"A", "C"})
 	test.That(t, wd.paths[3].count, test.ShouldEqual, 1)
+}
+
+func TestCloudInstanceID(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("GCP_INSTANCE_ID takes precedence", func(t *testing.T) {
+		t.Setenv("GCP_INSTANCE_ID", "my-instance")
+		t.Setenv("KUBERNETES_SERVICE_HOST", "10.0.0.1")
+
+		instanceID, err := cloudInstanceID(ctx)
+		test.That(t, err, test.ShouldBeNil)
+		test.That(t, instanceID, test.ShouldEqual, "my-instance")
+	})
+
+	t.Run("on kubernetes the pod name is used instead of the node's metadata", func(t *testing.T) {
+		t.Setenv("GCP_INSTANCE_ID", "")
+		t.Setenv("KUBERNETES_SERVICE_HOST", "10.0.0.1")
+
+		hostname, err := os.Hostname()
+		test.That(t, err, test.ShouldBeNil)
+
+		instanceID, err := cloudInstanceID(ctx)
+		test.That(t, err, test.ShouldBeNil)
+		test.That(t, instanceID, test.ShouldEqual, hostname)
+	})
 }
