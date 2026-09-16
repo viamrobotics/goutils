@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -20,6 +21,28 @@ import (
 	"go.viam.com/utils"
 	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
 )
+
+// sensitiveCallerAuthMetadataKeys are rpc_auth_md fields that carry a plaintext credential rather
+// than caller identity. They authenticate the caller to the signaler, but are useless — and unsafe
+// — to hand to the answerer or persist in the call queue, so they are stripped before the caller's
+// auth metadata leaves this server. The answerer identifies the caller from the auth entity plus
+// identity fields (e.g. key_id, app_user_id, email), never a secret.
+var sensitiveCallerAuthMetadataKeys = []string{
+	"key", // the plaintext API key that rides alongside key_id in API-key auth metadata
+}
+
+// redactedCallerAuthMetadata returns a copy of md with sensitive credential fields removed. It
+// never mutates md, which is shared with the request's auth entity on the context.
+func redactedCallerAuthMetadata(md map[string]string) map[string]string {
+	if len(md) == 0 {
+		return md
+	}
+	redacted := maps.Clone(md)
+	for _, key := range sensitiveCallerAuthMetadataKeys {
+		delete(redacted, key)
+	}
+	return redacted
+}
 
 // A WebRTCSignalingServer implements a signaling service for WebRTC by exchanging
 // SDPs (https://webrtcforthecurious.com/docs/02-signaling/#what-is-the-session-description-protocol-sdp)
@@ -200,7 +223,8 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 	var callerAuthEntity string
 	var callerAuthMetadata map[string]string
 	if entity, ok := ContextAuthEntity(ctx); ok {
-		callerAuthEntity, callerAuthMetadata = entity.Entity, entity.AuthMetadata
+		callerAuthEntity = entity.Entity
+		callerAuthMetadata = redactedCallerAuthMetadata(entity.AuthMetadata)
 	}
 	uuid, respCh, respDone, sendCancel, err := srv.callQueue.SendOfferInit(
 		ctx, host, req.GetSdp(), req.GetDisableTrickle(), callerAuthEntity, callerAuthMetadata)
