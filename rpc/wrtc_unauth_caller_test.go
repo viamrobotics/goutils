@@ -31,7 +31,7 @@ func TestDialUnauthenticatedCaller(t *testing.T) {
 		if authWorks.Load() {
 			return map[string]string{}, nil
 		}
-		return nil, status.Error(codes.PermissionDenied, "auth is down")
+		return nil, status.Error(codes.Unavailable, "auth is down")
 	})
 
 	// Signaling server: callers and answerers authenticate through flakyAuth; the caller
@@ -109,7 +109,7 @@ func TestDialUnauthenticatedCaller(t *testing.T) {
 
 	t.Run("auth down, no fallback: dial fails at Authenticate", func(t *testing.T) {
 		_, err := dial(key, false)
-		test.That(t, status.Code(err), test.ShouldEqual, codes.PermissionDenied)
+		test.That(t, status.Code(err), test.ShouldEqual, codes.Unavailable)
 	})
 
 	t.Run("auth down, fallback, right key: answerer verifies the token", func(t *testing.T) {
