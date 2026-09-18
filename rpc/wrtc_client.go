@@ -357,6 +357,9 @@ func dialWebRTC(
 	haveInit := false
 
 	var uuid string
+	// set in the CallResponse init stage if the signaling server indicates that it could not
+	// authenticate the caller
+	var mustAuthAgainstAnswerer bool
 	// only send once since exchange may end or ICE may end
 	var sendDoneOnce sync.Once
 	sendDone := func() {
@@ -514,6 +517,7 @@ func dialWebRTC(
 				}
 				haveInit = true
 				uuid = callResp.GetUuid()
+				mustAuthAgainstAnswerer = s.Init.GetMustAuthAgainstAnswerer()
 				answer := webrtc.SessionDescription{}
 				if err := DecodeSDP(s.Init.GetSdp(), &answer); err != nil {
 					return err
@@ -561,6 +565,19 @@ func dialWebRTC(
 	case <-clientCh.Ready():
 		// Happy path
 		sendDone()
+		// Degraded path: the signaling server could not authenticate us (the caller),
+		// so we have to send our api key to the answerer
+		if mustAuthAgainstAnswerer {
+			// api keys are the only supported credential type in this case
+			if dOpts.creds.Type != CredentialsTypeAPIKey || dOpts.authEntity == "" || dOpts.creds.Payload == "" {
+				exchangeCancel(nil)
+				return nil, nil, errors.New("answerer requires API key authentication but the dial has no API key credentials")
+			}
+			if err := clientCh.writeAPIToken(dOpts.authEntity + ":" + dOpts.creds.Payload); err != nil {
+				exchangeCancel(nil)
+				return nil, nil, err
+			}
+		}
 		advance(webrtcpb.DialStage_DIAL_STAGE_READY)
 		successful = true
 
