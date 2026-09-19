@@ -60,25 +60,19 @@ func newWebRTCAPI(logger utils.ZapCompatibleLogger) (*webrtc.API, error) {
 	}
 
 	var settingEngine webrtc.SettingEngine
+	// Remote mDNS (<uuid>.local) candidates are resolved by addRemoteICECandidate with a bounded
+	// timeout before they reach ICE, so ICE itself neither queries for them (it would re-query
+	// once a second, on every interface, for the life of the peer connection) nor gathers them.
+	//
 	// RSDK-10407: Existing viam-server deployments may send mdns entries (e.g: <uuid>.local) instead
 	// of their LAN IP (e.g: 192.168.2.100). We must continue to accept them and attempt to connect
-	// to those addresses.
+	// to those addresses; that is what the resolution above provides.
 	//
-	// However, we prefer to send a LAN IP as a candidate rather than `<uuid>.local`. When using the
-	// ICE mdns "gather" option, it can generate candidates multiple `host` candidates. For example,
-	// each a machine may have a network interacted associated with each of the following IPs:
-	// - 127.0.0.1
-	// - 192.168.2.1
-	// - 10.1.4.100
-	// - 169.254.14.173
-	//
-	// The "gathering" mdns option will create a `<uuid>.local` name and transmit four candidates,
-	// but with the same `<uuid>.local` address value; instead of the raw IPs. It's unclear that
-	// when the other end of the PeerConnection sees these values, that it knows there are four
-	// distinct IPs to resolve that `<uuid>.local` value and use for connecting. See this ICE code
-	// for resolving mdns addresses:
-	//   https://github.com/pion/ice/blob/v2.3.34/agent.go?plain=1#L693-L721
-	settingEngine.SetICEMulticastDNSMode(ice.MulticastDNSModeQueryOnly)
+	// We prefer to send a LAN IP as a candidate rather than `<uuid>.local`. When using the ICE mdns
+	// "gather" option, it can generate multiple `host` candidates with the same `<uuid>.local`
+	// address value instead of the raw IPs, and it's unclear the other end of the PeerConnection
+	// knows there are distinct IPs to resolve that value to.
+	settingEngine.SetICEMulticastDNSMode(ice.MulticastDNSModeDisabled)
 
 	// RSDK-8547: Replay protection can result in dropped video data. Specifically when there are
 	// multiple remote hops in getting video from the camera to the user. And these intermediate
@@ -342,11 +336,14 @@ func newPeerConnectionForServer(
 	if err := DecodeSDP(sdp, &offer); err != nil {
 		return nil, nil, err
 	}
+	var mdnsCandidates []webrtc.ICECandidateInit
+	offer.SDP, mdnsCandidates = stripMDNSCandidatesFromSDP(offer.SDP)
 
 	err = peerConn.SetRemoteDescription(offer)
 	if err != nil {
 		return nil, nil, err
 	}
+	addRemoteICECandidates(ctx, peerConn, mdnsCandidates, logger)
 
 	if disableTrickle {
 		answer, err := peerConn.CreateAnswer(nil)
