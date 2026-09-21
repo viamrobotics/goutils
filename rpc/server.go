@@ -498,7 +498,8 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 		// each matching query on its own, so each name gets exactly one registration (plus one
 		// for its dashed form, RSDK-1676). The advertised hostname is the name itself so plain
 		// `<name>.local` lookups resolve, and off loopback the address list is left empty so
-		// answers carry the addresses of whichever interface the query arrived on.
+		// answers carry the addresses of whichever interface the query arrived on -- except on
+		// Windows, where zeroconf cannot tell which interface that was (see mdnsAdvertisedIPs).
 		var ifaces []net.Interface
 		var ips []string
 		if mDNSAddress.IP.IsLoopback() {
@@ -516,6 +517,7 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 			ips = []string{"127.0.0.1"}
 		} else {
 			ifaces = listMulticastInterfaces()
+			ips = mdnsAdvertisedIPs(ifaces)
 		}
 		seen := map[string]struct{}{}
 	register:
