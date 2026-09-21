@@ -20,7 +20,7 @@ import (
 // queried for before it is dropped. Browsers obfuscate their host candidates this way, and a
 // browser on another network can never be resolved. Left to ICE, the query would repeat once a
 // second on every interface for the life of the peer connection.
-var mdnsCandidateResolveTimeout = 5 * time.Second
+const mdnsCandidateResolveTimeout = 5 * time.Second
 
 // mdnsCandidateAddressField is the index of the connection address in a candidate attribute
 // ("candidate:<foundation> <component> <transport> <priority> <address> <port> typ ...").
@@ -50,12 +50,22 @@ func addRemoteICECandidate(
 	cand webrtc.ICECandidateInit,
 	logger utils.ZapCompatibleLogger,
 ) error {
+	return addRemoteICECandidateWithTimeout(ctx, pc, cand, mdnsCandidateResolveTimeout, logger)
+}
+
+func addRemoteICECandidateWithTimeout(
+	ctx context.Context,
+	pc iceCandidateAdder,
+	cand webrtc.ICECandidateInit,
+	timeout time.Duration,
+	logger utils.ZapCompatibleLogger,
+) error {
 	name, ok := mdnsCandidateAddress(cand.Candidate)
 	if !ok {
 		return pc.AddICECandidate(cand)
 	}
 	utils.PanicCapturingGo(func() {
-		resolved, err := resolveMDNSCandidate(ctx, cand, name)
+		resolved, err := resolveMDNSCandidate(ctx, cand, name, timeout)
 		if err != nil {
 			logger.Debugw("dropping unresolvable mDNS ICE candidate", "name", name, "error", err)
 			return
@@ -84,12 +94,17 @@ func addRemoteICECandidates(
 
 // resolveMDNSCandidate returns cand with the mDNS name in its address field replaced by the
 // IPv4 address it resolves to.
-func resolveMDNSCandidate(ctx context.Context, cand webrtc.ICECandidateInit, name string) (webrtc.ICECandidateInit, error) {
+func resolveMDNSCandidate(
+	ctx context.Context,
+	cand webrtc.ICECandidateInit,
+	name string,
+	timeout time.Duration,
+) (webrtc.ICECandidateInit, error) {
 	fields := strings.Fields(cand.Candidate)
 	if len(fields) <= mdnsCandidateAddressField || fields[mdnsCandidateAddressField] != name {
 		return cand, errors.Errorf("malformed mDNS candidate %q", cand.Candidate)
 	}
-	ctx, cancel := context.WithTimeout(ctx, mdnsCandidateResolveTimeout)
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	ip, err := queryMDNSAddress(ctx, name)
 	if err != nil {

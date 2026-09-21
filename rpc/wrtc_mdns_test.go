@@ -127,15 +127,12 @@ func TestAddRemoteICECandidate(t *testing.T) {
 
 	t.Run("unresolvable mDNS candidate is dropped after the timeout", func(t *testing.T) {
 		testutils.SkipUnlessInternet(t)
-		prevTimeout := mdnsCandidateResolveTimeout
-		mdnsCandidateResolveTimeout = 200 * time.Millisecond
-		defer func() { mdnsCandidateResolveTimeout = prevTimeout }()
-
+		timeout := 200 * time.Millisecond
 		adder := &fakeCandidateAdder{}
 		cand := webrtc.ICECandidateInit{Candidate: "candidate:1 1 udp 2130706431 " + uuid.NewString() + ".local 50000 typ host generation 0"}
 		start := time.Now()
-		test.That(t, addRemoteICECandidate(context.Background(), adder, cand, logger), test.ShouldBeNil)
-		time.Sleep(4 * mdnsCandidateResolveTimeout)
+		test.That(t, addRemoteICECandidateWithTimeout(context.Background(), adder, cand, timeout, logger), test.ShouldBeNil)
+		time.Sleep(4 * timeout)
 		test.That(t, adder.candidates(), test.ShouldBeEmpty)
 		test.That(t, time.Since(start), test.ShouldBeLessThan, 2*time.Second)
 	})
