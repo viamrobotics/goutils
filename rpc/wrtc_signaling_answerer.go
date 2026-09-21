@@ -618,7 +618,7 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 						return
 					}
 					cand := iceCandidateFromProto(stage.Update.GetCandidate())
-					if err := pc.AddICECandidate(cand); err != nil {
+					if err := addRemoteICECandidate(ctx, pc, cand, aa.logger); err != nil {
 						aa.sendError(err)
 						return
 					}

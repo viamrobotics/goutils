@@ -523,3 +523,37 @@ func TestWithStatsHandler(t *testing.T) {
 	test.That(t, conn.Close(), test.ShouldBeNil)
 	test.That(t, rpcServer.Stop(), test.ShouldBeNil)
 }
+
+func TestServerMulticastDNSRegistrations(t *testing.T) {
+	testutils.SkipUnlessInternet(t)
+	logger := golog.NewTestLogger(t)
+
+	for _, tc := range []struct {
+		name          string
+		instanceNames []string
+		expected      int
+	}{
+		{"one registration per name plus its dashed form", []string{"this.is.a.test.cloud", "another.one.local"}, 4},
+		{"names without dots are registered once", []string{"nodots"}, 1},
+		{"a name equal to another's dashed form is not registered twice", []string{"a.b", "a-b"}, 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rpcServer, err := NewServer(logger, WithUnauthenticated(), WithInstanceNames(tc.instanceNames...))
+			test.That(t, err, test.ShouldBeNil)
+			test.That(t, rpcServer.(*simpleServer).mdnsServers, test.ShouldHaveLength, tc.expected)
+			test.That(t, rpcServer.Stop(), test.ShouldBeNil)
+		})
+	}
+
+	t.Run("non-loopback listener", func(t *testing.T) {
+		rpcServer, err := NewServer(
+			logger,
+			WithUnauthenticated(),
+			WithInstanceNames("this.is.a.test.cloud"),
+			WithExternalListenerAddress(&net.TCPAddr{IP: net.IPv4zero, Port: 8080}),
+		)
+		test.That(t, err, test.ShouldBeNil)
+		test.That(t, rpcServer.(*simpleServer).mdnsServers, test.ShouldHaveLength, 2)
+		test.That(t, rpcServer.Stop(), test.ShouldBeNil)
+	})
+}

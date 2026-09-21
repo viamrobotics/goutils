@@ -498,11 +498,14 @@ func dialWebRTC(
 				if err := DecodeSDP(s.Init.GetSdp(), &answer); err != nil {
 					return err
 				}
+				var mdnsCandidates []webrtc.ICECandidateInit
+				answer.SDP, mdnsCandidates = stripMDNSCandidatesFromSDP(answer.SDP)
 
 				err = peerConn.SetRemoteDescription(answer)
 				if err != nil {
 					return err
 				}
+				addRemoteICECandidates(exchangeCtx, peerConn, mdnsCandidates, logger)
 				advance(webrtcpb.DialStage_DIAL_STAGE_ANSWER_RECEIVED)
 				close(remoteDescSet)
 
@@ -518,7 +521,7 @@ func dialWebRTC(
 					return errors.Errorf("uuid mismatch; have=%q want=%q", callResp.GetUuid(), uuid)
 				}
 				cand := iceCandidateFromProto(s.Update.GetCandidate())
-				if err := peerConn.AddICECandidate(cand); err != nil {
+				if err := addRemoteICECandidate(exchangeCtx, peerConn, cand, logger); err != nil {
 					// A PeerConnection only needs one valid candidate to succeed. It's unclear why
 					// only some* candidates would be malformed, so we'll log, but otherwise ignore.
 					logger.Warnw("Error adding candidate", "err", err)

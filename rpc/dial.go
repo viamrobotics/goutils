@@ -376,6 +376,9 @@ func lookupMDNSCandidate(ctx context.Context, address string, logger utils.ZapCo
 	// *zap.SugaredLogger to match zeroconf function signatures.
 	resolver, err := zeroconf.NewResolver(
 		logger.Desugar().Sugar(),
+		// Only IPv4 records are usable (grpc-go cannot dial scoped IPv6 literals), so do not
+		// join or query over IPv6 at all.
+		zeroconf.SelectIPTraffic(zeroconf.IPv4),
 		zeroconf.SelectIPRecordType(zeroconf.IPv4),
 		zeroconf.SelectIfaces(listMulticastInterfaces()),
 	)
