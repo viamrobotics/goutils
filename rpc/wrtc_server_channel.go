@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/viamrobotics/webrtc/v3"
@@ -29,9 +30,8 @@ type webrtcServerChannel struct {
 	entityInfo EntityInfo
 	// mustAuthCaller is set when the signaler did not authenticate the caller.
 	mustAuthCaller bool
-	// callerAuthed is set once the caller presents a valid api_token. Only the data channel
-	// read loop (onChannelMessage) touches it, so it needs no lock.
-	callerAuthed bool
+	// callerAuthed is set once the caller presents a valid api_token.
+	callerAuthed atomic.Bool
 	server       *webrtcServer
 	streams      map[uint64]*webrtcServerStream
 }
@@ -115,19 +115,19 @@ const apiTokenVerifyTimeout = 10 * time.Second
 func (ch *webrtcServerChannel) verifyAPIToken(apiToken string) (EntityInfo, bool) {
 	handler := ch.server.apiKeyAuthHandler
 	if handler == nil {
-		ch.webrtcBaseChannel.logger.Debug("no API key auth handler; cannot authenticate caller")
+		ch.webrtcBaseChannel.logger.Warn("no API key auth handler; cannot authenticate caller")
 		return EntityInfo{}, false
 	}
 	keyID, key, ok := strings.Cut(apiToken, ":")
 	if !ok || keyID == "" || key == "" {
-		ch.webrtcBaseChannel.logger.Debug("malformed api_token; expected <api-key-id>:<api-key>")
+		ch.webrtcBaseChannel.logger.Warn("malformed api_token; expected <api-key-id>:<api-key>")
 		return EntityInfo{}, false
 	}
 	ctx, cancel := context.WithTimeout(ch.ctx, apiTokenVerifyTimeout)
 	defer cancel()
 	authMD, err := handler.Authenticate(ctx, keyID, key)
 	if err != nil {
-		ch.webrtcBaseChannel.logger.Debugw("caller api_token rejected", "key_id", keyID, "error", err)
+		ch.webrtcBaseChannel.logger.Warnw("caller api_token rejected", "key_id", keyID, "error", err)
 		return EntityInfo{}, false
 	}
 	return EntityInfo{Entity: keyID, AuthMetadata: authMD}, true
@@ -155,7 +155,7 @@ func (ch *webrtcServerChannel) onChannelMessage(msg webrtc.DataChannelMessage) {
 	id := stream.GetId()
 
 	// if this channel is unauthenticated, check for a valid api token before doing anything else
-	if ch.mustAuthCaller && !ch.callerAuthed {
+	if ch.mustAuthCaller && !ch.callerAuthed.Load() {
 		tok, isToken := req.GetType().(*webrtcpb.Request_ApiToken)
 		var callerEntity EntityInfo
 		verified := false
@@ -172,8 +172,8 @@ func (ch *webrtcServerChannel) onChannelMessage(msg webrtc.DataChannelMessage) {
 		}
 		ch.mu.Lock()
 		ch.entityInfo = callerEntity
-		ch.callerAuthed = true
 		ch.mu.Unlock()
+		ch.callerAuthed.Store(true)
 		return
 	}
 	if _, isToken := req.GetType().(*webrtcpb.Request_ApiToken); isToken {
