@@ -160,12 +160,15 @@ func TestMDNSOnlyConnection(t *testing.T) {
 	// Peer A: gathers mDNS candidates.
 	seA := webrtc.SettingEngine{}
 	seA.SetICEMulticastDNSMode(ice.MulticastDNSModeQueryAndGather)
+	seA.SetIncludeLoopbackCandidate(true) // needed for mDNS on Linux
 	pcA, err := webrtc.NewAPI(webrtc.WithSettingEngine(seA)).NewPeerConnection(webrtc.Configuration{})
 	test.That(t, err, test.ShouldBeNil)
 	defer func() { test.That(t, pcA.Close(), test.ShouldBeNil) }()
 
 	// Peer B: gathers normally.
-	pcB, err := webrtc.NewAPI(webrtc.WithSettingEngine(webrtc.SettingEngine{})).NewPeerConnection(webrtc.Configuration{})
+	seB := webrtc.SettingEngine{}
+	seB.SetIncludeLoopbackCandidate(true)
+	pcB, err := webrtc.NewAPI(webrtc.WithSettingEngine(seB)).NewPeerConnection(webrtc.Configuration{})
 	test.That(t, err, test.ShouldBeNil)
 	defer func() { test.That(t, pcB.Close(), test.ShouldBeNil) }()
 
