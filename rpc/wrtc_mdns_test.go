@@ -11,6 +11,7 @@ import (
 	"github.com/edaniels/golog"
 	"github.com/google/uuid"
 	"github.com/pion/mdns"
+	"github.com/viamrobotics/ice/v2"
 	"github.com/viamrobotics/webrtc/v3"
 	"go.viam.com/test"
 	"golang.org/x/net/ipv4"
@@ -147,4 +148,69 @@ func TestAddRemoteICECandidate(t *testing.T) {
 		time.Sleep(200 * time.Millisecond)
 		test.That(t, adder.candidates(), test.ShouldBeEmpty)
 	})
+}
+
+// TestMDNSOnlyConnection verifies end to end that a resolvable mDNS ICE candidate can be
+// the selected remote candidate for an established connection.
+func TestMDNSOnlyConnection(t *testing.T) {
+	logger := golog.NewTestLogger(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Peer A: gathers mDNS candidates.
+	seA := webrtc.SettingEngine{}
+	seA.SetICEMulticastDNSMode(ice.MulticastDNSModeQueryAndGather)
+	pcA, err := webrtc.NewAPI(webrtc.WithSettingEngine(seA)).NewPeerConnection(webrtc.Configuration{})
+	test.That(t, err, test.ShouldBeNil)
+	defer func() { test.That(t, pcA.Close(), test.ShouldBeNil) }()
+
+	// Peer B: gathers normally.
+	pcB, err := webrtc.NewAPI(webrtc.WithSettingEngine(webrtc.SettingEngine{})).NewPeerConnection(webrtc.Configuration{})
+	test.That(t, err, test.ShouldBeNil)
+	defer func() { test.That(t, pcB.Close(), test.ShouldBeNil) }()
+
+	pcA.OnICECandidate(func(c *webrtc.ICECandidate) {
+		if c == nil {
+			return
+		}
+		ci := c.ToJSON()
+		// ONLY offer up mDNS candidates to B.
+		if _, ok := mdnsCandidateAddress(ci.Candidate); !ok {
+			return
+		}
+		// Add the mDNS candidate to B's remote candidates (mimics signaling updates).
+		if err := addRemoteICECandidate(ctx, pcB, ci, logger); err != nil {
+			logger.Errorw("B addRemoteICECandidate failed", "error", err)
+		}
+	})
+
+	connected := make(chan struct{})
+	var once sync.Once
+	pcB.OnICEConnectionStateChange(func(s webrtc.ICEConnectionState) {
+		if s == webrtc.ICEConnectionStateConnected {
+			once.Do(func() { close(connected) })
+		}
+	})
+
+	// Mimic initial signaling between A and B.
+	_, err = pcB.CreateDataChannel("foo", nil)
+	test.That(t, err, test.ShouldBeNil)
+	offer, err := pcB.CreateOffer(nil)
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, pcB.SetLocalDescription(offer), test.ShouldBeNil)
+	test.That(t, pcA.SetRemoteDescription(offer), test.ShouldBeNil)
+	answer, err := pcA.CreateAnswer(nil)
+	test.That(t, err, test.ShouldBeNil)
+	// SetLocalDescription starts gathering, so the answer shouldn't have any candidates in
+	// it.
+	test.That(t, strings.Count(answer.SDP, "a=candidate"), test.ShouldEqual, 0)
+	test.That(t, pcA.SetLocalDescription(answer), test.ShouldBeNil)
+	test.That(t, pcB.SetRemoteDescription(answer), test.ShouldBeNil)
+
+	// Assert that A and B still eventually connect even with only mDNS candidates from A.
+	select {
+	case <-connected:
+	case <-ctx.Done():
+		t.Fatalf("B never reached ICE connected: %v", ctx.Err())
+	}
 }
