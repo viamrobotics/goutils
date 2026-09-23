@@ -85,6 +85,16 @@ func newWebRTCAPI(logger utils.ZapCompatibleLogger) (*webrtc.API, error) {
 	// while the client (controlling) provides an mDNS candidate that may resolve to 127.0.0.1.
 	settingEngine.SetIncludeLoopbackCandidate(true)
 	settingEngine.SetRelayAcceptanceMinWait(3 * time.Second)
+
+	// DIAGNOSTIC (User-Research-16): widen ICE timeouts so a brief keepalive gap on a lossy /
+	// multi-homed network doesn't tear the selected pair down (pion default disconnectedTimeout
+	// is 5s, which is twitchy here). failedTimeout raised in step; keepaliveInterval left at 2s.
+	settingEngine.SetICETimeouts(
+		20*time.Second, // disconnectedTimeout (default 5s)
+		30*time.Second, // failedTimeout (default 25s)
+		2*time.Second,  // keepaliveInterval (default 2s)
+	)
+
 	settingEngine.SetIPFilter(func(ip net.IP) bool {
 		// Disallow ipv6 addresses since grpc-go does not currently support IPv6 scoped literals.
 		// See related grpc-go issue: https://github.com/grpc/grpc-go/issues/3272.
