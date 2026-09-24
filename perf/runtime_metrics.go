@@ -13,23 +13,18 @@ import (
 
 const (
 	schedLatencyMetric = "/sched/latencies:seconds"
-	cpuIdleMetric      = "/cpu/classes/idle:cpu-seconds"
-	cpuTotalMetric     = "/cpu/classes/total:cpu-seconds"
 	// Matches the cloud exporter's default reporting period, so each point covers one whole window.
 	runtimeSampleInterval = time.Minute
 )
 
 var (
-	schedLatencyGauge = statz.NewGauge1[string]("process/sched_latency_us", statz.MetricConfig{
+	// Nanoseconds, because most waits fall in the histogram's sub-microsecond buckets.
+	schedLatencyGauge = statz.NewGauge1[string]("process/sched_latency_ns", statz.MetricConfig{
 		Description: "Time goroutines spent runnable before running, over the last sample window",
-		Unit:        units.Microseconds,
+		Unit:        units.Nanoseconds,
 		Labels: []statz.Label{
 			{Name: "quantile", Description: "p50 / p99 / max"},
 		},
-	})
-	cpuBusyGauge = statz.NewGauge0("process/cpu_busy_percent", statz.MetricConfig{
-		Description: "Share of GOMAXPROCS capacity the process used over the last sample window, 0 to 100",
-		Unit:        units.Dimensionless,
 	})
 )
 
@@ -80,16 +75,15 @@ func bucketUpperBound(buckets []float64, i int) time.Duration {
 	if math.IsInf(upper, 1) {
 		upper = buckets[i]
 	}
-	return time.Duration(upper * float64(time.Second))
+	// Rounded: boundaries are float seconds, and truncating 128e-9 * 1e9 can yield 127ns.
+	return time.Duration(math.Round(upper * float64(time.Second)))
 }
 
-// runtimeSampler publishes the Go scheduler's wait quantiles and the process's CPU use relative
-// to GOMAXPROCS once per window, alongside the runtime metrics runmetrics already exports.
+// runtimeSampler publishes the Go scheduler's wait quantiles once per window, alongside the
+// runtime metrics runmetrics already exports.
 type runtimeSampler struct {
 	samples    []metrics.Sample
 	prevCounts []uint64
-	prevIdle   float64
-	prevTotal  float64
 
 	stop     chan struct{}
 	done     chan struct{}
@@ -98,13 +92,9 @@ type runtimeSampler struct {
 
 func newRuntimeSampler() *runtimeSampler {
 	return &runtimeSampler{
-		samples: []metrics.Sample{
-			{Name: schedLatencyMetric},
-			{Name: cpuIdleMetric},
-			{Name: cpuTotalMetric},
-		},
-		stop: make(chan struct{}),
-		done: make(chan struct{}),
+		samples: []metrics.Sample{{Name: schedLatencyMetric}},
+		stop:    make(chan struct{}),
+		done:    make(chan struct{}),
 	}
 }
 
@@ -113,19 +103,11 @@ func (s *runtimeSampler) sample() {
 	if s.samples[0].Value.Kind() == metrics.KindFloat64Histogram {
 		hist := s.samples[0].Value.Float64Histogram()
 		window := schedLatencyQuantiles(s.prevCounts, hist)
-		schedLatencyGauge.Set("p50", window.p50.Microseconds())
-		schedLatencyGauge.Set("p99", window.p99.Microseconds())
-		schedLatencyGauge.Set("max", window.longest.Microseconds())
+		schedLatencyGauge.Set("p50", window.p50.Nanoseconds())
+		schedLatencyGauge.Set("p99", window.p99.Nanoseconds())
+		schedLatencyGauge.Set("max", window.longest.Nanoseconds())
 		// Read reuses the histogram's storage next time, so keep a copy rather than the slice.
 		s.prevCounts = append(s.prevCounts[:0], hist.Counts...)
-	}
-	if s.samples[1].Value.Kind() == metrics.KindFloat64 && s.samples[2].Value.Kind() == metrics.KindFloat64 {
-		idle, total := s.samples[1].Value.Float64(), s.samples[2].Value.Float64()
-		if elapsed := total - s.prevTotal; elapsed > 0 {
-			busy := math.Round(100 * (1 - (idle-s.prevIdle)/elapsed))
-			cpuBusyGauge.Set(int64(min(100, max(0, busy))))
-		}
-		s.prevIdle, s.prevTotal = idle, total
 	}
 }
 

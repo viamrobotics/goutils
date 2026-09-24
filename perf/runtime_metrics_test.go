@@ -33,6 +33,16 @@ func TestSchedLatencyQuantiles(t *testing.T) {
 		test.That(t, schedLatencyQuantiles(hist.Counts, hist), test.ShouldResemble, schedLatencyWindow{})
 	})
 
+	t.Run("sub-microsecond boundaries keep nanosecond precision", func(t *testing.T) {
+		// The runtime's low buckets: [0,64ns) [64ns,128ns) [128ns,192ns), boundaries in float seconds.
+		fine := &metrics.Float64Histogram{
+			Buckets: []float64{0, 64e-9, 128e-9, 192e-9, math.Inf(1)},
+			Counts:  []uint64{10, 80, 10, 0},
+		}
+		test.That(t, schedLatencyQuantiles(nil, fine), test.ShouldResemble,
+			schedLatencyWindow{p50: 128 * time.Nanosecond, p99: 192 * time.Nanosecond, longest: 192 * time.Nanosecond})
+	})
+
 	t.Run("open-ended last bucket reports its lower boundary", func(t *testing.T) {
 		overflow := &metrics.Float64Histogram{Buckets: hist.Buckets, Counts: []uint64{0, 0, 0, 0, 3}}
 		test.That(t, schedLatencyQuantiles(nil, overflow), test.ShouldResemble,
@@ -41,8 +51,7 @@ func TestSchedLatencyQuantiles(t *testing.T) {
 }
 
 func TestRuntimeSamplerSample(t *testing.T) {
-	latency := statztest.NewGaugeRecorder("process/sched_latency_us")
-	busy := statztest.NewGaugeRecorder("process/cpu_busy_percent")
+	latency := statztest.NewGaugeRecorder("process/sched_latency_ns")
 
 	sampler := newRuntimeSampler()
 	sampler.sample()
@@ -51,7 +60,6 @@ func TestRuntimeSamplerSample(t *testing.T) {
 	test.That(t, len(sampler.prevCounts), test.ShouldBeGreaterThan, 0)
 	test.That(t, latency.Value("quantile", "max"), test.ShouldBeGreaterThanOrEqualTo, latency.Value("quantile", "p99"))
 	test.That(t, latency.Value("quantile", "p99"), test.ShouldBeGreaterThanOrEqualTo, latency.Value("quantile", "p50"))
-	test.That(t, busy.Value(), test.ShouldBeBetweenOrEqual, int64(0), int64(100))
 }
 
 func TestRuntimeSamplerStop(t *testing.T) {
