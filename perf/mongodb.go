@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"sync/atomic"
 
 	"go.mongodb.org/mongo-driver/event"
+	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.opencensus.io/trace"
 
 	"go.viam.com/utils/perf/statz"
@@ -131,44 +131,151 @@ func connectionString(evt *event.CommandStartedEvent) string {
 	return hostname + ":" + port
 }
 
-// NewMongoDBPoolMonitor creates a new mongodb pool event PoolMonitor.
+// Driver fallbacks when the option is unset (mongo/client.go, topology/pool.go), so the pool
+// config gauge reports what the pool enforces rather than "unset".
+const (
+	driverDefaultMaxPoolSize   = 100
+	driverDefaultMinPoolSize   = 0
+	driverDefaultMaxConnecting = 2
+)
+
+const (
+	poolStateWaiting    = "total_waiting_to_check_out"
+	poolStateCheckedOut = "total_checked_out"
+	poolStateCreated    = "total_created"
+	// Label value for pool monitors created without a client name.
+	defaultMongoClientName = "default"
+)
+
+var (
+	// Kept for dashboards built on it; values are per address, like mongodbPoolStateGauge.
+	mongodbConnectionPoolStates = statz.NewGauge2[string, string]("mongodb/connections", statz.MetricConfig{
+		Description: "MongoDB connection pool state, counted per server address",
+		Unit:        units.Dimensionless,
+		Labels: []statz.Label{
+			{Name: "connection_string", Description: "The replica set member this pool connects to"},
+			{Name: "state", Description: "total_waiting_to_check_out / total_checked_out / total_created"},
+		},
+	})
+
+	mongodbPoolStateGauge = statz.NewGauge3[string, string, string]("mongo_connection_pool_state", statz.MetricConfig{
+		Description: "MongoDB connection pool state, counted per server address",
+		Unit:        units.Dimensionless,
+		Labels: []statz.Label{
+			{Name: "client_name", Description: "The name the caller gave the MongoDB client"},
+			{Name: "address", Description: "The replica set member this pool connects to"},
+			{Name: "state", Description: "total_waiting_to_check_out / total_checked_out / total_created"},
+		},
+	})
+
+	mongodbCheckoutWaitDistribution = statz.NewDistribution1[string]("mongo_connection_checkout_wait_ms", statz.MetricConfig{
+		Description: "Time a request spent waiting to check out a pooled MongoDB connection",
+		Unit:        units.Milliseconds,
+		Labels: []statz.Label{
+			{Name: "client_name", Description: "The name the caller gave the MongoDB client"},
+		},
+	},
+		// Sub-millisecond bounds: a checkout off a warm pool is microseconds, so whole-ms buckets
+		// would put all healthy traffic in one bucket and hide a regression short of saturation.
+		statz.DistributionFromBounds(0, 0.1, 0.25, 0.5, 1, 5, 10, 25, 50, 100, 250, 1000, 5000),
+	)
+
+	mongodbHandshakeDistribution = statz.NewDistribution1[string]("mongo_connection_handshake_ms", statz.MetricConfig{
+		Description: "Time to establish one pooled MongoDB connection (TCP, TLS and SCRAM auth)",
+		Unit:        units.Milliseconds,
+		Labels: []statz.Label{
+			{Name: "client_name", Description: "The name the caller gave the MongoDB client"},
+		},
+	},
+		statz.DistributionFromBounds(0, 1, 5, 10, 25, 50, 100, 250, 1000, 5000),
+	)
+
+	mongodbEstablishedCounter = statz.NewCounter1[string]("mongo_connection_established", statz.MetricConfig{
+		Description: "The number of MongoDB connections that completed their handshake",
+		Unit:        units.Dimensionless,
+		Labels: []statz.Label{
+			{Name: "client_name", Description: "The name the caller gave the MongoDB client"},
+		},
+	})
+
+	mongodbCheckoutFailureCounter = statz.NewCounter2[string, string]("mongo_connection_checkout_failure", statz.MetricConfig{
+		Description: "The number of failed MongoDB connection checkouts",
+		Unit:        units.Dimensionless,
+		Labels: []statz.Label{
+			{Name: "client_name", Description: "The name the caller gave the MongoDB client"},
+			{Name: "reason", Description: "Driver-supplied failure reason (timeout, connectionError, poolClosed)"},
+		},
+	})
+
+	mongodbPoolConfigGauge = statz.NewGauge2[string, string]("mongo_pool_config", statz.MetricConfig{
+		Description: "Effective MongoDB pool settings after the connection string is applied, " +
+			"with driver defaults substituted where unset",
+		Unit: units.Dimensionless,
+		Labels: []statz.Label{
+			{Name: "client_name", Description: "The name the caller gave the MongoDB client"},
+			{Name: "setting", Description: "max_pool_size / min_pool_size / max_connecting"},
+		},
+	})
+)
+
+// NewMongoDBPoolMonitor creates a pool event PoolMonitor for a client with no name of its own.
 func NewMongoDBPoolMonitor() *event.PoolMonitor {
-	var totalWaitingToCheckOut atomic.Int64
-	var totalCheckedOut atomic.Int64
-	var totalCreated atomic.Int64
+	return NewNamedMongoDBPoolMonitor(defaultMongoClientName)
+}
+
+// NewNamedMongoDBPoolMonitor creates a pool event PoolMonitor that reports pool state per server
+// address, checkout wait and failures, and connection handshake time, all labelled by clientName.
+func NewNamedMongoDBPoolMonitor(clientName string) *event.PoolMonitor {
+	var (
+		mu         sync.Mutex
+		waiting    = map[string]int64{}
+		checkedOut = map[string]int64{}
+		created    = map[string]int64{}
+	)
+	set := func(counts map[string]int64, address, state string, delta int64) {
+		mu.Lock()
+		defer mu.Unlock()
+		counts[address] += delta
+		mongodbPoolStateGauge.Set(clientName, address, state, counts[address])
+		mongodbConnectionPoolStates.Set(address, state, counts[address])
+	}
+
 	return &event.PoolMonitor{
 		Event: func(e *event.PoolEvent) {
 			switch e.Type {
 			case event.GetStarted:
-				totalWaitingToCheckOut.Add(1)
-				mongodbConnectionPoolStates.Set(e.Address, "total_waiting_to_check_out", totalWaitingToCheckOut.Load())
+				set(waiting, e.Address, poolStateWaiting, 1)
 			case event.GetSucceeded:
-				totalCheckedOut.Add(1)
-				totalWaitingToCheckOut.Add(-1)
-				mongodbConnectionPoolStates.Set(e.Address, "total_checked_out", totalCheckedOut.Load())
-				mongodbConnectionPoolStates.Set(e.Address, "total_waiting_to_check_out", totalWaitingToCheckOut.Load())
+				set(waiting, e.Address, poolStateWaiting, -1)
+				set(checkedOut, e.Address, poolStateCheckedOut, 1)
+				mongodbCheckoutWaitDistribution.Observe(float64(e.Duration.Microseconds())/1000, clientName)
 			case event.GetFailed:
-				totalWaitingToCheckOut.Add(-1)
-				mongodbConnectionPoolStates.Set(e.Address, "total_waiting_to_check_out", totalWaitingToCheckOut.Load())
+				set(waiting, e.Address, poolStateWaiting, -1)
+				mongodbCheckoutFailureCounter.Inc(clientName, e.Reason)
 			case event.ConnectionReturned:
-				totalCheckedOut.Add(-1)
-				mongodbConnectionPoolStates.Set(e.Address, "total_checked_out", totalCheckedOut.Load())
+				set(checkedOut, e.Address, poolStateCheckedOut, -1)
 			case event.ConnectionCreated:
-				totalCreated.Add(1)
-				mongodbConnectionPoolStates.Set(e.Address, "total_created", totalCreated.Load())
+				set(created, e.Address, poolStateCreated, 1)
+			case event.ConnectionReady:
+				mongodbHandshakeDistribution.Observe(float64(e.Duration.Microseconds())/1000, clientName)
+				mongodbEstablishedCounter.Inc(clientName)
 			case event.ConnectionClosed:
-				totalCreated.Add(-1)
-				mongodbConnectionPoolStates.Set(e.Address, "total_created", totalCreated.Load())
+				set(created, e.Address, poolStateCreated, -1)
 			}
 		},
 	}
 }
 
-var mongodbConnectionPoolStates = statz.NewGauge2[string, string]("mongodb/connections", statz.MetricConfig{
-	Description: "The number of waiting requests for connection check out.",
-	Unit:        units.Dimensionless,
-	Labels: []statz.Label{
-		{Name: "connection_string", Description: "MongoDB Connection String"},
-		{Name: "state", Description: "Pool State"},
-	},
-})
+// RecordMongoDBPoolConfig publishes the pool settings the driver will enforce for clientName.
+// Call it after ApplyURI, which can set any of these from the connection string.
+func RecordMongoDBPoolConfig(clientName string, opts *options.ClientOptions) {
+	valueOr := func(v *uint64, fallback int64) int64 {
+		if v == nil {
+			return fallback
+		}
+		return int64(*v)
+	}
+	mongodbPoolConfigGauge.Set(clientName, "max_pool_size", valueOr(opts.MaxPoolSize, driverDefaultMaxPoolSize))
+	mongodbPoolConfigGauge.Set(clientName, "min_pool_size", valueOr(opts.MinPoolSize, driverDefaultMinPoolSize))
+	mongodbPoolConfigGauge.Set(clientName, "max_connecting", valueOr(opts.MaxConnecting, driverDefaultMaxConnecting))
+}
