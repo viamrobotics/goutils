@@ -69,6 +69,36 @@ func TestChangeStreamBackground(t *testing.T) {
 	}
 }
 
+func TestChangeStreamBackgroundClosesCursorOnCancel(t *testing.T) {
+	client := testutils.BackingMongoDBClient(t)
+	dbName, collName := testutils.NewMongoDBNamespace()
+	coll := client.Database(dbName).Collection(collName)
+
+	cs, err := coll.Watch(context.Background(), []bson.D{
+		{
+			{"$match", bson.D{}},
+		},
+	}, options.ChangeStream().SetFullDocument(options.UpdateLookup))
+	test.That(t, err, test.ShouldBeNil)
+	// A live change-stream cursor has a non-zero server cursor ID.
+	test.That(t, cs.ID(), test.ShouldNotEqual, 0)
+
+	cancelCtx, ctxCancel := context.WithCancel(context.Background())
+	result, _, _ := mongoutils.ChangeStreamBackground(cancelCtx, cs)
+	ctxCancel()
+
+	// Draining until the channel closes guarantees the background goroutine has returned. Its
+	// deferred cursor close is registered after (so runs before) the deferred results-channel
+	// close, so the cursor is already closed by the time this loop exits.
+	//nolint:revive
+	for range result {
+	}
+
+	// A closed cursor reports a zero ID; before the leak fix this stayed non-zero (the
+	// server-side cursor was orphaned until the pooled connection dropped).
+	test.That(t, cs.ID(), test.ShouldEqual, 0)
+}
+
 func TestChangeStreamBackgroundResumeTokenAdvancement(t *testing.T) {
 	client := testutils.BackingMongoDBClient(t)
 	dbName, collName := testutils.NewMongoDBNamespace()
