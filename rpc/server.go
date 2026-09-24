@@ -495,12 +495,11 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 
 	if !sOpts.disableMDNS {
 		// All names are registered on a single responder so one browse is answered with one
-		// aggregated multicast packet (RFC 6762 section 6.4) instead of one packet per name.
-		// Each name is advertised under itself and its dashed form (RSDK-1676) so plain
-		// `<name>.local` lookups resolve; the advertised hostname is the name itself, and off
+		// aggregated multicast packet (RFC 6762 section 6.4). Each name is advertised under
+		// itself and its dashed form (RSDK-1676) so plain `<name>.local` lookups resolve. Off
 		// loopback the address list is left empty so answers carry the addresses of whichever
-		// interface the query arrived on -- except on Windows, where zeroconf cannot tell which
-		// interface that was (see mdnsAdvertisedIPs).
+		// interface the query arrived on -- except on Windows, where zeroconf cannot tell
+		// which interface that was (see mdnsAdvertisedIPs).
 		var ifaces []net.Interface
 		var ips []string
 		if mDNSAddress.IP.IsLoopback() {
@@ -522,6 +521,7 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 		}
 		var entries []*zeroconf.ServiceEntry
 		seen := map[string]struct{}{}
+	buildEntries:
 		for _, name := range instanceNames {
 			for _, host := range []string{name, strings.ReplaceAll(name, ".", "-")} {
 				if _, ok := seen[host]; ok {
@@ -538,9 +538,9 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 					supportedServices,
 				)
 				if err != nil {
-					logger.Warnw(mDNSerr, "error", err)
+					logger.Warnw(mDNSerr, "service entry creation error", err)
 					sOpts.disableMDNS = true
-					break
+					break buildEntries
 				}
 				entries = append(entries, entry)
 			}
@@ -550,7 +550,10 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 			// into a *zap.SugaredLogger to match zeroconf function signatures.
 			mdnsServer, err := zeroconf.RegisterMulti(entries, ifaces, logger.Desugar().Sugar())
 			if err != nil {
-				logger.Warnw(mDNSerr, "error", err)
+				logger.Warnw(mDNSerr, "registration error", err)
+				// NOTE(benjirewis): no readers of this value at the time this line was added, but
+				// putting this here defensively since if RegisterMulti fails, mDNS is effectively
+				// "disabled".
 				sOpts.disableMDNS = true
 			} else {
 				server.mdnsServers = append(server.mdnsServers, mdnsServer)
