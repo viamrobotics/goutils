@@ -417,8 +417,6 @@ github.com/viamrobotics/ice/v2 v2.3.40 h1:H9r4ztsKkxWSn42R4fLvYlaPtpBys1Yj7/MERB
 github.com/viamrobotics/ice/v2 v2.3.40/go.mod h1:MFqB81U1pliDKaXJx2hGHvYKg1PepyEYwEY10828Ve0=
 github.com/viamrobotics/webrtc/v3 v3.99.16 h1:N3OQoWnV9Zg68mTDOq8ymsx2AMpbEjuo1gHWaVd7wB0=
 github.com/viamrobotics/webrtc/v3 v3.99.16/go.mod h1:w1LmHsQFaq7vqLh06ybQ5kmYXo8myQq+3Pj073RL0f0=
-github.com/viamrobotics/zeroconf v1.0.13 h1:b3SzT1OrWjAWa/IReeehU++NWVp6r9K9/qBbjPZVFXw=
-github.com/viamrobotics/zeroconf v1.0.13/go.mod h1:iYvk00hmrzBI1Qw13y5palYDorz5ebndUJyTo7Oa3pc=
 github.com/wlynxg/anet v0.0.3/go.mod h1:eay5PRQr7fIVAMbTbchTnO9gG65Hg/uYGdc7mguHxoA=
 github.com/wlynxg/anet v0.0.5 h1:J3VJGi1gvo0JwZ/P1/Yc/8p63SoW98B5dHkYDmpgvvU=
 github.com/wlynxg/anet v0.0.5/go.mod h1:eay5PRQr7fIVAMbTbchTnO9gG65Hg/uYGdc7mguHxoA=

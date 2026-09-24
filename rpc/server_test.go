@@ -540,7 +540,11 @@ func TestServerMulticastDNSRegistrations(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			rpcServer, err := NewServer(logger, WithUnauthenticated(), WithInstanceNames(tc.instanceNames...))
 			test.That(t, err, test.ShouldBeNil)
-			test.That(t, rpcServer.(*simpleServer).mdnsServers, test.ShouldHaveLength, tc.expected)
+			// All names are aggregated onto a single responder; assert it serves the expected
+			// number of entries rather than one responder per name.
+			mdnsServers := rpcServer.(*simpleServer).mdnsServers
+			test.That(t, mdnsServers, test.ShouldHaveLength, 1)
+			test.That(t, mdnsServers[0].NumServices(), test.ShouldEqual, tc.expected)
 			test.That(t, rpcServer.Stop(), test.ShouldBeNil)
 		})
 	}
@@ -553,7 +557,9 @@ func TestServerMulticastDNSRegistrations(t *testing.T) {
 			WithExternalListenerAddress(&net.TCPAddr{IP: net.IPv4zero, Port: 8080}),
 		)
 		test.That(t, err, test.ShouldBeNil)
-		test.That(t, rpcServer.(*simpleServer).mdnsServers, test.ShouldHaveLength, 2)
+		mdnsServers := rpcServer.(*simpleServer).mdnsServers
+		test.That(t, mdnsServers, test.ShouldHaveLength, 1)
+		test.That(t, mdnsServers[0].NumServices(), test.ShouldEqual, 2)
 		test.That(t, rpcServer.Stop(), test.ShouldBeNil)
 	})
 }
