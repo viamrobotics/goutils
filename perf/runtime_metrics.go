@@ -17,16 +17,14 @@ const (
 	runtimeSampleInterval = time.Minute
 )
 
-var (
-	// Nanoseconds, because most waits fall in the histogram's sub-microsecond buckets.
-	schedLatencyGauge = statz.NewGauge1[string]("process/sched_latency_ns", statz.MetricConfig{
-		Description: "Time goroutines spent runnable before running, over the last sample window",
-		Unit:        units.Nanoseconds,
-		Labels: []statz.Label{
-			{Name: "quantile", Description: "p50 / p99 / max"},
-		},
-	})
-)
+// Nanoseconds, because most waits fall in the histogram's sub-microsecond buckets.
+var schedLatencyGauge = statz.NewGauge1[string]("process/sched_latency_ns", statz.MetricConfig{
+	Description: "Time goroutines spent runnable before running, over the last sample window",
+	Unit:        units.Nanoseconds,
+	Labels: []statz.Label{
+		{Name: "quantile", Description: "p50 / p99 / max"},
+	},
+})
 
 // schedLatencyWindow is one window's p50, p99 and longest scheduler wait.
 type schedLatencyWindow struct {
