@@ -3,6 +3,7 @@ package mongoutils
 import (
 	"context"
 	"errors"
+	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -71,6 +72,11 @@ type ChangeEventResult struct {
 // with the StartAfter option in Watch to restart.
 var ErrChangeStreamInvalidateEvent = errors.New("change stream invalidated")
 
+// changeStreamCloseTimeout bounds the best-effort cursor close performed when the background
+// change stream stops. It runs on a context detached from the (usually already-cancelled)
+// caller context so the killCursors command can still reach the server.
+const changeStreamCloseTimeout = 5 * time.Second
+
 // ChangeStreamBackground calls Next in a background goroutine that returns a series of events
 // that can be received after the call is done. It will run until the given context is done.
 // Additionally, on the return of this call, the resume token and/or cluster time of the first getMore
@@ -111,6 +117,15 @@ func ChangeStreamBackground(ctx context.Context, cs *mongo.ChangeStream) (<-chan
 	}
 	utils.PanicCapturingGo(func() {
 		defer close(results)
+		// Kill the server-side cursor when this goroutine exits. ctx is normally already
+		// cancelled by then (that is how callers stop the stream), so closing with ctx would
+		// no-op the killCursors and leak the cursor until the pooled connection drops. Detach
+		// from ctx so the kill reaches the server.
+		defer func() {
+			closeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), changeStreamCloseTimeout)
+			defer cancel()
+			utils.UncheckedError(cs.Close(closeCtx))
+		}()
 
 		csStartedOnce := false
 		for {
