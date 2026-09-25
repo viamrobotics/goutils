@@ -494,12 +494,12 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 	}
 
 	if !sOpts.disableMDNS {
-		// Every zeroconf.Server is an independent responder with its own sockets that answers
-		// each matching query on its own, so each name gets exactly one registration (plus one
-		// for its dashed form, RSDK-1676). The advertised hostname is the name itself so plain
-		// `<name>.local` lookups resolve, and off loopback the address list is left empty so
-		// answers carry the addresses of whichever interface the query arrived on -- except on
-		// Windows, where zeroconf cannot tell which interface that was (see mdnsAdvertisedIPs).
+		// All names are registered on a single responder so one browse is answered with one
+		// aggregated multicast packet (RFC 6762 section 6.4). Each name is advertised under
+		// itself and its dashed form (RSDK-1676) so plain `<name>.local` lookups resolve. Off
+		// loopback the address list is left empty so answers carry the addresses of whichever
+		// interface the query arrived on -- except on Windows, where zeroconf cannot tell
+		// which interface that was (see mdnsAdvertisedIPs).
 		var ifaces []net.Interface
 		var ips []string
 		if mDNSAddress.IP.IsLoopback() {
@@ -519,15 +519,16 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 			ifaces = listMulticastInterfaces()
 			ips = mdnsAdvertisedIPs(ifaces)
 		}
+		var entries []*zeroconf.ServiceEntry
 		seen := map[string]struct{}{}
-	register:
+	buildEntries:
 		for _, name := range instanceNames {
 			for _, host := range []string{name, strings.ReplaceAll(name, ".", "-")} {
 				if _, ok := seen[host]; ok {
 					continue
 				}
 				seen[host] = struct{}{}
-				mdnsServer, err := zeroconf.RegisterProxy(
+				entry, err := zeroconf.NewProxyServiceEntry(
 					host,
 					"_rpc._tcp",
 					"local.",
@@ -535,16 +536,26 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 					host,
 					ips,
 					supportedServices,
-					ifaces,
-					// RSDK-8205: logger.Desugar().Sugar() is necessary to massage a ZapCompatibleLogger into a
-					// *zap.SugaredLogger to match zeroconf function signatures.
-					logger.Desugar().Sugar(),
 				)
 				if err != nil {
-					logger.Warnw(mDNSerr, "error", err)
+					logger.Warnw(mDNSerr, "service entry creation error", err)
 					sOpts.disableMDNS = true
-					break register
+					break buildEntries
 				}
+				entries = append(entries, entry)
+			}
+		}
+		if !sOpts.disableMDNS && len(entries) > 0 {
+			// RSDK-8205: logger.Desugar().Sugar() is necessary to massage a ZapCompatibleLogger
+			// into a *zap.SugaredLogger to match zeroconf function signatures.
+			mdnsServer, err := zeroconf.RegisterMulti(entries, ifaces, logger.Desugar().Sugar())
+			if err != nil {
+				logger.Warnw(mDNSerr, "registration error", err)
+				// NOTE(benjirewis): no readers of this value at the time this line was added, but
+				// putting this here defensively since if RegisterMulti fails, mDNS is effectively
+				// "disabled".
+				sOpts.disableMDNS = true
+			} else {
 				server.mdnsServers = append(server.mdnsServers, mdnsServer)
 			}
 		}
