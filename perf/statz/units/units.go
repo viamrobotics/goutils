@@ -12,6 +12,7 @@ const (
 	Bit           Unit = "bit"
 	Milliseconds  Unit = "ms"
 	Microseconds  Unit = "us"
+	Nanoseconds   Unit = "ns"
 	Second        Unit = "s"
 	Minute        Unit = "min"
 	Hour          Unit = "h"

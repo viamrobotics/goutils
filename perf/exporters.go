@@ -171,6 +171,7 @@ func samplerFromEnvOpts(byNamePerSec, prob float64, logger utils.ZapCompatibleLo
 type sdExporter struct {
 	sdExporter *stackdriver.Exporter
 	sampler    trace.Sampler
+	runtime    *runtimeSampler
 }
 
 // Starts the applications stats/span monitoring. Registers views and starts trace/metric exporters to opencensus.
@@ -182,6 +183,9 @@ func (e *sdExporter) Start() error {
 	if err := e.sdExporter.StartMetricsExporter(); err != nil {
 		return err
 	}
+	if e.runtime == nil {
+		e.runtime = startRuntimeSampler(runtimeSampleInterval)
+	}
 	trace.RegisterExporter(e.sdExporter)
 	trace.ApplyConfig(trace.Config{DefaultSampler: e.sampler})
 	return nil
@@ -189,6 +193,7 @@ func (e *sdExporter) Start() error {
 
 // Stop all exporting.
 func (e *sdExporter) Stop() {
+	e.runtime.Stop()
 	e.sdExporter.StopMetricsExporter()
 	trace.UnregisterExporter(e.sdExporter)
 	e.sdExporter.Flush()
