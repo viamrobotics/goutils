@@ -280,7 +280,7 @@ func (ss *simpleServer) tryAuth(ctx context.Context) (context.Context, error) {
 		if status, _ := status.FromError(err); status.Code() != codes.Unauthenticated {
 			return nil, err
 		}
-		return ctx, nil
+		return contextWithUnauthenticatedCaller(ctx), nil
 	}
 	return nextCtx, nil
 }

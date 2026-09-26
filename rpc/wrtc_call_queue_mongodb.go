@@ -398,6 +398,7 @@ type mongodbWebRTCCall struct {
 	CallerSDP          string                `bson:"caller_sdp"`
 	CallerAuthEntity   string                `bson:"caller_auth_entity,omitempty"`
 	CallerAuthMetadata map[string]string     `bson:"caller_auth_metadata,omitempty"`
+	MustAuthCaller     bool                  `bson:"must_auth_caller,omitempty"`
 	CallerCandidates   []mongodbICECandidate `bson:"caller_candidates,omitempty"`
 	CallerDone         bool                  `bson:"caller_done"`
 	CallerError        string                `bson:"caller_error,omitempty"`
@@ -1185,6 +1186,7 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 	disableTrickle bool,
 	callerAuthEntity string,
 	callerAuthMetadata map[string]string,
+	mustAuthCaller bool,
 ) (string, <-chan WebRTCCallAnswer, <-chan struct{}, func(), error) {
 	ctx, span := trace.StartSpan(ctx, "CallQueue::SendOfferInit")
 	defer span.End()
@@ -1259,6 +1261,7 @@ func (queue *mongoDBWebRTCCallQueue) SendOfferInit(
 		CallerSDP:          sdp,
 		CallerAuthEntity:   callerAuthEntity,
 		CallerAuthMetadata: callerAuthMetadata,
+		MustAuthCaller:     mustAuthCaller,
 		SDKType:            sdkType,
 		OrganizationID:     organizationID,
 	}
@@ -1867,6 +1870,10 @@ func (resp *mongoDBWebRTCCallOfferExchange) CallerAuthEntity() string {
 
 func (resp *mongoDBWebRTCCallOfferExchange) CallerAuthMetadata() map[string]string {
 	return resp.call.CallerAuthMetadata
+}
+
+func (resp *mongoDBWebRTCCallOfferExchange) MustAuthCaller() bool {
+	return resp.call.MustAuthCaller
 }
 
 func (resp *mongoDBWebRTCCallOfferExchange) DisableTrickleICE() bool {
