@@ -306,6 +306,15 @@ func (ch *webrtcClientChannel) onChannelMessage(msg webrtc.DataChannelMessage) {
 	activeStream.cs.onResponse(resp)
 }
 
+// writeAPIToken authenticates this channel with the answerer when the signaling server could not
+// authenticate the caller. The token format is `<api-key-id>:<api-key>`.
+func (ch *webrtcClientChannel) writeAPIToken(apiToken string) error {
+	return ch.webrtcBaseChannel.write(&webrtcpb.Request{
+		Stream: ch.nextStreamID(),
+		Type:   &webrtcpb.Request_ApiToken{ApiToken: apiToken},
+	})
+}
+
 func (ch *webrtcClientChannel) writeHeaders(stream *webrtcpb.Stream, headers *webrtcpb.RequestHeaders) error {
 	return ch.webrtcBaseChannel.write(&webrtcpb.Request{
 		Stream: stream,
