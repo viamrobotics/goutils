@@ -287,6 +287,10 @@ func (ans *webrtcSignalingAnswerer) startAnswerer() {
 			aa.offerSDP = initStage.Init.GetSdp()
 			aa.callerAuthEntity = initStage.Init.GetCallerAuthEntity()
 			aa.callerAuthMetadata = initStage.Init.GetCallerAuthMetadata()
+			aa.mustAuthCaller = initStage.Init.GetMustAuthCaller()
+			if aa.mustAuthCaller {
+				ans.logger.Warnw("caller is unauthenticated. robot must auth caller", "uuid", aa.uuid)
+			}
 
 			answerCtx, answerCtxCancel := getDeadline(ctx, ans.logger, initStage)
 			if err = aa.connect(answerCtx); err != nil {
@@ -331,6 +335,9 @@ type answerAttempt struct {
 	offerSDP           string
 	callerAuthEntity   string
 	callerAuthMetadata map[string]string
+	// mustAuthCaller is set when the signaling server could not authenticate the caller, so
+	// this answerer must authenticate it itself.
+	mustAuthCaller bool
 
 	// When a connection attempt concludes, either with success or failure, we will fire a single
 	// message to the signaling server. This allows the signaling server to release resources
@@ -492,7 +499,7 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 	// `NewChannel` instantiates our webrtc wrapper around DataChannels. This includes callback
 	// handlers for transitioning to the open/closed/error states. As well as backpressure when the
 	// amount of data to send gets high.
-	serverChannel := aa.server.NewChannel(pc, dc, aa.hosts, aa.callerAuthEntity, aa.callerAuthMetadata)
+	serverChannel := aa.server.NewChannel(pc, dc, aa.hosts, aa.callerAuthEntity, aa.callerAuthMetadata, aa.mustAuthCaller)
 
 	initSent := make(chan struct{})
 	if aa.trickleEnabled {
@@ -584,6 +591,8 @@ func (aa *answerAttempt) connect(ctx context.Context) (err error) {
 		Stage: &webrtcpb.AnswerResponse_Init{
 			Init: &webrtcpb.AnswerResponseInitStage{
 				Sdp: encodedSDP,
+				// Advertise only when a token can be verified; see webrtcServerChannel.verifyAPIToken.
+				CanAuthCallers: aa.server.apiKeyAuthHandler != nil,
 			},
 		},
 	}); err != nil {

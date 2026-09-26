@@ -32,6 +32,10 @@ type webrtcServer struct {
 	unaryInt          grpc.UnaryServerInterceptor
 	streamInt         grpc.StreamServerInterceptor
 	unknownStreamDesc *grpc.StreamDesc
+
+	// apiKeyAuthHandler verifies a caller's api_token when the signaler could not authenticate
+	// the caller. Nil when the server has no API key auth handler.
+	apiKeyAuthHandler AuthHandler
 	statsHandler      stats.Handler
 
 	counters struct {
@@ -218,8 +222,10 @@ func (srv *webrtcServer) NewChannel(
 	authAudience []string,
 	callerAuthEntity string,
 	callerAuthMetadata map[string]string,
+	mustAuthCaller bool,
 ) *webrtcServerChannel {
-	serverCh := newWebRTCServerChannel(srv, peerConn, dataChannel, authAudience, callerAuthEntity, callerAuthMetadata, srv.logger)
+	serverCh := newWebRTCServerChannel(
+		srv, peerConn, dataChannel, authAudience, callerAuthEntity, callerAuthMetadata, mustAuthCaller, srv.logger)
 	srv.peerConnsMu.Lock()
 	srv.peerConns[peerConn] = struct{}{}
 	srv.counters.PeersActive.Add(1)

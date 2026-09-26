@@ -578,6 +578,7 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 			sOpts.unknownStreamDesc,
 			sOpts.statsHandler,
 		)
+		server.webrtcServer.apiKeyAuthHandler = sOpts.authHandlersForCreds[CredentialsTypeAPIKey].AuthHandler
 		reflection.Register(server.webrtcServer)
 
 		config := DefaultWebRTCConfiguration
