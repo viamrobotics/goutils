@@ -4,10 +4,14 @@ import (
 	"context"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/viamrobotics/webrtc/v3"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/stats"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
 	"go.viam.com/utils"
@@ -24,8 +28,12 @@ type webrtcServerChannel struct {
 	// identity (or the coarse audience approximation when none was forwarded), since both
 	// inputs are fixed for the channel's lifetime.
 	entityInfo EntityInfo
-	server     *webrtcServer
-	streams    map[uint64]*webrtcServerStream
+	// mustAuthCaller is set when the signaler did not authenticate the caller.
+	mustAuthCaller bool
+	// callerAuthed is set once the caller presents a valid api_token.
+	callerAuthed atomic.Bool
+	server       *webrtcServer
+	streams      map[uint64]*webrtcServerStream
 }
 
 // newWebRTCServerChannel wraps the given WebRTC data channel to be used as the server end
@@ -37,6 +45,7 @@ func newWebRTCServerChannel(
 	authAudience []string,
 	callerAuthEntity string,
 	callerAuthMetadata map[string]string,
+	mustAuthCaller bool,
 	logger utils.ZapCompatibleLogger,
 ) *webrtcServerChannel {
 	base := newBaseChannel(
@@ -61,6 +70,7 @@ func newWebRTCServerChannel(
 
 	ch := &webrtcServerChannel{
 		entityInfo:        entityInfo,
+		mustAuthCaller:    mustAuthCaller,
 		webrtcBaseChannel: base,
 		server:            server,
 		streams:           make(map[uint64]*webrtcServerStream),
@@ -96,6 +106,33 @@ func (ch *webrtcServerChannel) writeTrailers(stream *webrtcpb.Stream, trailers *
 	})
 }
 
+// apiTokenVerifyTimeout bounds one api_token verification so a slow auth handler cannot hold the
+// data channel read loop.
+const apiTokenVerifyTimeout = 10 * time.Second
+
+// verifyAPIToken checks a caller's api_token (`<api-key-id>:<api-key>`) against the server's API
+// key auth handler and returns the caller's identity on success.
+func (ch *webrtcServerChannel) verifyAPIToken(apiToken string) (EntityInfo, bool) {
+	handler := ch.server.apiKeyAuthHandler
+	if handler == nil {
+		ch.webrtcBaseChannel.logger.Warn("no API key auth handler; cannot authenticate caller")
+		return EntityInfo{}, false
+	}
+	keyID, key, ok := strings.Cut(apiToken, ":")
+	if !ok || keyID == "" || key == "" {
+		ch.webrtcBaseChannel.logger.Warn("malformed api_token; expected <api-key-id>:<api-key>")
+		return EntityInfo{}, false
+	}
+	ctx, cancel := context.WithTimeout(ch.ctx, apiTokenVerifyTimeout)
+	defer cancel()
+	authMD, err := handler.Authenticate(ctx, keyID, key)
+	if err != nil {
+		ch.webrtcBaseChannel.logger.Warnw("caller api_token rejected", "key_id", keyID, "error", err)
+		return EntityInfo{}, false
+	}
+	return EntityInfo{Entity: keyID, AuthMetadata: authMD}, true
+}
+
 func (ch *webrtcServerChannel) removeStreamByID(id uint64) {
 	ch.mu.Lock()
 	delete(ch.streams, id)
@@ -117,6 +154,31 @@ func (ch *webrtcServerChannel) onChannelMessage(msg webrtc.DataChannelMessage) {
 
 	id := stream.GetId()
 
+	// if this channel is unauthenticated, check for a valid api token before doing anything else
+	if ch.mustAuthCaller && !ch.callerAuthed.Load() {
+		tok, isToken := req.GetType().(*webrtcpb.Request_ApiToken)
+		var callerEntity EntityInfo
+		verified := false
+		if isToken {
+			callerEntity, verified = ch.verifyAPIToken(tok.ApiToken)
+		}
+		if !verified {
+			// Fail the request on its own stream so the caller's RPC errors at once.
+			st := status.New(codes.Unauthenticated, "answerer requires an api_token from an unauthenticated caller")
+			if err := ch.writeTrailers(stream, &webrtcpb.ResponseTrailers{Status: st.Proto()}); err != nil {
+				ch.webrtcBaseChannel.logger.Debugw("failed to reject unauthenticated request", "error", err)
+			}
+			return
+		}
+		ch.mu.Lock()
+		ch.entityInfo = callerEntity
+		ch.mu.Unlock()
+		ch.callerAuthed.Store(true)
+		return
+	}
+	if _, isToken := req.GetType().(*webrtcpb.Request_ApiToken); isToken {
+		return // signaler authenticated this caller, or a token already succeeded
+	}
 	ch.mu.Lock()
 	serverStream, ok := ch.streams[id]
 	if !ok {
