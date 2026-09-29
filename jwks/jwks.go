@@ -42,14 +42,16 @@ func ParseKeySet(input string) (KeySet, error) {
 // cachingKeyProvider is a key provider that looks up jwk's by their kid through the
 // configured jwksURI. It auto refreshes in the background and caches the keys found.
 type cachingKeyProvider struct {
-	cancel  context.CancelFunc
-	ar      *jwk.AutoRefresh
-	jwksURI string
+	cancel     context.CancelFunc
+	ar         *jwk.AutoRefresh
+	jwksURI    string
+	httpClient *http.Client
 }
 
-// Stop cancels the auto refresh.
+// Close stops the background refresh.
 func (cp *cachingKeyProvider) Close() error {
 	cp.cancel()
+	cp.httpClient.CloseIdleConnections()
 	return nil
 }
 
@@ -76,13 +78,33 @@ func (cp *cachingKeyProvider) Fetch(ctx context.Context) (KeySet, error) {
 // ensure interface is met.
 var _ KeyProvider = &cachingKeyProvider{}
 
-// NewCachingOIDCJWKKeyProvider creates a CachingKeyProvider based on the issuer url
-// base domain and starts the auto refresh. Call CachingKeyProvider.Stop() to stop any
-// background goroutines.
+const (
+	// defaultMinRefreshInterval is the least time between background JWKS refreshes.
+	defaultMinRefreshInterval = 15 * time.Minute
+	// defaultHTTPTimeout bounds each discovery and JWKS request, including reading the body.
+	defaultHTTPTimeout = 30 * time.Second
+)
+
+// NewCachingOIDCJWKKeyProvider creates a KeyProvider based on the issuer url base domain and
+// starts the auto refresh. ctx bounds only the initial discovery and JWKS fetch, so it may carry
+// a startup deadline; the background refresh runs until Close is called.
 func NewCachingOIDCJWKKeyProvider(ctx context.Context, issuer string) (KeyProvider, error) {
+	return newCachingOIDCJWKKeyProvider(ctx, issuer, defaultMinRefreshInterval, defaultHTTPTimeout)
+}
+
+func newCachingOIDCJWKKeyProvider(
+	ctx context.Context,
+	issuer string,
+	minRefreshInterval, httpTimeout time.Duration,
+) (KeyProvider, error) {
 	httpTransport := http.DefaultTransport.(*http.Transport).Clone()
+	// Discovery and every JWKS fetch share this client. jwx runs one background refresh at a time
+	// and schedules the next only when the current one returns, so without a timeout a single
+	// request stalled on the issuer could stop key rotation indefinitely. Timeout covers reading
+	// the body too, which jwx does inside the refresh.
 	httpClient := &http.Client{
 		Transport: httpTransport,
+		Timeout:   httpTimeout,
 	}
 	defer httpTransport.CloseIdleConnections()
 
@@ -100,26 +122,39 @@ func NewCachingOIDCJWKKeyProvider(ctx context.Context, issuer string) (KeyProvid
 		return nil, oidc.ErrIssuerInvalid
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
+	// The background refresh must outlive ctx, which may carry a startup deadline, so only Close
+	// stops it.
+	refreshCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 
-	ar := jwk.NewAutoRefresh(ctx)
+	ar := jwk.NewAutoRefresh(refreshCtx)
 
 	// Tell *jwk.AutoRefresh that we only want to refresh this JWKS
 	// when it needs to (based on Cache-Control or Expires header from
 	// the HTTP response). If the calculated minimum refresh interval is less
 	// than 15 minutes, don't go refreshing any earlier than 15 minutes.
-	ar.Configure(discoveryConfig.JwksURI, jwk.WithMinRefreshInterval(15*time.Minute))
+	//
+	// jwk.WithFetchBackoff is left out on purpose. In jwx v1, a fetch that succeeds returns without
+	// stopping the backoff controller it started, and that controller's goroutine then blocks until
+	// refreshCtx ends, so every successful refresh would leak a goroutine until Close. Without it,
+	// a failed refresh is retried at the next interval while the cached keys stay in use. That only
+	// matters if the issuer rotates keys during an outage: tokens signed with the new key are
+	// rejected until a refresh succeeds, up to one interval after the issuer is reachable again.
+	ar.Configure(discoveryConfig.JwksURI,
+		jwk.WithHTTPClient(httpClient),
+		jwk.WithMinRefreshInterval(minRefreshInterval),
+	)
 
-	// Refresh the JWKS once before we start our service.
+	// Refresh the JWKS once before we start our service. ctx bounds this fetch.
 	if _, err := ar.Refresh(ctx, discoveryConfig.JwksURI); err != nil {
 		cancel()
 		return nil, err
 	}
 
 	return &cachingKeyProvider{
-		cancel:  cancel,
-		ar:      ar,
-		jwksURI: discoveryConfig.JwksURI,
+		cancel:     cancel,
+		ar:         ar,
+		jwksURI:    discoveryConfig.JwksURI,
+		httpClient: httpClient,
 	}, nil
 }
 
