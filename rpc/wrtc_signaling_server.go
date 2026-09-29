@@ -194,16 +194,22 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 	if err := srv.validateHosts(host); err != nil {
 		return err
 	}
-	// The caller authenticated to us (the signaler) before reaching this handler, so the
+	// If the caller authenticated to us (the signaler) before reaching this handler, then the
 	// auth interceptor already placed its identity on the context. Forward only that identity
 	// (entity + auth metadata) to the answerer, never the caller's bearer token.
+
 	var callerAuthEntity string
 	var callerAuthMetadata map[string]string
-	if entity, ok := ContextAuthEntity(ctx); ok {
+	entity, callerAuthed := ContextAuthEntity(ctx)
+	if callerAuthed {
 		callerAuthEntity, callerAuthMetadata = entity.Entity, entity.AuthMetadata
 	}
+	// APP-9061 if the auth interceptor let the caller through a public Call without
+	// authenticating it, continue and warn the answerer that it must authenticate the caller.
+	// A server that does no authentication at all never sets this.
+	mustAuthCaller := unauthenticatedCallerFromCtx(ctx)
 	uuid, respCh, respDone, sendCancel, err := srv.callQueue.SendOfferInit(
-		ctx, host, req.GetSdp(), req.GetDisableTrickle(), callerAuthEntity, callerAuthMetadata)
+		ctx, host, req.GetSdp(), req.GetDisableTrickle(), callerAuthEntity, callerAuthMetadata, mustAuthCaller)
 	if err != nil {
 		return err
 	}
@@ -237,7 +243,8 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 				Uuid: uuid,
 				Stage: &webrtcpb.CallResponse_Init{
 					Init: &webrtcpb.CallResponseInitStage{
-						Sdp: *resp.InitialSDP,
+						Sdp:                     *resp.InitialSDP,
+						MustAuthAgainstAnswerer: mustAuthCaller,
 					},
 				},
 			}); err != nil {
@@ -413,6 +420,7 @@ func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 				Deadline:           timestamppb.New(offer.Deadline()),
 				CallerAuthEntity:   offer.CallerAuthEntity(),
 				CallerAuthMetadata: offer.CallerAuthMetadata(),
+				MustAuthCaller:     offer.MustAuthCaller(),
 			},
 		},
 	}); err != nil {

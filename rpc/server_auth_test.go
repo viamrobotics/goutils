@@ -1550,3 +1550,23 @@ func TestServerAuthRSA(t *testing.T) {
 	err = <-errChan
 	test.That(t, err, test.ShouldBeNil)
 }
+
+func TestTryAuthMarksUnauthenticatedCaller(t *testing.T) {
+	logger := golog.NewTestLogger(t)
+	rpcServer, err := NewServer(logger,
+		WithAuthHandler("fake", MakeSimpleAuthHandler([]string{"someone"}, "secret")),
+		WithPublicMethods([]string{"/proto.rpc.examples.echo.v1.EchoService/Echo"}),
+	)
+	test.That(t, err, test.ShouldBeNil)
+	defer rpcServer.Stop()
+	ss := rpcServer.(*simpleServer)
+
+	test.That(t, unauthenticatedCallerFromCtx(context.Background()), test.ShouldBeFalse)
+
+	// no credentials: tryAuth passes the caller through and marks the context
+	ctx, err := ss.tryAuth(context.Background())
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, unauthenticatedCallerFromCtx(ctx), test.ShouldBeTrue)
+	_, authed := ContextAuthEntity(ctx)
+	test.That(t, authed, test.ShouldBeFalse)
+}
