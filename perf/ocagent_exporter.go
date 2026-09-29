@@ -18,6 +18,7 @@ import (
 type OCAgentExporter struct {
 	e       *ocagent.Exporter
 	sampler trace.Sampler
+	runtime *runtimeSampler
 }
 
 var _ Exporter = &OCAgentExporter{}
@@ -97,6 +98,9 @@ func (o *OCAgentExporter) Start() error {
 	if err := o.e.Start(); err != nil {
 		return err
 	}
+	if o.runtime == nil {
+		o.runtime = startRuntimeSampler(runtimeSampleInterval)
+	}
 	view.RegisterExporter(o.e)
 	trace.RegisterExporter(o.e)
 	trace.ApplyConfig(trace.Config{DefaultSampler: o.sampler})
@@ -106,6 +110,7 @@ func (o *OCAgentExporter) Start() error {
 // Stop implements [Exporter]. Flushes any pending spans/metrics and closes the
 // connection to the collector.
 func (o *OCAgentExporter) Stop() {
+	o.runtime.Stop()
 	trace.UnregisterExporter(o.e)
 	view.UnregisterExporter(o.e)
 	o.e.Flush()
