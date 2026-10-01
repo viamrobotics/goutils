@@ -58,6 +58,25 @@ type WebRTCGrpcStats struct {
 	// When the FTDC frontend is more feature rich, we can remove this and let the frontend compute
 	// the value.
 	AverageTimeConnectingMillis float64
+
+	// PeerConnections holds per-connection SCTP transport gauges, keyed by connection ID. These
+	// are captured into FTDC so a slow transfer can be diagnosed after the fact: a congestion
+	// window that swings widely while the receiver window stays healthy
+	// indicates loss-driven congestion collapse, a receiver window near zero indicates a
+	// receive-window-bound transfer, and the sent/received byte counters show the actual transfer
+	// rate over time.
+	PeerConnections map[string]WebRTCPeerConnStats
+}
+
+// WebRTCPeerConnStats are the SCTP transport gauges for a single peer connection, read from the
+// connection's stats report. cwnd/rwnd/srtt/mtu come straight from the SCTP association.
+type WebRTCPeerConnStats struct {
+	CongestionWindowBytes uint32
+	ReceiverWindowBytes   uint32
+	SmoothedRTTMillis     float64
+	MTUBytes              uint32
+	BytesSent             uint64
+	BytesReceived         uint64
 }
 
 // Stats returns stats.
@@ -73,8 +92,54 @@ func (srv *webrtcServer) Stats() WebRTCGrpcStats {
 	if ret.PeerConnectionSuccesses > 0 {
 		ret.AverageTimeConnectingMillis = float64(ret.TotalTimeConnectingMillis) / float64(ret.PeerConnectionSuccesses)
 	}
+	ret.PeerConnections = srv.peerConnectionStats()
 
 	return ret
+}
+
+// peerConnectionStats reads the SCTP transport gauges for every active peer connection. The peer
+// connection set is snapshotted under lock and `GetStats` is called without the lock held, since
+// it is comparatively expensive and we must not block connection setup/teardown on it.
+func (srv *webrtcServer) peerConnectionStats() map[string]WebRTCPeerConnStats {
+	srv.peerConnsMu.Lock()
+	conns := make([]*webrtc.PeerConnection, 0, len(srv.peerConns))
+	for peerConn := range srv.peerConns {
+		conns = append(conns, peerConn)
+	}
+	srv.peerConnsMu.Unlock()
+
+	if len(conns) == 0 {
+		return nil
+	}
+	out := make(map[string]WebRTCPeerConnStats, len(conns))
+	for _, peerConn := range conns {
+		var connID string
+		var sctpStats webrtc.SCTPTransportStats
+		var haveSCTP bool
+		for _, stat := range peerConn.GetStats() {
+			switch typedStat := stat.(type) {
+			case webrtc.PeerConnectionStats:
+				connID = typedStat.ID
+			case webrtc.SCTPTransportStats:
+				sctpStats = typedStat
+				haveSCTP = true
+			}
+		}
+		// Skip until the SCTP association exists; cwnd/rwnd are meaningless before then.
+		if !haveSCTP || connID == "" {
+			continue
+		}
+		out[connID] = WebRTCPeerConnStats{
+			CongestionWindowBytes: sctpStats.CongestionWindow,
+			ReceiverWindowBytes:   sctpStats.ReceiverWindow,
+			// SmoothedRoundTripTime is reported in seconds; convert to ms for readability.
+			SmoothedRTTMillis: sctpStats.SmoothedRoundTripTime * 1000,
+			MTUBytes:          sctpStats.MTU,
+			BytesSent:         sctpStats.BytesSent,
+			BytesReceived:     sctpStats.BytesReceived,
+		}
+	}
+	return out
 }
 
 // from grpc.
