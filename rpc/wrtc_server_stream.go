@@ -264,10 +264,15 @@ func (s *webrtcServerStream) processHeaders(headers *webrtcpb.RequestHeaders) {
 			begin := &stats.Begin{BeginTime: time.Now()}
 			sh.HandleRPC(s.ctx, begin)
 			defer func() {
+				endErr := ErrorToStatus(err).Err()
+				// SendMsg returns io.ErrClosedPipe once the peer has reset the stream or the channel has closed.
+				if errors.Is(err, io.ErrClosedPipe) {
+					endErr = status.Error(codes.Canceled, err.Error())
+				}
 				sh.HandleRPC(s.ctx, &stats.End{
 					BeginTime: begin.BeginTime,
 					EndTime:   time.Now(),
-					Error:     ErrorToStatus(err).Err(),
+					Error:     endErr,
 				})
 			}()
 		}
