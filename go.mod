@@ -32,7 +32,7 @@ require (
 	github.com/samber/lo v1.51.0
 	github.com/viamrobotics/ice/v2 v2.3.40
 	github.com/viamrobotics/webrtc/v3 v3.99.16
-	github.com/viamrobotics/zeroconf v1.0.13
+	github.com/viamrobotics/zeroconf v1.1.0
 	github.com/zitadel/oidc/v3 v3.37.0
 	go.mongodb.org/mongo-driver v1.17.7
 	go.opencensus.io v0.24.0
