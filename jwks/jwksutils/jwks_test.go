@@ -34,6 +34,27 @@ func TestFetch(t *testing.T) {
 	test.That(t, ok, test.ShouldBeTrue)
 }
 
+func TestFetchRetriesTransientFailures(t *testing.T) {
+	ctx := context.Background()
+
+	set, _, err := NewTestKeySet(1)
+	test.That(t, err, test.ShouldBeNil)
+
+	address, closeFakeOIDC := ServeFakeOIDCEndpointWithFailures(t, set, 1)
+	defer closeFakeOIDC()
+
+	keyProvider, err := jwks.NewCachingOIDCJWKKeyProvider(ctx, address)
+	test.That(t, err, test.ShouldBeNil)
+
+	defer keyProvider.Close()
+
+	keyset, err := keyProvider.Fetch(ctx)
+	test.That(t, err, test.ShouldBeNil)
+
+	_, ok := keyset.LookupKeyID("key-id-1")
+	test.That(t, ok, test.ShouldBeTrue)
+}
+
 func TestStaticKeySet(t *testing.T) {
 	ctx := context.Background()
 
