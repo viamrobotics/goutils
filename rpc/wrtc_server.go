@@ -343,7 +343,7 @@ func (srv *webrtcServer) streamHandler(ss interface{}, method string, desc grpc.
 			return nil
 		}
 		s.closeWithSendError(err)
-		return nil
+		return err
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"io"
 	"math"
 	"sync/atomic"
+	"time"
 
 	protov1 "github.com/golang/protobuf/proto" //nolint:staticcheck
 	"github.com/pkg/errors"
@@ -258,14 +259,26 @@ func (s *webrtcServerStream) processHeaders(headers *webrtcpb.RequestHeaders) {
 	s.ch.server.counters.HeadersProcessed.Add(1)
 	s.headersReceived = true
 	s.ch.server.workers.Add(func(ctx context.Context) {
+		var err error
 		if sh := s.ch.server.statsHandler; sh != nil {
-			sh.HandleRPC(s.ctx, &stats.Begin{})
-			defer func() { sh.HandleRPC(s.ctx, &stats.End{}) }()
+			begin := &stats.Begin{BeginTime: time.Now()}
+			sh.HandleRPC(s.ctx, begin)
+			defer func() {
+				endErr := ErrorToStatus(err).Err()
+				// SendMsg returns io.ErrClosedPipe once the peer has reset the stream or the channel has closed.
+				if errors.Is(err, io.ErrClosedPipe) {
+					endErr = status.Error(codes.Canceled, err.Error())
+				}
+				sh.HandleRPC(s.ctx, &stats.End{
+					BeginTime: begin.BeginTime,
+					EndTime:   time.Now(),
+					Error:     endErr,
+				})
+			}()
 		}
-		// we're not checking/logging the error here because it is handled
+		// we're not logging the error here because it is handled
 		// by [rpc.grpcUnaryServerInterceptor] and [rpc.grpcStreamServerInterceptor].
-		//nolint:errcheck,gosec
-		handlerFunc(s)
+		err = handlerFunc(s)
 	})
 }
 
