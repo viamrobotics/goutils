@@ -496,10 +496,9 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 	if !sOpts.disableMDNS {
 		// All names are registered on a single responder so one browse is answered with one
 		// aggregated multicast packet (RFC 6762 section 6.4). Each name is advertised under
-		// itself and its dashed form (RSDK-1676) so plain `<name>.local` lookups resolve. Off
-		// loopback the address list is left empty so answers carry the addresses of whichever
-		// interface the query arrived on -- except on Windows, where zeroconf cannot tell
-		// which interface that was (see mdnsAdvertisedIPs).
+		// itself and its dashed form (RSDK-1676) so plain `<name>.local` lookups resolve. The
+		// address list is populated up front -- either `127.0.0.1` on loopback or the full
+		// list of multicast interface addresses off loopback.
 		var ifaces []net.Interface
 		var ips []string
 		if mDNSAddress.IP.IsLoopback() {
