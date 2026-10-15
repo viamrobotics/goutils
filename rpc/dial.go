@@ -443,11 +443,6 @@ func dialMulticastDNS(
 		return nil, false, nil, fmt.Errorf(errMsg, entry.ServiceName())
 	}
 
-	localAddress := fmt.Sprintf("%s:%d", entry.AddrIPv4[0], entry.Port)
-	if dOpts.debug {
-		logger.Debugw("found address via mDNS", "address", localAddress)
-	}
-
 	// Let downstream calls know when mdns was used. This is helpful to inform
 	// when determining if we want to use the external auth credentials for the signaling
 	// in cases where the external signaling is the same as the external auth. For mdns
@@ -461,14 +456,7 @@ func dialMulticastDNS(
 		dOpts.externalAuthMaterial = ""
 	}
 
-	if hasWebRTC {
-		dOpts.fixupWebRTCOptions(entry.AddrIPv4[0].String(), uint16(entry.Port))
-		if dOpts.mdnsOptions.RemoveAuthCredentials {
-			dOpts.webrtcOpts.SignalingAuthEntity = ""
-			dOpts.webrtcOpts.SignalingCreds = Credentials{}
-			dOpts.webrtcOpts.SignalingExternalAuthAuthMaterial = ""
-		}
-	} else {
+	if !hasWebRTC {
 		dOpts.webrtcOpts.Disable = true
 	}
 	var tlsConfig *tls.Config
@@ -480,11 +468,37 @@ func dialMulticastDNS(
 	tlsConfig.ServerName = address
 	dOpts.tlsConfig = tlsConfig
 
-	conn, cached, report, err := dial(ctx, localAddress, address, logger, dOpts, false)
-	if err == nil {
-		return conn, cached, report, nil
+	// The entry's AddrIPv4 can carry addresses from several interfaces on a multi-homed
+	// server (one per interface the server joined mDNS on). Only the subset reachable
+	// from this client's subnet will connect, and we can't tell which from the record
+	// itself, so try each in order and return the first success.
+	var (
+		lastReport *dialReport
+		lastErr    error
+	)
+	for _, ip := range entry.AddrIPv4 {
+		localAddress := fmt.Sprintf("%s:%d", ip, entry.Port)
+		if dOpts.debug {
+			logger.Debugw("found address via mDNS", "address", localAddress)
+		}
+		if hasWebRTC {
+			dOpts.fixupWebRTCOptions(ip.String(), uint16(entry.Port))
+			if dOpts.mdnsOptions.RemoveAuthCredentials {
+				dOpts.webrtcOpts.SignalingAuthEntity = ""
+				dOpts.webrtcOpts.SignalingCreds = Credentials{}
+				dOpts.webrtcOpts.SignalingExternalAuthAuthMaterial = ""
+			}
+		}
+		conn, cached, report, err := dial(ctx, localAddress, address, logger, dOpts, false)
+		if err == nil {
+			return conn, cached, report, nil
+		}
+		lastReport, lastErr = report, err
+		if dOpts.debug {
+			logger.Debugw("mDNS candidate dial failed, trying next", "address", localAddress, "err", err.Error())
+		}
 	}
-	return nil, false, report, err
+	return nil, false, lastReport, lastErr
 }
 
 // fixupWebRTCOptions sets sensible and secure settings for WebRTC dial options based on
