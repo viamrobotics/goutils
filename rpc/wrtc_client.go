@@ -64,11 +64,6 @@ type DialWebRTCOptions struct {
 	// to bypass the Authenticate/AuthenticateTo rpc auth flow.
 	SignalingExternalAuthAuthMaterial string
 
-	// AllowUnauthenticatedSignaling redials without credentials when the signaler reports its auth
-	// as unavailable (Unavailable) or rejects a token it cannot verify (Unauthenticated). A bad
-	// credential (PermissionDenied) still fails the dial. The answerer must then authenticate the caller.
-	AllowUnauthenticatedSignaling bool
-
 	// DisableTrickleICE controls whether to disable Trickle ICE or not.
 	// Disabling Trickle ICE can slow down connection establishment.
 	DisableTrickleICE bool
@@ -207,8 +202,7 @@ func dialWebRTC(
 			(s.Code() == codes.InvalidArgument && s.Message() == hostNotAllowedMsg)):
 			// this would be where we would hit an unimplemented signaler error first.
 			return nil, nil, ErrNoWebRTCSignaler
-		case ok && dOpts.webrtcOpts.AllowUnauthenticatedSignaling &&
-			(s.Code() == codes.Unavailable || s.Code() == codes.Unauthenticated):
+		case ok && (s.Code() == codes.Unavailable || s.Code() == codes.Unauthenticated):
 			// The credentials hook lives on the connection, so redial without credentials or every
 			// later RPC would retry Authenticate and fail the same way.
 			logger.Warnw("signaling server could not authenticate caller; continuing unauthenticated", "error", err)
