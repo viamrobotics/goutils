@@ -117,19 +117,34 @@ func (p *managedProcess) kill() (bool, error) {
 		timer.Stop()
 	}
 
-	// Lastly, kill everything in the process group that remains after a longer wait
-	var forceKilled bool
+	// If the process group is still alive, send SIGQUIT before the final SIGKILL. A hung
+	// Go module's runtime handler will be able to dump goroutines.
 	timer2 := time.NewTimer(p.stopWaitInterval * 2)
 	defer timer2.Stop()
 	select {
 	case <-timer2.C:
+		p.logger.Infof("sending SIGQUIT to process group %d before SIGKILL", p.cmd.Process.Pid)
+		if err := p.killGroup(syscall.SIGQUIT); err != nil {
+			return false, err
+		}
+	case <-p.managingCh:
+		timer2.Stop()
+	}
+
+	// Lastly, kill everything in the process group that remains (SIGQUIT could have been
+	// caught).
+	var forceKilled bool
+	timer3 := time.NewTimer(p.stopWaitInterval)
+	defer timer3.Stop()
+	select {
+	case <-timer3.C:
 		p.logger.Infof("killing entire process group %d", p.cmd.Process.Pid)
 		if err := p.killGroup(syscall.SIGKILL); err != nil {
 			return false, err
 		}
 		forceKilled = true
 	case <-p.managingCh:
-		timer2.Stop()
+		timer3.Stop()
 	}
 
 	return forceKilled, nil
