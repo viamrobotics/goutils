@@ -76,10 +76,43 @@ func (cp *cachingKeyProvider) Fetch(ctx context.Context) (KeySet, error) {
 // ensure interface is met.
 var _ KeyProvider = &cachingKeyProvider{}
 
+// Backoff schedule for the initial discovery and JWKS fetches; a transient network
+// failure at process startup would otherwise be fatal to the caller.
+const (
+	oidcFetchInitialRetryDelay = 500 * time.Millisecond
+	oidcFetchMaxRetryDelay     = 5 * time.Second
+	oidcFetchMaxRetryElapsed   = 30 * time.Second
+)
+
 // NewCachingOIDCJWKKeyProvider creates a CachingKeyProvider based on the issuer url
-// base domain and starts the auto refresh. Call CachingKeyProvider.Stop() to stop any
-// background goroutines.
+// base domain and starts the auto refresh. Transient failures fetching the discovery
+// document or the initial JWKS retry with backoff for up to 30s, bounded by ctx.
+// Call CachingKeyProvider.Stop() to stop any background goroutines.
 func NewCachingOIDCJWKKeyProvider(ctx context.Context, issuer string) (KeyProvider, error) {
+	delay := oidcFetchInitialRetryDelay
+	var elapsed time.Duration
+	for {
+		provider, err := newCachingOIDCJWKKeyProviderOnce(ctx, issuer)
+		if err == nil || errors.Is(err, oidc.ErrIssuerInvalid) || elapsed >= oidcFetchMaxRetryElapsed {
+			return provider, err
+		}
+		if remaining := oidcFetchMaxRetryElapsed - elapsed; delay > remaining {
+			delay = remaining
+		}
+		select {
+		case <-ctx.Done():
+			return nil, errors.Join(err, ctx.Err())
+		case <-time.After(delay):
+		}
+		elapsed += delay
+		delay *= 2
+		if delay > oidcFetchMaxRetryDelay {
+			delay = oidcFetchMaxRetryDelay
+		}
+	}
+}
+
+func newCachingOIDCJWKKeyProviderOnce(ctx context.Context, issuer string) (KeyProvider, error) {
 	httpTransport := http.DefaultTransport.(*http.Transport).Clone()
 	httpClient := &http.Client{
 		Transport: httpTransport,
