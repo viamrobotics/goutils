@@ -44,11 +44,12 @@ type WebRTCCallQueue interface {
 	// SendOfferInit initializes an offer associated with the given SDP to the given host.
 	// callerAuthEntity and callerAuthMetadata are the caller's identity, extracted from its
 	// auth token by the (trusted) signaler and forwarded to the answerer so it can identify
-	// the caller (empty/nil for an unauthenticated caller). SendOfferInit returns a UUID to
-	// track/authenticate the offer over time, a channel receive offer updates on over time,
-	// and a cancel func to inform the sender to stop.
+	// the caller (empty/nil for an unauthenticated caller). mustAuthCaller tells the answerer
+	// that the signaler did not authenticate the caller, so the answerer must do so itself.
+	// SendOfferInit returns a UUID to track/authenticate the offer over time, a channel
+	// receive offer updates on over time, and a cancel func to inform the sender to stop.
 	SendOfferInit(ctx context.Context, host, sdp string, disableTrickle bool,
-		callerAuthEntity string, callerAuthMetadata map[string]string) (
+		callerAuthEntity string, callerAuthMetadata map[string]string, mustAuthCaller bool) (
 		uuid string, respCh <-chan WebRTCCallAnswer, respDone <-chan struct{}, cancel func(), err error)
 
 	// SendOfferUpdate updates the offer associated with the given UUID with a newly discovered
@@ -95,6 +96,10 @@ type WebRTCCallOffer interface {
 	// CallerAuthMetadata returns the caller's auth metadata (rpc_auth_md) as extracted by the
 	// signaler, or nil if the caller was unauthenticated.
 	CallerAuthMetadata() map[string]string
+
+	// MustAuthCaller indicates that the caller has not been authenticated by
+	// the signaling server, so the answerer must auth the caller itself
+	MustAuthCaller() bool
 }
 
 // A WebRTCCallOfferExchange is used by an answerer to respond to a call offer with an
