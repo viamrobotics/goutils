@@ -1541,7 +1541,8 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 					{webrtcCallAnswererOperatorIDField, queue.operatorID},
 					{webrtcCallAnsweredField, true},
 				}},
-			})
+			},
+		)
 		var callReq mongodbWebRTCCall
 		err = result.Decode(&callReq)
 		if err != nil {
@@ -1572,7 +1573,8 @@ func (queue *mongoDBWebRTCCallQueue) RecvOffer(ctx context.Context, hosts []stri
 								{webrtcCallAnswererOperatorIDField, queue.operatorID},
 								{webrtcCallAnsweredField, true},
 							}},
-						})
+						},
+					)
 					if err != nil {
 						return false, err
 					}

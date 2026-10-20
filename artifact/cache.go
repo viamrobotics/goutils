@@ -407,7 +407,8 @@ func (s *cachedStore) writeThroughUserTree(tree map[string]*TreeNode, treePath [
 			}
 			s.config.StoreHash(nodeHash, len(data), treePath)
 			return nil
-		})
+		},
+	)
 }
 
 // status examines the tree with respect to the given local path and reports all artifacts
@@ -426,7 +427,8 @@ func (s *cachedStore) status() (*Status, error) {
 				status.Modified = append(status.Modified, localPath)
 			}
 			return nil
-		}); err != nil {
+		},
+	); err != nil {
 		return nil, err
 	}
 	return &status, nil

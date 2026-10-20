@@ -66,7 +66,8 @@ func newGoogleStorageStore(config *GoogleStorageStoreConfig) (*googleStorageStor
 			&credentials.DetectOptions{
 				Scopes: []string{storage.ScopeFullControl},
 				Client: &http.Client{Transport: &httpTransport},
-			})
+			},
+		)
 		if err != nil {
 			return nil, err
 		}

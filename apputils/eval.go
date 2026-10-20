@@ -134,11 +134,11 @@ func IsInList[T any](list []T, item T) bool {
 
 // IsMatchForRegex first validates 'x' and 'y' are strings and then returns whether 'y' is a match on regex 'x'.
 func IsMatchForRegex(x, y any) (bool, error) {
-	xString, ok := (x).(string)
+	xString, ok := x.(string)
 	if !ok {
 		return false, errors.Errorf("type assertion failed in eval operator: %v is not a string", x)
 	}
-	yString, ok := (y).(string)
+	yString, ok := y.(string)
 	if !ok {
 		return false, errors.Errorf("type assertion failed in eval operator: %v is not a string", y)
 	}

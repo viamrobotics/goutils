@@ -13,7 +13,8 @@ func TestWithAuthHandler(t *testing.T) {
 	opts := []ServerOption{WithAuthHandler("sometype", AuthHandlerFunc(
 		func(ctx context.Context, entity, payload string) (map[string]string, error) {
 			return map[string]string{"a": "1"}, nil
-		}),
+		},
+	),
 	)}
 
 	var sOpts serverOptions
@@ -24,7 +25,8 @@ func TestWithAuthHandler(t *testing.T) {
 	opts = append(opts, WithAuthHandler("sometype", AuthHandlerFunc(
 		func(ctx context.Context, entity, payload string) (map[string]string, error) {
 			return map[string]string{"a": "2"}, nil
-		})))
+		},
+	)))
 	var err error
 	for _, opt := range opts {
 		err = multierr.Combine(err, opt.apply(&sOpts))
@@ -56,7 +58,8 @@ func TestWithEntityDataLoader(t *testing.T) {
 	opts := []ServerOption{WithEntityDataLoader("sometype", EntityDataLoaderFunc(
 		func(ctx context.Context, claims Claims) (interface{}, error) {
 			return map[string]string{"a": "1"}, nil
-		}),
+		},
+	),
 	)}
 
 	var sOpts serverOptions
@@ -67,7 +70,8 @@ func TestWithEntityDataLoader(t *testing.T) {
 	opts = append(opts, WithEntityDataLoader("sometype", EntityDataLoaderFunc(
 		func(ctx context.Context, claims Claims) (interface{}, error) {
 			return map[string]string{"a": "2"}, nil
-		})))
+		},
+	)))
 	var err error
 	for _, opt := range opts {
 		err = multierr.Combine(err, opt.apply(&sOpts))
@@ -99,7 +103,8 @@ func TestWithTokenVerificationKeyProvider(t *testing.T) {
 	opts := []ServerOption{WithTokenVerificationKeyProvider("sometype", TokenVerificationKeyProviderFunc(
 		func(ctx context.Context, token *jwt.Token) (interface{}, error) {
 			return map[string]string{"a": "1"}, nil
-		}),
+		},
+	),
 	)}
 
 	var sOpts serverOptions
@@ -110,7 +115,8 @@ func TestWithTokenVerificationKeyProvider(t *testing.T) {
 	opts = append(opts, WithTokenVerificationKeyProvider("sometype", TokenVerificationKeyProviderFunc(
 		func(ctx context.Context, token *jwt.Token) (interface{}, error) {
 			return map[string]string{"a": "2"}, nil
-		})))
+		},
+	)))
 	var err error
 	for _, opt := range opts {
 		err = multierr.Combine(err, opt.apply(&sOpts))

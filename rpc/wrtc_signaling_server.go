@@ -203,7 +203,8 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 		callerAuthEntity, callerAuthMetadata = entity.Entity, entity.AuthMetadata
 	}
 	uuid, respCh, respDone, sendCancel, err := srv.callQueue.SendOfferInit(
-		ctx, host, req.GetSdp(), req.GetDisableTrickle(), callerAuthEntity, callerAuthMetadata)
+		ctx, host, req.GetSdp(), req.GetDisableTrickle(), callerAuthEntity, callerAuthMetadata,
+	)
 	if err != nil {
 		return err
 	}

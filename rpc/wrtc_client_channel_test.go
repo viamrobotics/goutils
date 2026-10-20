@@ -475,7 +475,8 @@ func TestWebRTCClientChannelWithInterceptor(t *testing.T) {
 		nil,
 		utils.Sublogger(logger, "client"),
 		unaryInterceptor,
-		streamInterceptor)
+		streamInterceptor,
+	)
 	defer func() {
 		test.That(t, clientCh.Close(), test.ShouldBeNil)
 	}()

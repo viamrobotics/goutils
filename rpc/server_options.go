@@ -436,7 +436,8 @@ func WithExternalAuthEd25519PublicKeyTokenVerifier(pubKey ed25519.PublicKey) Ser
 func WithExternalAuthJWKSetTokenVerifier(keySet jwks.KeySet) ServerOption {
 	return WithTokenVerificationKeyProvider(
 		CredentialsTypeExternal,
-		MakeJWKSKeyProvider(jwks.NewStaticJWKKeyProvider(keySet)))
+		MakeJWKSKeyProvider(jwks.NewStaticJWKKeyProvider(keySet)),
+	)
 }
 
 // WithExternalTokenVerificationKeyProvider returns a ServerOption to verify all externally

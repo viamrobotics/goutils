@@ -91,7 +91,8 @@ func InstallFusionAuth(
 		sessions,
 		config,
 		"/callback",
-		"fa_redirect_state")
+		"fa_redirect_state",
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +104,8 @@ func InstallFusionAuth(
 		authProvider.redirectURL,
 		authProvider.stateCookieName,
 		authProvider.stateCookieMaxAge,
-		logger)
+		logger,
+	)
 
 	return authProvider, nil
 }

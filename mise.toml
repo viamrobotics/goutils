@@ -13,7 +13,7 @@ disable_backends = ["asdf"]
 
 [tools]
 buf = "1.55.1"
-go = "1.25.9"
+go = "1.26.10"
 "go:github.com/AlekSi/gocov-xml" = "1.0.0"
 "go:github.com/axw/gocov/gocov" = "1.1.0"
 "go:github.com/bufbuild/buf/cmd/protoc-gen-buf-breaking" = "1.55.1"
@@ -22,7 +22,7 @@ go = "1.25.9"
 "go:github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway" = "2.20.0"
 "go:github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2" = "2.27.1"
 "go:github.com/pseudomuto/protoc-gen-doc/cmd/protoc-gen-doc" = "1.5.1"
-golangci-lint = "2.6.2"
+golangci-lint = "2.9.0"
 gotestsum = "1.10.0"                                                              # should be kept in sync with go.mod
 jq = "1.8.1"
 node = "18.20.8"

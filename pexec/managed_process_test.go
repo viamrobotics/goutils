@@ -450,7 +450,8 @@ func TestManagedProcessStop(t *testing.T) {
 			bashScriptBuilder.WriteString(
 				fmt.Sprintf(`trap "exit %d" %s`,
 					100+sig, sigStr(sig),
-				))
+				),
+			)
 			bashScriptBuilder.WriteString("\n")
 		}
 		bashScriptBuilder.WriteString(fmt.Sprintf(`echo hello >> '%s'

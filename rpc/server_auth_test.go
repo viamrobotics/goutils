@@ -642,7 +642,8 @@ func TestServerPublicMethods(t *testing.T) {
 			context.Background(), &rpcpb.AuthenticateRequest{Entity: "foo", Credentials: &rpcpb.Credentials{
 				Type:    "fake",
 				Payload: "something",
-			}})
+			}},
+		)
 		test.That(t, err, test.ShouldBeNil)
 		_, err = jwt.Parse(authResp.GetAccessToken(), func(token *jwt.Token) (interface{}, error) {
 			return testPubKey, nil

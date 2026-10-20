@@ -138,7 +138,8 @@ func TestServer(t *testing.T) {
 									context.Background(), &rpcpb.AuthenticateRequest{Entity: "foo", Credentials: &rpcpb.Credentials{
 										Type:    "fake",
 										Payload: "something",
-									}})
+									}},
+								)
 								test.That(t, err, test.ShouldBeNil)
 
 								// Validate the JWT token/header from the Authenticate call.
