@@ -179,7 +179,8 @@ func TestMongoDBWebRTCCallQueueMulti(t *testing.T) {
 		test.That(t, client.Database(mongodbWebRTCCallQueueDBName).Drop(context.Background()), test.ShouldBeNil)
 		answererQueue, err := NewMongoDBWebRTCCallQueue(
 			ctx, uuid.NewString()+"-answerer",
-			1, client, logger, func(hostnames []string, atTime time.Time) { activeAnswererChannelStub <- len(hostnames) }, nil)
+			1, client, logger, func(hostnames []string, atTime time.Time) { activeAnswererChannelStub <- len(hostnames) }, nil,
+		)
 		test.That(t, err, test.ShouldBeNil)
 		defer answererQueue.Close()
 

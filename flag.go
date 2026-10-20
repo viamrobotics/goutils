@@ -51,7 +51,7 @@ func UnmarshalFlags(flagSet *flag.FlagSet, into interface{}) error {
 	}
 
 	v := reflect.ValueOf(into)
-	if v.Kind() == reflect.Ptr {
+	if v.Kind() == reflect.Pointer {
 		v = v.Elem()
 	}
 	if v.Type().Kind() != reflect.Struct || !v.CanAddr() {
@@ -112,7 +112,7 @@ func UnmarshalFlags(flagSet *flag.FlagSet, into interface{}) error {
 						val = conv
 					case reflect.Array, reflect.Chan, reflect.Complex128, reflect.Complex64, reflect.Float32,
 						reflect.Float64, reflect.Func, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Int8,
-						reflect.Interface, reflect.Invalid, reflect.Map, reflect.Ptr, reflect.Slice, reflect.Struct,
+						reflect.Interface, reflect.Invalid, reflect.Map, reflect.Pointer, reflect.Slice, reflect.Struct,
 						reflect.Uint, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uint8, reflect.Uintptr,
 						reflect.UnsafePointer:
 						fallthrough
@@ -143,7 +143,7 @@ func UnmarshalFlags(flagSet *flag.FlagSet, into interface{}) error {
 					}
 					if flagValP.IsSet {
 						flagValIsSet = true
-						if field.Type.Kind() != reflect.Ptr {
+						if field.Type.Kind() != reflect.Pointer {
 							// no more work to do here
 							continue
 						}
@@ -185,10 +185,10 @@ func UnmarshalFlags(flagSet *flag.FlagSet, into interface{}) error {
 			fieldV.Set(fieldSlice)
 		} else {
 			vT := fieldV.Type()
-			if vT.Kind() == reflect.Ptr {
+			if vT.Kind() == reflect.Pointer {
 				newFieldV := reflect.New(vT.Elem())
 				fieldV.Set(newFieldV)
-				if valV.Kind() != reflect.Ptr {
+				if valV.Kind() != reflect.Pointer {
 					fieldV = fieldV.Elem()
 					vT = vT.Elem()
 				}
@@ -273,7 +273,7 @@ func parseFlagInfo(field reflect.StructField, val string) (flagInfo, error) {
 				info.DefaultIfc = int(conv)
 			case reflect.Array, reflect.Chan, reflect.Complex128, reflect.Complex64, reflect.Float32,
 				reflect.Float64, reflect.Func, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Int8,
-				reflect.Interface, reflect.Invalid, reflect.Map, reflect.Ptr, reflect.Slice, reflect.Struct,
+				reflect.Interface, reflect.Invalid, reflect.Map, reflect.Pointer, reflect.Slice, reflect.Struct,
 				reflect.Uint, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uint8, reflect.Uintptr,
 				reflect.UnsafePointer:
 				fallthrough
@@ -324,7 +324,7 @@ func (fvp *flagValueProxy) Get() interface{} {
 func extractFlags(flagSet *flag.FlagSet, from interface{}) error {
 	v := reflect.ValueOf(from)
 	t := v.Type()
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		v = v.Elem()
 		t = t.Elem()
 	}
@@ -355,12 +355,12 @@ func extractFlags(flagSet *flag.FlagSet, from interface{}) error {
 			continue
 		}
 		fieldT := field.Type
-		if fieldT.Kind() == reflect.Ptr {
+		if fieldT.Kind() == reflect.Pointer {
 			fieldT = fieldT.Elem()
 		}
 		if info.IsFlagVal {
 			flagValue := v.Field(i)
-			if flagValue.Kind() == reflect.Ptr {
+			if flagValue.Kind() == reflect.Pointer {
 				flagValue = reflect.New(fieldT).Elem()
 			}
 			if reflect.PointerTo(fieldT).Implements(flagValueT) {
@@ -409,7 +409,7 @@ func extractFlags(flagSet *flag.FlagSet, from interface{}) error {
 			}, info.Name, info.Usage)
 		case reflect.Array, reflect.Chan, reflect.Complex128, reflect.Complex64, reflect.Float32,
 			reflect.Float64, reflect.Func, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Int8,
-			reflect.Interface, reflect.Invalid, reflect.Map, reflect.Ptr, reflect.Struct,
+			reflect.Interface, reflect.Invalid, reflect.Map, reflect.Pointer, reflect.Struct,
 			reflect.Uint, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uint8, reflect.Uintptr,
 			reflect.UnsafePointer:
 			fallthrough

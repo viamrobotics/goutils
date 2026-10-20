@@ -340,7 +340,8 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 				// Do not include the stack in the error returned to the client; it leaks
 				// server internals. It is logged above for internal diagnosis only.
 				return status.Errorf(codes.Internal, "%v", p)
-			}))),
+			}),
+		)),
 		requestTransportGRPCUnaryInterceptor,
 		grpcUnaryServerInterceptor(grpcLogger),
 		unaryServerCodeInterceptor(),
@@ -377,7 +378,8 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 				// Do not include the stack in the error returned to the client; it leaks
 				// server internals. It is logged above for internal diagnosis only.
 				return status.Errorf(codes.Internal, "%v", p)
-			}))),
+			}),
+		)),
 		requestTransportGRPCStreamInterceptor,
 		grpcStreamServerInterceptor(grpcLogger),
 		streamServerCodeInterceptor(),
@@ -432,7 +434,8 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 		}
 		server.authHandlersForCreds[credentialsTypeInternal] = credAuthHandlers{
 			AuthHandler: MakeSimpleAuthHandler(
-				[]string{server.internalUUID}, server.internalCreds.Payload),
+				[]string{server.internalUUID}, server.internalCreds.Payload,
+			),
 		}
 		// Update this if the proto method or path changes
 		server.exemptMethods["/proto.rpc.v1.AuthService/Authenticate"] = true

@@ -48,7 +48,8 @@ func TestJWKSKeyProviderAndEmailLoader(t *testing.T) {
 					return nil, errors.Errorf("%q != %q", claims.Entity(), expectedUser)
 				}
 				return claims.Metadata()["email"], nil
-			}),
+			},
+		),
 		),
 	)
 	test.That(t, err, test.ShouldBeNil)

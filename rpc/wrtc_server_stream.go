@@ -319,7 +319,7 @@ func (s *webrtcServerStream) closeWithSendError(err error) {
 	}()
 
 	// If the error is a closed pipe error, there's no use trying to write headers/trailers.
-	if err != nil && (errors.Is(err, io.ErrClosedPipe)) {
+	if err != nil && errors.Is(err, io.ErrClosedPipe) {
 		return
 	}
 

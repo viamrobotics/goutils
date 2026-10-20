@@ -11,7 +11,8 @@ var Search = func(filter SearchFilter) []Description {
 		usb.NewSearchFilter("AppleUSBACMData", "usbmodem"),
 		func(vendorID, productID int) bool {
 			return checkProductDeviceIDs(vendorID, productID) != TypeUnknown
-		})
+		},
+	)
 	var serialDeviceDescs []Description
 	for _, dev := range usbDevices {
 		devType := checkProductDeviceIDs(dev.ID.Vendor, dev.ID.Product)

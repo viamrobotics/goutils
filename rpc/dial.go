@@ -79,7 +79,8 @@ func dialInner(
 			conn, _, r, err := dial(ctx, address, address, logger, dOpts, true)
 			report = r
 			return conn, err
-		})
+		},
+	)
 
 	defer func() {
 		if dialReportingEnabled() {
@@ -236,7 +237,8 @@ func dial(
 					)
 					wrtcReport = r
 					return ch, err
-				})
+				},
+			)
 
 			attemptReport := &dialReport{appDialOpts: appDialOpts}
 			if wrtcReport != nil {
