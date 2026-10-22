@@ -106,17 +106,18 @@ type ocCounterWrapper struct {
 }
 
 func (w *ocCounterWrapper) incBy(ctx context.Context, labels []string, incBy int64) {
-	mutations := w.data.labelsToMutations(labels)
-	for i := int64(0); i < incBy; i++ {
-		if err := stats.RecordWithTags(ctx, mutations, w.measure.M(1)); err != nil {
-			golog.Global().Errorf("faild to write metric %s", err)
-		}
+	if incBy < 0 {
+		golog.Global().Errorf("counter %s: negative increment %d ignored", w.data.View.Name, incBy)
+		return
+	}
+	if err := stats.RecordWithTags(ctx, w.data.labelsToMutations(labels), w.measure.M(incBy)); err != nil {
+		golog.Global().Errorf("failed to write metric %s", err)
 	}
 }
 
 func createCounterWrapper(name string, cfg MetricConfig) *ocCounterWrapper {
 	measure := stats.Int64(name, cfg.Description, string(cfg.Unit))
-	ocData := createAndRegisterOpenCensusMetric(name, measure, view.Count(), cfg)
+	ocData := createAndRegisterOpenCensusMetric(name, measure, view.Sum(), cfg)
 
 	return &ocCounterWrapper{
 		data:    ocData,
