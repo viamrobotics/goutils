@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/edaniels/golog"
 	"github.com/viamrobotics/webrtc/v3"
@@ -547,4 +548,130 @@ func (srv *delayingEchoServer) Echo(ctx context.Context, req *echopb.EchoRequest
 		cb()
 	}
 	return resp, err
+}
+
+func TestWebRTCServerChannelMustAuthCaller(t *testing.T) {
+	// Stands up a pair of peer connections and a server channel with mustAuthCaller=true.
+	// Uses one of the PCs as a client to test the auth flow.
+	logger := golog.NewTestLogger(t)
+	keyID, key := "the-key-id", "the-key"
+	expectedMD := map[string]string{"user_id": "u1"}
+
+	pcClient, pcServer, dcClient, dcServer := setupWebRTCPeers(t)
+	defer pcClient.GracefulClose()
+	defer pcServer.GracefulClose()
+
+	// Capture responses written back by server.
+	responses := make(chan *webrtcpb.Response, 16)
+	dcClientOpen := make(chan struct{})
+	dcClient.OnOpen(func() { close(dcClientOpen) })
+	dcClient.OnMessage(func(msg webrtc.DataChannelMessage) {
+		resp := &webrtcpb.Response{}
+		if err := proto.Unmarshal(msg.Data, resp); err == nil {
+			responses <- resp
+		}
+	})
+
+	// Set up server auth handler.
+	server := newWebRTCServer(logger)
+	defer server.Stop()
+	server.apiKeyAuthHandler = AuthHandlerFunc(func(_ context.Context, entity, payload string) (map[string]string, error) {
+		if entity == keyID && payload == key {
+			return expectedMD, nil
+		}
+		return nil, errors.New("bad credentials")
+	})
+
+	serverCh := newWebRTCServerChannel(server, pcServer, dcServer, []string{"aud"}, "", nil, true, logger)
+	defer serverCh.Close()
+
+	<-dcClientOpen
+	<-serverCh.Ready()
+
+	sendRequest := func(t *testing.T, req *webrtcpb.Request) {
+		buf, err := proto.Marshal(req)
+		test.That(t, err, test.ShouldBeNil)
+		test.That(t, dcClient.Send(buf), test.ShouldBeNil)
+	}
+
+	// Drain any responses already queued so each subtest starts clean.
+	drain := func() {
+		for {
+			select {
+			case <-responses:
+			default:
+				return
+			}
+		}
+	}
+
+	// expectUnauthenticatedTrailer waits for a response and asserts it carries an
+	// Unauthenticated trailer on the given stream id.
+	expectUnauthenticatedTrailer := func(t *testing.T, streamID uint64) {
+		select {
+		case resp := <-responses:
+			test.That(t, resp.GetStream().GetId(), test.ShouldEqual, streamID)
+			trailers := resp.GetTrailers()
+			test.That(t, trailers, test.ShouldNotBeNil)
+			test.That(t, trailers.GetStatus().GetCode(), test.ShouldEqual, int32(codes.Unauthenticated))
+		case <-time.After(2 * time.Second):
+			t.Fatal("timed out waiting for Unauthenticated trailer")
+		}
+	}
+
+	t.Run("non-token request is rejected before caller is authenticated", func(t *testing.T) {
+		drain()
+		sendRequest(t, &webrtcpb.Request{
+			Stream: &webrtcpb.Stream{Id: 1},
+			Type:   &webrtcpb.Request_Headers{Headers: &webrtcpb.RequestHeaders{Method: "/foo"}},
+		})
+		expectUnauthenticatedTrailer(t, 1)
+		test.That(t, serverCh.callerAuthed.Load(), test.ShouldBeFalse)
+	})
+
+	t.Run("bad api_token is rejected before caller is authenticated", func(t *testing.T) {
+		drain()
+		sendRequest(t, &webrtcpb.Request{
+			Stream: &webrtcpb.Stream{Id: 2},
+			Type:   &webrtcpb.Request_ApiToken{ApiToken: keyID + ":wrong"},
+		})
+		expectUnauthenticatedTrailer(t, 2)
+		test.That(t, serverCh.callerAuthed.Load(), test.ShouldBeFalse)
+	})
+
+	t.Run("good api_token authenticates the caller", func(t *testing.T) {
+		drain()
+		sendRequest(t, &webrtcpb.Request{
+			Stream: &webrtcpb.Stream{Id: 3},
+			Type:   &webrtcpb.Request_ApiToken{ApiToken: keyID + ":" + key},
+		})
+		testutils.WaitForAssertion(t, func(tb testing.TB) {
+			test.That(tb, serverCh.callerAuthed.Load(), test.ShouldBeTrue)
+		})
+		serverCh.mu.Lock()
+		info := serverCh.entityInfo
+		serverCh.mu.Unlock()
+		test.That(t, info.Entity, test.ShouldEqual, keyID)
+		test.That(t, info.AuthMetadata, test.ShouldResemble, expectedMD)
+	})
+
+	t.Run("subsequent api_token after auth is silently discarded", func(t *testing.T) {
+		drain()
+		sendRequest(t, &webrtcpb.Request{
+			Stream: &webrtcpb.Stream{Id: 4},
+			Type:   &webrtcpb.Request_ApiToken{ApiToken: keyID + ":" + key},
+		})
+		// No trailer should come back and nothing on the server channel should change.
+		select {
+		case resp := <-responses:
+			t.Fatalf("unexpected response after already-authenticated api_token: %v", resp)
+		case <-time.After(500 * time.Millisecond):
+		}
+		test.That(t, serverCh.callerAuthed.Load(), test.ShouldBeTrue)
+		serverCh.mu.Lock()
+		info := serverCh.entityInfo
+		serverCh.mu.Unlock()
+		test.That(t, info.Entity, test.ShouldEqual, keyID)
+		test.That(t, info.AuthMetadata, test.ShouldResemble, expectedMD)
+	})
 }
