@@ -78,18 +78,17 @@ func TestDialUnauthenticatedCaller(t *testing.T) {
 	), test.ShouldBeNil)
 	test.That(t, robotServer.Serve(listen(t)), test.ShouldBeNil)
 
-	dial := func(apiKey string, allowUnauth bool) (ClientConn, error) {
+	dial := func(apiKey string) (ClientConn, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		creds := Credentials{Type: CredentialsTypeAPIKey, Payload: apiKey}
 		return Dial(ctx, host, logger,
 			WithEntityCredentials(keyID, creds),
 			WithWebRTCOptions(DialWebRTCOptions{
-				SignalingServerAddress:        signalingListener.Addr().String(),
-				SignalingInsecure:             true,
-				SignalingAuthEntity:           keyID,
-				SignalingCreds:                creds,
-				AllowUnauthenticatedSignaling: allowUnauth,
+				SignalingServerAddress: signalingListener.Addr().String(),
+				SignalingInsecure:      true,
+				SignalingAuthEntity:    keyID,
+				SignalingCreds:         creds,
 			}),
 		)
 	}
@@ -99,7 +98,7 @@ func TestDialUnauthenticatedCaller(t *testing.T) {
 	}
 
 	t.Run("auth up: normal authenticated call", func(t *testing.T) {
-		conn, err := dial(key, false)
+		conn, err := dial(key)
 		test.That(t, err, test.ShouldBeNil)
 		defer conn.Close()
 		test.That(t, echo(conn), test.ShouldBeNil)
@@ -107,20 +106,15 @@ func TestDialUnauthenticatedCaller(t *testing.T) {
 
 	authWorks.Store(false)
 
-	t.Run("auth down, no fallback: dial fails at Authenticate", func(t *testing.T) {
-		_, err := dial(key, false)
-		test.That(t, status.Code(err), test.ShouldEqual, codes.Unavailable)
-	})
-
-	t.Run("auth down, fallback, right key: answerer verifies the token", func(t *testing.T) {
-		conn, err := dial(key, true)
+	t.Run("auth down, right key: answerer verifies the token", func(t *testing.T) {
+		conn, err := dial(key)
 		test.That(t, err, test.ShouldBeNil)
 		defer conn.Close()
 		test.That(t, echo(conn), test.ShouldBeNil)
 	})
 
-	t.Run("auth down, fallback, wrong key: answerer refuses every RPC", func(t *testing.T) {
-		conn, err := dial("wrong", true)
+	t.Run("auth down, wrong key: answerer refuses every RPC", func(t *testing.T) {
+		conn, err := dial("wrong")
 		test.That(t, err, test.ShouldBeNil)
 		defer conn.Close()
 		test.That(t, status.Code(echo(conn)), test.ShouldEqual, codes.Unauthenticated)
