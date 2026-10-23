@@ -156,18 +156,20 @@ func (ch *webrtcServerChannel) onChannelMessage(msg webrtc.DataChannelMessage) {
 
 	// if this channel is unauthenticated, check for a valid api token before doing anything else
 	if ch.mustAuthCaller && !ch.callerAuthed.Load() {
-		tok, isToken := req.GetType().(*webrtcpb.Request_ApiToken)
-		var callerEntity EntityInfo
-		verified := false
-		if isToken {
-			callerEntity, verified = ch.verifyAPIToken(tok.ApiToken)
-		}
-		if !verified {
-			// Fail the request on its own stream so the caller's RPC errors at once.
+		reject := func() {
 			st := status.New(codes.Unauthenticated, "answerer requires an api_token from an unauthenticated caller")
 			if err := ch.writeTrailers(stream, &webrtcpb.ResponseTrailers{Status: st.Proto()}); err != nil {
 				ch.webrtcBaseChannel.logger.Debugw("failed to reject unauthenticated request", "error", err)
 			}
+		}
+		tok, isToken := req.GetType().(*webrtcpb.Request_ApiToken)
+		if !isToken {
+			reject()
+			return
+		}
+		callerEntity, verified := ch.verifyAPIToken(tok.ApiToken)
+		if !verified {
+			reject()
 			return
 		}
 		ch.mu.Lock()
@@ -177,6 +179,7 @@ func (ch *webrtcServerChannel) onChannelMessage(msg webrtc.DataChannelMessage) {
 		return
 	}
 	if _, isToken := req.GetType().(*webrtcpb.Request_ApiToken); isToken {
+		ch.webrtcBaseChannel.logger.Debugw("discarding api_token request; caller already authenticated")
 		return // signaler authenticated this caller, or a token already succeeded
 	}
 	ch.mu.Lock()
