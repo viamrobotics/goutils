@@ -112,3 +112,68 @@ func TestRenegotation(t *testing.T) {
 	}
 	test.That(t, onTrack.Load(), test.ShouldBeTrue)
 }
+
+// TestRenegotiationBeforeNegotiationChannelOpens asserts that a negotiation that becomes necessary
+// before the `negotiation` DataChannel is open still happens. Pion raises `OnNegotiationNeeded`
+// once per negotiation; a request that is dropped because the channel was still opening is never
+// re-raised, leaving the peers permanently out of sync.
+func TestRenegotiationBeforeNegotiationChannelOpens(t *testing.T) {
+	logger := golog.NewTestLogger(t)
+
+	var (
+		clientNegChannelOpened <-chan struct{}
+		clientNegChannelClosed <-chan struct{}
+		serverNegChannelClosed <-chan struct{}
+	)
+
+	client, err := webrtc.NewPeerConnection(webrtc.Configuration{})
+	test.That(t, err, test.ShouldBeNil)
+	defer func() {
+		client.GracefulClose()
+		<-clientNegChannelClosed
+	}()
+
+	server, err := webrtc.NewPeerConnection(webrtc.Configuration{})
+	test.That(t, err, test.ShouldBeNil)
+	defer func() {
+		server.GracefulClose()
+		<-serverNegChannelClosed
+	}()
+
+	clientNegChannelOpened, clientNegChannelClosed, err = ConfigureForRenegotiation(client, PeerRoleClient, logger)
+	test.That(t, err, test.ShouldBeNil)
+
+	_, serverNegChannelClosed, err = ConfigureForRenegotiation(server, PeerRoleServer, logger)
+	test.That(t, err, test.ShouldBeNil)
+
+	onTrack := atomic.Bool{}
+	client.OnTrack(func(track *webrtc.TrackRemote, r *webrtc.RTPReceiver) {
+		onTrack.Store(true)
+	})
+
+	trackLocal, err := webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: "video/H264"},
+		"video", "main+camera")
+	test.That(t, err, test.ShouldBeNil)
+
+	// Add the video track before the peers have connected. The server's answer cannot carry the
+	// video track -- the client's offer has no video section -- so a renegotiation is required
+	// while the `negotiation` DataChannel is still opening.
+	_, err = server.AddTrack(trackLocal)
+	test.That(t, err, test.ShouldBeNil)
+
+	signalPair(t, client, server)
+
+	// Only the client's negotiation channel is waited on. Waiting on the server's would hide the
+	// behavior under test: its negotiation request was raised before that channel could open.
+	<-clientNegChannelOpened
+
+	for start := time.Now(); time.Since(start) < 10*time.Second; {
+		err = trackLocal.WriteSample(media.Sample{Data: []byte{0, 0, 0, 0, 0}, Timestamp: time.Now(), Duration: time.Millisecond})
+		test.That(t, err, test.ShouldBeNil)
+		if onTrack.Load() {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	test.That(t, onTrack.Load(), test.ShouldBeTrue)
+}
