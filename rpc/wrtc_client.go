@@ -189,6 +189,28 @@ func dialWebRTC(
 	logger.Debugw("connected to signaling server", "signaling_server", signalingServer)
 	advance(webrtcpb.DialStage_DIAL_STAGE_SIGNALING_CONNECTED)
 
+	// Explicitly Authenticate to see if there are any availability errors (app reporting
+	// that its authentication systems may be down). If there are, dial again without
+	// credentials.
+	if authn, ok := conn.(ClientConnAuthenticator); ok {
+		if _, err := authn.Authenticate(dialCtx); err != nil {
+			utils.UncheckedError(conn.Close())
+			s, ok := status.FromError(err)
+			if !ok || s.Code() != codes.Unavailable {
+				// Some other auth error that's not about availability. Return error.
+				return nil, nil, err
+			}
+
+			logger.Warnw("signaling server authentication unavailable;"+
+				"continuing unauthenticated so the answerer can validate us", "error", err)
+			dOpts = dOpts.withoutSignalingCredentials()
+			if conn, err = dialSignalingServer(dialCtx, signalingServer, host, logger, dOpts); err != nil {
+				// Still failed without credentials. Return error.
+				return nil, nil, err
+			}
+		}
+	}
+
 	md := metadata.New(map[string]string{RPCHostMetadataField: host})
 	signalCtx := metadata.NewOutgoingContext(dialCtx, md)
 
@@ -196,31 +218,12 @@ func dialWebRTC(
 
 	configResp, err := signalingClient.OptionalWebRTCConfig(signalCtx, &webrtcpb.OptionalWebRTCConfigRequest{})
 	if err != nil {
-		s, ok := status.FromError(err)
-		switch {
-		case ok && (s.Code() == codes.Unimplemented ||
-			(s.Code() == codes.InvalidArgument && s.Message() == hostNotAllowedMsg)):
-			// this would be where we would hit an unimplemented signaler error first.
+		// this would be where we would hit an unimplemented signaler error first.
+		if s, ok := status.FromError(err); ok && (s.Code() == codes.Unimplemented ||
+			(s.Code() == codes.InvalidArgument && s.Message() == hostNotAllowedMsg)) {
 			return nil, nil, ErrNoWebRTCSignaler
-		case ok && s.Code() == codes.Unavailable:
-			// The signaling server's authentication is unavailable.
-			//
-			// The signaling server is setup to allow us to dial to the answerer without
-			// credentials if the answerer is capable of authenticating us itself. We'll
-			// continue unauthenticated here and eventually send our API Key ID and API Key
-			// directly to the answerer in that case.
-			logger.Warnw("signaling server authentication seemingly unavailable;"+
-				"continuing to let answerer auth us directly", "error", err)
-			utils.UncheckedError(conn.Close())
-			dOpts = dOpts.withoutSignalingCredentials()
-			if conn, err = dialSignalingServer(dialCtx, signalingServer, host, logger, dOpts); err != nil {
-				return nil, nil, err
-			}
-			signalingClient = webrtcpb.NewSignalingServiceClient(conn)
-			configResp = nil
-		default:
-			return nil, nil, err
 		}
+		return nil, nil, err
 	}
 
 	advance(webrtcpb.DialStage_DIAL_STAGE_CONFIG_FETCHED)
