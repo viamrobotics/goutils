@@ -189,6 +189,28 @@ func dialWebRTC(
 	logger.Debugw("connected to signaling server", "signaling_server", signalingServer)
 	advance(webrtcpb.DialStage_DIAL_STAGE_SIGNALING_CONNECTED)
 
+	// Explicitly Authenticate to see if there are any availability errors (app reporting
+	// that its authentication systems may be down). If there are, dial again without
+	// credentials.
+	if authn, ok := conn.(ClientConnAuthenticator); ok {
+		if _, err := authn.Authenticate(dialCtx); err != nil {
+			utils.UncheckedError(conn.Close())
+			s, ok := status.FromError(err)
+			if !ok || s.Code() != codes.Unavailable {
+				// Some other auth error that's not about availability. Return error.
+				return nil, nil, err
+			}
+
+			logger.Warnw("signaling server authentication unavailable;"+
+				"continuing unauthenticated so the answerer can validate us", "error", err)
+			dOpts = dOpts.withoutSignalingCredentials()
+			if conn, err = dialSignalingServer(dialCtx, signalingServer, host, logger, dOpts); err != nil {
+				// Still failed without credentials. Return error.
+				return nil, nil, err
+			}
+		}
+	}
+
 	md := metadata.New(map[string]string{RPCHostMetadataField: host})
 	signalCtx := metadata.NewOutgoingContext(dialCtx, md)
 
@@ -583,6 +605,20 @@ func dialWebRTC(
 	}
 
 	return clientCh, nil, nil
+}
+
+// withoutSignalingCredentials returns a copy of the options with every credential that
+// dialSignalingServer would attach cleared. The signaling server is setup to allow us to
+// auth directly against an answerer if we provide no credentials (we will later send our
+// API Key ID and API Key directly to the answerer in this case).
+func (dOpts dialOptions) withoutSignalingCredentials() dialOptions {
+	dOpts.authMaterial = ""
+	dOpts.webrtcOpts.SignalingAuthEntity = ""
+	dOpts.webrtcOpts.SignalingCreds = Credentials{}
+	dOpts.webrtcOpts.SignalingExternalAuthAddress = ""
+	dOpts.webrtcOpts.SignalingExternalAuthToEntity = ""
+	dOpts.webrtcOpts.SignalingExternalAuthAuthMaterial = ""
+	return dOpts
 }
 
 func dialSignalingServer(
