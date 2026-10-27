@@ -196,12 +196,26 @@ func dialWebRTC(
 
 	configResp, err := signalingClient.OptionalWebRTCConfig(signalCtx, &webrtcpb.OptionalWebRTCConfigRequest{})
 	if err != nil {
-		// this would be where we would hit an unimplemented signaler error first.
-		if s, ok := status.FromError(err); ok && (s.Code() == codes.Unimplemented ||
-			(s.Code() == codes.InvalidArgument && s.Message() == hostNotAllowedMsg)) {
+		s, ok := status.FromError(err)
+		switch {
+		case ok && (s.Code() == codes.Unimplemented ||
+			(s.Code() == codes.InvalidArgument && s.Message() == hostNotAllowedMsg)):
+			// this would be where we would hit an unimplemented signaler error first.
 			return nil, nil, ErrNoWebRTCSignaler
+		case ok && s.Code() == codes.Unavailable:
+			// The credentials hook lives on the connection, so redial without credentials or every
+			// later RPC would retry Authenticate and fail the same way.
+			logger.Warnw("signaling server could not authenticate caller; continuing unauthenticated", "error", err)
+			utils.UncheckedError(conn.Close())
+			dOpts = dOpts.withoutSignalingCredentials()
+			if conn, err = dialSignalingServer(dialCtx, signalingServer, host, logger, dOpts); err != nil {
+				return nil, nil, err
+			}
+			signalingClient = webrtcpb.NewSignalingServiceClient(conn)
+			configResp = nil
+		default:
+			return nil, nil, err
 		}
-		return nil, nil, err
 	}
 
 	advance(webrtcpb.DialStage_DIAL_STAGE_CONFIG_FETCHED)
@@ -583,6 +597,18 @@ func dialWebRTC(
 	}
 
 	return clientCh, nil, nil
+}
+
+// withoutSignalingCredentials returns a copy of the options with every credential that
+// dialSignalingServer would attach cleared, so the signaling dial sends no Authorization header.
+func (dOpts dialOptions) withoutSignalingCredentials() dialOptions {
+	dOpts.authMaterial = ""
+	dOpts.webrtcOpts.SignalingAuthEntity = ""
+	dOpts.webrtcOpts.SignalingCreds = Credentials{}
+	dOpts.webrtcOpts.SignalingExternalAuthAddress = ""
+	dOpts.webrtcOpts.SignalingExternalAuthToEntity = ""
+	dOpts.webrtcOpts.SignalingExternalAuthAuthMaterial = ""
+	return dOpts
 }
 
 func dialSignalingServer(
