@@ -203,9 +203,14 @@ func dialWebRTC(
 			// this would be where we would hit an unimplemented signaler error first.
 			return nil, nil, ErrNoWebRTCSignaler
 		case ok && s.Code() == codes.Unavailable:
-			// The credentials hook lives on the connection, so redial without credentials or every
-			// later RPC would retry Authenticate and fail the same way.
-			logger.Warnw("signaling server could not authenticate caller; continuing unauthenticated", "error", err)
+			// The signaling server's authentication is unavailable.
+			//
+			// The signaling server is setup to allow us to dial to the answerer without
+			// credentials if the answerer is capable of authenticating us itself. We'll
+			// continue unauthenticated here and eventually send our API Key ID and API Key
+			// directly to the answerer in that case.
+			logger.Warnw("signaling server authentication seemingly unavailable;"+
+				"continuing to let answerer auth us directly", "error", err)
 			utils.UncheckedError(conn.Close())
 			dOpts = dOpts.withoutSignalingCredentials()
 			if conn, err = dialSignalingServer(dialCtx, signalingServer, host, logger, dOpts); err != nil {
@@ -600,7 +605,9 @@ func dialWebRTC(
 }
 
 // withoutSignalingCredentials returns a copy of the options with every credential that
-// dialSignalingServer would attach cleared, so the signaling dial sends no Authorization header.
+// dialSignalingServer would attach cleared. The signaling server is setup to allow us to
+// auth directly against an answerer if we provide no credentials (we will later send our
+// API Key ID and API Key directly to the answerer in this case).
 func (dOpts dialOptions) withoutSignalingCredentials() dialOptions {
 	dOpts.authMaterial = ""
 	dOpts.webrtcOpts.SignalingAuthEntity = ""
