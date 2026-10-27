@@ -18,6 +18,8 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"go.viam.com/utils"
+	"go.viam.com/utils/perf/statz"
+	"go.viam.com/utils/perf/statz/units"
 	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
 )
 
@@ -43,6 +45,18 @@ type WebRTCSignalingServer struct {
 	// Interval at which to send heartbeats.
 	heartbeatInterval time.Duration
 }
+
+var mustAuthAgainstAnswererSent = statz.NewCounter1[string](
+	"signaling/must_auth_against_answerer_sent",
+	statz.MetricConfig{
+		Description: "The number of Init responses telling the caller to authenticate against the answerer, " +
+			"i.e. how often the resilient-signaling degraded path was engaged.",
+		Unit: units.Dimensionless,
+		Labels: []statz.Label{
+			{Name: "hostname", Description: "The answerer being called"},
+		},
+	},
+)
 
 // NewWebRTCSignalingServer makes a new signaling server that uses the given
 // call queue and looks routes based on a given robot host. If forHosts is
@@ -246,6 +260,11 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 					"caller is unauthenticated")
 				srv.asyncSendOfferError(host, uuid, err)
 				return err
+			}
+			if mustAuthCaller {
+				mustAuthAgainstAnswererSent.Inc(host)
+				srv.logger.Infow("telling caller to authenticate against the answerer; degraded signaling path engaged",
+					"caller_auth_entity", callerAuthEntity, "host", host)
 			}
 			if err := server.Send(&webrtcpb.CallResponse{
 				Uuid: uuid,
