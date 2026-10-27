@@ -2,6 +2,7 @@ package rpc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -16,8 +17,10 @@ import (
 	"github.com/viamrobotics/webrtc/v3"
 	"go.viam.com/test"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"go.viam.com/utils"
@@ -458,4 +461,136 @@ func TestExtendWebRTCConfig(t *testing.T) {
 			test.That(t, stunServers[0].Credential, test.ShouldEqual, nil)
 		})
 	}
+}
+
+// callServerStub satisfies webrtcpb.SignalingService_CallServer (pretends to be the side
+// of the signaling server that talks to the caller). Send pushes onto sent, which the
+// test reads to observe forwarded CallResponses without racing on a shared slice.
+type callServerStub struct {
+	grpc.ServerStream
+	ctx  context.Context
+	sent chan *webrtcpb.CallResponse
+}
+
+func newCallServerStub(ctx context.Context) *callServerStub {
+	return &callServerStub{ctx: ctx, sent: make(chan *webrtcpb.CallResponse, 8)}
+}
+
+func (s *callServerStub) Context() context.Context { return s.ctx }
+func (s *callServerStub) Send(r *webrtcpb.CallResponse) error {
+	s.sent <- r
+	return nil
+}
+
+func TestCallRefusesUnauthCallerWhenAnswererCannotAuth(t *testing.T) {
+	logger := golog.NewTestLogger(t)
+	queue := NewMemoryWebRTCCallQueue(logger)
+	defer func() { test.That(t, queue.Close(), test.ShouldBeNil) }()
+
+	srv := NewWebRTCSignalingServer(queue, nil, logger, time.Second)
+	defer srv.Close()
+
+	host := "robot-host"
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Mark the caller as having reached the public method without auth, so Call will set
+	// mustAuthCaller=true.
+	callerCtx := contextWithUnauthenticatedCaller(ctx)
+	callerCtx = metadata.NewIncomingContext(callerCtx,
+		metadata.Pairs(RPCHostMetadataField, host))
+	stub := newCallServerStub(callerCtx)
+
+	// Stand in for the answerer: receive the offer and reply without CanAuthCallers set
+	// (defaults to false) as an old answerer would.
+	answererDone := make(chan error, 1)
+	go func() {
+		exchange, err := queue.RecvOffer(ctx, []string{host})
+		if err != nil {
+			answererDone <- err
+			return
+		}
+		sdp := "answerer-sdp"
+		answererDone <- exchange.AnswererRespond(ctx, WebRTCCallAnswer{
+			InitialSDP: &sdp,
+			// `CanAuthCallers: false` by omission
+		})
+	}()
+
+	err := srv.Call(&webrtcpb.CallRequest{Sdp: "caller-sdp", DisableTrickle: true}, stub)
+	// The caller must not have seen a CallResponse_Init and received an unauthenticated
+	// error.
+	test.That(t, status.Code(err), test.ShouldEqual, codes.Unauthenticated)
+	test.That(t, len(stub.sent), test.ShouldEqual, 0)
+
+	// Drain the answerer goroutine.
+	select {
+	case err := <-answererDone:
+		test.That(t, err, test.ShouldBeNil)
+	case <-time.After(5 * time.Second):
+		t.Fatal("answerer goroutine did not exit")
+	}
+}
+
+func TestCallAllowsUnauthCallerWhenAnswererCanAuth(t *testing.T) {
+	logger := golog.NewTestLogger(t)
+	queue := NewMemoryWebRTCCallQueue(logger)
+	defer func() { test.That(t, queue.Close(), test.ShouldBeNil) }()
+
+	srv := NewWebRTCSignalingServer(queue, nil, logger, time.Second)
+	defer srv.Close()
+
+	const host = "robot-host"
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	callerCtx := contextWithUnauthenticatedCaller(ctx)
+	callerCtx = metadata.NewIncomingContext(callerCtx,
+		metadata.Pairs(RPCHostMetadataField, host))
+	callerCtx, callerCancel := context.WithCancel(callerCtx)
+	defer callerCancel()
+	stub := newCallServerStub(callerCtx)
+
+	// Receive offer in a goroutine.
+	go func() {
+		exchange, err := queue.RecvOffer(ctx, []string{host})
+		if err != nil {
+			return
+		}
+		sdp := "answerer-sdp"
+		err = exchange.AnswererRespond(ctx, WebRTCCallAnswer{
+			InitialSDP:     &sdp,
+			CanAuthCallers: true,
+		})
+		test.That(t, err, test.ShouldBeNil)
+	}()
+
+	// Send call request (triggering an offer) in a goroutine.
+	done := make(chan error, 1)
+	go func() {
+		done <- srv.Call(&webrtcpb.CallRequest{Sdp: "caller-sdp", DisableTrickle: true}, stub)
+	}()
+
+	// Wait for the signaling server to give a response back to the caller (should say "you
+	// must auth against the answerer, you're unauthenticated and the answerer claims to be
+	// able to authenticate callers.)
+	var first *webrtcpb.CallResponse
+	select {
+	case first = <-stub.sent:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Call did not forward an init to the caller")
+	}
+	callerCancel()
+
+	select {
+	case err := <-done:
+		// Caller should see cancelation.
+		test.That(t, errors.Is(err, context.Canceled), test.ShouldBeTrue)
+	case <-time.After(5 * time.Second):
+		t.Fatal("Call did not return after caller cancel")
+	}
+
+	init := first.GetInit()
+	test.That(t, init, test.ShouldNotBeNil)
+	test.That(t, init.GetMustAuthAgainstAnswerer(), test.ShouldBeTrue)
 }
