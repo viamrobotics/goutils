@@ -18,6 +18,8 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"go.viam.com/utils"
+	"go.viam.com/utils/perf/statz"
+	"go.viam.com/utils/perf/statz/units"
 	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
 )
 
@@ -43,6 +45,18 @@ type WebRTCSignalingServer struct {
 	// Interval at which to send heartbeats.
 	heartbeatInterval time.Duration
 }
+
+var mustAuthAgainstAnswererSent = statz.NewCounter1[string](
+	"signaling/must_auth_against_answerer_sent",
+	statz.MetricConfig{
+		Description: "The number of Init responses telling the caller to authenticate against the answerer, " +
+			"i.e. how often the resilient-signaling degraded path was engaged.",
+		Unit: units.Dimensionless,
+		Labels: []statz.Label{
+			{Name: "hostname", Description: "The answerer being called"},
+		},
+	},
+)
 
 // NewWebRTCSignalingServer makes a new signaling server that uses the given
 // call queue and looks routes based on a given robot host. If forHosts is
@@ -202,8 +216,13 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 	if entity, ok := ContextAuthEntity(ctx); ok {
 		callerAuthEntity, callerAuthMetadata = entity.Entity, entity.AuthMetadata
 	}
+	// If the auth interceptor let this caller through a public Call without authenticating
+	// it, continue but warn the answerer that it must authenticate the caller. (Old
+	// answerers that cannot authenticate callers will cause a failure in the call
+	// establishment later on.)
+	mustAuthCaller := unauthenticatedCallerFromCtx(ctx)
 	uuid, respCh, respDone, sendCancel, err := srv.callQueue.SendOfferInit(
-		ctx, host, req.GetSdp(), req.GetDisableTrickle(), callerAuthEntity, callerAuthMetadata,
+		ctx, host, req.GetSdp(), req.GetDisableTrickle(), callerAuthEntity, callerAuthMetadata, mustAuthCaller,
 	)
 	if err != nil {
 		return err
@@ -234,11 +253,25 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 		}
 		if !haveInit {
 			haveInit = true
+			// If caller is unauthenticated and this answerer cannot authenticate callers,
+			// refuse the caller.
+			if mustAuthCaller && !resp.CanAuthCallers {
+				err := status.Error(codes.Unauthenticated,
+					"caller is unauthenticated")
+				srv.asyncSendOfferError(host, uuid, err)
+				return err
+			}
+			if mustAuthCaller {
+				mustAuthAgainstAnswererSent.Inc(host)
+				srv.logger.Infow("telling caller to authenticate against the answerer; degraded signaling path engaged",
+					"caller_auth_entity", callerAuthEntity, "host", host)
+			}
 			if err := server.Send(&webrtcpb.CallResponse{
 				Uuid: uuid,
 				Stage: &webrtcpb.CallResponse_Init{
 					Init: &webrtcpb.CallResponseInitStage{
-						Sdp: *resp.InitialSDP,
+						Sdp:                     *resp.InitialSDP,
+						MustAuthAgainstAnswerer: mustAuthCaller,
 					},
 				},
 			}); err != nil {
@@ -414,6 +447,7 @@ func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 				Deadline:           timestamppb.New(offer.Deadline()),
 				CallerAuthEntity:   offer.CallerAuthEntity(),
 				CallerAuthMetadata: offer.CallerAuthMetadata(),
+				MustAuthCaller:     offer.MustAuthCaller(),
 			},
 		},
 	}); err != nil {
@@ -497,7 +531,7 @@ func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 				haveInit = true
 				init := s.Init
 
-				ans := WebRTCCallAnswer{InitialSDP: &init.Sdp}
+				ans := WebRTCCallAnswer{InitialSDP: &init.Sdp, CanAuthCallers: init.GetCanAuthCallers()}
 				if err := offer.AnswererRespond(server.Context(), ans); err != nil {
 					return err
 				}
