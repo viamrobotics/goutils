@@ -202,9 +202,10 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 	if entity, ok := ContextAuthEntity(ctx); ok {
 		callerAuthEntity, callerAuthMetadata = entity.Entity, entity.AuthMetadata
 	}
-	// APP-9061: if the auth interceptor let this caller through a public Call without
-	// authenticating it, continue and warn the answerer that it must authenticate the
-	// caller. A server that does no authentication at all never sets this.
+	// If the auth interceptor let this caller through a public Call without authenticating
+	// it, continue but warn the answerer that it must authenticate the caller. (Old
+	// answerers that cannot authenticate callers will cause a failure in the call
+	// establishment later on.)
 	mustAuthCaller := unauthenticatedCallerFromCtx(ctx)
 	uuid, respCh, respDone, sendCancel, err := srv.callQueue.SendOfferInit(
 		ctx, host, req.GetSdp(), req.GetDisableTrickle(), callerAuthEntity, callerAuthMetadata, mustAuthCaller,
@@ -238,13 +239,11 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 		}
 		if !haveInit {
 			haveInit = true
-			// Refuse an unauthenticated caller when the answerer does not claim it can
-			// authenticate callers itself. Without this, the caller would send an API
-			// token to an answerer that silently ignores it and treat the connection as
-			// authenticated.
+			// If caller is unauthenticated and this answerer cannot authenticate callers,
+			// refuse the caller.
 			if mustAuthCaller && !resp.CanAuthCallers {
 				err := status.Error(codes.Unauthenticated,
-					"caller is unauthenticated and answerer cannot authenticate callers")
+					"caller is unauthenticated")
 				srv.asyncSendOfferError(host, uuid, err)
 				return err
 			}
