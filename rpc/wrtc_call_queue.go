@@ -131,6 +131,10 @@ type WebRTCCallAnswer struct {
 	InitialSDP *string
 	Candidate  *webrtc.ICECandidateInit
 	Err        error
+	// CanAuthCallers mirrors AnswerResponseInitStage.can_auth_callers from the answerer's
+	// init stage: the answerer claims it can authenticate callers the signaling server
+	// could not. Only meaningful on the init response.
+	CanAuthCallers bool
 }
 
 const noActiveOfferStr = "no active offer"

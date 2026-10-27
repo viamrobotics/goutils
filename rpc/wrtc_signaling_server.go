@@ -238,6 +238,16 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 		}
 		if !haveInit {
 			haveInit = true
+			// Refuse an unauthenticated caller when the answerer does not claim it can
+			// authenticate callers itself. Without this, the caller would send an API
+			// token to an answerer that silently ignores it and treat the connection as
+			// authenticated.
+			if mustAuthCaller && !resp.CanAuthCallers {
+				err := status.Error(codes.Unauthenticated,
+					"caller is unauthenticated and answerer cannot authenticate callers")
+				srv.asyncSendOfferError(host, uuid, err)
+				return err
+			}
 			if err := server.Send(&webrtcpb.CallResponse{
 				Uuid: uuid,
 				Stage: &webrtcpb.CallResponse_Init{
@@ -503,7 +513,7 @@ func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 				haveInit = true
 				init := s.Init
 
-				ans := WebRTCCallAnswer{InitialSDP: &init.Sdp}
+				ans := WebRTCCallAnswer{InitialSDP: &init.Sdp, CanAuthCallers: init.GetCanAuthCallers()}
 				if err := offer.AnswererRespond(server.Context(), ans); err != nil {
 					return err
 				}
