@@ -287,9 +287,15 @@ func (p *managedProcess) start(ctx context.Context) error {
 		cmd.Stderr = errWriter
 		stdOut, stdErr = outReader, errReader
 
-		// The process gets its own copies of the write ends when it starts; dropping ours
-		// is what lets the readers see EOF once the process, and anything that inherited
-		// them from it, is gone.
+		// Use *os.File for cmd.Stdout/Stderr rather than cmd.StdoutPipe/StderrPipe.
+		// StdoutPipe adds the read ends to exec.Cmd's internal parentIOPipes, which
+		// Wait() closes immediately on process exit — discarding any output still
+		// buffered in the pipe. Passing *os.File bypasses that: parentIOPipes stays
+		// empty and Wait() never touches outReader/errReader, so the loggers can drain
+		// all output before we close the pipes ourselves.
+		//
+		// Closing the write ends after Start() (via this defer) makes the readers see
+		// EOF once the process and any children that inherited these FDs all exit.
 		defer func() {
 			utils.UncheckedError(outWriter.Close())
 			utils.UncheckedError(errWriter.Close())
