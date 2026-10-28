@@ -415,6 +415,45 @@ func ConfigureForRenegotiation(
 	// negotiationChannel being set to a non-nil value is synchronized *before* negOpened is closed.
 	var negotiationChannel *webrtc.DataChannel
 
+	// negotiationPending records a negotiation that was asked for before the negotiation
+	// DataChannel was open. Guarded by `negMu`.
+	var negotiationPending bool
+
+	// sendOffer offers the PeerConnection's current local state to the peer over the negotiation
+	// channel. Callers must hold `negMu` and may only call this once `negOpened` is closed.
+	sendOffer := func() {
+		// Creating an offer will generate the desired local description that includes the
+		// modifications responsible for entering the callback. Such as adding a video track.
+		offer, err := peerConn.CreateOffer(nil)
+		if err != nil {
+			logger.Errorw("renegotiation: error creating offer", "error", err)
+			return
+		}
+
+		// Dan: It's not clear to me why an offer is created from a `PeerConnection` just to call
+		// `PeerConnection.SetLocalDescription`. And then when encoding the `Description` ("SDP")
+		// for sending to the peer, we must call `PeerConnection.LocalDescription` rather than using
+		// the `offer`. But it's easy to see that the `offer` and `peerConn.LocalDescription()` are
+		// different (e.g: the latter includes ICE candidates), so it must be done this way.
+		if err := peerConn.SetLocalDescription(offer); err != nil {
+			logger.Errorw("renegotiation: error setting local description", "error", err)
+			return
+		}
+
+		// Encode and send the new local description to the peer over the `negotiation` channel. The
+		// peer will respond over the negotiation channel with an answer. That answer will be used to
+		// update the remote description.
+		encodedSDP, err := EncodeSDP(peerConn.LocalDescription())
+		if err != nil {
+			logger.Errorw("renegotiation: error encoding SDP", "error", err)
+			return
+		}
+		if err := negotiationChannel.SendText(encodedSDP); err != nil {
+			logger.Errorw("renegotiation: error sending SDP", "error", err)
+			return
+		}
+	}
+
 	// OnNegotiationNeeded is webrtc callback for when a PeerConnection is mutated in a way such
 	// that its local description should change. Such as when a video track is added that should be
 	// streamed to the peer.
@@ -425,46 +464,25 @@ func ConfigureForRenegotiation(
 	// allow the "server" to start a renegotiation.
 	if role == PeerRoleServer {
 		peerConn.OnNegotiationNeeded(func() {
+			negMu.Lock()
+			defer negMu.Unlock()
+
 			select {
 			case <-negOpened:
 			default:
-				// Negotiation cannot occur over the negotiation channel until after the channel is in
-				// operation.
+				// Negotiation cannot occur over the negotiation channel until after the channel is
+				// in operation. Pion only raises this callback once per negotiation, so remember
+				// requests that arrive while the channel is opening and replay them in
+				// `negotiationChannel.OnOpen`. Requests raised before a local description was ever
+				// negotiated are satisfied by our signaling and answering machinery establishing
+				// the connection.
+				if peerConn.CurrentLocalDescription() != nil {
+					negotiationPending = true
+				}
 				return
 			}
 
-			negMu.Lock()
-			defer negMu.Unlock()
-			// Creating an offer will generate the desired local description that includes the
-			// modifications responsible for entering the callback. Such as adding a video track.
-			offer, err := peerConn.CreateOffer(nil)
-			if err != nil {
-				logger.Errorw("renegotiation: error creating offer", "error", err)
-				return
-			}
-
-			// Dan: It's not clear to me why an offer is created from a `PeerConnection` just to call
-			// `PeerConnection.SetLocalDescription`. And then when encoding the `Description` ("SDP")
-			// for sending to the peer, we must call `PeerConnection.LocalDescription` rather than using
-			// the `offer`. But it's easy to see that the `offer` and `peerConn.LocalDescription()` are
-			// different (e.g: the latter includes ICE candidates), so it must be done this way.
-			if err := peerConn.SetLocalDescription(offer); err != nil {
-				logger.Errorw("renegotiation: error setting local description", "error", err)
-				return
-			}
-
-			// Encode and send the new local description to the peer over the `negotiation` channel. The
-			// peer will respond over the negotiation channel with an answer. That answer will be used to
-			// update the remote description.
-			encodedSDP, err := EncodeSDP(peerConn.LocalDescription())
-			if err != nil {
-				logger.Errorw("renegotiation: error encoding SDP", "error", err)
-				return
-			}
-			if err := negotiationChannel.SendText(encodedSDP); err != nil {
-				logger.Errorw("renegotiation: error sending SDP", "error", err)
-				return
-			}
+			sendOffer()
 		})
 	}
 
@@ -483,7 +501,14 @@ func ConfigureForRenegotiation(
 	negotiationChannel.OnError(initialDataChannelOnError(peerConn, logger))
 
 	negotiationChannel.OnOpen(func() {
+		negMu.Lock()
+		defer negMu.Unlock()
+
 		close(negOpened)
+		if negotiationPending {
+			negotiationPending = false
+			sendOffer()
+		}
 	})
 
 	negClosed := make(chan struct{})
