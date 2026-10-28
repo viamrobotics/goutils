@@ -448,6 +448,7 @@ func (p *managedProcess) startLoggers(stdOut, stdErr *os.File) func() {
 		return func() {}
 	}
 
+	stopLogging := make(chan struct{})
 	var activeLoggers sync.WaitGroup
 	activeLoggers.Add(2)
 	logPipe := func(name string, pipe io.Reader, isErr bool, logger utils.ZapCompatibleLogger) {
@@ -455,6 +456,11 @@ func (p *managedProcess) startLoggers(stdOut, stdErr *os.File) func() {
 		pipeR := bufio.NewReader(pipe)
 		logWriterError := false
 		for {
+			select {
+			case <-stopLogging:
+				return
+			default:
+			}
 			line, _, err := pipeR.ReadLine()
 			if err != nil {
 				if !errors.Is(err, io.EOF) && !errors.Is(err, os.ErrClosed) {
@@ -509,27 +515,27 @@ func (p *managedProcess) startLoggers(stdOut, stdErr *os.File) func() {
 	})
 
 	return func() {
-		drained := make(chan struct{})
-		utils.PanicCapturingGo(func() {
-			activeLoggers.Wait()
-			close(drained)
-		})
-
-		timer := time.NewTimer(outputDrainTimeout)
-		defer timer.Stop()
-		select {
-		case <-drained:
-		case <-timer.C:
+		// Fire after outputDrainTimeout if the loggers haven't reached EOF yet (which
+		// means an orphaned child is holding the write ends open). Closing stopLogging
+		// cuts the loggers off between ReadLine calls; closing the read ends interrupts
+		// any ReadLine that is already blocking.
+		timer := time.AfterFunc(outputDrainTimeout, func() {
 			// The pipes only reach EOF once every process holding a write end is gone, so
 			// a child that outlived the process we manage can hold them open for good.
 			p.logger.Warnw("timed out waiting for process output to drain", "timeout", outputDrainTimeout)
+			close(stopLogging)
+			utils.UncheckedError(stdOut.Close())
+			utils.UncheckedError(stdErr.Close())
+		})
+		activeLoggers.Wait()
+		if timer.Stop() {
+			// Loggers reached EOF naturally before the timeout; close the read ends
+			// ourselves for resource cleanup.
+			utils.UncheckedError(stdOut.Close())
+			utils.UncheckedError(stdErr.Close())
 		}
-
-		// Closing our end releases the pipes and unblocks any reader still waiting on
-		// output that may never arrive.
-		utils.UncheckedError(stdOut.Close())
-		utils.UncheckedError(stdErr.Close())
-		<-drained
+		// If timer.Stop() returns false the AfterFunc callback already closed the pipes
+		// (or is doing so concurrently in its own goroutine); either way we're done.
 	}
 }
 
