@@ -124,11 +124,13 @@ type simpleServer struct {
 	// exempt methods do not perform any auth
 	exemptMethods map[string]bool
 	// public methods attempt, but do not require, authentication
-	publicMethods        map[string]bool
-	tlsConfig            *tls.Config
-	firstSeenTLSCertLeaf *x509.Certificate
-	stopped              bool
-	logger               utils.ZapCompatibleLogger
+	publicMethods             map[string]bool
+	unverifiedTolerantMethods map[string]bool
+	authInfraDown             func(context.Context) bool
+	tlsConfig                 *tls.Config
+	firstSeenTLSCertLeaf      *x509.Certificate
+	stopped                   bool
+	logger                    utils.ZapCompatibleLogger
 
 	// auth
 	authKeys             map[string]authKeyData
@@ -311,17 +313,19 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 			Type:    credentialsTypeInternal,
 			Payload: base64.StdEncoding.EncodeToString(internalCredsKey),
 		},
-		tlsAuthHandler:       sOpts.tlsAuthHandler,
-		authHandlersForCreds: sOpts.authHandlersForCreds,
-		authToHandler:        sOpts.authToHandler,
-		authAudience:         sOpts.authAudience,
-		authIssuer:           sOpts.authIssuer,
-		ensureAuthedHandler:  sOpts.ensureAuthedHandler,
-		exemptMethods:        make(map[string]bool),
-		publicMethods:        make(map[string]bool),
-		tlsConfig:            sOpts.tlsConfig,
-		firstSeenTLSCertLeaf: firstSeenTLSCertLeaf,
-		logger:               logger,
+		tlsAuthHandler:            sOpts.tlsAuthHandler,
+		authHandlersForCreds:      sOpts.authHandlersForCreds,
+		authToHandler:             sOpts.authToHandler,
+		authAudience:              sOpts.authAudience,
+		authIssuer:                sOpts.authIssuer,
+		ensureAuthedHandler:       sOpts.ensureAuthedHandler,
+		exemptMethods:             make(map[string]bool),
+		publicMethods:             make(map[string]bool),
+		unverifiedTolerantMethods: make(map[string]bool),
+		authInfraDown:             sOpts.authInfraDown,
+		tlsConfig:                 sOpts.tlsConfig,
+		firstSeenTLSCertLeaf:      firstSeenTLSCertLeaf,
+		logger:                    logger,
 	}
 
 	if sOpts.unknownStreamDesc != nil {
@@ -448,6 +452,10 @@ func NewServer(logger utils.ZapCompatibleLogger, opts ...ServerOption) (Server, 
 
 	for _, method := range sOpts.publicMethods {
 		server.publicMethods[method] = true
+	}
+
+	for _, method := range sOpts.unverifiedTolerantMethods {
+		server.unverifiedTolerantMethods[method] = true
 	}
 
 	if sOpts.authToHandler != nil {

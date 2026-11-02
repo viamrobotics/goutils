@@ -494,9 +494,9 @@ func TestCallRefusesUnauthCallerWhenAnswererCannotAuth(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	// Mark the caller as having reached the public method without auth, so Call will set
+	// Mark the caller as unverified-because-auth-unavailable, so Call will set
 	// mustAuthCaller=true.
-	callerCtx := contextWithUnauthenticatedCaller(ctx)
+	callerCtx := ContextWithAuthEntity(ctx, EntityInfo{UnverifiedBecauseAuthUnavailable: true})
 	callerCtx = metadata.NewIncomingContext(callerCtx,
 		metadata.Pairs(RPCHostMetadataField, host))
 	stub := newCallServerStub(callerCtx)
@@ -544,7 +544,7 @@ func TestCallAllowsUnauthCallerWhenAnswererCanAuth(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	callerCtx := contextWithUnauthenticatedCaller(ctx)
+	callerCtx := ContextWithAuthEntity(ctx, EntityInfo{UnverifiedBecauseAuthUnavailable: true})
 	callerCtx = metadata.NewIncomingContext(callerCtx,
 		metadata.Pairs(RPCHostMetadataField, host))
 	callerCtx, callerCancel := context.WithCancel(callerCtx)

@@ -213,14 +213,11 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 	// (entity + auth metadata) to the answerer, never the caller's bearer token.
 	var callerAuthEntity string
 	var callerAuthMetadata map[string]string
+	var mustAuthCaller bool
 	if entity, ok := ContextAuthEntity(ctx); ok {
 		callerAuthEntity, callerAuthMetadata = entity.Entity, entity.AuthMetadata
+		mustAuthCaller = entity.UnverifiedBecauseAuthUnavailable
 	}
-	// If the auth interceptor let this caller through a public Call without authenticating
-	// it, continue but warn the answerer that it must authenticate the caller. (Old
-	// answerers that cannot authenticate callers will cause a failure in the call
-	// establishment later on.)
-	mustAuthCaller := unauthenticatedCallerFromCtx(ctx)
 	uuid, respCh, respDone, sendCancel, err := srv.callQueue.SendOfferInit(
 		ctx, host, req.GetSdp(), req.GetDisableTrickle(), callerAuthEntity, callerAuthMetadata, mustAuthCaller,
 	)

@@ -16,7 +16,6 @@ const (
 	ctxKeyAuthEntity
 	ctxKeyAuthClaims // all jwt claims
 	ctxKeyRequestTransport
-	ctxKeyUnauthenticatedCaller
 )
 
 // contextWithHost attaches a host name to the given context.
@@ -66,30 +65,14 @@ func ContextWithAuthEntity(ctx context.Context, authEntity EntityInfo) context.C
 	return context.WithValue(ctx, ctxKeyAuthEntity, authEntity)
 }
 
-// contextWithUnauthenticatedCaller marks a context whose caller reached a public method
-// without credentials the server could verify.
-func contextWithUnauthenticatedCaller(ctx context.Context) context.Context {
-	return context.WithValue(ctx, ctxKeyUnauthenticatedCaller, true)
-}
-
-// unauthenticatedCallerFromCtx reports whether the auth interceptor let this caller through a
-// public method without authenticating it. False on a server that does no authentication.
-func unauthenticatedCallerFromCtx(ctx context.Context) bool {
-	v, ok := ctx.Value(ctxKeyUnauthenticatedCaller).(bool)
-	return ok && v
-}
-
 // ContextAuthEntity returns the entity (e.g. a user) associated with this authentication context.
 func ContextAuthEntity(ctx context.Context) (EntityInfo, bool) {
-	authEntityValue := ctx.Value(ctxKeyAuthEntity)
-	if authEntityValue == nil {
+	v := ctx.Value(ctxKeyAuthEntity)
+	if v == nil {
 		return EntityInfo{}, false
 	}
-	authEntity, ok := authEntityValue.(EntityInfo)
-	if !ok || authEntity.Entity == "" {
-		return EntityInfo{}, false
-	}
-	return authEntity, true
+	authEntity, ok := v.(EntityInfo)
+	return authEntity, ok
 }
 
 // MustContextAuthEntity returns the entity associated with this authentication context;
