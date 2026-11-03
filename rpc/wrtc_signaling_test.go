@@ -184,6 +184,77 @@ func testWebRTCSignaling(t *testing.T, signalingCallQueue WebRTCCallQueue, logge
 	}
 }
 
+// TestSignalingHostCaseInsensitive verifies that signaling host identifiers are matched
+// case-insensitively: an answerer registered as "RoBoT.viam.cloud" is still reachable via
+// a Call carrying "robot.VIAM.cloud", and vice-versa.
+func TestSignalingHostCaseInsensitive(t *testing.T) {
+	logger := golog.NewTestLogger(t)
+
+	t.Run("HostsFromCtx lowercases", func(t *testing.T) {
+		md := metadata.Pairs(RPCHostMetadataField, "MixedCase.Viam.Cloud")
+		ctx := metadata.NewIncomingContext(context.Background(), md)
+		hosts, err := HostsFromCtx(ctx)
+		test.That(t, err, test.ShouldBeNil)
+		test.That(t, hosts, test.ShouldResemble, []string{"mixedcase.viam.cloud"})
+	})
+
+	t.Run("NewWebRTCSignalingServer lowercases", func(t *testing.T) {
+		queue := NewMemoryWebRTCCallQueue(logger)
+		defer func() { test.That(t, queue.Close(), test.ShouldBeNil) }()
+		srv := NewWebRTCSignalingServer(queue, nil, logger, defaultHeartbeatInterval, "Allowed.Host")
+		defer srv.Close()
+		// Assert that when caller writes the host in a different case, server still accepts.
+		test.That(t, srv.validateHosts("allowed.HOST"), test.ShouldBeNil)
+	})
+
+	t.Run("e2e", func(t *testing.T) {
+		queue := NewMemoryWebRTCCallQueue(logger)
+		defer func() { test.That(t, queue.Close(), test.ShouldBeNil) }()
+		signalingServer := NewWebRTCSignalingServer(queue, nil, logger, defaultHeartbeatInterval)
+		defer signalingServer.Close()
+
+		grpcListener, err := net.Listen("tcp", "localhost:0")
+		test.That(t, err, test.ShouldBeNil)
+		grpcServer := grpc.NewServer()
+		grpcServer.RegisterService(&webrtcpb.SignalingService_ServiceDesc, signalingServer)
+		go func() { _ = grpcServer.Serve(grpcListener) }()
+		defer grpcServer.Stop()
+
+		webrtcServer := newWebRTCServer(logger)
+		defer webrtcServer.Stop()
+		webrtcServer.RegisterService(&echopb.EchoService_ServiceDesc, &echoserver.Server{})
+		answerer := newWebRTCSignalingAnswerer(
+			grpcListener.Addr().String(),
+			[]string{"RoBoT.VIAM.cloud"}, // mixed case
+			webrtcServer,
+			[]DialOption{WithInsecure()},
+			webrtc.Configuration{},
+			logger,
+		)
+		answerer.Start()
+		defer answerer.Stop()
+		// The signaling server lowercases the answerer's host in `Answer` before enqueuing
+		// it, so the answerer should come online with a lowercased host.
+		waitForAnswererOnline(context.Background(), t, []string{"robot.viam.cloud"}, queue)
+
+		// A caller dialing with yet another case must still reach the answerer. The Echo call
+		// succeeding is proof the signaling server matched both sides across case.
+		ch, err := DialWebRTC(
+			context.Background(),
+			grpcListener.Addr().String(),
+			"RoBoT.ViAm.CLOUD",
+			logger,
+			WithWebRTCOptions(DialWebRTCOptions{SignalingInsecure: true}),
+		)
+		test.That(t, err, test.ShouldBeNil)
+		defer func() { test.That(t, ch.Close(), test.ShouldBeNil) }()
+
+		resp, err := echopb.NewEchoServiceClient(ch).Echo(context.Background(), &echopb.EchoRequest{Message: "hello"})
+		test.That(t, err, test.ShouldBeNil)
+		test.That(t, resp.GetMessage(), test.ShouldEqual, "hello")
+	})
+}
+
 func TestWebRTCAnswererImmediateStop(t *testing.T) {
 	// Primarily a regression test for RSDK-3441.
 
