@@ -39,6 +39,13 @@ type serverOptions struct {
 
 	// publicMethods are api routes that attempt, but do not require, authentication
 	publicMethods []string
+	// unverifiedTolerant methods are api routes that do not require authentication IFF auth
+	// infrastructure is unavailable.
+	unverifiedTolerantMethods []string
+
+	// authInfraDown probes auth infrastructure. Returns true if it is unavailable; false
+	// otherwise.
+	authInfraDown func(context.Context) bool
 
 	// authKeys are used to sign/verify JWTs for authentication
 	authKeys       map[string]authKeyData
@@ -522,6 +529,24 @@ func WithAllowUnauthenticatedHealthCheck() ServerOption {
 func WithPublicMethods(fullMethods []string) ServerOption {
 	return newFuncServerOption(func(o *serverOptions) error {
 		o.publicMethods = fullMethods
+		return nil
+	})
+}
+
+// WithUnverifiedTolerantMethods returns a server option whose grpc methods still require
+// credentials, but accept them as unverified when auth infra is down.
+func WithUnverifiedTolerantMethods(fullMethods []string) ServerOption {
+	return newFuncServerOption(func(o *serverOptions) error {
+		o.unverifiedTolerantMethods = fullMethods
+		return nil
+	})
+}
+
+// WithAuthInfraDown registers a function that checks if auth infra is down. Used in
+// conjunction with WithUnverifiedTolerantMethods.
+func WithAuthInfraDown(check func(context.Context) bool) ServerOption {
+	return newFuncServerOption(func(o *serverOptions) error {
+		o.authInfraDown = check
 		return nil
 	})
 }
