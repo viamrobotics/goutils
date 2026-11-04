@@ -30,6 +30,7 @@ jobs:
       - uses: bufbuild/buf-setup-action@a47c93e0b1648d5651a065437926377d060baa99
         with:
           version: ${{ steps.buf-version.outputs.version }}
+          github_token: ${{ github.token }}
       - uses: bufbuild/buf-push-action@v1
         with:
           buf_token: ${{ secrets.BUF_TOKEN }}
