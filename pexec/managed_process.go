@@ -18,6 +18,10 @@ import (
 
 var errAlreadyStopped = errors.New("already stopped")
 
+// outputDrainTimeout bounds how long the management goroutine waits for the output of a
+// process that has exited to be logged before it gives up on the rest of it.
+const outputDrainTimeout = 3 * time.Second
+
 // ProcessNotExistsError is a custom error that is returned from managedProcess.kill() to
 // specify that the desired process no longer exists. It is checked by the modManager in
 // rdk.
@@ -262,19 +266,46 @@ func (p *managedProcess) start(ctx context.Context) error {
 	cmd.Env = p.env
 	cmd.Dir = p.cwd
 
-	var stdOut, stdErr io.ReadCloser
+	var stdOut, stdErr *os.File
 	if p.shouldLog || p.logWriter != nil {
-		var err error
-		stdOut, err = cmd.StdoutPipe()
+		// Give the process pipes we own instead of using [exec.Cmd.StdoutPipe] and
+		// [exec.Cmd.StderrPipe]. [exec.Cmd.Wait] closes the pipes it hands out as soon as
+		// the process exits, discarding whatever output is still buffered in them, which
+		// loses most of the output of a process that writes a lot right before it dies
+		// (a Go process dumping goroutines on SIGQUIT, say).
+		outReader, outWriter, err := os.Pipe()
 		if err != nil {
 			return err
 		}
-		stdErr, err = cmd.StderrPipe()
+		errReader, errWriter, err := os.Pipe()
 		if err != nil {
+			utils.UncheckedError(outReader.Close())
+			utils.UncheckedError(outWriter.Close())
 			return err
 		}
+		cmd.Stdout = outWriter
+		cmd.Stderr = errWriter
+		stdOut, stdErr = outReader, errReader
+
+		// Use *os.File for cmd.Stdout/Stderr rather than cmd.StdoutPipe/StderrPipe.
+		// StdoutPipe adds the read ends to exec.Cmd's internal parentIOPipes, which
+		// Wait() closes immediately on process exit — discarding any output still
+		// buffered in the pipe. Passing *os.File bypasses that: parentIOPipes stays
+		// empty and Wait() never touches outReader/errReader, so the loggers can drain
+		// all output before we close the pipes ourselves.
+		//
+		// Closing the write ends after Start() (via this defer) makes the readers see
+		// EOF once the process and any children that inherited these FDs all exit.
+		defer func() {
+			utils.UncheckedError(outWriter.Close())
+			utils.UncheckedError(errWriter.Close())
+		}()
 	}
 	if err := cmd.Start(); err != nil {
+		if stdOut != nil {
+			utils.UncheckedError(stdOut.Close())
+			utils.UncheckedError(stdErr.Close())
+		}
 		return err
 	}
 	// We have the lock here so it's okay to:
@@ -299,7 +330,7 @@ func (p *managedProcess) start(ctx context.Context) error {
 // a restart to be in progress while a Stop is happening. As a means of
 // simplifying implementation, a restart spawns new goroutines by calling Start
 // again and lets the original goroutine die off.
-func (p *managedProcess) manage(stdOut, stdErr io.ReadCloser) {
+func (p *managedProcess) manage(stdOut, stdErr *os.File) {
 	// If no restart is going to happen after this function exits,
 	// then we want to notify anyone listening that this process
 	// is done being managed. We assume that if we aren't managing,
@@ -407,10 +438,10 @@ func (p *managedProcess) manage(stdOut, stdErr io.ReadCloser) {
 }
 
 // This helper function is only meant to be called from manage. If logging is
-// enabled it creates goroutines that log as much as possible until the pipes
-// are closed. It returns a function that terminates logging and blocks until
-// the loggers drain.
-func (p *managedProcess) startLoggers(stdOut, stdErr io.ReadCloser) func() {
+// enabled it creates goroutines that log process output until the output pipes
+// reach EOF. It returns a function that blocks until the loggers have drained
+// the output that is left, giving up after outputDrainTimeout.
+func (p *managedProcess) startLoggers(stdOut, stdErr *os.File) func() {
 	if !p.shouldLog && p.logWriter == nil {
 		// No logging enabled, return a noop func so the caller can unconditionally
 		// invoke it.
@@ -420,7 +451,7 @@ func (p *managedProcess) startLoggers(stdOut, stdErr io.ReadCloser) func() {
 	stopLogging := make(chan struct{})
 	var activeLoggers sync.WaitGroup
 	activeLoggers.Add(2)
-	logPipe := func(name string, pipe io.ReadCloser, isErr bool, logger utils.ZapCompatibleLogger) {
+	logPipe := func(name string, pipe io.Reader, isErr bool, logger utils.ZapCompatibleLogger) {
 		defer activeLoggers.Done()
 		pipeR := bufio.NewReader(pipe)
 		logWriterError := false
@@ -484,8 +515,27 @@ func (p *managedProcess) startLoggers(stdOut, stdErr io.ReadCloser) func() {
 	})
 
 	return func() {
-		close(stopLogging)
+		// Fire after outputDrainTimeout if the loggers haven't reached EOF yet (which
+		// means an orphaned child is holding the write ends open). Closing stopLogging
+		// cuts the loggers off between ReadLine calls; closing the read ends interrupts
+		// any ReadLine that is already blocking.
+		timer := time.AfterFunc(outputDrainTimeout, func() {
+			// The pipes only reach EOF once every process holding a write end is gone, so
+			// a child that outlived the process we manage can hold them open for good.
+			p.logger.Warnw("timed out waiting for process output to drain", "timeout", outputDrainTimeout)
+			close(stopLogging)
+			utils.UncheckedError(stdOut.Close())
+			utils.UncheckedError(stdErr.Close())
+		})
 		activeLoggers.Wait()
+		if timer.Stop() {
+			// Loggers reached EOF naturally before the timeout; close the read ends
+			// ourselves for resource cleanup.
+			utils.UncheckedError(stdOut.Close())
+			utils.UncheckedError(stdErr.Close())
+		}
+		// If timer.Stop() returns false the AfterFunc callback already closed the pipes
+		// (or is doing so concurrently in its own goroutine); either way we're done.
 	}
 }
 
