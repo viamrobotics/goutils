@@ -310,21 +310,12 @@ func (ss *simpleServer) tryAuth(ctx context.Context) (context.Context, error) {
 	return nextCtx, nil
 }
 
-// authInfraDownProbeTimeout bounds how long the authInfraDown probe may run. A probe that
-// exceeds this is treated as evidence that auth infra is down.
-const authInfraDownProbeTimeout = 2 * time.Second
-
 func (ss *simpleServer) ensureAuthedTolerant(ctx context.Context) (context.Context, error) {
 	nextCtx, err := ss.ensureAuthed(ctx)
 	if err == nil {
 		return nextCtx, nil
 	}
-	if ss.authInfraDown == nil {
-		return nil, err
-	}
-	probeCtx, cancel := context.WithTimeout(ctx, authInfraDownProbeTimeout)
-	defer cancel()
-	if !ss.authInfraDown(probeCtx) {
+	if ss.authInfraDown == nil || !ss.authInfraDown(ctx) {
 		return nil, err
 	}
 	return ContextWithAuthEntity(ctx, EntityInfo{UnverifiedBecauseAuthUnavailable: true}), nil
