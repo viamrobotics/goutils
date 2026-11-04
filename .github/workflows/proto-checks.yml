@@ -25,6 +25,7 @@ jobs:
       - uses: bufbuild/buf-setup-action@a47c93e0b1648d5651a065437926377d060baa99
         with:
           version: ${{ steps.buf-version.outputs.version }}
+          github_token: ${{ github.token }}
       # Run all Lint runs
       - uses: bufbuild/buf-lint-action@v1
       # Run breaking change detection against the `main` branch
