@@ -560,7 +560,7 @@ func dialWebRTC(
 				exchangeCancel(nil)
 				return nil, nil, err
 			}
-			logger.Infow("signaling could not authenticate us; sent api_token to answerer", "key_id", dOpts.authEntity)
+			logger.Infow("signaling could not authenticate us; sent api_token to answerer", "entity", dOpts.authEntity)
 		}
 		advance(webrtcpb.DialStage_DIAL_STAGE_READY)
 		successful = true
