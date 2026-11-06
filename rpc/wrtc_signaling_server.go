@@ -59,7 +59,7 @@ func NewWebRTCSignalingServer(
 ) *WebRTCSignalingServer {
 	forHostsSet := make(map[string]struct{}, len(forHosts))
 	for _, host := range forHosts {
-		forHostsSet[host] = struct{}{}
+		forHostsSet[strings.ToLower(host)] = struct{}{}
 	}
 
 	bgWorkers := utils.NewBackgroundStoppableWorkers()
@@ -112,7 +112,9 @@ func HostFromCtx(ctx context.Context) (string, error) {
 
 const maxHostsInMetadata = 5
 
-// HostsFromCtx gets the hosts being called/answered for from the context.
+// HostsFromCtx gets the hosts being called/answered for from the context. Returned hosts
+// are lowercased so caller and answerer route to the same call-queue key regardless of
+// the case the client used.
 func HostsFromCtx(ctx context.Context) ([]string, error) {
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok || len(md[RPCHostMetadataField]) == 0 {
@@ -122,14 +124,14 @@ func HostsFromCtx(ctx context.Context) ([]string, error) {
 		return nil, fmt.Errorf("too many %s", RPCHostMetadataField)
 	}
 
-	hostsCopy := make([]string, len(md[RPCHostMetadataField]))
-	copy(hostsCopy, md[RPCHostMetadataField])
-	for _, host := range hostsCopy {
+	hosts := make([]string, len(md[RPCHostMetadataField]))
+	for i, host := range md[RPCHostMetadataField] {
 		if host == "" {
 			return nil, fmt.Errorf("expected non-empty %s", RPCHostMetadataField)
 		}
+		hosts[i] = strings.ToLower(host)
 	}
-	return hostsCopy, nil
+	return hosts, nil
 }
 
 const hostNotAllowedMsg = "host not preconfigured"
@@ -142,7 +144,7 @@ func (srv *WebRTCSignalingServer) validateHosts(hosts ...string) error {
 		return errors.New("at least one host required")
 	}
 	for _, host := range hosts {
-		if _, ok := srv.forHosts[host]; ok {
+		if _, ok := srv.forHosts[strings.ToLower(host)]; ok {
 			continue
 		}
 		return status.Error(codes.InvalidArgument, hostNotAllowedMsg)
