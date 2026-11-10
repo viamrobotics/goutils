@@ -3,9 +3,13 @@ package perf
 import (
 	"math"
 	"runtime/metrics"
+	"slices"
 	"testing"
 	"time"
 
+	"go.opencensus.io/metric/metricdata"
+	"go.opencensus.io/metric/metricproducer"
+	"go.opencensus.io/stats/view"
 	"go.viam.com/test"
 
 	"go.viam.com/utils/perf/statz/statztest"
@@ -50,6 +54,62 @@ func TestSchedLatencyQuantiles(t *testing.T) {
 	})
 }
 
+func TestSchedLatencyProducerRead(t *testing.T) {
+	producer := newSchedLatencyProducer()
+	producer.Read()
+	read := producer.Read()
+
+	test.That(t, read, test.ShouldHaveLength, 1)
+	test.That(t, read[0].Descriptor, test.ShouldResemble, schedLatencyDescriptor)
+	values := map[string]int64{}
+	for _, series := range read[0].TimeSeries {
+		test.That(t, series.LabelValues, test.ShouldHaveLength, 1)
+		test.That(t, series.Points, test.ShouldHaveLength, 1)
+		values[series.LabelValues[0].Value] = series.Points[0].Value.(int64)
+	}
+	test.That(t, values, test.ShouldHaveLength, 3)
+	test.That(t, values["max"], test.ShouldBeGreaterThanOrEqualTo, values["p99"])
+	test.That(t, values["p99"], test.ShouldBeGreaterThanOrEqualTo, values["p50"])
+	test.That(t, len(producer.windows.prevCounts), test.ShouldBeGreaterThan, 0)
+}
+
+// Cloud Monitoring keys the metric on its descriptor, so the producer must export the same one
+// the gauge's view does.
+func TestSchedLatencyDescriptorMatchesGaugeView(t *testing.T) {
+	schedLatencyGauge.Set("p50", 1)
+	// The view worker records asynchronously; RetrieveData queues behind the Set.
+	_, err := view.RetrieveData(schedLatencyName)
+	test.That(t, err, test.ShouldBeNil)
+	var fromView *metricdata.Descriptor
+	for _, producer := range metricproducer.GlobalManager().GetAll() {
+		if _, ours := producer.(*schedLatencyProducer); ours {
+			continue
+		}
+		for _, m := range producer.Read() {
+			if m.Descriptor.Name == schedLatencyName {
+				fromView = &m.Descriptor
+			}
+		}
+	}
+	test.That(t, fromView, test.ShouldNotBeNil)
+	test.That(t, *fromView, test.ShouldResemble, schedLatencyDescriptor)
+}
+
+func TestDevelopmentExporterRegistersSchedLatencyProducer(t *testing.T) {
+	exporter := NewDevelopmentExporterWithOptions(DevelopmentExporterOptions{
+		ReportingInterval: time.Hour,
+		TracesDisabled:    true,
+	}).(*developmentExporter)
+	registered := func() bool {
+		return slices.Contains(metricproducer.GlobalManager().GetAll(), metricproducer.Producer(exporter.sched))
+	}
+
+	test.That(t, exporter.Start(), test.ShouldBeNil)
+	test.That(t, registered(), test.ShouldBeTrue)
+	exporter.Stop()
+	test.That(t, registered(), test.ShouldBeFalse)
+}
+
 func TestRuntimeSamplerSample(t *testing.T) {
 	latency := statztest.NewGaugeRecorder("process/sched_latency_ns")
 
@@ -57,7 +117,7 @@ func TestRuntimeSamplerSample(t *testing.T) {
 	sampler.sample()
 	sampler.sample()
 
-	test.That(t, len(sampler.prevCounts), test.ShouldBeGreaterThan, 0)
+	test.That(t, len(sampler.windows.prevCounts), test.ShouldBeGreaterThan, 0)
 	test.That(t, latency.Value("quantile", "max"), test.ShouldBeGreaterThanOrEqualTo, latency.Value("quantile", "p99"))
 	test.That(t, latency.Value("quantile", "p99"), test.ShouldBeGreaterThanOrEqualTo, latency.Value("quantile", "p50"))
 }

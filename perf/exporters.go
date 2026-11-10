@@ -9,6 +9,7 @@ import (
 	"cloud.google.com/go/compute/metadata"
 	"contrib.go.opencensus.io/exporter/stackdriver"
 	"github.com/caarlos0/env/v11"
+	"go.opencensus.io/metric/metricproducer"
 	"go.opencensus.io/trace"
 
 	"go.viam.com/utils"
@@ -171,7 +172,7 @@ func samplerFromEnvOpts(byNamePerSec, prob float64, logger utils.ZapCompatibleLo
 type sdExporter struct {
 	sdExporter *stackdriver.Exporter
 	sampler    trace.Sampler
-	runtime    *runtimeSampler
+	sched      *schedLatencyProducer
 }
 
 // Starts the applications stats/span monitoring. Registers views and starts trace/metric exporters to opencensus.
@@ -180,11 +181,12 @@ func (e *sdExporter) Start() error {
 		return err
 	}
 
+	if e.sched == nil {
+		e.sched = newSchedLatencyProducer()
+	}
+	metricproducer.GlobalManager().AddProducer(e.sched)
 	if err := e.sdExporter.StartMetricsExporter(); err != nil {
 		return err
-	}
-	if e.runtime == nil {
-		e.runtime = startRuntimeSampler(runtimeSampleInterval)
 	}
 	trace.RegisterExporter(e.sdExporter)
 	trace.ApplyConfig(trace.Config{DefaultSampler: e.sampler})
@@ -193,8 +195,8 @@ func (e *sdExporter) Start() error {
 
 // Stop all exporting.
 func (e *sdExporter) Stop() {
-	e.runtime.Stop()
 	e.sdExporter.StopMetricsExporter()
+	metricproducer.GlobalManager().DeleteProducer(e.sched)
 	trace.UnregisterExporter(e.sdExporter)
 	e.sdExporter.Flush()
 }

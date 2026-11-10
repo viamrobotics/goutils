@@ -18,6 +18,7 @@ import (
 
 	"go.opencensus.io/metric/metricdata"
 	"go.opencensus.io/metric/metricexport"
+	"go.opencensus.io/metric/metricproducer"
 	"go.opencensus.io/trace"
 
 	"go.viam.com/utils"
@@ -25,7 +26,7 @@ import (
 
 // developmentExporter exports metrics and span to log file.
 type developmentExporter struct {
-	runtime        *runtimeSampler
+	sched          *schedLatencyProducer
 	mu             sync.Mutex
 	children       map[string][]mySpanInfo
 	reader         *metricexport.Reader
@@ -96,9 +97,10 @@ func (e *developmentExporter) Start() error {
 			utils.UncheckedError(err)
 		})
 		e.ir.ReportingInterval = e.o.ReportingInterval
-		if e.runtime == nil {
-			e.runtime = startRuntimeSampler(e.o.ReportingInterval)
+		if e.sched == nil {
+			e.sched = newSchedLatencyProducer()
 		}
+		metricproducer.GlobalManager().AddProducer(e.sched)
 		return e.ir.Start()
 	}
 	return nil
@@ -110,8 +112,8 @@ func (e *developmentExporter) Stop() {
 		trace.UnregisterExporter(e)
 	}
 	if !e.o.MetricsDisabled {
-		e.runtime.Stop()
 		e.ir.Stop()
+		metricproducer.GlobalManager().DeleteProducer(e.sched)
 	}
 }
 
