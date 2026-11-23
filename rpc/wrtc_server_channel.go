@@ -32,8 +32,11 @@ type webrtcServerChannel struct {
 	mustAuthCaller bool
 	// callerAuthed is set once the caller presents a valid api_token.
 	callerAuthed atomic.Bool
-	server       *webrtcServer
-	streams      map[uint64]*webrtcServerStream
+	// logUnauthedRejectOnce limits the rejection warning to once per channel, since a caller
+	// without a valid api_token is rejected on every message it sends.
+	logUnauthedRejectOnce sync.Once
+	server                *webrtcServer
+	streams               map[uint64]*webrtcServerStream
 }
 
 // newWebRTCServerChannel wraps the given WebRTC data channel to be used as the server end
@@ -164,6 +167,10 @@ func (ch *webrtcServerChannel) onChannelMessage(msg webrtc.DataChannelMessage) {
 		}
 		tok, isToken := req.GetType().(*webrtcpb.Request_ApiToken)
 		if !isToken {
+			ch.logUnauthedRejectOnce.Do(func() {
+				ch.webrtcBaseChannel.logger.Warnw("rejecting request; caller has not presented a valid api_token",
+					"stream_id", id)
+			})
 			reject()
 			return
 		}
@@ -176,6 +183,7 @@ func (ch *webrtcServerChannel) onChannelMessage(msg webrtc.DataChannelMessage) {
 		ch.entityInfo = callerEntity
 		ch.mu.Unlock()
 		ch.callerAuthed.Store(true)
+		ch.webrtcBaseChannel.logger.Infow("authenticated caller via api_token", "entity", callerEntity.Entity)
 		return
 	}
 	if _, isToken := req.GetType().(*webrtcpb.Request_ApiToken); isToken {

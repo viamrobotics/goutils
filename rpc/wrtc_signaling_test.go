@@ -2,6 +2,7 @@ package rpc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -16,8 +17,10 @@ import (
 	"github.com/viamrobotics/webrtc/v3"
 	"go.viam.com/test"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"go.viam.com/utils"
@@ -182,6 +185,77 @@ func testWebRTCSignaling(t *testing.T, signalingCallQueue WebRTCCallQueue, logge
 			test.That(t, <-serveDone, test.ShouldBeNil)
 		})
 	}
+}
+
+// TestSignalingHostCaseInsensitive verifies that signaling host identifiers are matched
+// case-insensitively: an answerer registered as "RoBoT.viam.cloud" is still reachable via
+// a Call carrying "robot.VIAM.cloud", and vice-versa.
+func TestSignalingHostCaseInsensitive(t *testing.T) {
+	logger := golog.NewTestLogger(t)
+
+	t.Run("HostsFromCtx lowercases", func(t *testing.T) {
+		md := metadata.Pairs(RPCHostMetadataField, "MixedCase.Viam.Cloud")
+		ctx := metadata.NewIncomingContext(context.Background(), md)
+		hosts, err := HostsFromCtx(ctx)
+		test.That(t, err, test.ShouldBeNil)
+		test.That(t, hosts, test.ShouldResemble, []string{"mixedcase.viam.cloud"})
+	})
+
+	t.Run("NewWebRTCSignalingServer lowercases", func(t *testing.T) {
+		queue := NewMemoryWebRTCCallQueue(logger)
+		defer func() { test.That(t, queue.Close(), test.ShouldBeNil) }()
+		srv := NewWebRTCSignalingServer(queue, nil, logger, defaultHeartbeatInterval, "Allowed.Host")
+		defer srv.Close()
+		// Assert that when caller writes the host in a different case, server still accepts.
+		test.That(t, srv.validateHosts("allowed.HOST"), test.ShouldBeNil)
+	})
+
+	t.Run("e2e", func(t *testing.T) {
+		queue := NewMemoryWebRTCCallQueue(logger)
+		defer func() { test.That(t, queue.Close(), test.ShouldBeNil) }()
+		signalingServer := NewWebRTCSignalingServer(queue, nil, logger, defaultHeartbeatInterval)
+		defer signalingServer.Close()
+
+		grpcListener, err := net.Listen("tcp", "localhost:0")
+		test.That(t, err, test.ShouldBeNil)
+		grpcServer := grpc.NewServer()
+		grpcServer.RegisterService(&webrtcpb.SignalingService_ServiceDesc, signalingServer)
+		go func() { _ = grpcServer.Serve(grpcListener) }()
+		defer grpcServer.Stop()
+
+		webrtcServer := newWebRTCServer(logger)
+		defer webrtcServer.Stop()
+		webrtcServer.RegisterService(&echopb.EchoService_ServiceDesc, &echoserver.Server{})
+		answerer := newWebRTCSignalingAnswerer(
+			grpcListener.Addr().String(),
+			[]string{"RoBoT.VIAM.cloud"}, // mixed case
+			webrtcServer,
+			[]DialOption{WithInsecure()},
+			webrtc.Configuration{},
+			logger,
+		)
+		answerer.Start()
+		defer answerer.Stop()
+		// The signaling server lowercases the answerer's host in `Answer` before enqueuing
+		// it, so the answerer should come online with a lowercased host.
+		waitForAnswererOnline(context.Background(), t, []string{"robot.viam.cloud"}, queue)
+
+		// A caller dialing with yet another case must still reach the answerer. The Echo call
+		// succeeding is proof the signaling server matched both sides across case.
+		ch, err := DialWebRTC(
+			context.Background(),
+			grpcListener.Addr().String(),
+			"RoBoT.ViAm.CLOUD",
+			logger,
+			WithWebRTCOptions(DialWebRTCOptions{SignalingInsecure: true}),
+		)
+		test.That(t, err, test.ShouldBeNil)
+		defer func() { test.That(t, ch.Close(), test.ShouldBeNil) }()
+
+		resp, err := echopb.NewEchoServiceClient(ch).Echo(context.Background(), &echopb.EchoRequest{Message: "hello"})
+		test.That(t, err, test.ShouldBeNil)
+		test.That(t, resp.GetMessage(), test.ShouldEqual, "hello")
+	})
 }
 
 func TestWebRTCAnswererImmediateStop(t *testing.T) {
@@ -458,4 +532,136 @@ func TestExtendWebRTCConfig(t *testing.T) {
 			test.That(t, stunServers[0].Credential, test.ShouldEqual, nil)
 		})
 	}
+}
+
+// callServerStub satisfies webrtcpb.SignalingService_CallServer (pretends to be the side
+// of the signaling server that talks to the caller). Send pushes onto sent, which the
+// test reads to observe forwarded CallResponses without racing on a shared slice.
+type callServerStub struct {
+	grpc.ServerStream
+	ctx  context.Context
+	sent chan *webrtcpb.CallResponse
+}
+
+func newCallServerStub(ctx context.Context) *callServerStub {
+	return &callServerStub{ctx: ctx, sent: make(chan *webrtcpb.CallResponse, 8)}
+}
+
+func (s *callServerStub) Context() context.Context { return s.ctx }
+func (s *callServerStub) Send(r *webrtcpb.CallResponse) error {
+	s.sent <- r
+	return nil
+}
+
+func TestCallRefusesUnauthCallerWhenAnswererCannotAuth(t *testing.T) {
+	logger := golog.NewTestLogger(t)
+	queue := NewMemoryWebRTCCallQueue(logger)
+	defer func() { test.That(t, queue.Close(), test.ShouldBeNil) }()
+
+	srv := NewWebRTCSignalingServer(queue, nil, logger, time.Second)
+	defer srv.Close()
+
+	host := "robot-host"
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Mark the caller as unverified-because-auth-unavailable, so Call will set
+	// mustAuthCaller=true.
+	callerCtx := ContextWithAuthEntity(ctx, EntityInfo{UnverifiedBecauseAuthUnavailable: true})
+	callerCtx = metadata.NewIncomingContext(callerCtx,
+		metadata.Pairs(RPCHostMetadataField, host))
+	stub := newCallServerStub(callerCtx)
+
+	// Stand in for the answerer: receive the offer and reply without CanAuthCallers set
+	// (defaults to false) as an old answerer would.
+	answererDone := make(chan error, 1)
+	go func() {
+		exchange, err := queue.RecvOffer(ctx, []string{host})
+		if err != nil {
+			answererDone <- err
+			return
+		}
+		sdp := "answerer-sdp"
+		answererDone <- exchange.AnswererRespond(ctx, WebRTCCallAnswer{
+			InitialSDP: &sdp,
+			// `CanAuthCallers: false` by omission
+		})
+	}()
+
+	err := srv.Call(&webrtcpb.CallRequest{Sdp: "caller-sdp", DisableTrickle: true}, stub)
+	// The caller must not have seen a CallResponse_Init and received an unauthenticated
+	// error.
+	test.That(t, status.Code(err), test.ShouldEqual, codes.Unauthenticated)
+	test.That(t, len(stub.sent), test.ShouldEqual, 0)
+
+	// Drain the answerer goroutine.
+	select {
+	case err := <-answererDone:
+		test.That(t, err, test.ShouldBeNil)
+	case <-time.After(5 * time.Second):
+		t.Fatal("answerer goroutine did not exit")
+	}
+}
+
+func TestCallAllowsUnauthCallerWhenAnswererCanAuth(t *testing.T) {
+	logger := golog.NewTestLogger(t)
+	queue := NewMemoryWebRTCCallQueue(logger)
+	defer func() { test.That(t, queue.Close(), test.ShouldBeNil) }()
+
+	srv := NewWebRTCSignalingServer(queue, nil, logger, time.Second)
+	defer srv.Close()
+
+	const host = "robot-host"
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	callerCtx := ContextWithAuthEntity(ctx, EntityInfo{UnverifiedBecauseAuthUnavailable: true})
+	callerCtx = metadata.NewIncomingContext(callerCtx,
+		metadata.Pairs(RPCHostMetadataField, host))
+	callerCtx, callerCancel := context.WithCancel(callerCtx)
+	defer callerCancel()
+	stub := newCallServerStub(callerCtx)
+
+	// Receive offer in a goroutine.
+	go func() {
+		exchange, err := queue.RecvOffer(ctx, []string{host})
+		if err != nil {
+			return
+		}
+		sdp := "answerer-sdp"
+		err = exchange.AnswererRespond(ctx, WebRTCCallAnswer{
+			InitialSDP:     &sdp,
+			CanAuthCallers: true,
+		})
+		test.That(t, err, test.ShouldBeNil)
+	}()
+
+	// Send call request (triggering an offer) in a goroutine.
+	done := make(chan error, 1)
+	go func() {
+		done <- srv.Call(&webrtcpb.CallRequest{Sdp: "caller-sdp", DisableTrickle: true}, stub)
+	}()
+
+	// Wait for the signaling server to give a response back to the caller (should say "you
+	// must auth against the answerer, you're unauthenticated and the answerer claims to be
+	// able to authenticate callers.)
+	var first *webrtcpb.CallResponse
+	select {
+	case first = <-stub.sent:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Call did not forward an init to the caller")
+	}
+	callerCancel()
+
+	select {
+	case err := <-done:
+		// Caller should see cancelation.
+		test.That(t, errors.Is(err, context.Canceled), test.ShouldBeTrue)
+	case <-time.After(5 * time.Second):
+		t.Fatal("Call did not return after caller cancel")
+	}
+
+	init := first.GetInit()
+	test.That(t, init, test.ShouldNotBeNil)
+	test.That(t, init.GetMustAuthAgainstAnswerer(), test.ShouldBeTrue)
 }

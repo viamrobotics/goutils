@@ -744,6 +744,13 @@ func (creds *perRPCJWTCredentials) GetRequestMetadata(ctx context.Context, uri .
 	}
 	accessToken, err := creds.authenticate(ctx)
 	if err != nil {
+		// When authentication infra is unavailable, app will return `codes.Unavailable`. We
+		// may still be able to establish a connection in this case (answerer can directly
+		// verify our creds), so continue with no `Authorization` metadata.
+		if s, ok := status.FromError(err); ok && s.Code() == codes.Unavailable {
+			//nolint:nilnil
+			return nil, nil
+		}
 		return nil, err
 	}
 

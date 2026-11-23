@@ -45,6 +45,9 @@ type EntityInfo struct {
 	// forwarded verbatim from the JWT. It lets downstream consumers read claim values
 	// (e.g. an app user id) without re-parsing the token.
 	AuthMetadata map[string]string
+	// UnverifiedBecauseAuthUnavailable is true when the entity could not be verified
+	// because authentication appears to be unavailable.
+	UnverifiedBecauseAuthUnavailable bool
 }
 
 // An AuthenticateToHandler determines if the given entity should be allowed to be

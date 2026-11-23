@@ -18,6 +18,8 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"go.viam.com/utils"
+	"go.viam.com/utils/perf/statz"
+	"go.viam.com/utils/perf/statz/units"
 	webrtcpb "go.viam.com/utils/proto/rpc/webrtc/v1"
 )
 
@@ -44,6 +46,18 @@ type WebRTCSignalingServer struct {
 	heartbeatInterval time.Duration
 }
 
+var mustAuthAgainstAnswererSent = statz.NewCounter1[string](
+	"signaling/must_auth_against_answerer_sent",
+	statz.MetricConfig{
+		Description: "The number of Init responses telling the caller to authenticate against the answerer, " +
+			"i.e. how often the resilient-signaling degraded path was engaged.",
+		Unit: units.Dimensionless,
+		Labels: []statz.Label{
+			{Name: "hostname", Description: "The answerer being called"},
+		},
+	},
+)
+
 // NewWebRTCSignalingServer makes a new signaling server that uses the given
 // call queue and looks routes based on a given robot host. If forHosts is
 // non-empty, the server will only accept the given hosts and reject all
@@ -59,7 +73,7 @@ func NewWebRTCSignalingServer(
 ) *WebRTCSignalingServer {
 	forHostsSet := make(map[string]struct{}, len(forHosts))
 	for _, host := range forHosts {
-		forHostsSet[host] = struct{}{}
+		forHostsSet[strings.ToLower(host)] = struct{}{}
 	}
 
 	bgWorkers := utils.NewBackgroundStoppableWorkers()
@@ -112,7 +126,9 @@ func HostFromCtx(ctx context.Context) (string, error) {
 
 const maxHostsInMetadata = 5
 
-// HostsFromCtx gets the hosts being called/answered for from the context.
+// HostsFromCtx gets the hosts being called/answered for from the context. Returned hosts
+// are lowercased so caller and answerer route to the same call-queue key regardless of
+// the case the client used.
 func HostsFromCtx(ctx context.Context) ([]string, error) {
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok || len(md[RPCHostMetadataField]) == 0 {
@@ -122,14 +138,14 @@ func HostsFromCtx(ctx context.Context) ([]string, error) {
 		return nil, fmt.Errorf("too many %s", RPCHostMetadataField)
 	}
 
-	hostsCopy := make([]string, len(md[RPCHostMetadataField]))
-	copy(hostsCopy, md[RPCHostMetadataField])
-	for _, host := range hostsCopy {
+	hosts := make([]string, len(md[RPCHostMetadataField]))
+	for i, host := range md[RPCHostMetadataField] {
 		if host == "" {
 			return nil, fmt.Errorf("expected non-empty %s", RPCHostMetadataField)
 		}
+		hosts[i] = strings.ToLower(host)
 	}
-	return hostsCopy, nil
+	return hosts, nil
 }
 
 const hostNotAllowedMsg = "host not preconfigured"
@@ -142,7 +158,7 @@ func (srv *WebRTCSignalingServer) validateHosts(hosts ...string) error {
 		return errors.New("at least one host required")
 	}
 	for _, host := range hosts {
-		if _, ok := srv.forHosts[host]; ok {
+		if _, ok := srv.forHosts[strings.ToLower(host)]; ok {
 			continue
 		}
 		return status.Error(codes.InvalidArgument, hostNotAllowedMsg)
@@ -199,11 +215,13 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 	// (entity + auth metadata) to the answerer, never the caller's bearer token.
 	var callerAuthEntity string
 	var callerAuthMetadata map[string]string
+	var mustAuthCaller bool
 	if entity, ok := ContextAuthEntity(ctx); ok {
 		callerAuthEntity, callerAuthMetadata = entity.Entity, entity.AuthMetadata
+		mustAuthCaller = entity.UnverifiedBecauseAuthUnavailable
 	}
 	uuid, respCh, respDone, sendCancel, err := srv.callQueue.SendOfferInit(
-		ctx, host, req.GetSdp(), req.GetDisableTrickle(), callerAuthEntity, callerAuthMetadata,
+		ctx, host, req.GetSdp(), req.GetDisableTrickle(), callerAuthEntity, callerAuthMetadata, mustAuthCaller,
 	)
 	if err != nil {
 		return err
@@ -234,11 +252,25 @@ func (srv *WebRTCSignalingServer) Call(req *webrtcpb.CallRequest, server webrtcp
 		}
 		if !haveInit {
 			haveInit = true
+			// If caller is unauthenticated and this answerer cannot authenticate callers,
+			// refuse the caller.
+			if mustAuthCaller && !resp.CanAuthCallers {
+				err := status.Error(codes.Unauthenticated,
+					"caller is unauthenticated")
+				srv.asyncSendOfferError(host, uuid, err)
+				return err
+			}
+			if mustAuthCaller {
+				mustAuthAgainstAnswererSent.Inc(host)
+				srv.logger.Infow("telling caller to authenticate against the answerer; degraded signaling path engaged",
+					"caller_auth_entity", callerAuthEntity, "host", host)
+			}
 			if err := server.Send(&webrtcpb.CallResponse{
 				Uuid: uuid,
 				Stage: &webrtcpb.CallResponse_Init{
 					Init: &webrtcpb.CallResponseInitStage{
-						Sdp: *resp.InitialSDP,
+						Sdp:                     *resp.InitialSDP,
+						MustAuthAgainstAnswerer: mustAuthCaller,
 					},
 				},
 			}); err != nil {
@@ -414,6 +446,7 @@ func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 				Deadline:           timestamppb.New(offer.Deadline()),
 				CallerAuthEntity:   offer.CallerAuthEntity(),
 				CallerAuthMetadata: offer.CallerAuthMetadata(),
+				MustAuthCaller:     offer.MustAuthCaller(),
 			},
 		},
 	}); err != nil {
@@ -497,7 +530,7 @@ func (srv *WebRTCSignalingServer) Answer(server webrtcpb.SignalingService_Answer
 				haveInit = true
 				init := s.Init
 
-				ans := WebRTCCallAnswer{InitialSDP: &init.Sdp}
+				ans := WebRTCCallAnswer{InitialSDP: &init.Sdp, CanAuthCallers: init.GetCanAuthCallers()}
 				if err := offer.AnswererRespond(server.Context(), ans); err != nil {
 					return err
 				}

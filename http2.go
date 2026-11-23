@@ -80,8 +80,8 @@ func NewPlainTextHTTP2Server(handler http.Handler) (*http.Server, error) {
 // server itself since it does not provide a proper shutdown method.
 func NewHTTP2Server() (*HTTP2Server, error) {
 	var http1Server http.Server
-	var http2Server http2.Server
-	if err := http2.ConfigureServer(&http1Server, &http2Server); err != nil {
+	var http2Server http2.Server                                              //nolint:staticcheck
+	if err := http2.ConfigureServer(&http1Server, &http2Server); err != nil { //nolint:staticcheck
 		return nil, err
 	}
 	return &HTTP2Server{&http1Server, &http2Server}, nil
@@ -91,7 +91,7 @@ func NewHTTP2Server() (*HTTP2Server, error) {
 // and a direct access HTTP/2 server.
 type HTTP2Server struct {
 	HTTP1 *http.Server
-	HTTP2 *http2.Server
+	HTTP2 *http2.Server //nolint:staticcheck
 }
 
 // Close shuts down the HTTP/1 server which in turn triggers the HTTP/2 server to

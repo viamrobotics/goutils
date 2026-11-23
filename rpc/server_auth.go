@@ -171,6 +171,12 @@ func (ss *simpleServer) isPublicMethod(
 	return ss.publicMethods[fullMethod]
 }
 
+func (ss *simpleServer) isUnverifiedTolerantMethod(
+	fullMethod string,
+) bool {
+	return ss.unverifiedTolerantMethods[fullMethod]
+}
+
 func (ss *simpleServer) authUnaryInterceptor(
 	ctx context.Context,
 	req interface{},
@@ -185,6 +191,15 @@ func (ss *simpleServer) authUnaryInterceptor(
 	// optional auth
 	if ss.isPublicMethod(info.FullMethod) {
 		nextCtx, err := ss.tryAuth(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return handler(nextCtx, req)
+	}
+
+	// auth required but tolerates codes.Unavailable
+	if ss.isUnverifiedTolerantMethod(info.FullMethod) {
+		nextCtx, err := ss.ensureAuthedTolerant(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -213,6 +228,16 @@ func (ss *simpleServer) authStreamInterceptor(
 	// optional auth
 	if ss.isPublicMethod(info.FullMethod) {
 		nextCtx, err := ss.tryAuth(serverStream.Context())
+		if err != nil {
+			return err
+		}
+		serverStream = ctxWrappedServerStream{serverStream, nextCtx}
+		return handler(srv, serverStream)
+	}
+
+	// auth required, tolerates codes.Unavailable
+	if ss.isUnverifiedTolerantMethod(info.FullMethod) {
+		nextCtx, err := ss.ensureAuthedTolerant(serverStream.Context())
 		if err != nil {
 			return err
 		}
@@ -283,6 +308,17 @@ func (ss *simpleServer) tryAuth(ctx context.Context) (context.Context, error) {
 		return ctx, nil
 	}
 	return nextCtx, nil
+}
+
+func (ss *simpleServer) ensureAuthedTolerant(ctx context.Context) (context.Context, error) {
+	nextCtx, err := ss.ensureAuthed(ctx)
+	if err == nil {
+		return nextCtx, nil
+	}
+	if ss.authInfraDown == nil || !ss.authInfraDown(ctx) {
+		return nil, err
+	}
+	return ContextWithAuthEntity(ctx, EntityInfo{UnverifiedBecauseAuthUnavailable: true}), nil
 }
 
 func (ss *simpleServer) ensureAuthed(ctx context.Context) (context.Context, error) {

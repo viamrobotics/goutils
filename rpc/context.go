@@ -67,15 +67,12 @@ func ContextWithAuthEntity(ctx context.Context, authEntity EntityInfo) context.C
 
 // ContextAuthEntity returns the entity (e.g. a user) associated with this authentication context.
 func ContextAuthEntity(ctx context.Context) (EntityInfo, bool) {
-	authEntityValue := ctx.Value(ctxKeyAuthEntity)
-	if authEntityValue == nil {
+	v := ctx.Value(ctxKeyAuthEntity)
+	if v == nil {
 		return EntityInfo{}, false
 	}
-	authEntity, ok := authEntityValue.(EntityInfo)
-	if !ok || authEntity.Entity == "" {
-		return EntityInfo{}, false
-	}
-	return authEntity, true
+	authEntity, ok := v.(EntityInfo)
+	return authEntity, ok
 }
 
 // MustContextAuthEntity returns the entity associated with this authentication context;
