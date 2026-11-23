@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -38,6 +39,10 @@ func (w *heldWriter) lineCount() int {
 }
 
 func TestManagedProcessOutputAtExit(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// Uses a bash loop, and Stop on an already-exited process errors on windows.
+		t.Skip("unix-only test")
+	}
 	logger := golog.NewTestLogger(t)
 
 	const numLines = 100
