@@ -568,6 +568,14 @@ func (p *managedProcess) Stop() error {
 
 	forceKilled, err := p.kill()
 	if err != nil {
+		var processNotExistsErr *ProcessNotExistsError
+		if errors.As(err, &processNotExistsErr) {
+			// The process is already gone — not an error per Stop's contract
+			// ("an error is returned if the process may still be running").
+			// Wait for the manage goroutine to finish cleanup and return nil.
+			<-p.managingCh
+			return nil
+		}
 		return err
 	}
 

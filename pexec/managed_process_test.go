@@ -200,18 +200,7 @@ func TestManagedProcessStart(t *testing.T) {
 			// so the short-lived "echo hello" process starts despite the canceled
 			// context. By the time Stop runs, that process may or may not have
 			// already exited, so Stop's result is timing dependent.
-			stopErr := proc.Stop()
-			if runtime.GOOS == "windows" {
-				// On windows, if the process already exited we return a process not
-				// found error; if it was still running we terminate it and return
-				// nil. Both outcomes are valid, but any other error is unexpected.
-				if stopErr != nil {
-					var processNotExistsErr *ProcessNotExistsError
-					test.That(t, errors.As(stopErr, &processNotExistsErr), test.ShouldBeTrue)
-				}
-			} else {
-				test.That(t, stopErr, test.ShouldBeNil)
-			}
+			test.That(t, proc.Stop(), test.ShouldBeNil)
 		})
 		t.Run("starting with a normal context should run until stop", func(t *testing.T) {
 			logger := golog.NewTestLogger(t)
@@ -361,13 +350,7 @@ func TestManagedProcessStop(t *testing.T) {
 		}, logger)
 		test.That(t, proc.Start(context.Background()), test.ShouldBeNil)
 		<-oueRunning
-		if runtime.GOOS == "windows" {
-			// on windows, we return a process not found error here
-			var processNotExistsErr *ProcessNotExistsError
-			test.That(t, errors.As(proc.Stop(), &processNotExistsErr), test.ShouldBeTrue)
-		} else {
-			test.That(t, proc.Stop(), test.ShouldBeNil)
-		}
+		test.That(t, proc.Stop(), test.ShouldBeNil)
 		test.That(t, proc.Start(context.Background()), test.ShouldEqual, errAlreadyStopped)
 		close(blockOue)
 		proc.(*managedProcess).wg.Wait()
@@ -729,13 +712,7 @@ func TestManagedProcessEnvironmentVariables(t *testing.T) {
 		output, err := bufferedLogReader.ReadString('\n')
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, output, test.ShouldEqual, "/opt/viam\n")
-		if runtime.GOOS == "windows" {
-			// on windows, we return a process not found error here
-			var processNotExistsErr *ProcessNotExistsError
-			test.That(t, errors.As(proc.Stop(), &processNotExistsErr), test.ShouldBeTrue)
-		} else {
-			test.That(t, proc.Stop(), test.ShouldBeNil)
-		}
+		test.That(t, proc.Stop(), test.ShouldBeNil)
 	})
 
 	t.Run("overwrite an environment variable", func(t *testing.T) {
@@ -794,13 +771,7 @@ func TestManagedProcessLogWriter(t *testing.T) {
 			test.That(t, err, test.ShouldBeNil)
 			test.That(t, line, test.ShouldEqual, "hello\n")
 		}
-		if runtime.GOOS == "windows" {
-			// on windows, we return a process not found error here
-			var processNotExistsErr *ProcessNotExistsError
-			test.That(t, errors.As(proc.Stop(), &processNotExistsErr), test.ShouldBeTrue)
-		} else {
-			test.That(t, proc.Stop(), test.ShouldBeNil)
-		}
+		test.That(t, proc.Stop(), test.ShouldBeNil)
 	})
 }
 
