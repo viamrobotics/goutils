@@ -452,3 +452,60 @@ func TestComputeHash(t *testing.T) {
 	test.That(t, hash2, test.ShouldNotBeEmpty)
 	test.That(t, hash2, test.ShouldNotEqual, hash1)
 }
+
+// TestCacheStoreWhileInUse has two caches sharing a cache directory. One holds the blob open
+// while the other stores the same hash. On Windows, renaming over an open file fails, so this
+// exercises the RenameError fallback in fileSystemStore.Store. On other platforms the rename
+// simply succeeds.
+func TestCacheStoreWhileInUse(t *testing.T) {
+	sharedDir := t.TempDir()
+	newCache := func() *cachedStore {
+		cache, err := NewCache(&Config{
+			Cache:    sharedDir,
+			commitFn: func() error { return nil },
+			tree:     TreeNodeTree{},
+		})
+		test.That(t, err, test.ShouldBeNil)
+		cs, ok := cache.(*cachedStore)
+		test.That(t, ok, test.ShouldBeTrue)
+		// With no source store configured, the source is the file system itself.
+		source, ok := cs.source.(*fileSystemStore)
+		test.That(t, ok, test.ShouldBeTrue)
+		test.That(t, source, test.ShouldEqual, cs.cache)
+		return cs
+	}
+	cacheA := newCache()
+	cacheB := newCache()
+	defer func() {
+		test.That(t, cacheA.Close(), test.ShouldBeNil)
+		test.That(t, cacheB.Close(), test.ShouldBeNil)
+	}()
+
+	test.That(t, cacheA.Store("hash1", strings.NewReader("hello")), test.ShouldBeNil)
+
+	// Create a file descriptor that, on windows, cannot be renamed over.
+	reader, err := cacheA.Load("hash1")
+	test.That(t, err, test.ShouldBeNil)
+	// Invoke the Store function that intends to rename over the file descriptor. But the `Store`
+	// method handles the rename error by checking if the files are (likely) the same underlying
+	// bytes.
+	//
+	// This lets tests safely use artifact.MustPath for the same blob despite concurrent execution
+	// across different binaries/processes.
+	test.That(t, cacheB.Store("hash1", strings.NewReader("hello")), test.ShouldBeNil)
+
+	rd, err := io.ReadAll(reader)
+	test.That(t, err, test.ShouldBeNil)
+	test.That(t, string(rd), test.ShouldEqual, "hello")
+	test.That(t, reader.Close(), test.ShouldBeNil)
+
+	// No temp files should be left behind.
+	entries, err := os.ReadDir(sharedDir)
+	test.That(t, err, test.ShouldBeNil)
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue // the artifacts root
+		}
+		test.That(t, entry.Name(), test.ShouldEqual, "hash1")
+	}
+}
